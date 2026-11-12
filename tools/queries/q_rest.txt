@@ -1,0 +1,18 @@
+[out:json][timeout:180];
+(
+way["highway"](55.825,26.44,55.94,26.64);
+way["railway"~"^(rail|tram)$"](55.825,26.44,55.94,26.64);
+way["natural"~"^(water|wood|scrub|sand|beach)$"](55.825,26.44,55.94,26.64);
+relation["natural"~"^(water|wood)$"](55.825,26.44,55.94,26.64);
+way["waterway"](55.825,26.44,55.94,26.64);
+relation["waterway"="riverbank"](55.825,26.44,55.94,26.64);
+way["landuse"~"^(forest|grass|meadow|cemetery|residential|industrial|allotments|recreation_ground|farmland|railway)$"](55.825,26.44,55.94,26.64);
+relation["landuse"~"^(forest|grass|meadow|cemetery)$"](55.825,26.44,55.94,26.64);
+way["leisure"~"^(park|garden|pitch|stadium|playground)$"](55.825,26.44,55.94,26.64);
+relation["leisure"~"^(park|garden)$"](55.825,26.44,55.94,26.64);
+way["man_made"~"^(embankment|bridge)$"](55.825,26.44,55.94,26.64);
+way["barrier"~"^(city_wall|wall)$"](55.825,26.44,55.94,26.64);
+way["historic"](55.825,26.44,55.94,26.64);
+node["natural"="tree"](55.825,26.44,55.94,26.64);
+);
+out tags geom;
