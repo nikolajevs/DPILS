@@ -1,11 +1,13 @@
 # Даугавпилс 3D
 
-Город, по которому можно пройтись пешком или пролететь: [daugavpils.html](daugavpils.html) и данные [citydata.js](citydata.js).
+Город, по которому можно пройтись пешком или пролететь: [daugavpils.html](daugavpils.html), данные города [citydata.js](citydata.js) и транспорта [transit.js](transit.js).
 
 ## Источники данных
 
 - **OpenStreetMap** © участники OpenStreetMap, ODbL: улицы, вода, зелень, контуры зданий, названия.
 - **Кадастр Латвии** — Государственная земельная служба (VZD), открытые данные [data.gov.lv](https://data.gov.lv/dati/lv/dataset/kadastra-informacijas-sistemas-atvertie-dati), CC BY 4.0: контуры зданий, этажность, год постройки, материал стен и покрытие крыши. По ним выбираются высота дома, стиль фасада (кирпич, силикатный кирпич, панели, дерево) и форма крыши.
+
+- **Расписание транспорта** — официальный GTFS «Daugavpils satiksme» ([satiksme.daugavpils.lv/saraksti/GTFS.zip](https://satiksme.daugavpils.lv/saraksti/GTFS.zip)): трамвайные и автобусные маршруты, остановки и время каждого рейса. Трамваи и автобусы в городе едут по этому расписанию по времени Риги; часы можно перематывать и ускорять.
 
 Фасады и крыши нарисованы процедурно, это не фотографии.
 
@@ -21,3 +23,10 @@
    ```bash
    node tools/process.js osm cadastre.json citydata.js
    ```
+
+## Как обновить расписание `transit.js`
+
+Скачать и распаковать свежий GTFS «Daugavpils satiksme», затем:
+```bash
+node tools/transit.js gtfs citydata.js transit.js
+```
