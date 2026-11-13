@@ -1067,7 +1067,7 @@ function church(b, gold, kind, o, h, r, wallCol, name) {
    gives collisions and the map footprint. Proportions are measured on photographs (Wikimedia Commons,
    visitdaugavpils.lv, celotajs.lv, militaryheritagetourism.info, neighborhood.lv); the portico, its 29.4 m width,
    the 18 m cornice and the 12 m columns match the cadastre outline. */
-const LMF = { vn: [-1488, 1328.7, 0.8678, -0.4969], lat: [-1448.3, 1174.1, 0.8528, -0.5223], du: [-1497.7, 1537.4, -0.8604, 0.5097], p1: [-2088.2, 1366.8, 0.8607, -0.5090], ren: [-1759.53, 1019.91, -0.5075, -0.8616], ves: [-1172.1, 1098.1, -0.523, -0.852] };
+const LMF = { vn: [-1488, 1328.7, 0.8678, -0.4969], lat: [-1448.3, 1174.1, 0.8528, -0.5223], du: [-1497.7, 1537.4, -0.8604, 0.5097], p1: [-2088.2, 1366.8, 0.8607, -0.5090], ren: [-1759.53, 1019.91, -0.5075, -0.8616], ves: [-1172.1, 1098.1, -0.523, -0.852], tv: [-405.55, 1114.19, 0.5015, 0.8652] };
 const lmW = (f, u, v) => [f[0] + u * f[2] - v * f[3], f[1] + u * f[3] + v * f[2]];
 const lmL = (f, x, z) => [(x - f[0]) * f[2] + (z - f[1]) * f[3], -(x - f[0]) * f[3] + (z - f[1]) * f[2]];
 // a cadastre building whose outline contains one of these points is left to buildLandmarks
@@ -1341,6 +1341,7 @@ function lmTiles() {
     R(0, 0, 3.2, 1.0, '#3a3a2c', 1); glass(0.04, 0.04, 3.12, 0.92, 3, '#6a4a28');
     if (ald) { R(1.0, 0.18, 1.2, 0.5, '#c8202a', 0, '#c8202a'); R(1.04, 0.22, 1.12, 0.42, '#d8262f'); R(1.45, 0.08, 0.3, 0.16, '#f2c230'); txt('Aldaris', 1.6, 0.47, 0.19, '#ffffff', 'italic 700'); }
   });
+  T('tvRed', 0.3, 0.3, () => R(0, 0, 0.3, 0.3, '#d2141a', 0, '#ff1a10'));
   // shelf packing, tallest first
   defs.sort((a, b) => b.h - a.h);
   let sx = 2, sy = 2, rowH = 0;
@@ -2349,6 +2350,61 @@ function lmVesma(K) {
   for (const [u, v, r, h] of [[1.2, -10.8, 1.1, 1.5], [2.6, -12.6, 0.9, 1.2], [0.4, -13.4, 1.0, 1.4], [2.2, -8.6, 0.7, 1.0]]) { const [x, z] = lmW(f, u, v), c = sh(hb('#2f5232'), 0.85 + lr() * 0.25); lmLathe(G, x, z, 0, [[r * 0.6, 0], [r, h * 0.3], [r * 0.9, h * 0.7], [r * 0.45, h * 0.95], [0, h]], 9, c); }
 }
 
+/* ---- Radio and TV tower, Drujas iela (LVRTC, 1957) ----
+   A free-standing steel lattice tower, 205 m to the tip (OSM way 778910828: height, lattice, steel; LSM gives 204 m),
+   on a 20 m square base. Four tubular legs taper to a slender shaft near 150 m; above it the antenna mast. Painted in
+   seven red and white bands from the ground, as on the photographs (Wikimedia Commons, category "Daugavpils Radio and
+   TV Tower"): X-braced panels, a dark cable shaft up the middle, galleries with railings, an outrigger frame half way
+   up, dish and panel antennas on the upper half, red obstruction lights that come on at night. Frame tv: centred on
+   the base, u and v along its sides. */
+function lmTVTower(K) {
+  const f = LMF.tv, G = K.plain, at = (u, v, y) => { const w = lmW(f, u, v); return [w[0], y, w[1]]; };
+  const RED = hb('#c4362d'), WHITE = hb('#e9e8e3'), DARK = hb('#2a2c2e'), GREY = hb('#8d9093'), TOP = 205, LAT = 180;
+  const band = y => (Math.min(6, Math.floor(y / (LAT / 7))) % 2 ? WHITE : RED);
+  const hw = y => y < 150 ? 9 - (9 - 1.0) * y / 150 : 1.0 - 0.15 * (y - 150) / 30;        // half width of the lattice at height y
+  const lw = y => 0.55 - 0.33 * Math.min(1, y / 150);                                        // leg size
+  const C = [[1, 1], [-1, 1], [-1, -1], [1, -1]], leg = (k, y) => at(C[k][0] * hw(y), C[k][1] * hw(y), y);
+  // panels: horizontal struts and X bracing on each face, legs in between; each member takes the colour of its band
+  const ys = [0]; while (ys[ys.length - 1] < LAT) { const y = ys[ys.length - 1]; ys.push(Math.min(LAT, y + Math.max(2.2, 1.35 * hw(y)))); }
+  for (let i = 0; i < ys.length - 1; i++) {
+    const y0 = ys[i], y1 = ys[i + 1], col = band((y0 + y1) / 2), t = Math.max(0.08, lw(y0) * 0.4);
+    for (let k = 0; k < 4; k++) { const j = (k + 1) % 4;
+      lmBar(G, leg(k, y0), leg(k, y1), lw(y0), col);
+      lmBar(G, leg(k, y1), leg(j, y1), t, col);
+      lmBar(G, leg(k, y0), leg(j, y1), t * 0.8, col); lmBar(G, leg(j, y0), leg(k, y1), t * 0.8, col);
+      if (i % 3 === 1 && hw(y0) > 3) { const m = a => at((C[k][0] + C[j][0]) / 2 * hw(a), (C[k][1] + C[j][1]) / 2 * hw(a), a); lmBar(G, m(y0), m(y1), t * 0.6, col); }
+    }
+  }
+  // the cable and ladder shaft up the middle, foundations of the legs
+  lmBar(G, at(0, 0, 0), at(0, 0, LAT), 0.8, DARK);
+  for (let k = 0; k < 4; k++) lmBoxL(K.stone, f, C[k][0] * 9 - 1.3, C[k][0] * 9 + 1.3, C[k][1] * 9 - 1.3, C[k][1] * 9 + 1.3, 0, 0.8, hb('#9a9893'));
+  // galleries with railings, the outrigger frame
+  for (const y of [31, 62, 98, 128, 150, 172]) {
+    const w = hw(y) + 0.35, PL = hb('#c9cccd');   // grating walkway round the legs (a full deck where the tower is narrow), a deck round the shaft
+    if (w < 3.2) lmBoxL(G, f, -w, w, -w, w, y - 0.08, y, PL);
+    else { for (const [a, b, c, d] of [[-w, w, w - 1.1, w], [-w, w, -w, -w + 1.1], [w - 1.1, w, -w + 1.1, w - 1.1], [-w, -w + 1.1, -w + 1.1, w - 1.1]]) lmBoxL(G, f, a, b, c, d, y - 0.08, y, PL); lmBoxL(G, f, -1.4, 1.4, -1.4, 1.4, y - 0.08, y, PL); }
+    for (let k = 0; k < 4; k++) { const j = (k + 1) % 4, A = at(C[k][0] * w, C[k][1] * w, y + 1.1), B = at(C[j][0] * w, C[j][1] * w, y + 1.1); lmBar(G, A, B, 0.06, band(y + 1)); lmBar(G, at(C[k][0] * w, C[k][1] * w, y), A, 0.06, band(y + 1)); }
+  }
+  { const y = 98, w = hw(y); for (const s of [-1, 1]) { lmBar(G, at(w, s * 1.6, y), at(w + 4.5, s * 1.6, y), 0.35, RED); lmBar(G, at(w + 4.5, s * 1.6, y), at(w + 4.5, s * 1.6, y + 3.2), 0.35, RED); lmBar(G, at(w, s * 1.6, y + 3.2), at(w + 4.5, s * 1.6, y + 3.2), 0.35, RED); }
+    lmBar(G, at(w + 4.5, -1.6, y + 3.2), at(w + 4.5, 1.6, y + 3.2), 0.3, RED); lmBoxL(G, f, w, w + 4.5, -1.6, 1.6, y - 0.08, y, hb('#c9cccd')); }
+  // dish antennas on the upper half, panel antennas for mobile phones near the top of the lattice
+  for (const [y, side, s, r] of [[112, 0, 0.3, 0.9], [118, 1, -0.4, 0.7], [126, 2, 0.2, 1.1], [134, 3, 0.5, 0.6], [141, 0, -0.5, 0.8], [146, 2, 0.4, 0.7], [104, 3, -0.2, 1.2]]) {
+    const n = [[1, 0], [0, 1], [-1, 0], [0, -1]][side], w = hw(y) + 0.5, c = at(n[0] * w + (1 - Math.abs(n[0])) * s * hw(y), n[1] * w + (1 - Math.abs(n[1])) * s * hw(y), y);
+    const nw = [n[0] * f[2] - n[1] * f[3], n[0] * f[3] + n[1] * f[2]], ax = [-nw[1], 0, nw[0]];
+    lmDisc(G, c, r, ax, [0, 1, 0], hb('#f2f2ef'), [nw[0], 0, nw[1]]); lmDisc(G, c, r, ax, [0, 1, 0], hb('#c9cbcc'), [-nw[0], 0, -nw[1]]);
+  }
+  for (const y of [158, 166]) for (let k = 0; k < 4; k++) for (const s of [-0.5, 0.5]) { const n = [[1, 0], [0, 1], [-1, 0], [0, -1]][k], w = hw(y) + 0.25;
+    lmBoxL(G, f, n[0] * w - 0.12 + (n[1] ? s : 0), n[0] * w + 0.12 + (n[1] ? s : 0), n[1] * w - 0.12 + (n[0] ? s : 0), n[1] * w + 0.12 + (n[0] ? s : 0), y, y + 2.2, hb('#f0f0ec')); }
+  // the antenna mast: segments in red and white, a small platform, the lightning rod
+  for (let y = LAT, k = 0; y < TOP - 1.5; y += 3.5, k++) lmBar(G, at(0, 0, y), at(0, 0, Math.min(TOP - 1.5, y + 3.5)), 0.75 - 0.4 * (y - LAT) / (TOP - LAT), k % 2 ? WHITE : RED);
+  lmBoxL(G, f, -1.0, 1.0, -1.0, 1.0, 193.8, 194, GREY); lmBar(G, at(0, 0, TOP - 1.5), at(0, 0, TOP), 0.08, DARK);
+  // obstruction lights
+  const t = LMT.tvRed, light = (P, s) => { for (const [dx, dz] of [[1, 0], [0, 1], [-1, 0], [0, -1]]) K.det.q([P[0] - dz * s, P[1] - s, P[2] + dx * s], [P[0] + dz * s, P[1] - s, P[2] - dx * s], [P[0] + dz * s, P[1] + s, P[2] - dx * s], [P[0] - dz * s, P[1] + s, P[2] + dx * s], [dx, 0, dz], [t.u0, t.v0, t.u1, t.v0, t.u1, t.v1, t.u0, t.v1], LMWHITE, 1);
+    K.det.q([P[0] - s, P[1] + s, P[2] - s], [P[0] + s, P[1] + s, P[2] - s], [P[0] + s, P[1] + s, P[2] + s], [P[0] - s, P[1] + s, P[2] + s], [0, 1, 0], [t.u0, t.v0, t.u1, t.v0, t.u1, t.v1, t.u0, t.v1], LMWHITE, 1); };
+  light(at(0, 0, TOP + 0.5), 0.8);   // drawn larger than life so they read from across the city, like their glare
+  for (const y of [194.5, LAT, 150, 98, 50]) for (let k = 0; k < 4; k++) light(at(C[k][0] * (hw(y) + 0.5), C[k][1] * (hw(y) + 0.5), y + 0.5), 0.55);
+}
+
 /* ---- the square in front: paving, flower beds, candelabra, benches ---- */
 const sphereProf = r => { const p = []; for (let k = 0; k <= 8; k++) { const a = -Math.PI / 2 + k * Math.PI / 8; p.push([Math.abs(Math.cos(a)) * r, r + Math.sin(a) * r]); } return p; };
 function lmCandelabrum(G, Gl, x, z, y0, rot) {
@@ -2465,7 +2521,7 @@ function buildLandmarks() {
   LMM.clk = hook(new THREE.MeshStandardMaterial({ map: lmClk.tex, emissive: new THREE.Color(1, 1, 1), emissiveMap: lmClk.tex, roughness: 0.5, metalness: 0 }), 'lm-clk', LM_SAFE); allMats.push(LMM.clk); lmTick();
   const K = { ash: new LMB(), ren: new LMB(), det: new LMB(), txt: new LMB(), clk: new LMB(), plain: new GB(false), stone: new GB(false), globe: new GB(false) };
   K.walls = [K.ash, K.ren, new LMB(), new LMB(), new LMB(), new LMB(), new LMB()];
-  lmUnityHouse(K); lmLatgola(K); lmGrounds(K); lmDUMain(K); lmDUParades(K); lmDULab(K); lmRenesanse(K); lmRigas(K); lmVesma(K);
+  lmUnityHouse(K); lmLatgola(K); lmGrounds(K); lmDUMain(K); lmDUParades(K); lmDULab(K); lmRenesanse(K); lmRigas(K); lmVesma(K); lmTVTower(K);
   [LMM.ash, LMM.ren, LMM.duw, LMM.brick, LMM.tile, LMM.panel, LMM.buff].forEach((m, k) => K.walls[k].mesh(m)); K.det.mesh(LMM.det); K.txt.mesh(LMM.txt, false); K.clk.mesh(LMM.clk, false);
   for (const [b, m] of [[K.plain, LMM.plain], [K.stone, LMM.stone]]) { const pm = b.mesh(m); if (pm) { pm.castShadow = pm.receiveShadow = true; scene.add(pm); } }
   const gm = K.globe.mesh(LMM.globe); if (gm) { gm.receiveShadow = true; scene.add(gm); }
@@ -4136,6 +4192,7 @@ const PLACES = [
   ['Гостиница «Латгола»', 'Park Hotel Latgola и ТЦ Latgola', -1492.9, 1235.4, -1.02],
   ['Университет · старый корпус', 'Daugavpils Universitāte, Vienības iela 13, 1956', -1482.8, 1484.0, 2.105],
   ['Университет · новый корпус', 'Parādes iela 1 и лабораторный корпус 1A', -1975.5, 1439.5, 0.031],
+  ['Телебашня', 'радио- и телебашня LVRTC, 205 м, 1957', -462, 1222, -0.48],
   ['Гастробар «Vēsma»', 'Rīgas iela 49, летняя терраса', -1170.9, 1111.5, -0.234],
   ['Кинотеатр «Ренесанс»', 'бывший «Oktobris» (1978), теперь Инновационный центр', -1716.1, 1018.6, 0.533],
   ['Рижская улица', 'пешеходная Rīgas iela', -1053, 1030, 1.05],
