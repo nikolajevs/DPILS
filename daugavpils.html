@@ -445,9 +445,10 @@ function hook(m, key, patch) {
 /* ---------- terrain ----------
    The ground rises and falls with the heights of terrain.js (the LGIA lidar terrain model, 20 m grid, built by tools/terrain.js). The
    shared vertex chunks of three.js lift every vertex of every material, shadows included, by the height under it, so
-   the ground, streets, trees, vehicles and lamps follow it without being rebuilt. Generic buildings are first lowered
-   in their geometry so that each stands level on the lowest point of its outline; bridges keep a straight deck from
-   bank to bank. Heights are relative to Vienības laukums. */
+   the ground, streets, trees, vehicles and lamps follow it without being rebuilt. Generic buildings are first shifted
+   in their geometry so that each stands level at the height of the upper side of its outline, with the foot of its
+   walls down to the ground on the lower side; bridges keep a straight deck from bank to bank. Heights are relative to
+   Vienības laukums. */
 const TERR = { on: false, x0: 0, z0: 0, s: 25, nx: 2, nz: 2, ref: 0, q: null };
 U.tTerr = { value: null }; U.uTerrA = { value: new THREE.Vector4(0, 0, 0.04, 0) }; U.uTerrB = { value: new THREE.Vector4(2, 2, 0, 0) };
 THREE.ShaderChunk.common += `
@@ -1019,12 +1020,18 @@ function makeMaterials() {
 
 /* ---------- ground: land use, water in its bed ---------- */
 /* The ground layers are drawn first without writing depth; a hill must still hide what lies behind it. A grid on the
-   height grid, 0.6 m under the ground, writes depth first (and casts the shadows of the hills). It leaves out the
+   height grid, at least 0.5 m under the ground, writes depth first (and casts the shadows of the hills). It leaves out the
    water, which lies lower, and the fortress, which has its own ground and depth mask. */
 function terrainDepth() {
   if (!WMASK) waterMask();
-  const g = new GB(false), nx = Math.ceil(TERR.nx / 2), nz = Math.ceil(TERR.nz / 2), s = TERR.s * 2, C0 = [0, 0, 0]; g.ensure(nx * nz);
-  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) g.vert(TERR.x0 + i * s, -0.6, TERR.z0 + j * s, 0, 1, 0, C0);
+  // on every node of the height grid, each 0.5 m under the lowest of its neighbours: the plane of a triangle then never
+  // rises above the ground drawn over it, which follows the bilinear heights (a grid one node in two did, on the edges
+  // of embankments and cuttings, and hid the ground)
+  const g = new GB(false), nx = TERR.nx, nz = TERR.nz, s = TERR.s, q = TERR.q, C0 = [0, 0, 0]; g.ensure(nx * nz);
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+    let m = 1e9; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = Math.min(nx - 1, Math.max(0, i + di)), jj = Math.min(nz - 1, Math.max(0, j + dj)); m = Math.min(m, q[jj * nx + ii]); }
+    g.vert(TERR.x0 + i * s, (m - q[j * nx + i]) * 0.1 - 0.5, TERR.z0 + j * s, 0, 1, 0, C0);
+  }
   const wet = (x, z) => { const W = WMASK, i = Math.floor((x - W.X0) / W.S), j = Math.floor((z - W.Z0) / W.S); return i >= 0 && j >= 0 && i < W.NX && j < W.NZ && W.m[j * W.NX + i] !== 0; };
   for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
     const x = TERR.x0 + i * s, z = TERR.z0 + j * s;
@@ -1040,9 +1047,13 @@ function buildGround() {
   const far = new GB(false), FN = 41; for (let j = 0; j < FN; j++) for (let i = 0; i < FN; i++) far.vert(-30000 + i * 1500, -0.4, -30000 + j * 1500, 0, 1, 0, bc);
   for (let j = 0; j < FN - 1; j++) for (let i = 0; i < FN - 1; i++) { const k = j * FN + i; far.triUp(k, k + FN, k + 1); far.triUp(k + 1, k + FN, k + FN + 1); }
   const fm = far.mesh(matBase); fm.renderOrder = -51; fm.frustumCulled = false; fm.receiveShadow = true; scene.add(fm);
-  const base = new GB(false), gx0 = TERR.on ? TERR.x0 : -HX, gz0 = TERR.on ? TERR.z0 : -HY, gs = TERR.on ? TERR.s * 2 : 50, gnx = TERR.on ? Math.ceil(TERR.nx / 2) : Math.ceil(2 * HX / 50) + 1, gnz = TERR.on ? Math.ceil(TERR.nz / 2) : Math.ceil(2 * HY / 50) + 1;
-  base.ensure(gnx * gnz); for (let j = 0; j < gnz; j++) for (let i = 0; i < gnx; i++) base.vert(gx0 + i * gs, 0, gz0 + j * gs, 0, 1, 0, bc);
-  for (let j = 0; j < gnz - 1; j++) for (let i = 0; i < gnx - 1; i++) { const k = j * gnx + i; base.triUp(k, k + gnx, k + 1); base.triUp(k + 1, k + gnx, k + gnx + 1); }
+  // the base ground over the city: a grid of 400 m squares split where the terrain bends, like the other layers
+  const base = new GB(false), BX = Math.ceil(2 * HX / 400), BZ = Math.ceil(2 * HY / 400), bf = [], bt = [];
+  for (let j = 0; j <= BZ; j++) for (let i = 0; i <= BX; i++) bf.push(-HX + i * 2 * HX / BX, -HY + j * 2 * HY / BZ);
+  for (let j = 0; j < BZ; j++) for (let i = 0; i < BX; i++) { const k = j * (BX + 1) + i; bt.push(k, k + BX + 1, k + 1, k + 1, k + BX + 1, k + BX + 2); }
+  const bs = TERR.on ? subTris(bf, bt, 0.25) : { flat: bf, tris: bt };
+  base.ensure(bs.flat.length / 2); for (let i = 0; i < bs.flat.length; i += 2) base.vert(bs.flat[i], 0, bs.flat[i + 1], 0, 1, 0, bc);
+  for (let t = 0; t < bs.tris.length; t += 3) base.triUp(bs.tris[t], bs.tris[t + 1], bs.tris[t + 2]);
   const gm0 = base.mesh(matBase); gm0.renderOrder = -50; gm0.frustumCulled = false; gm0.receiveShadow = true; scene.add(gm0);
   for (const a of C.a) { const rings = a.slice(1).map(dec); const o = { cls: a[0], rings, bb: bbox(rings[0]) }; AREAS.push(o); if (o.cls === 0) WATER.push(o); }
   AREAS.sort((p, q) => AREA_ORDER.indexOf(p.cls) - AREA_ORDER.indexOf(q.cls));
@@ -2975,7 +2986,10 @@ function buildBuildings(from, to) {
     if (!rings.length) continue;
     const outer = rings[0], bb = bbox(outer), cx = (bb[0] + bb[2]) / 2, cz = (bb[1] + bb[3]) / 2;
     if (lmDrops(outer, bb) || fortDrops(outer, bb)) continue;   // drawn by buildLandmarks or buildFortress
-    if (TERR.on) { let lo = 1e9; for (let i = 0; i < outer.length; i += 2) lo = Math.min(lo, terrainH(outer[i], outer[i + 1])); GBC = (x, y, z) => lo - terrainH(x, z); }
+    // on a slope a house stands level at the height of its upper side (no more than 2.5 m over its lowest point, the
+    // rest goes into the ground), and the foot of its walls reaches down to the ground on the lower side: a plinth
+    if (TERR.on) { let lo = 1e9, hi = -1e9; for (let i = 0; i < outer.length; i += 2) { const t = terrainH(outer[i], outer[i + 1]); lo = Math.min(lo, t); hi = Math.max(hi, t); }
+      const base = Math.min(hi - 0.15, lo + 2.5); GBC = (x, y, z) => { const t = terrainH(x, z); return y <= 0.05 ? Math.min(base, t) - 0.25 - t - y : base - t; }; }
     const name = rec[3] >= 0 ? NAMES[rec[3]] : '';
     BLD.push({ ring: outer, bb, kind: style }); const bid = BLD.length - 1;
     for (let i = Math.floor(bb[0] / 60); i <= Math.floor(bb[2] / 60); i++) for (let j = Math.floor(bb[1] / 60); j <= Math.floor(bb[3] / 60); j++) { const k = (i + 2000) * 4096 + j + 2000; let l = BGRID.get(k); if (!l) BGRID.set(k, l = []); l.push(bid); }
@@ -3434,8 +3448,8 @@ function fortField(K) {
         else if (ks.every(flat)) mode = 2; else mode = 1;
         if (mode === 1) { const [a, b2, d, e] = ks.map(vert); idx.push(a, d, b2, b2, d, e); }
       }
+      if (run >= 0 && (mode !== 2 || i - run >= 20)) { occ.push(X0 + run * c, Z0 + j * c, X0 + i * c, Z0 + (j + 1) * c); run = -1; }   // strips of at most 40 m: they bend only at their corners
       if (mode === 2 && run < 0) run = i;
-      if (mode !== 2 && run >= 0) { occ.push(X0 + run * c, Z0 + j * c, X0 + i * c, Z0 + (j + 1) * c); run = -1; }
     }
   }
   const g = new THREE.BufferGeometry();
@@ -3443,7 +3457,9 @@ function fortField(K) {
   const m = new THREE.Mesh(g, fortTerrainMaterial(detailTex(0))); m.castShadow = m.receiveShadow = true; m.frustumCulled = false; scene.add(m);
   // depth mask: flat town and field around the earthworks write depth just below the ground, so nothing dug into
   // the moats shows through the ground in front of them
-  const S = 8, R2 = R + 420, OX = FORT.cx - R2, OZ = FORT.cz - R2, M = Math.ceil(2 * R2 / S);
+  // (with the relief on, the depth grid of the whole city does this outside the fortress: its long strips would cut
+  // through the slopes there)
+  const S = 8, R2 = TERR.on ? R : R + 420, OX = FORT.cx - R2, OZ = FORT.cz - R2, M = Math.ceil(2 * R2 / S);
   for (let j = 0; j < M; j++) { let run = -1; const z = OZ + (j + 0.5) * S;
     for (let i = 0; i <= M; i++) { const x = OX + (i + 0.5) * S;
       const inner = x > X0 && x < X0 + (N - 1) * c && z > Z0 && z < Z0 + (N - 1) * c, wm = i < M ? WMASK.m[Math.floor((z - WMASK.Z0) / WMASK.S) * WMASK.NX + Math.floor((x - WMASK.X0) / WMASK.S)] : 1;
