@@ -199,7 +199,7 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
   <div class="panel card">
     <div class="eyebrow">55.87° с. ш. · 26.52° в. д. · Латгалия</div>
     <h1>Даугавпилс в 3D</h1>
-    <p>Весь город по открытым данным: 48 600 зданий с этажностью, материалом стен и покрытием крыши из кадастра Латвии, улицы с настоящими названиями, Даугава в своём русле, мосты, крепость, Церковная горка, Стропские сосны. Дом Единства и гостиница «Латгола» построены отдельно по фотографиям, с колоннами, вывесками и клумбами. В крепости — валы, рвы и ворота: Николаевские с деревянным мостом через ров, Михайловские, Александровские; по валам можно пройти пешком. Артиллерийский арсенал (Центр Марка Ротко) и Инженерный арсенал — тоже по фотографиям. Трамваи и автобусы ходят по настоящему расписанию «Daugavpils satiksme», на остановках видно ближайшие отправления. Можно идти пешком или взлететь над крышами.</p>
+    <p>Весь город по открытым данным: 48 600 зданий с этажностью, материалом стен и покрытием крыши из кадастра Латвии, улицы с настоящими названиями, Даугава в своём русле, мосты, крепость, Церковная горка, Стропские сосны. Дом Единства и гостиница «Латгола» построены отдельно по фотографиям, с колоннами, вывесками и клумбами. В крепости — валы, рвы и ворота: Николаевские с деревянным мостом через ров, Михайловские, Александровские; по валам можно пройти пешком. Артиллерийский арсенал (Центр Марка Ротко) и Инженерный арсенал — тоже по фотографиям. Трамваи и автобусы ходят по настоящему расписанию «Daugavpils satiksme», на остановках видно ближайшие отправления. Рельеф настоящий: долина Даугавы, Церковная горка, террасы Химии и Стропов — по открытой модели высот EU-DEM. Можно идти пешком или взлететь над крышами.</p>
     <dl class="keys">
       <dt>W A S D / стрелки</dt><dd>идти, Shift — бегом</dd>
       <dt>Мышь</dt><dd>смотреть по сторонам (Esc — отпустить курсор)</dd>
@@ -221,6 +221,7 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
 <script src="citydata.js"></script>
 <script src="transit.js"></script>
 <script src="fortress.js"></script>
+<script src="terrain.js"></script>
 <script>
 (() => {
 'use strict';
@@ -305,6 +306,7 @@ class GB {
     this.cap = cap;
   }
   vert(x, y, z, nx, ny, nz, c, u, v, i0, i1, i2) {
+    if (GBC) y += GBC(x, y, z);
     if (this.v >= this.cap) this.ensure(1);
     const k = this.v, k3 = k * 3;
     this.pos[k3] = x; this.pos[k3 + 1] = y; this.pos[k3 + 2] = z;
@@ -435,9 +437,120 @@ THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
 #endif`;
 // every fogged material gets the two extra fog uniforms; patch may edit the shader further
 function hook(m, key, patch) {
-  m.onBeforeCompile = s => { s.uniforms.uFogGlow = U.fogGlow; s.uniforms.uFogSun = U.sunDir; if (patch) patch(s); };
+  m.onBeforeCompile = s => { terrUniforms(s); s.uniforms.uFogGlow = U.fogGlow; s.uniforms.uFogSun = U.sunDir; if (patch) patch(s); };
   if (key) m.customProgramCacheKey = () => key;
   return m;
+}
+
+/* ---------- terrain ----------
+   The ground rises and falls with the heights of terrain.js (EU-DEM, 25 m grid, built by tools/terrain.js). The
+   shared vertex chunks of three.js lift every vertex of every material, shadows included, by the height under it, so
+   the ground, streets, trees, vehicles and lamps follow it without being rebuilt. Generic buildings are first lowered
+   in their geometry so that each stands level on the lowest point of its outline; bridges keep a straight deck from
+   bank to bank. Heights are relative to Vienības laukums. */
+const TERR = { on: false, x0: 0, z0: 0, s: 25, nx: 2, nz: 2, ref: 0, q: null };
+U.tTerr = { value: null }; U.uTerrA = { value: new THREE.Vector4(0, 0, 0.04, 0) }; U.uTerrB = { value: new THREE.Vector4(2, 2, 0, 0) };
+THREE.ShaderChunk.common += `
+uniform sampler2D tTerr; uniform vec4 uTerrA; uniform vec4 uTerrB;
+float terrTexel(vec2 i) { vec4 t = texture2D(tTerr, (i + 0.5) / uTerrB.xy); return (t.r * 65280.0 + t.g * 255.0) * 0.1; }
+float terrainH(vec2 p) {
+  if (uTerrA.w < 0.5) return 0.0;
+  vec2 g = clamp((p - uTerrA.xy) * uTerrA.z, vec2(0.0), uTerrB.xy - 1.001), i = floor(g), f = g - i;
+  return mix(mix(terrTexel(i), terrTexel(i + vec2(1.0, 0.0)), f.x), mix(terrTexel(i + vec2(0.0, 1.0)), terrTexel(i + vec2(1.0)), f.x), f.y) - uTerrB.z;
+}`;
+THREE.ShaderChunk.project_vertex = `vec4 mvPosition = vec4( transformed, 1.0 );
+#ifdef USE_INSTANCING
+  mvPosition = instanceMatrix * mvPosition;
+#endif
+mvPosition = modelMatrix * mvPosition; mvPosition.y += terrainH(mvPosition.xz);
+mvPosition = viewMatrix * mvPosition;
+gl_Position = projectionMatrix * mvPosition;`;
+THREE.ShaderChunk.worldpos_vertex = `#if defined( USE_ENVMAP ) || defined( DISTANCE ) || defined ( USE_SHADOWMAP )
+  vec4 worldPosition = vec4( transformed, 1.0 );
+  #ifdef USE_INSTANCING
+    worldPosition = instanceMatrix * worldPosition;
+  #endif
+  worldPosition = modelMatrix * worldPosition; worldPosition.y += terrainH(worldPosition.xz);
+#endif`;
+function terrUniforms(s) { s.uniforms.tTerr = U.tTerr; s.uniforms.uTerrA = U.uTerrA; s.uniforms.uTerrB = U.uTerrB; }
+THREE.Material.prototype.onBeforeCompile = function (s) { terrUniforms(s); };   // three's own materials, the shadow depth ones too
+// the same bilinear height as the shaders, from the same decimetres
+function terrainH(x, z) {
+  if (!TERR.on) return 0;
+  const nx = TERR.nx, q = TERR.q; let gx = (x - TERR.x0) / TERR.s, gz = (z - TERR.z0) / TERR.s;
+  gx = gx < 0 ? 0 : gx > nx - 1.001 ? nx - 1.001 : gx; gz = gz < 0 ? 0 : gz > TERR.nz - 1.001 ? TERR.nz - 1.001 : gz;
+  const i = Math.floor(gx), j = Math.floor(gz), fx = gx - i, fz = gz - j, k = j * nx + i, a = q[k], b = q[k + 1], c = q[k + nx], d = q[k + nx + 1];
+  return ((a + (b - a) * fx) * (1 - fz) + (c + (d - c) * fx) * fz) * 0.1 - TERR.ref;
+}
+function terrainInit() {
+  const T = window.TERRAIN; if (!T || !T.h) return;
+  const bin = atob(T.h), n = bin.length >> 1, q = new Int16Array(n);
+  for (let k = 0; k < n; k++) q[k] = (bin.charCodeAt(2 * k) | bin.charCodeAt(2 * k + 1) << 8) << 16 >> 16;
+  Object.assign(TERR, { x0: T.x0, z0: T.z0, s: T.step, nx: T.nx, nz: T.nz, q });
+  // the fortress keeps a level site: inside it the height of the ground round it, blending out over 200 m
+  if (FORT.ok) {
+    const at = k => Math.hypot(T.x0 + (k % T.nx) * T.step - FORT.cx, T.z0 + Math.floor(k / T.nx) * T.step - FORT.cz);
+    let s = 0, m = 0; for (let k = 0; k < n; k++) { const d = at(k); if (d > FORT.R + 60 && d < FORT.R + 160) { s += q[k]; m++; } }
+    const c = m ? s / m : 0; for (let k = 0; k < n; k++) { const d = at(k); if (d < FORT.R + 260) q[k] = Math.round(c + (q[k] - c) * fss((d - FORT.R - 60) / 200)); }
+  }
+  TERR.on = true; TERR.ref = 0; TERR.ref = terrainH(-1487, 1263);
+  const data = new Uint8Array(n * 4); for (let k = 0; k < n; k++) { const v = Math.max(0, q[k]); data[4 * k] = v >> 8; data[4 * k + 1] = v & 255; data[4 * k + 3] = 255; }
+  const tex = new THREE.DataTexture(data, T.nx, T.nz, THREE.RGBAFormat, THREE.UnsignedByteType); tex.minFilter = tex.magFilter = THREE.NearestFilter; tex.generateMipmaps = false; tex.needsUpdate = true;
+  U.tTerr.value = tex; U.uTerrA.value.set(T.x0, T.z0, 1 / T.step, 1); U.uTerrB.value.set(T.nx, T.nz, TERR.ref, 0);
+}
+// a shift applied to the y of every vertex written into a GB while it is set (buildings standing level, bridge decks)
+let GBC = null;
+// bridges: straight decks from the height at one end to the height at the other
+const BRIDGES = [], BRSEG = new SegGrid(32);
+function bridgeOf(pts, hw) {
+  const n = pts.length >> 1, cum = [0]; for (let i = 1; i < n; i++) cum.push(cum[i - 1] + Math.hypot(pts[2 * i] - pts[2 * i - 2], pts[2 * i + 1] - pts[2 * i - 1]));
+  const B = { pts, cum, L: Math.max(cum[n - 1], 0.01), H0: terrainH(pts[0], pts[1]), H1: terrainH(pts[2 * n - 2], pts[2 * n - 1]), hw }, id = BRIDGES.length; BRIDGES.push(B);
+  for (let i = 0; i < n - 1; i++) BRSEG.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], id, i);
+  return B;
+}
+const bridgeAt = (B, i, px, pz) => B.H0 + (B.H1 - B.H0) * (B.cum[i] + Math.hypot(px - B.pts[2 * i], pz - B.pts[2 * i + 1])) / B.L;
+function bridgeDeck(B) {   // GBC for the geometry of one bridge: everything above the underside of the deck goes with the deck
+  return (x, y, z) => { if (y < -1.4) return 0; let best = 1e9, v = 0; const n = B.pts.length >> 1;
+    for (let i = 0; i < n - 1; i++) { const x1 = B.pts[2 * i], z1 = B.pts[2 * i + 1], dx = B.pts[2 * i + 2] - x1, dz = B.pts[2 * i + 3] - z1, l2 = dx * dx + dz * dz || 1;
+      const t = Math.max(0, Math.min(1, ((x - x1) * dx + (z - z1) * dz) / l2)), px = x1 + dx * t, pz = z1 + dz * t, d = Math.hypot(x - px, z - pz); if (d < best) { best = d; v = bridgeAt(B, i, px, pz); } }
+    return v - terrainH(x, z); };
+}
+// how far a point on a bridge deck is above the ground under it (for walkers, vehicles and lamps)
+function bridgeY(x, z) { let r = 0, bd = 1e9; BRSEG.near(x, z, 12, (id, d, px, pz) => { const B = BRIDGES[BRSEG.s[id * 6 + 4]]; if (d < B.hw + 1 && d < bd) { bd = d; r = bridgeAt(B, BRSEG.s[id * 6 + 5], px, pz) - terrainH(x, z); } }); return Math.max(0, r); }
+// Vienības tilts is drawn over a level city; on the relief its deck runs straight from the height of one bank to that of
+// the other: vbLift is how far that line is above the ground at a point on the bridge, vbComp shifts its geometry
+// (the piers below the water line and the feet of the embankments stay on the ground)
+function vbLine(s) { const B = [VB.A[0] + VB.T[0] * VB.L, VB.A[1] + VB.T[1] * VB.L], h0 = terrainH(VB.A[0], VB.A[1]), h1 = terrainH(B[0], B[1]); return h0 + (h1 - h0) * Math.max(0, Math.min(1, s / VB.L)); }
+function vbLift(x, z) { if (!TERR.on) return 0; const [s, d] = vbLocal(x, z); if (s < -2 || s > VB.L + 2 || Math.abs(d) > VB.HW + 1) return 0; return vbLine(s) - terrainH(x, z); }
+function vbComp(x, y, z) { if (y <= WL + 0.5) return 0; const [s, d] = vbLocal(x, z); if (y <= 0.05 && Math.abs(d) > VB.HW + 0.01) return 0; return vbLine(s) - terrainH(x, z); }
+// the height a walker stands at above the level city
+const walkLift = (x, z) => fortGround(x, z) + vbGround(x, z) + terrainH(x, z) + vbLift(x, z) + bridgeY(x, z);
+// polylines cut where the ground bends, so that ribbons laid on them follow it (to within tol metres)
+function densify(p, tol = 0.15) {
+  const n = p.length >> 1, o = [p[0], p[1]];
+  const seg = (x0, z0, x1, z1, d) => { const L = Math.hypot(x1 - x0, z1 - z0), mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+    if (d < 12 && L > 6 && Math.abs(terrainH(mx, mz) - (terrainH(x0, z0) + terrainH(x1, z1)) / 2) > tol) { seg(x0, z0, mx, mz, d + 1); seg(mx, mz, x1, z1, d + 1); } else o.push(x1, z1); };
+  for (let i = 1; i < n; i++) seg(p[2 * i - 2], p[2 * i - 1], p[2 * i], p[2 * i + 1], 0);
+  return o;
+}
+// triangles split along their longest side until they lie on the ground to within tol metres (or get small); the
+// new points are shared between the two triangles of a split side, so no cracks open inside a polygon
+function subTris(flat, tris, tol) {
+  const F = Array.from(flat), T = [], mid = new Map(), Hc = [];
+  const hAt = i => { if (Hc[i] === undefined) Hc[i] = terrainH(F[2 * i], F[2 * i + 1]); return Hc[i]; };
+  const split = (a, b) => { const k = a < b ? a * 4194304 + b : b * 4194304 + a; let m = mid.get(k); if (m === undefined) { m = F.length >> 1; F.push((F[2 * a] + F[2 * b]) / 2, (F[2 * a + 1] + F[2 * b + 1]) / 2); mid.set(k, m); } return m; };
+  const st = []; for (let t = 0; t < tris.length; t += 3) st.push([tris[t], tris[t + 1], tris[t + 2], 0]);
+  while (st.length) {
+    const [a, b, c, d] = st.pop(), L = (p, q) => Math.hypot(F[2 * q] - F[2 * p], F[2 * q + 1] - F[2 * p + 1]), lab = L(a, b), lbc = L(b, c), lca = L(c, a), lm = Math.max(lab, lbc, lca);
+    let err = 0;
+    if (lm > 12 && d < 16) for (const [p, q] of [[a, b], [b, c], [c, a]]) err = Math.max(err, Math.abs(terrainH((F[2 * p] + F[2 * q]) / 2, (F[2 * p + 1] + F[2 * q + 1]) / 2) - (hAt(p) + hAt(q)) / 2));
+    if (lm > 12 && d < 16 && (err > tol || lm > 400)) {
+      if (lab === lm) { const m = split(a, b); st.push([a, m, c, d + 1], [m, b, c, d + 1]); }
+      else if (lbc === lm) { const m = split(b, c); st.push([a, b, m, d + 1], [a, m, c, d + 1]); }
+      else { const m = split(c, a); st.push([a, b, m, d + 1], [m, b, c, d + 1]); }
+    } else T.push(a, b, c);
+  }
+  return { flat: F, tris: T };
 }
 
 /* Sky: gradient with a sun glow that hugs the horizon, drifting clouds lit from the sun's side, stars at night.
@@ -777,7 +890,9 @@ function roofMaterial() {
 function groundMaterial(tex, scale, amt, key) {
   return std({ vertexColors: true, roughness: 0.96, metalness: 0, depthWrite: false }, 'ground-' + key, s => {
     s.uniforms.uDetail = { value: tex };
-    s.vertexShader = 'varying vec2 vWxz;\n' + s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvWxz = (modelMatrix * vec4(transformed, 1.0)).xz;');
+    s.vertexShader = 'varying vec2 vWxz;\n' + s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvWxz = (modelMatrix * vec4(transformed, 1.0)).xz;')
+      .replace('#include <beginnormal_vertex>', `vec2 tW = (modelMatrix * vec4(position, 1.0)).xz;   // ground lies flat in its geometry: its normal is that of the terrain
+        vec3 objectNormal = normalize(vec3(terrainH(tW - vec2(6.0, 0.0)) - terrainH(tW + vec2(6.0, 0.0)), 12.0, terrainH(tW - vec2(0.0, 6.0)) - terrainH(tW + vec2(0.0, 6.0))));`);
     s.fragmentShader = 'uniform sampler2D uDetail; varying vec2 vWxz;\n' + s.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
       float dt = texture2D(uDetail, vWxz * ${scale.toFixed(4)}).r * 2.0;
       float dt2 = texture2D(uDetail, vWxz * ${(scale * 0.137).toFixed(4)} + 0.37).r * 2.0;
@@ -871,22 +986,43 @@ function makeMaterials() {
 }
 
 /* ---------- ground: land use, water in its bed ---------- */
+/* The ground layers are drawn first without writing depth; a hill must still hide what lies behind it. A grid on the
+   height grid, 0.6 m under the ground, writes depth first (and casts the shadows of the hills). It leaves out the
+   water, which lies lower, and the fortress, which has its own ground and depth mask. */
+function terrainDepth() {
+  if (!WMASK) waterMask();
+  const g = new GB(false), nx = Math.ceil(TERR.nx / 2), nz = Math.ceil(TERR.nz / 2), s = TERR.s * 2, C0 = [0, 0, 0]; g.ensure(nx * nz);
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) g.vert(TERR.x0 + i * s, -0.6, TERR.z0 + j * s, 0, 1, 0, C0);
+  const wet = (x, z) => { const W = WMASK, i = Math.floor((x - W.X0) / W.S), j = Math.floor((z - W.Z0) / W.S); return i >= 0 && j >= 0 && i < W.NX && j < W.NZ && W.m[j * W.NX + i] !== 0; };
+  for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const x = TERR.x0 + i * s, z = TERR.z0 + j * s;
+    if (FORT.ok && Math.abs(x + s / 2 - FORT.cx) < FORT.R + 60 && Math.abs(z + s / 2 - FORT.cz) < FORT.R + 60) continue;
+    let w = false; for (let a = 0; a <= s && !w; a += s / 4) for (let b = 0; b <= s && !w; b += s / 4) w = wet(x + a, z + b); if (w) continue;
+    const k = j * nx + i; g.triUp(k, k + nx, k + 1); g.triUp(k + 1, k + nx, k + nx + 1);
+  }
+  const m = g.mesh(new THREE.MeshBasicMaterial({ colorWrite: false })); if (!m) return; m.renderOrder = -60; m.frustumCulled = false; m.castShadow = true; scene.add(m);
+}
 function buildGround() {
-  const base = new THREE.Mesh(new THREE.PlaneGeometry(60000, 60000), groundMaterial(detailTex(0), 1 / 9, 0.5, 'base'));
-  const bc = hb('#637048'), cols = []; for (let i = 0; i < 4; i++) cols.push(bc[0] / 255, bc[1] / 255, bc[2] / 255);
-  base.geometry.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
-  base.rotation.x = -Math.PI / 2; base.renderOrder = -50; base.receiveShadow = true; scene.add(base);
+  const bc = hb('#637048'), matBase = groundMaterial(detailTex(0), 1 / 9, 0.5, 'base');
+  // far plane under everything, then a grid on the nodes of the height grid over the city
+  const far = new GB(false), FN = 41; for (let j = 0; j < FN; j++) for (let i = 0; i < FN; i++) far.vert(-30000 + i * 1500, -0.4, -30000 + j * 1500, 0, 1, 0, bc);
+  for (let j = 0; j < FN - 1; j++) for (let i = 0; i < FN - 1; i++) { const k = j * FN + i; far.triUp(k, k + FN, k + 1); far.triUp(k + 1, k + FN, k + FN + 1); }
+  const fm = far.mesh(matBase); fm.renderOrder = -51; fm.frustumCulled = false; fm.receiveShadow = true; scene.add(fm);
+  const base = new GB(false), gx0 = TERR.on ? TERR.x0 : -HX, gz0 = TERR.on ? TERR.z0 : -HY, gs = TERR.on ? TERR.s * 2 : 50, gnx = TERR.on ? Math.ceil(TERR.nx / 2) : Math.ceil(2 * HX / 50) + 1, gnz = TERR.on ? Math.ceil(TERR.nz / 2) : Math.ceil(2 * HY / 50) + 1;
+  base.ensure(gnx * gnz); for (let j = 0; j < gnz; j++) for (let i = 0; i < gnx; i++) base.vert(gx0 + i * gs, 0, gz0 + j * gs, 0, 1, 0, bc);
+  for (let j = 0; j < gnz - 1; j++) for (let i = 0; i < gnx - 1; i++) { const k = j * gnx + i; base.triUp(k, k + gnx, k + 1); base.triUp(k + 1, k + gnx, k + gnx + 1); }
+  const gm0 = base.mesh(matBase); gm0.renderOrder = -50; gm0.frustumCulled = false; gm0.receiveShadow = true; scene.add(gm0);
   for (const a of C.a) { const rings = a.slice(1).map(dec); const o = { cls: a[0], rings, bb: bbox(rings[0]) }; AREAS.push(o); if (o.cls === 0) WATER.push(o); }
   AREAS.sort((p, q) => AREA_ORDER.indexOf(p.cls) - AREA_ORDER.indexOf(q.cls));
   const colors = {}; for (const k in AREA_HEX) colors[k] = hb(AREA_HEX[k]);
   const land = new GB(false), water = new THREE.BufferGeometry(), wp = [], wi = [], bank = new GB(false);
   AREAS.forEach((a, n) => {
-    const { flat, tris } = triangulate(a.rings);
+    const tr0 = triangulate(a.rings), { flat, tris } = TERR.on ? subTris(tr0.flat, tr0.tris, a.cls === 0 ? 0.4 : 0.25) : tr0;
     if (a.cls === 0) {
       const v0 = wp.length / 3; for (let i = 0; i < flat.length; i += 2) wp.push(flat[i], WL, flat[i + 1]);
       for (let i = 0; i < tris.length; i += 3) { const A = v0 + tris[i], B = v0 + tris[i + 1], Cc = v0 + tris[i + 2]; const s = (wp[3 * B + 2] - wp[3 * A + 2]) * (wp[3 * Cc] - wp[3 * A]) - (wp[3 * B] - wp[3 * A]) * (wp[3 * Cc + 2] - wp[3 * A + 2]); if (s >= 0) wi.push(A, B, Cc); else wi.push(A, Cc, B); }
       const bcol = hb('#6d6553');
-      for (const r of a.rings) { const m = r.length >> 1; for (let i = 0; i < m; i++) { const j = (i + 1) % m; const x1 = r[2 * i], z1 = r[2 * i + 1], x2 = r[2 * j], z2 = r[2 * j + 1]; if (Math.hypot(x2 - x1, z2 - z1) < 0.05) continue; polyA(bank, [[x1, 0, z1], [x2, 0, z2], [x2, WL - 0.4, z2], [x1, WL - 0.4, z1]], sh(bcol, 0.9 + rnd(n, i) * 0.2), 0, 0, 1); } }
+      for (const r0 of a.rings) { const r = TERR.on ? densify(Array.from(r0).concat([r0[0], r0[1]]), 0.3) : r0, m = r.length >> 1; for (let i = 0; i < m; i++) { const j = (i + 1) % m; const x1 = r[2 * i], z1 = r[2 * i + 1], x2 = r[2 * j], z2 = r[2 * j + 1]; if (Math.hypot(x2 - x1, z2 - z1) < 0.05) continue; polyA(bank, [[x1, 0, z1], [x2, 0, z2], [x2, WL - 0.4, z2], [x1, WL - 0.4, z1]], sh(bcol, 0.9 + rnd(n, i) * 0.2), 0, 0, 1); } }
       return;
     }
     const v0 = land.v, col = sh(colors[a.cls], 0.94 + rnd(n, 3) * 0.12);
@@ -895,6 +1031,7 @@ function buildGround() {
     for (let i = 0; i < tris.length; i += 3) land.triUp(v0 + tris[i], v0 + tris[i + 1], v0 + tris[i + 2]);
   });
   const lm = land.mesh(M_LAND); if (lm) { lm.renderOrder = -40; lm.frustumCulled = false; lm.receiveShadow = true; scene.add(lm); }
+  if (TERR.on) terrainDepth();
   const bm = bank.mesh(matBank); if (bm) { bm.renderOrder = -39; bm.frustumCulled = false; scene.add(bm); }
   if (wp.length) {
     const uv = []; for (let i = 0; i < wp.length; i += 3) uv.push(wp[i] / 24, wp[i + 2] / 24);
@@ -965,16 +1102,19 @@ function buildLines() {
       for (let i = 0; i < n - 1; i++) ROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw + (cls <= 3 ? 2.6 : 0), cls <= 7 ? l.name : -1);
       continue;
     }
+    const onBridge = l.bridge && cls !== 10 && cls !== 11 && TERR.on, dp = TERR.on ? densify(pts) : pts;
+    GBC = onBridge ? bridgeDeck(bridgeOf(pts, hw + (cls <= 3 ? 2.7 : 0.3))) : null;
     if (cls === 10 || cls === 11) for (let i = 0; i < n - 1; i++) STREAM.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, 0);
-    if (cls <= 3) { ribbon(walk, pts, hw + 1.4, 1.3, PAVE); ribbon(walk, pts, -hw - 1.4, 1.3, PAVE); ribbon(marks, pts, hw + 0.08, 0.12, CURB); ribbon(marks, pts, -hw - 0.08, 0.12, CURB); }
-    ribbon(groups[def[2]], pts, 0, hw, lineCol[cls]);
-    if (cls <= 2) dashes(marks, pts, 0, 0.07, 3, 9, WHITE);
-    if (cls === 0) { ribbon(marks, pts, hw - 0.45, 0.07, WHITE); ribbon(marks, pts, -hw + 0.45, 0.07, WHITE); }
-    if (cls === 8 || cls === 9) { dashes(marks, pts, 0, 1.25, 0.25, 0.6, SLEEP); ribbon(marks, pts, 0.76, 0.05, RAIL); ribbon(marks, pts, -0.76, 0.05, RAIL); }
+    if (cls <= 3) { ribbon(walk, dp, hw + 1.4, 1.3, PAVE); ribbon(walk, dp, -hw - 1.4, 1.3, PAVE); ribbon(marks, dp, hw + 0.08, 0.12, CURB); ribbon(marks, dp, -hw - 0.08, 0.12, CURB); }
+    ribbon(groups[def[2]], dp, 0, hw, lineCol[cls]);
+    if (cls <= 2) dashes(marks, dp, 0, 0.07, 3, 9, WHITE);
+    if (cls === 0) { ribbon(marks, dp, hw - 0.45, 0.07, WHITE); ribbon(marks, dp, -hw + 0.45, 0.07, WHITE); }
+    if (cls === 8 || cls === 9) { dashes(marks, dp, 0, 1.25, 0.25, 0.6, SLEEP); ribbon(marks, dp, 0.76, 0.05, RAIL); ribbon(marks, dp, -0.76, 0.05, RAIL); }
     if (cls === 9) { TRAMLINES.push(pts); for (let i = 0; i < n - 1; i++) TRAMGRID.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], 0, 0); }
     if (cls <= 4) for (let i = 0; i < n - 1; i++) CARROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, cls);
     if (cls < 10 || cls === 15) for (let i = 0; i < n - 1; i++) ROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw + (cls <= 3 ? 2.6 : 0), cls <= 7 ? l.name : -1);
-    if (l.bridge && cls !== 10 && cls !== 11 && !fortBridgeLine(pts)) bridge(extra, pts, hw + (cls <= 3 ? 2.7 : 0.3));
+    if (l.bridge && cls !== 10 && cls !== 11 && !fortBridgeLine(pts)) bridge(extra, dp, hw + (cls <= 3 ? 2.7 : 0.3));
+    GBC = null;
     if (cls <= 3) { // street lamps every ~32 m on one side
       const side = rnd(lampSeq++, 5) < 0.5 ? 1 : -1; let acc = 14;
       for (let i = 0; i < n - 1; i++) {
@@ -1196,6 +1336,7 @@ function lmClear(x, z) { const [u, v] = lmL(LMF.vn, x, z); for (const b of LM_BE
 class LMB {
   constructor() { this.p = []; this.n = []; this.t = []; this.c = []; this.l = []; this.i = []; }
   q(A, B, Cc, D, n, uv, c, lit = 0) {
+    if (GBC) { const sh2 = Q => [Q[0], Q[1] + GBC(Q[0], Q[1], Q[2]), Q[2]]; A = sh2(A); B = sh2(B); Cc = sh2(Cc); D = sh2(D); }
     const k = this.p.length / 3;
     for (const [j, Q] of [A, B, Cc, D].entries()) { this.p.push(Q[0], Q[1], Q[2]); this.n.push(n[0], n[1], n[2]); this.t.push(uv[2 * j], uv[2 * j + 1]); this.c.push(c[0] / 255, c[1] / 255, c[2] / 255); this.l.push(lit); }
     const ux = B[0] - A[0], uy = B[1] - A[1], uz = B[2] - A[2], vx = D[0] - A[0], vy = D[1] - A[1], vz = D[2] - A[2];
@@ -2787,7 +2928,7 @@ function buildLandmarks() {
   LMM.clk = hook(new THREE.MeshStandardMaterial({ map: lmClk.tex, emissive: new THREE.Color(1, 1, 1), emissiveMap: lmClk.tex, roughness: 0.5, metalness: 0 }), 'lm-clk', LM_SAFE); allMats.push(LMM.clk); lmTick();
   const K = { ash: new LMB(), ren: new LMB(), det: new LMB(), txt: new LMB(), clk: new LMB(), plain: new GB(false), stone: new GB(false), globe: new GB(false) };
   K.walls = [K.ash, K.ren, new LMB(), new LMB(), new LMB(), new LMB(), new LMB()];
-  lmUnityHouse(K); lmLatgola(K); lmGrounds(K); lmDUMain(K); lmDUParades(K); lmDULab(K); lmRenesanse(K); lmRigas(K); lmVesma(K); lmTVTower(K); lmStation(K); lmVienibas(K);
+  lmUnityHouse(K); lmLatgola(K); lmGrounds(K); lmDUMain(K); lmDUParades(K); lmDULab(K); lmRenesanse(K); lmRigas(K); lmVesma(K); lmTVTower(K); lmStation(K); GBC = TERR.on ? vbComp : null; lmVienibas(K); GBC = null;
   [LMM.ash, LMM.ren, LMM.duw, LMM.brick, LMM.tile, LMM.panel, LMM.buff].forEach((m, k) => K.walls[k].mesh(m)); K.det.mesh(LMM.det); K.txt.mesh(LMM.txt, false); K.clk.mesh(LMM.clk, false);
   for (const [b, m] of [[K.plain, LMM.plain], [K.stone, LMM.stone]]) { const pm = b.mesh(m); if (pm) { pm.castShadow = pm.receiveShadow = true; scene.add(pm); } }
   const gm = K.globe.mesh(LMM.globe); if (gm) { gm.receiveShadow = true; scene.add(gm); }
@@ -2802,6 +2943,7 @@ function buildBuildings(from, to) {
     if (!rings.length) continue;
     const outer = rings[0], bb = bbox(outer), cx = (bb[0] + bb[2]) / 2, cz = (bb[1] + bb[3]) / 2;
     if (lmDrops(outer, bb) || fortDrops(outer, bb)) continue;   // drawn by buildLandmarks or buildFortress
+    if (TERR.on) { let lo = 1e9; for (let i = 0; i < outer.length; i += 2) lo = Math.min(lo, terrainH(outer[i], outer[i + 1])); GBC = (x, y, z) => lo - terrainH(x, z); }
     const name = rec[3] >= 0 ? NAMES[rec[3]] : '';
     BLD.push({ ring: outer, bb, kind: style }); const bid = BLD.length - 1;
     for (let i = Math.floor(bb[0] / 60); i <= Math.floor(bb[2] / 60); i++) for (let j = Math.floor(bb[1] / 60); j <= Math.floor(bb[3] / 60); j++) { const k = (i + 2000) * 4096 + j + 2000; let l = BGRID.get(k); if (!l) BGRID.set(k, l = []); l.push(bid); }
@@ -2922,6 +3064,7 @@ function buildBuildings(from, to) {
   }
 }
 function finishBuildings() {
+  GBC = null;
   for (const t of tiles.values()) {
     for (const [set, list] of [[t.m, t.meshes], [t.d, t.det]]) {
       const ms = [set.fac.mesh(matFac), set.roof.mesh(matRoof), set.plain.mesh(matPlain)];
@@ -4030,9 +4173,9 @@ function buildLamps() {
   const M = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), S1 = new THREE.Vector3(1, 1, 1);
   ok.forEach((i, k) => {
     const x = LAMPS[3 * i], z = LAMPS[3 * i + 1], a = LAMPS[3 * i + 2]; q.setFromAxisAngle(up, a);
-    M.compose(new THREE.Vector3(x, 0, z), q, S1); poles.setMatrixAt(k, M); lampHeads.setMatrixAt(k, M);
+    const by = bridgeY(x, z); M.compose(new THREE.Vector3(x, by, z), q, S1); poles.setMatrixAt(k, M); lampHeads.setMatrixAt(k, M);
     const hx = x + Math.cos(-a) * 1.35, hz = z + Math.sin(-a) * 1.35;
-    M.compose(new THREE.Vector3(hx, 0.06, hz), q, new THREE.Vector3(22, 1, 22)); lampPools.setMatrixAt(k, M);
+    M.compose(new THREE.Vector3(hx, 0.06 + bridgeY(hx, hz), hz), q, new THREE.Vector3(22, 1, 22)); lampPools.setMatrixAt(k, M);
     COL.add(x, z, x + 0.01, z, 0.15, 0);
   });
   poles.castShadow = true; scene.add(poles, lampHeads, lampPools); lampPools.visible = false; lampPools.renderOrder = 5;
@@ -4150,7 +4293,7 @@ const TREE_VERT = `
   #else
     float tScale = 1.0;
   #endif
-  vec4 tWorld = modelMatrix * mvPosition;
+  vec4 tWorld = modelMatrix * mvPosition; mvPosition.y += terrainH(tWorld.xz);
   mvPosition.xz += vec2(0.8, 0.45) * ((sin(uTime * 1.1 + tWorld.x * 0.05 + tWorld.z * 0.07) + 0.5 * sin(uTime * 2.3 + tWorld.x * 0.13)) * max(transformed.y - 1.2, 0.0) * 0.006 * tScale);
   mvPosition = modelViewMatrix * mvPosition;
   vCard = vec3(0.5, 0.5, 0.0);
@@ -4182,7 +4325,7 @@ function treeMaterials(leaf) {
   });
   matTree.extensions = { derivatives: true }; matTree.shadowSide = THREE.DoubleSide;
   matTreeDepth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
-  matTreeDepth.onBeforeCompile = s => {
+  matTreeDepth.onBeforeCompile = s => { terrUniforms(s);
     s.uniforms.uLeaf = { value: leaf }; s.uniforms.uTime = U.time;
     s.vertexShader = 'attribute vec4 aCard; uniform float uTime; varying vec3 vCard;\n' + s.vertexShader.replace('#include <project_vertex>', TREE_VERT);
     s.fragmentShader = 'uniform sampler2D uLeaf; varying vec3 vCard;\n' + LEAF_GLSL + s.fragmentShader.replace('#include <map_fragment>', 'float la = leafTex(vCard).a; if (vCard.z > 0.5 && la < 0.4) discard;');
@@ -4222,7 +4365,7 @@ function buildTrees() {
   matTreeFar = std({ roughness: 0.85, metalness: 0 }, 'treefar', s => {
     s.uniforms.uImp = { value: imp }; s.uniforms.uCap = { value: hi.map(g => new THREE.Vector2(g.userData.R / (g.userData.H / 2), g.userData.capY / g.userData.H)) };
     s.vertexShader = 'attribute float aQ; attribute float aType; uniform vec2 uCap[4]; varying vec3 vImp;\n' + s.vertexShader.replace('#include <project_vertex>', `
-      vec3 iC = (modelMatrix * vec4(instanceMatrix[3].xyz, 1.0)).xyz; float iW = instanceMatrix[0].x, iH = instanceMatrix[1].y;
+      vec3 iC = (modelMatrix * vec4(instanceMatrix[3].xyz, 1.0)).xyz; iC.y += terrainH(iC.xz); float iW = instanceMatrix[0].x, iH = instanceMatrix[1].y;
       vec3 iTo = cameraPosition - iC; vec2 iR = normalize(vec2(iTo.z, -iTo.x) + vec2(1e-5, 0.0));
       vec3 iP, iN; vec2 iCap = uCap[int(aType + 0.5)];
       if (aQ < 0.5) { iP = iC + vec3(iR.x, 0.0, iR.y) * (position.x * iW) + vec3(0.0, position.y * iH, 0.0); iN = vec3(iR.x, 0.0, iR.y) * (position.x * 0.9) + vec3(-iR.y, 0.0, iR.x) * 0.55 + vec3(0.0, position.y * 1.3 - 0.35, 0.0); }
@@ -4502,8 +4645,9 @@ function updateTransit(dt) {
       if (cnt[kind] >= VCAP[kind]) break;
       lanePoint(shapeAt(sh, front - 0.3, PA), kind); lanePoint(shapeAt(sh, front - L + 0.3, PB2), kind);
       const cx = (PA[0] + PB2[0]) / 2, cz = (PA[1] + PB2[1]) / 2, yaw = Math.atan2(PA[0] - PB2[0], PA[1] - PB2[1]);
-      const ya = vbGround(PA[0], PA[1]), yb = vbGround(PB2[0], PB2[1]), gy = (ya + yb) / 2;   // over Vienības tilts: up the deck, nose up or down
-      if (ya || yb) QY.setFromEuler(VE.set(-Math.atan2(ya - yb, L), yaw, 0, 'YXZ')); else QY.setFromAxisAngle(VUP, yaw);
+      // over a bridge the deck stands above the ground under it: up Vienības tilts nose up or down
+      const lift = (x, z) => vbGround(x, z) + vbLift(x, z) + bridgeY(x, z), ya = lift(PA[0], PA[1]), yb = lift(PB2[0], PB2[1]), gy = (ya + yb) / 2;
+      if (vbGround(PA[0], PA[1]) || vbGround(PB2[0], PB2[1])) QY.setFromEuler(VE.set(-Math.atan2(ya - yb, L), yaw, 0, 'YXZ')); else QY.setFromAxisAngle(VUP, yaw);
       MX.compose(VP.set(cx, gy, cz), QY, VS.set(1, 1, L / MODEL_LEN[kind])); M.b.setMatrixAt(cnt[kind], MX); M.g.setMatrixAt(cnt[kind], MX);
       MX.compose(VP.set(cx, gy + 0.035, cz), QY, VS.set(3.6, 1, L + 1.6)); M.s.setMatrixAt(cnt[kind], MX);
       if (first) placed.push({ x: cx, z: cz, kind, route: TR.routes[p.route][0], dest: TR.stops[p.stops[p.stops.length - 1]][0] });
@@ -4529,7 +4673,7 @@ function updateTags() {
       for (let i = 1; i <= n && !hidden; i++) { const f = i * 3 / d; hidden = inBuilding(cx + (v.x - cx) * f, cz + (v.z - cz) * f); }
       if (hidden) continue;
     }
-    TAGV.set(v.x, v.kind === 0 ? 4.9 : 3.7, v.z).project(camera);
+    TAGV.set(v.x, (v.kind === 0 ? 4.9 : 3.7) + terrainH(v.x, v.z) + bridgeY(v.x, v.z), v.z).project(camera);
     if (TAGV.z > 1 || TAGV.z < -1 || Math.abs(TAGV.x) > 1.05 || Math.abs(TAGV.y) > 1.05) continue;
     let e = tagEls[k];
     if (!e) { e = document.createElement('div'); e.className = 'vtag'; e.innerHTML = '<span class="rt"></span><span></span>'; host.append(e); tagEls[k] = e; }
@@ -4637,7 +4781,7 @@ function freeSpot(x, z) {
 }
 function teleport(x, z, yaw) {
   x = Math.max(-HX + 5, Math.min(HX - 5, x)); z = Math.max(-HY + 5, Math.min(HY - 5, z));
-  if (P.fly) { P.x = x; P.z = z; } else { [P.x, P.z] = freeSpot(x, z); P.y = 1.7 + fortGround(P.x, P.z) + vbGround(P.x, P.z); }
+  if (P.fly) { P.x = x; P.z = z; P.y = Math.max(P.y, terrainH(x, z) + 30); } else { [P.x, P.z] = freeSpot(x, z); P.y = 1.7 + walkLift(P.x, P.z); }
   if (yaw != null) { P.yaw = yaw; P.pitch = P.fly ? -0.45 : 0; }
   hudTimer = 0; mapTimer = 0; lodTimer = 0;
 }
@@ -4659,7 +4803,7 @@ function step(dt) {
     const sp = (28 + P.y * 0.45) * (run ? 4 : 1), cp = Math.cos(P.pitch);
     P.x += (-sy * cp * f + cy * s) * sp * dt; P.z += (-cy * cp * f - sy * s) * sp * dt; P.y += Math.sin(P.pitch) * f * sp * dt;
     if (keys.has('KeyE') || keys.has('Space')) P.y += sp * 0.6 * dt; if (keys.has('KeyQ')) P.y -= sp * 0.6 * dt;
-    P.y = Math.max(2, Math.min(1500, P.y));
+    P.y = Math.max(terrainH(P.x, P.z) + 2, Math.min(1500, P.y));
   } else if (l > 0.01) {
     const sp = run ? 11 : 3.3; let dx = (-sy * f + cy * s) * sp * dt, dz = (-cy * f - sy * s) * sp * dt;
     const n = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.3)); dx /= n; dz /= n;
@@ -4670,11 +4814,11 @@ function step(dt) {
     P.walked += sp * dt * l;
   }
   P.x = Math.max(-HX, Math.min(HX, P.x)); P.z = Math.max(-HY, Math.min(HY, P.z));
-  if (!P.fly) P.y = 1.7 + fortGround(P.x, P.z) + vbGround(P.x, P.z);   // up the ramparts, down into the moats, over the bridge
+  if (!P.fly) P.y = 1.7 + walkLift(P.x, P.z);   // up the hills and ramparts, down into the moats, over the bridges
 }
 function setFly(on) {
   P.fly = on; $('bFly').setAttribute('aria-pressed', on);
-  if (on) { P.y = Math.max(P.y, 70); P.pitch = Math.min(P.pitch, -0.35); } else { [P.x, P.z] = freeSpot(P.x, P.z); P.y = 1.7; P.pitch = 0; }
+  if (on) { P.y = Math.max(P.y, terrainH(P.x, P.z) + 70); P.pitch = Math.min(P.pitch, -0.35); } else { [P.x, P.z] = freeSpot(P.x, P.z); P.y = 1.7 + terrainH(P.x, P.z); P.pitch = 0; }
   hudTimer = 0; lodTimer = 0;
 }
 
@@ -4848,10 +4992,10 @@ let shadowHalf = 0;
 const LX = new THREE.Vector3(), LY = new THREE.Vector3(), UPV = new THREE.Vector3(0, 1, 0), TGT = new THREE.Vector3();
 function updateSun() {
   const dir = LIGHTDIR;
-  const half = P.fly ? Math.min(1400, Math.max(180, P.y * 2.6)) : 170;
+  const half = P.fly ? Math.min(1400, Math.max(180, (P.y - terrainH(P.x, P.z)) * 2.6)) : 170;
   if (Math.abs(half - shadowHalf) > half * 0.15) { shadowHalf = half; const c = sun.shadow.camera; c.left = -half; c.right = half; c.top = half; c.bottom = -half; c.near = 1; c.far = 3000; c.updateProjectionMatrix(); }
   const fwdX = -Math.sin(P.yaw), fwdZ = -Math.cos(P.yaw), lead = P.fly ? 0 : shadowHalf * 0.45;
-  TGT.set(P.x + fwdX * lead, 0, P.z + fwdZ * lead);
+  TGT.set(P.x + fwdX * lead, 0, P.z + fwdZ * lead); TGT.y = Math.round(terrainH(TGT.x, TGT.z) / 10) * 10;
   LX.crossVectors(UPV, dir).normalize(); LY.crossVectors(dir, LX);
   // snap to a coarse grid (a whole number of texels) and redraw the shadow map only when the grid cell changes
   const texel = 2 * shadowHalf / Math.max(512, sun.shadow.mapSize.x), stepS = texel * Math.max(1, Math.round(shadowHalf * 0.06 / texel));
@@ -4865,7 +5009,7 @@ let shadowKey = '', shadowDirty = true;
 renderer.shadowMap.autoUpdate = false;
 let lodTimer = 0;
 function updateLod() {
-  const q = QUALITY[qi], x = camera.position.x, z = camera.position.z, y = Math.max(0, camera.position.y);
+  const q = QUALITY[qi], x = camera.position.x, z = camera.position.z, y = Math.max(0, camera.position.y - terrainH(x, z));
   const dist = (x0, z0, s) => { const dx = Math.max(x0 - x, 0, x - x0 - s), dz = Math.max(z0 - z, 0, z - z0 - s); return Math.hypot(dx, dz, y * 0.5); };
   for (const t of tiles.values()) { const v = dist(t.x0, t.z0, TILE) < q.det; for (const m of t.det) m.visible = v; }
   for (const t of treeTiles.values()) { const v = dist(t.x0, t.z0, TTILE) < q.tree; if (t.hi.length && t.hi[0].visible !== v) shadowDirty = true; for (const m of t.hi) m.visible = v; for (const m of t.lo) m.visible = !v; }
@@ -5002,7 +5146,7 @@ function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000); last = now; clock += dt;
   if (started) { if ($('start').hidden && big.hidden) step(dt); }
-  else { introT += reduceMotion ? 0 : dt; P.yaw = 0.6 + introT * 0.05; P.x = -1350 + Math.sin(P.yaw) * 420; P.z = 1250 + Math.cos(P.yaw) * 420; P.y = 150; P.pitch = -0.33; }
+  else { introT += reduceMotion ? 0 : dt; P.yaw = 0.6 + introT * 0.05; P.x = -1350 + Math.sin(P.yaw) * 420; P.z = 1250 + Math.cos(P.yaw) * 420; P.y = 150 + terrainH(P.x, P.z); P.pitch = -0.33; }
   updateTransit(dt); lmTick();
   if (!reduceMotion) U.time.value = clock;
   if (waterNormal) waterNormal.offset.set(clock * 0.012, clock * 0.007);
@@ -5025,6 +5169,7 @@ const tick = msg => { progress.textContent = msg; return new Promise(r => setTim
     await tick('Рисую фасады и крыши…'); makeMaterials(); goldGB = new GB(false);
     setTime(matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark' ? 2 : 0);
     setQuality(qi);
+    terrainInit();
     await tick('Заливаю Даугаву и озёра…'); buildGround();
     await tick('Прокладываю улицы, тротуары и рельсы…'); buildLines();
     const N = C.b.length;
@@ -5035,10 +5180,11 @@ const tick = msg => { progress.textContent = msg; return new Promise(r => setTim
     const lamps = buildLamps(); setTime(timeI);
     await tick('Сажаю деревья…'); const trees = buildTrees();
     await tick('Выпускаю трамваи и автобусы на линии…'); const tripsN = buildTransit();
+    if (TERR.on) scene.traverse(o => { if (!o.isMesh || !o.frustumCulled || !o.geometry) return; const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere(); if (g.boundingSphere && !g.userData.terrGrown) { g.boundingSphere.radius += 70; g.userData.terrGrown = true; } });
     requestAnimationFrame(frame);
     progress.textContent = 'Готово: ' + BLD.length.toLocaleString('ru') + ' зданий, ' + LINES.length.toLocaleString('ru') + ' улиц и дорожек, ' + trees.toLocaleString('ru') + ' деревьев, ' + lamps.toLocaleString('ru') + ' фонарей' + (tripsN ? ', ' + tripsN.toLocaleString('ru') + ' рейсов в расписании' : '') + '.';
     $('go').disabled = false; $('go').focus();
-    window.__city = { TX, setClock, updateBoard, P, teleport, setFly, setTime, fortPoint, setNight: on => setTime(on ? 2 : 0), setQuality, scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU };
+    window.__city = { TX, setClock, updateBoard, P, teleport, setFly, setTime, fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU };
   } catch (e) { console.error(e); progress.textContent = 'Ошибка при сборке города: ' + e.message; }
 })();
 })();
