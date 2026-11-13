@@ -199,7 +199,7 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
   <div class="panel card">
     <div class="eyebrow">55.87° с. ш. · 26.52° в. д. · Латгалия</div>
     <h1>Даугавпилс в 3D</h1>
-    <p>Весь город по открытым данным: 48 600 зданий с этажностью, материалом стен и покрытием крыши из кадастра Латвии, улицы с настоящими названиями, Даугава в своём русле, мосты, крепость, Церковная горка, Стропские сосны. Трамваи и автобусы ходят по настоящему расписанию «Daugavpils satiksme», на остановках видно ближайшие отправления. Можно идти пешком или взлететь над крышами.</p>
+    <p>Весь город по открытым данным: 48 600 зданий с этажностью, материалом стен и покрытием крыши из кадастра Латвии, улицы с настоящими названиями, Даугава в своём русле, мосты, крепость, Церковная горка, Стропские сосны. Дом Единства и гостиница «Латгола» построены отдельно по фотографиям, с колоннами, вывесками и клумбами. Трамваи и автобусы ходят по настоящему расписанию «Daugavpils satiksme», на остановках видно ближайшие отправления. Можно идти пешком или взлететь над крышами.</p>
     <dl class="keys">
       <dt>W A S D / стрелки</dt><dd>идти, Shift — бегом</dd>
       <dt>Мышь</dt><dd>смотреть по сторонам (Esc — отпустить курсор)</dd>
@@ -211,7 +211,7 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
     </dl>
     <div class="progress" id="progress">Загружаю город…</div>
     <button class="go" id="go" disabled>Начать прогулку</button>
-    <div class="credit">Карта © участники <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>. Здания: кадастр Государственной земельной службы Латвии (<a href="https://data.gov.lv/dati/lv/dataset/kadastra-informacijas-sistemas-atvertie-dati">data.gov.lv</a>, CC BY 4.0). Расписание: GTFS <a href="https://satiksme.daugavpils.lv/">Daugavpils satiksme</a>. Фасады нарисованы по материалу стен и году постройки, это не фотографии.</div>
+    <div class="credit">Карта © участники <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>. Здания: кадастр Государственной земельной службы Латвии (<a href="https://data.gov.lv/dati/lv/dataset/kadastra-informacijas-sistemas-atvertie-dati">data.gov.lv</a>, CC BY 4.0). Расписание: GTFS <a href="https://satiksme.daugavpils.lv/">Daugavpils satiksme</a>. Фасады нарисованы по материалу стен и году постройки, это не фотографии; Дом Единства и «Латгола» смоделированы по снимкам с Wikimedia Commons, visitdaugavpils.lv, celotajs.lv и militaryheritagetourism.info.</div>
   </div>
 </div>
 <div id="tags" aria-hidden="true"></div>
@@ -1030,6 +1030,728 @@ function church(b, gold, kind, o, h, r, wallCol, name) {
   } else { const w = Math.max(1.2, o.b * 0.3); lathe(b, o.cx, o.cz, h + r * 0.6, [[w, 0], [w, 2], [0, 2 + w * 1.6]], 6, 0, wallCol); }
 }
 
+/* ---------- landmarks modelled from photographs ----------
+   Vienības nams (Unity House, architect Verners Vitands, 1936–37) and Park Hotel Latgola with the Latgola shopping
+   centre are drawn by hand here instead of by the generic façade atlas. Each lives in a local frame: u runs from the
+   main façade into the building, v along it (metres); origin and axes come from the cadastre outline, which still
+   gives collisions and the map footprint. Proportions are measured on photographs (Wikimedia Commons,
+   visitdaugavpils.lv, celotajs.lv, militaryheritagetourism.info, neighborhood.lv); the portico, its 29.4 m width,
+   the 18 m cornice and the 12 m columns match the cadastre outline. */
+const LMF = { vn: [-1488, 1328.7, 0.8678, -0.4969], lat: [-1448.3, 1174.1, 0.8528, -0.5223] };
+const lmW = (f, u, v) => [f[0] + u * f[2] - v * f[3], f[1] + u * f[3] + v * f[2]];
+const lmL = (f, x, z) => [(x - f[0]) * f[2] + (z - f[1]) * f[3], -(x - f[0]) * f[3] + (z - f[1]) * f[2]];
+// a cadastre building whose outline contains one of these points is left to buildLandmarks
+const LM_KEYS = [lmW(LMF.vn, 40, 15), lmW(LMF.lat, 10, 30), lmW(LMF.lat, 50, 30), lmW(LMF.lat, 2.6, 64.6)];
+function lmOwns(ring, bb) { for (const [x, z] of LM_KEYS) if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pip(x, z, ring)) return true; return false; }
+/* Flower beds by Vienības nams (frame vn): the long carpet bed in the garden strip in front of the portico with a
+   five-globe candelabrum at each end, and the bed in front of the concert-hall wing towards Rīgas iela. */
+const LM_BEDS = [
+  { cu: -17.5, cv: 14.65, hu: 3.0, hv: 13.65, r: 2.2, kind: 0, lamps: [2.6, 26.7] },
+  { cu: 11, cv: -13, hu: 8.0, hv: 4.0, r: 3.6, kind: 1, lamps: [] }
+];
+function bedDist(b, u, v) { const qx = Math.abs(u - b.cu) - (b.hu - b.r), qy = Math.abs(v - b.cv) - (b.hv - b.r); return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - b.r; }
+function lmClear(x, z) { const [u, v] = lmL(LMF.vn, x, z); for (const b of LM_BEDS) if (bedDist(b, u, v) < 1.2) return true; return false; }
+
+/* textured geometry with sRGB vertex colour and a per-vertex "lights on at night" flag */
+class LMB {
+  constructor() { this.p = []; this.n = []; this.t = []; this.c = []; this.l = []; this.i = []; }
+  q(A, B, Cc, D, n, uv, c, lit = 0) {
+    const k = this.p.length / 3;
+    for (const [j, Q] of [A, B, Cc, D].entries()) { this.p.push(Q[0], Q[1], Q[2]); this.n.push(n[0], n[1], n[2]); this.t.push(uv[2 * j], uv[2 * j + 1]); this.c.push(c[0] / 255, c[1] / 255, c[2] / 255); this.l.push(lit); }
+    const ux = B[0] - A[0], uy = B[1] - A[1], uz = B[2] - A[2], vx = D[0] - A[0], vy = D[1] - A[1], vz = D[2] - A[2];
+    if ((uy * vz - uz * vy) * n[0] + (uz * vx - ux * vz) * n[1] + (ux * vy - uy * vx) * n[2] >= 0) this.i.push(k, k + 1, k + 2, k, k + 2, k + 3);
+    else this.i.push(k, k + 2, k + 1, k, k + 3, k + 2);
+  }
+  mesh(mat, shadow = true) {
+    if (!this.i.length) return null;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(this.n, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(this.t, 2)); g.setAttribute('color', new THREE.Float32BufferAttribute(this.c, 3));
+    g.setAttribute('aLit', new THREE.Float32BufferAttribute(this.l, 1)); g.setIndex(this.i);
+    const m = new THREE.Mesh(g, mat); m.castShadow = shadow; m.receiveShadow = true; scene.add(m); return m;
+  }
+}
+const LMWHITE = [255, 255, 255];
+
+/* ---- textures ---- */
+let lmRand = 7; const lr = () => (lmRand = (lmRand * 16807) % 2147483647) / 2147483647;
+// wall surfaces, repeating: 0 Vitands' terrazzite render cut into large ashlar blocks, 1 plain render
+function lmWallTex(kind) {
+  const S = 512, cv = mkCanvas(S, S), g = cv.getContext('2d'), id = g.createImageData(S, S), d = id.data, n1 = fbm(S, [4, 16, 64], 31 + kind), n2 = valueNoise(S, 128, 77 + kind);
+  const PXM = kind === 0 ? S / 6 : S / 8;                    // 6 m or 8 m per tile
+  const bw = 3 * PXM, bh = 1.5 * PXM, tone = [];
+  for (let k = 0; k < 64; k++) tone.push(0.97 + lr() * 0.06);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const i = y * S + x; let v = 0.9 + (n1[i] - 0.5) * 0.09 + (Math.random() - 0.5) * 0.07;
+    if (Math.random() < 0.06) v -= 0.12 + Math.random() * 0.1; else if (Math.random() < 0.03) v += 0.08;   // grains of crushed stone
+    if (kind === 0) {
+      const row = Math.floor(y / bh), off = row % 2 ? bw / 2 : 0, col = Math.floor((x + off) / bw), bx = (x + off) % bw, by = y % bh;
+      v *= tone[(row * 7 + col * 3) % 64];
+      if (bx < 2 || by < 2) v *= 0.8;
+    } else v *= 0.96 + (n2[i] - 0.5) * 0.08 - Math.max(0, n2[(i * 7) % (S * S)] - 0.75) * 0.25 * (y / S);
+    v = Math.max(0, Math.min(1, v)) * 255; d[4 * i] = v; d[4 * i + 1] = v * 0.995; d[4 * i + 2] = v * 0.98; d[4 * i + 3] = 255;
+  }
+  g.putImageData(id, 0, 0); const t = toTex(cv, true, true); t.minFilter = THREE.LinearMipmapLinearFilter; return t;
+}
+
+/* Detail atlas: windows, doors, glazing, posters. Three canvases share the layout: colour, ORM (G roughness,
+   B metalness) and the light seen through the glass at night. Tiles are drawn in metres from their top-left corner. */
+const LMT = {};
+function lmTiles() {
+  const PX = 64, AW = 2048, AH = 2048;
+  const cv = mkCanvas(AW, AH), g = cv.getContext('2d'), om = mkCanvas(AW, AH), o = om.getContext('2d'), gm = mkCanvas(AW, AH), e = gm.getContext('2d');
+  g.fillStyle = '#808080'; g.fillRect(0, 0, AW, AH); o.fillStyle = 'rgb(0,225,0)'; o.fillRect(0, 0, AW, AH); e.fillStyle = '#000'; e.fillRect(0, 0, AW, AH);
+  let X = 0, Y = 0;
+  const ORM = ['rgb(0,225,0)', 'rgb(0,110,110)', 'rgb(0,26,0)', 'rgb(0,34,140)', 'rgb(0,150,0)'];   // matte, metal frame, glass, mirror glass, wood
+  const pr = (x, y, w, h) => [X + x * PX, Y + y * PX, w * PX, h * PX];
+  function R(x, y, w, h, col, k = 0, glow = '#000') { const [a, b, c, d] = pr(x, y, w, h); g.fillStyle = col; g.fillRect(a, b, c, d); o.fillStyle = ORM[k]; o.fillRect(a, b, c, d); e.fillStyle = glow; e.fillRect(a, b, c, d); }
+  const GL = [['#38434c', '#5d6c77', '#29323a'], ['#3f6476', '#86a9ba', '#33566a'], ['#d6d2c7', '#ebe7de', '#c9c4b8'], ['#2d3a44', '#47596a', '#24303a']];
+  function glass(x, y, w, h, tone = 0, glow = '#ffc98a') {
+    const [a, b, c, d] = pr(x, y, w, h), gr = g.createLinearGradient(0, b, 0, b + d), cc = GL[tone];
+    gr.addColorStop(0, cc[0]); gr.addColorStop(0.42, cc[1]); gr.addColorStop(0.5, cc[2]); gr.addColorStop(1, cc[0]); g.fillStyle = gr; g.fillRect(a, b, c, d);
+    o.fillStyle = ORM[tone === 1 ? 3 : tone === 2 ? 0 : 2]; o.fillRect(a, b, c, d);
+    const ge = e.createLinearGradient(0, b, 0, b + d); ge.addColorStop(0, glow); ge.addColorStop(1, shadeHex(glow, 0.55)); e.fillStyle = ge; e.fillRect(a, b, c, d);
+  }
+  function shadeHex(h, f) { const c = hb(h); return `rgb(${c[0] * f | 0},${c[1] * f | 0},${c[2] * f | 0})`; }
+  function line(x1, y1, x2, y2, w, col, k = 1) { for (const [ctx, c] of [[g, col], [o, ORM[k]], [e, '#000']]) { ctx.strokeStyle = c; ctx.lineWidth = w * PX; ctx.beginPath(); ctx.moveTo(X + x1 * PX, Y + y1 * PX); ctx.lineTo(X + x2 * PX, Y + y2 * PX); ctx.stroke(); } }
+  function txt(s, x, y, size, col, font = '700', align = 'center') { g.fillStyle = col; g.font = `${font} ${size * PX}px "Golos Text", "Trebuchet MS", sans-serif`; g.textAlign = align; g.textBaseline = 'middle'; g.fillText(s, X + x * PX, Y + y * PX); }
+  // window with frame f (thickness t), panes cols × rows; tone of glass
+  function sash(x, y, w, h, fcol, t, cols, rows, tone = 0, glow) {
+    R(x, y, w, h, fcol, 1); const iw = (w - t * (cols + 1)) / cols, ih = (h - t * (rows + 1)) / rows;
+    for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) glass(x + t + i * (iw + t), y + t + j * (ih + t), iw, ih, tone, glow);
+  }
+  const defs = [];
+  const T = (name, w, h, draw) => defs.push({ name, w, h, draw });
+  const lattice = (x, y, w, h, col) => { const n = 4, cw = w / n; for (let i = 0; i < n; i++) { line(x + i * cw, y, x + (i + 1) * cw, y + h, 0.035, col); line(x + (i + 1) * cw, y, x + i * cw, y + h, 0.035, col); } line(x, y + h / 2, x + w, y + h / 2, 0.03, col); };
+  const BRONZE = '#3a3027', WOOD = '#2e1d12';
+  // ---- Vienības nams
+  T('vnDoor', 1.62, 4.08, () => {
+    R(0, 0, 1.62, 4.08, BRONZE, 1); glass(0.08, 0.08, 1.46, 1.22, 0); lattice(0.08, 0.08, 1.46, 1.22, '#4a3d30'); R(0, 1.3, 1.62, 0.1, BRONZE, 1);
+    for (const lx of [0.08, 0.84]) { R(lx, 1.42, 0.7, 2.62, WOOD, 4); for (let k = 0; k < 3; k++) { const py = 1.62 + k * 0.78; R(lx + 0.14, py, 0.42, 0.42, '#2b1b10', 4); glass(lx + 0.19, py + 0.05, 0.32, 0.32, 3, '#c89458'); line(lx + 0.35, py + 0.05, lx + 0.51, py + 0.21, 0.025, '#4a3d30'); line(lx + 0.51, py + 0.21, lx + 0.35, py + 0.37, 0.025, '#4a3d30'); line(lx + 0.35, py + 0.37, lx + 0.19, py + 0.21, 0.025, '#4a3d30'); line(lx + 0.19, py + 0.21, lx + 0.35, py + 0.05, 0.025, '#4a3d30'); } }
+    R(0.74, 2.7, 0.05, 0.1, '#c9a24a', 1); R(0.83, 2.7, 0.05, 0.1, '#c9a24a', 1);
+  });
+  T('vnShopWin', 1.62, 4.08, () => {
+    R(0, 0, 1.62, 4.08, BRONZE, 1); glass(0.08, 0.08, 1.46, 1.22, 0); lattice(0.08, 0.08, 1.46, 1.22, '#4a3d30'); R(0, 1.3, 1.62, 0.1, BRONZE, 1);
+    glass(0.1, 1.48, 1.42, 2.1, 0, '#ffe2b8'); const hue = Math.floor(lr() * 360); R(0.44, 1.75, 0.74, 1.05, `hsl(${hue},55%,45%)`, 0, '#fff0d8'); R(0.5, 1.82, 0.62, 0.3, `hsl(${(hue + 160) % 360},60%,75%)`, 0, '#fff0d8');
+    R(0.05, 3.62, 1.52, 0.42, BRONZE, 1);
+  });
+  T('vnWinMid', 1.55, 2.4, () => {
+    sash(0, 0, 1.55, 2.4, '#d6d4cc', 0.07, 3, 4, 2, '#ffd9a6');
+    for (let i = 0; i < 9; i++) line(0.12 + i * 0.165, 0.1, 0.12 + i * 0.165, 2.3, 0.015, 'rgba(150,145,135,0.6)', 0);
+    for (let j = 0; j < 4; j++) for (let i = 0; i < 6; i++) { const [a, b] = pr(0.1 + i * 0.235, 0.62 + j * 0.58, 0, 0); g.strokeStyle = 'rgba(140,135,125,0.55)'; g.lineWidth = 2; g.beginPath(); g.arc(a + 0.117 * PX, b, 0.11 * PX, 0, Math.PI); g.stroke(); }
+  });
+  T('vnWinTop', 1.85, 1.7, () => sash(0, 0, 1.85, 1.7, '#2f2b27', 0.06, 3, 2, 0));
+  T('vnStrip', 0.95, 14.2, () => { R(0, 0, 0.95, 14.2, '#2c2a27', 1); for (let j = 0; j < 26; j++) for (let i = 0; i < 2; i++) glass(0.06 + i * 0.43, 0.06 + j * 0.544, 0.37, 0.49, 0, j % 9 === 4 ? '#fff2dc' : '#ffcf94'); });
+  T('vnWin', 1.45, 2.15, () => { R(0, 0, 1.45, 2.15, '#3f342b', 1); glass(0.07, 0.07, 1.31, 0.5, 0); glass(0.07, 0.64, 0.62, 1.44, 0); glass(0.76, 0.64, 0.62, 1.44, 0); R(0.07, 0.64, 0.1, 1.44, 'rgba(220,215,205,0.55)', 0, '#e8c48c'); R(1.28, 0.64, 0.1, 1.44, 'rgba(220,215,205,0.55)', 0, '#e8c48c'); });
+  T('vnTall', 1.7, 7.8, () => sash(0, 0, 1.7, 7.8, '#2d2b29', 0.05, 3, 13, 0, '#ffd7a0'));
+  for (const [k, c] of [['vnShopA', '#7a1f25'], ['vnShopB', '#1f4f7a'], ['vnShopC', '#2f6b3c']]) T(k, 3.6, 3.6, () => {
+    R(0, 0, 3.6, 0.55, c, 0, shadeHex(c, 0.9)); R(0.5, 0.18, 2.6, 0.18, '#f4f1e8', 0, '#ffffff'); R(0, 0.55, 3.6, 3.05, '#4f5254', 1);
+    glass(0.08, 0.63, 0.95, 2.9, 0, '#fff1d6'); glass(1.11, 0.63, 2.41, 2.3, 0, '#fff1d6'); R(1.11, 2.98, 2.41, 0.55, '#3f4244', 1);
+  });
+  T('vnPort', 1.1, 1.1, () => {
+    R(0, 0, 1.1, 1.1, '#a39f97'); const [a, b] = pr(0.55, 0.55, 0, 0);
+    for (const [ctx, c] of [[g, '#2e2b28'], [o, ORM[1]], [e, '#000']]) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(a, b, 0.52 * PX, 0, 6.3); ctx.fill(); }
+    const gr = g.createLinearGradient(0, b - 0.44 * PX, 0, b + 0.44 * PX); gr.addColorStop(0, '#3a4650'); gr.addColorStop(0.5, '#62717c'); gr.addColorStop(1, '#2c363e');
+    for (const [ctx, c] of [[g, gr], [o, ORM[2]], [e, '#ffc98a']]) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(a, b, 0.44 * PX, 0, 6.3); ctx.fill(); }
+    line(0.11, 0.55, 0.99, 0.55, 0.04, '#2e2b28'); line(0.55, 0.11, 0.55, 0.99, 0.04, '#2e2b28');
+  });
+  T('vnSideDoor', 1.5, 2.9, () => { R(0, 0, 1.5, 2.9, BRONZE, 1); glass(0.08, 0.08, 1.34, 0.42, 0); for (const lx of [0.08, 0.77]) { R(lx, 0.58, 0.65, 2.32, '#4a3020', 4); glass(lx + 0.1, 0.72, 0.45, 0.7, 0); } });
+  T('vnKonc', 3.4, 3.4, () => { R(0, 0, 3.4, 3.4, '#5a4a32', 1); glass(0.08, 0.08, 3.24, 0.6, 0, '#ffe6bd'); for (let k = 0; k < 3; k++) { glass(0.08 + k * 1.1, 0.78, 1.0, 2.62, 0, '#ffe6bd'); R(0.12 + k * 1.1 + 0.44, 1.9, 0.12, 0.04, '#c9a24a', 1); } });
+  T('vnVent', 0.6, 0.6, () => { R(0, 0, 0.6, 0.6, '#3a3a38', 1); for (let k = 0; k < 6; k++) R(0.06, 0.06 + k * 0.08, 0.48, 0.04, '#585856', 1); });
+  T('vnBase', 0.9, 0.55, () => sash(0, 0, 0.9, 0.55, '#3a3631', 0.05, 2, 1, 3, '#7a6040'));
+  T('vnSmall', 0.8, 0.8, () => sash(0, 0, 0.8, 0.8, '#34312d', 0.05, 2, 2, 0, '#c8a070'));
+  T('vnPoster', 3.6, 2.5, () => {
+    R(0, 0, 3.6, 2.5, '#2b2d2f', 1); R(0.08, 0.08, 3.44, 0.3, '#f1f0eb', 0, '#fff7e8'); txt('DAUGAVPILS  TEĀTRIS', 1.8, 0.24, 0.17, '#2b2d2f');
+    for (let k = 0; k < 3; k++) { const x = 0.1 + k * 1.15, h = Math.floor(lr() * 360); const gr = g.createLinearGradient(0, Y + 0.46 * PX, 0, Y + 2.4 * PX); gr.addColorStop(0, `hsl(${h},45%,32%)`); gr.addColorStop(1, `hsl(${(h + 40) % 360},55%,62%)`);
+      R(x, 0.46, 1.08, 1.94, '#000', 0, '#fff4e0'); g.fillStyle = gr; g.fillRect(...pr(x, 0.46, 1.08, 1.94)); R(x + 0.2, 0.9, 0.68, 0.8, `hsl(${(h + 180) % 360},35%,70%)`, 0, '#fff4e0');
+      txt(['MELI', 'HAMLETS', 'SAPŅI'][k], x + 0.54, 0.66, 0.18, '#ffffff', '800'); txt('2026', x + 0.54, 2.12, 0.1, '#ffffff', '600'); }
+  });
+  T('vnInfo', 1.7, 0.42, () => { R(0, 0, 1.7, 0.42, '#f4f2ec', 0, '#fff8ec'); R(0, 0, 0.42, 0.42, '#c0262d', 0, '#ff6050'); txt('i', 0.21, 0.21, 0.3, '#ffffff', '800'); txt('Info centrs', 1.06, 0.21, 0.2, '#1c2a3a', '700'); });
+  // ---- Park Hotel Latgola and the shopping centre
+  for (const [v, sp] of [['A', '#e6dc9f'], ['B', '#dfe1db']]) for (const side of ['L', 'M', 'R']) T('lat' + v + side, 2.4557, 2.9, () => {
+    R(0, 0, 2.4557, 2.9, sp); R(0, 0, 2.4557, 0.42, shadeHex(sp, 0.97)); line(0, 0.42, 2.4557, 0.42, 0.03, 'rgba(0,0,0,0.25)', 0);
+    const l = side === 'L' ? 0.34 : 0.1, r = side === 'R' ? 0.34 : 0.1;
+    if (side === 'L') R(0, 0, 0.26, 2.9, '#cdc7b3'); if (side === 'R') R(2.1957, 0, 0.26, 2.9, '#cdc7b3');
+    const w = 2.4557 - l - r; R(l, 0.5, w, 1.48, '#f2f2ee', 1); glass(l + 0.06, 0.56, w * 0.38 - 0.06, 1.36, 1); glass(l + w * 0.38 + 0.03, 0.56, w * 0.62 - 0.09, 1.36, 1);
+    line(l, 2.0, l + w, 2.0, 0.04, 'rgba(0,0,0,0.22)', 0);
+  });
+  T('latFrameGl', 14.74, 5.8, () => { R(0, 0, 14.74, 5.8, '#6c767c', 1); glass(0.06, 0.06, 14.62, 5.68, 1, '#ffdcae'); for (let k = 1; k < 12; k++) line(0, k * 0.483, 14.74, k * 0.483, 0.035, '#6c767c'); for (let k = 1; k < 6; k++) line(k * 2.457, 0, k * 2.457, 5.8, 0.06, '#6c767c'); });
+  T('latCurt', 1.2, 2.9, () => { R(0, 0, 1.2, 2.9, '#4a5157', 1); glass(0.04, 0.04, 1.12, 2.5, 1, '#fff1d8'); R(0.04, 2.58, 1.12, 0.28, '#2f414d', 3); });
+  T('latSq', 1.25, 1.25, () => sash(0, 0, 1.25, 1.25, '#ecece8', 0.07, 2, 1, 0));
+  T('latStripO', 1.4, 2.9, () => { R(0, 0, 1.4, 2.9, '#e9e9e5', 1); glass(0.07, 0.07, 1.26, 1.86, 1); R(0, 2.0, 1.4, 0.9, '#e88f2a'); });
+  T('latTop', 2.4557, 3.2, () => { R(0, 0, 2.4557, 3.2, '#cdd0d0', 1); glass(0.05, 0.05, 1.18, 3.1, 1, '#ffe1b4'); glass(1.27, 0.05, 1.14, 3.1, 1, '#ffe1b4'); R(0, 2.05, 2.4557, 0.06, '#cdd0d0', 1); });
+  T('latStore', 3.6625, 4.1, () => { R(0, 0, 3.6625, 4.1, '#34383b', 1); glass(0.08, 0.08, 3.5, 0.72, 0, '#fff0d4'); glass(0.08, 0.88, 1.7, 3.14, 0, '#fff0d4'); glass(1.86, 0.88, 1.72, 3.14, 0, '#fff0d4'); });
+  T('latSlat', 3.6625, 4.1, () => { R(0, 0, 3.6625, 4.1, '#34383b', 1); glass(0.08, 0.08, 3.5, 3.94, 0, '#ffe8c4'); for (let x = 1.6; x < 3.58; x += 0.13) R(x, 0.08, 0.075, 3.94, '#7b5234', 4); });
+  T('latDoor', 3.6625, 4.1, () => { R(0, 0, 3.6625, 4.1, '#2a2f36', 1); R(0.08, 0.08, 3.5, 0.62, '#1d2d5a', 0, '#5a78c8'); txt('PARK HOTEL LATGOLA', 1.83, 0.4, 0.22, '#f3f3f3', '700'); glass(0.08, 0.78, 1.7, 3.24, 0, '#fff3dc'); glass(1.86, 0.78, 1.72, 3.24, 0, '#fff3dc'); R(1.78, 0.78, 0.08, 3.24, '#2a2f36', 1); });
+  T('latBackW', 1.9, 1.5, () => sash(0, 0, 1.9, 1.5, '#efefeb', 0.07, 2, 1, 0));
+  T('latRail', 2.4557, 1.1, () => { R(0, 0, 2.4557, 1.1, '#9aa0a3', 1); glass(0.05, 0.1, 2.3557, 0.95, 3, '#000'); });
+  T('latLight', 0.35, 0.35, () => R(0, 0, 0.35, 0.35, '#fffaf0', 0, '#ffffff'));
+  T('mallGlass', 1.4, 2.45, () => { R(0, 0, 1.4, 2.45, '#8a9094', 1); glass(0.05, 0.05, 1.3, 2.35, 1, '#fff1d8'); });
+  T('mallStore', 3.6, 3.6, () => { R(0, 0, 3.6, 3.6, '#a5a9ac', 1); R(0, 0, 3.6, 0.5, '#5a5f63', 0); R(0.4, 0.15, 2.8, 0.2, ['#e23a3a', '#2d7fd1', '#2fa356', '#f0a020'][Math.floor(lr() * 4)], 0, '#ffffff'); glass(0.08, 0.58, 3.44, 2.94, 0, '#fff4e0'); R(1.76, 0.58, 0.08, 2.94, '#a5a9ac', 1); });
+  T('mallDoor', 4.0, 3.6, () => { R(0, 0, 4.0, 3.6, '#a5a9ac', 1); glass(0.08, 0.08, 3.84, 0.7, 0, '#fff4e0'); glass(0.08, 0.86, 1.88, 2.74, 0, '#fff4e0'); glass(2.04, 0.86, 1.88, 2.74, 0, '#fff4e0'); });
+  T('mallSigns', 2.0, 7.0, () => { R(0, 0, 2.0, 7.0, '#3b3f42', 1); const cs = ['#d8262f', '#f4f2ec', '#1d6fb8', '#f2b705', '#2e8b57', '#f4f2ec', '#7a2e8e']; for (let k = 0; k < 7; k++) { R(0.12, 0.15 + k * 0.97, 1.76, 0.82, cs[k], 0, '#ffffff'); R(0.35, 0.45 + k * 0.97, 1.3, 0.2, k % 2 ? '#2b2b2b' : '#ffffff', 0, '#ffffff'); } });
+  T('mallService', 3.0, 3.2, () => { R(0, 0, 3.0, 3.2, '#8d9194', 1); for (let y = 0.1; y < 3.2; y += 0.12) line(0, y, 3.0, y, 0.02, '#6e7275'); });
+  // shelf packing, tallest first
+  defs.sort((a, b) => b.h - a.h);
+  let sx = 2, sy = 2, rowH = 0;
+  for (const d of defs) {
+    const pw = Math.ceil(d.w * PX), ph = Math.ceil(d.h * PX);
+    if (sx + pw + 2 > AW) { sx = 2; sy += rowH + 6; rowH = 0; }
+    X = sx; Y = sy; g.save(); o.save(); e.save(); for (const ctx of [g, o, e]) { ctx.beginPath(); ctx.rect(X, Y, pw, ph); ctx.clip(); }
+    d.draw(); g.restore(); o.restore(); e.restore();
+    LMT[d.name] = { u0: (sx + 0.5) / AW, u1: (sx + pw - 0.5) / AW, v0: 1 - (sy + ph - 0.5) / AH, v1: 1 - (sy + 0.5) / AH };
+    sx += pw + 6; rowH = Math.max(rowH, ph);
+  }
+  const mk = (c, srgb) => { const t = toTex(c, srgb, false); t.minFilter = THREE.LinearMipmapLinearFilter; return t; };
+  return [mk(cv, true), mk(om, false), mk(gm, true)];
+}
+
+/* signs: letters cut out of a transparent canvas; the second canvas is what they show when lit */
+const LMS = {};
+function lmSigns() {
+  const W = 2048, H = 2048, cv = mkCanvas(W, H), g = cv.getContext('2d'), gm = mkCanvas(W, H), e = gm.getContext('2d');
+  e.fillStyle = '#000'; e.fillRect(0, 0, W, H);
+  let y = 0;
+  const add = (name, w, h, draw) => { draw(0, y, w, h); LMS[name] = { u0: 0, u1: w / W, v0: 1 - (y + h) / H, v1: 1 - y / H }; y += h + 8; };
+  const font = (px, wt = '700', fam = '"Century Gothic", Futura, "Avenir Next", "Trebuchet MS", sans-serif') => `${wt} ${px}px ${fam}`;
+  add('vnName', 2048, 124, (x0, y0, w, h) => {
+    const s = 'VIENĪBAS NAMS'; g.font = font(100, '600'); g.textBaseline = 'middle'; g.textAlign = 'center';
+    const step = w / s.length;
+    for (let k = 0; k < s.length; k++) { const cx = x0 + step * (k + 0.5); g.fillStyle = '#3e3d3a'; g.fillText(s[k], cx + 7, y0 + h / 2 + 7); g.fillStyle = '#f7f6f2'; g.fillText(s[k], cx, y0 + h / 2); }
+  });
+  add('hotel', 760, 220, (x0, y0, w, h) => {
+    g.font = font(200, '800', '"Golos Text", "Trebuchet MS", sans-serif'); g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+    g.lineWidth = 14; g.strokeStyle = '#f2f4f8'; g.strokeText('HOTEL', x0 + w / 2, y0 + h / 2 + 6); g.fillStyle = '#1e3a8f'; g.fillText('HOTEL', x0 + w / 2, y0 + h / 2 + 6);
+    e.font = g.font; e.textAlign = 'center'; e.textBaseline = 'middle'; e.fillStyle = '#c8d8ff'; e.fillText('HOTEL', x0 + w / 2, y0 + h / 2 + 6);
+  });
+  add('latgola', 1000, 420, (x0, y0, w, h) => {
+    const stroke = (c, lw, pts) => { g.strokeStyle = c; g.lineWidth = lw; g.lineCap = 'round'; g.beginPath(); g.moveTo(x0 + pts[0], y0 + pts[1]); g.bezierCurveTo(x0 + pts[2], y0 + pts[3], x0 + pts[4], y0 + pts[5], x0 + pts[6], y0 + pts[7]); g.stroke(); };
+    stroke('#3ea24a', 46, [380, 230, 400, 120, 440, 70, 520, 30]); stroke('#ffffff', 26, [430, 230, 450, 150, 490, 90, 560, 50]); stroke('#4b2a87', 30, [470, 235, 500, 160, 540, 110, 610, 70]);
+    g.font = font(170, '800', '"Golos Text", "Trebuchet MS", sans-serif'); g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+    g.lineWidth = 16; g.strokeStyle = '#ffffff'; g.strokeText('Latgola', x0 + w / 2, y0 + 330); g.fillStyle = '#3b2a8a'; g.fillText('Latgola', x0 + w / 2, y0 + 330);
+    e.font = g.font; e.textAlign = 'center'; e.textBaseline = 'middle'; e.fillStyle = '#ffffff'; e.fillText('Latgola', x0 + w / 2, y0 + 330);
+  });
+  add('plaza', 640, 200, (x0, y0, w, h) => {
+    g.font = font(150, '800', '"Golos Text", "Trebuchet MS", sans-serif'); g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+    g.lineWidth = 12; g.strokeStyle = '#ffffff'; g.strokeText('PLAZA', x0 + w / 2, y0 + h / 2); g.fillStyle = '#2a2f86'; g.fillText('PLAZA', x0 + w / 2, y0 + h / 2);
+    e.font = g.font; e.textAlign = 'center'; e.textBaseline = 'middle'; e.fillStyle = '#b8c4ff'; e.fillText('PLAZA', x0 + w / 2, y0 + h / 2);
+  });
+  add('konc', 1400, 110, (x0, y0, w, h) => {
+    g.font = font(92, '700'); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#f3e7c8'; g.fillText('KONCERTZĀLE', x0 + w / 2, y0 + h / 2);
+    e.font = g.font; e.textAlign = 'center'; e.textBaseline = 'middle'; e.fillStyle = '#ffe9bc'; e.fillText('KONCERTZĀLE', x0 + w / 2, y0 + h / 2);
+  });
+  const t = toTex(cv, true, false), te = toTex(gm, true, false); t.minFilter = te.minFilter = THREE.LinearMipmapLinearFilter; return [t, te];
+}
+
+/* flowers: per species a side view (row 0) and a view from above (row 1), 128 px each */
+const LM_FLOWERS = [
+  { name: 'salvia', col: '#c8141b', h: 0.4 }, { name: 'cineraria', col: '#c9cfc8', h: 0.26 }, { name: 'marigoldY', col: '#f4c20d', h: 0.3 }, { name: 'marigoldO', col: '#ee7a10', h: 0.3 },
+  { name: 'begoniaW', col: '#f4f2ea', h: 0.22 }, { name: 'begoniaP', col: '#ec5b8e', h: 0.22 }, { name: 'petunia', col: '#7d3ea6', h: 0.24 }
+];
+function lmFlowerAtlas() {
+  const S = 128, cv = mkCanvas(S * 8, S * 2), g = cv.getContext('2d');
+  const leaf = (x, y, len, w, ang, col) => { g.save(); g.translate(x, y); g.rotate(ang); g.fillStyle = col; g.beginPath(); g.ellipse(0, -len / 2, w / 2, len / 2, 0, 0, 6.3); g.fill(); g.restore(); };
+  const greens = ['#3b6a2a', '#4a7d33', '#5a8c3b', '#43722f'];
+  LM_FLOWERS.forEach((f, k) => {
+    const x0 = k * S, silver = f.name === 'cineraria';
+    // side view
+    for (let i = 0; i < (silver ? 22 : 14); i++) { const a = (lr() - 0.5) * 2.2; leaf(x0 + 64 + (lr() - 0.5) * 50, 128, 40 + lr() * 45, silver ? 22 : 16, a, silver ? ['#b9c1b8', '#cfd5cd', '#a9b1a8'][i % 3] : greens[i % 4]); }
+    const c = hb(f.col), cs = (m) => `rgb(${Math.min(255, c[0] * m) | 0},${Math.min(255, c[1] * m) | 0},${Math.min(255, c[2] * m) | 0})`;
+    if (f.name === 'salvia') for (let i = 0; i < 10; i++) { const x = x0 + 12 + i * 11 + (lr() - 0.5) * 6, top = 8 + lr() * 22; for (let y = top; y < top + 56; y += 5) { g.fillStyle = cs(0.8 + lr() * 0.3); g.beginPath(); g.ellipse(x + (lr() - 0.5) * 3, y, 4.5, 4, 0, 0, 6.3); g.fill(); } }
+    else if (f.name.startsWith('marigold')) for (let i = 0; i < 7; i++) { const x = x0 + 16 + i * 16 + (lr() - 0.5) * 6, y = 22 + lr() * 34, r = 9 + lr() * 4; g.fillStyle = cs(0.85); g.beginPath(); g.arc(x, y, r, 0, 6.3); g.fill(); g.fillStyle = cs(1.05); g.beginPath(); g.arc(x - 2, y - 2, r * 0.7, 0, 6.3); g.fill(); g.fillStyle = cs(0.7); g.beginPath(); g.arc(x, y, r * 0.3, 0, 6.3); g.fill(); }
+    else if (!silver) for (let i = 0; i < 16; i++) { const x = x0 + 12 + lr() * 104, y = 26 + lr() * 50, r = f.name === 'petunia' ? 8 : 5.5; g.fillStyle = cs(0.85 + lr() * 0.25); for (let p = 0; p < 5; p++) { const a = p * 1.2566; g.beginPath(); g.arc(x + Math.cos(a) * r * 0.55, y + Math.sin(a) * r * 0.55, r * 0.6, 0, 6.3); g.fill(); } g.fillStyle = '#e8d24a'; g.beginPath(); g.arc(x, y, 1.6, 0, 6.3); g.fill(); }
+    // top view
+    const cx = x0 + 64, cy = S + 64;
+    for (let i = 0; i < (silver ? 26 : 18); i++) { const a = lr() * 6.283, rr = 20 + lr() * 34; leaf(cx + Math.cos(a) * rr * 0.4, cy + Math.sin(a) * rr * 0.4, rr, silver ? 24 : 18, a + Math.PI / 2, silver ? ['#bcc4bb', '#d2d8d0', '#aab2a9'][i % 3] : greens[i % 4]); }
+    if (!silver) for (let i = 0; i < (f.name === 'salvia' ? 24 : 20); i++) { const a = lr() * 6.283, rr = Math.sqrt(lr()) * 46, x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr, r = f.name.startsWith('marigold') ? 9 : f.name === 'salvia' ? 5 : 6;
+      g.fillStyle = cs(0.8 + lr() * 0.35); g.beginPath(); g.arc(x, y, r, 0, 6.3); g.fill(); if (f.name.startsWith('marigold')) { g.fillStyle = cs(0.68); g.beginPath(); g.arc(x, y, r * 0.35, 0, 6.3); g.fill(); } }
+  });
+  const t = toTex(cv, true, false); t.minFilter = THREE.LinearMipmapLinearFilter; return t;
+}
+// which plant grows where: p along the bed's long axis, q across, d = signed distance to the edge (negative inside)
+function bedSpecies(b, du, dv, d) {
+  if (d > -0.45) return 1;
+  if (b.kind === 0) {
+    for (const lv of b.lamps) { const m = Math.max(Math.abs(du), Math.abs(dv - (lv - b.cv))); if (m < 1.0) return -1; if (m < 1.45) return 1; }
+    if (d > -0.75) return 4;
+    const p = dv, q = du, wc = 1.3 * Math.sin(2 * Math.PI * p / 6.0), k = Math.round((p - 1.5) / 3), pk = 1.5 + 3 * k, side = Math.sin(2 * Math.PI * pk / 6.0) > 0 ? -1 : 1;
+    const rr = Math.hypot(p - pk, q - side * 1.05);
+    if (rr < 0.3) return 5; if (rr < 0.62) return 1;
+    const dq = Math.abs(q - wc); if (dq < 0.2) return 3; if (dq < 0.5) return 2; return 0;
+  }
+  const x = du / b.hu, y = dv / b.hv, rho = Math.hypot(x, y), th = Math.atan2(y, x);
+  if (d > -0.8) return 4;
+  if (rho < 0.16) return 5; if (rho < 0.3) return 4; if (rho < 0.52 + 0.16 * Math.cos(6 * th)) return 3; if (rho < 0.62 + 0.16 * Math.cos(6 * th)) return 2; return rho < 0.8 ? 0 : 6;
+}
+
+/* ---- geometry helpers ---- */
+// frame of a straight wall from Pw to Qw (world xz); outward normal is (tz, -tx) as for cadastre outer rings
+function lmWF(Pw, Qw) {
+  const dx = Qw[0] - Pw[0], dz = Qw[1] - Pw[1], L = Math.hypot(dx, dz), tx = dx / L, tz = dz / L, nx = tz, nz = -tx;
+  return { P: Pw, L, tx, tz, nx, nz, at: (s, y, d) => [Pw[0] + tx * s - nx * d, y, Pw[1] + tz * s - nz * d] };
+}
+// box in wall coordinates: s along the wall, y up, d depth into the wall (negative = in front of it)
+function lmBoxW(G, F, s0, s1, y0, y1, d0, d1, col, bottom = true) {
+  const a = F.at, N = [F.nx, 0, F.nz];
+  polyA(G, [a(s0, y0, d0), a(s1, y0, d0), a(s1, y1, d0), a(s0, y1, d0)], col, N[0], 0, N[2]);
+  polyA(G, [a(s0, y1, d0), a(s1, y1, d0), a(s1, y1, d1), a(s0, y1, d1)], sh(col, 1.06), 0, 1, 0);
+  if (bottom) polyA(G, [a(s0, y0, d0), a(s1, y0, d0), a(s1, y0, d1), a(s0, y0, d1)], sh(col, 0.72), 0, -1, 0);
+  polyA(G, [a(s0, y0, d0), a(s0, y0, d1), a(s0, y1, d1), a(s0, y1, d0)], sh(col, 0.9), -F.tx, 0, -F.tz);
+  polyA(G, [a(s1, y0, d0), a(s1, y0, d1), a(s1, y1, d1), a(s1, y1, d0)], sh(col, 0.9), F.tx, 0, F.tz);
+}
+// box in a local frame: u0..u1 × v0..v1 × y0..y1, all six faces unless told otherwise
+function lmBoxL(G, f, u0, u1, v0, v1, y0, y1, col, bottom = true) {
+  const p = (u, v, y) => { const w = lmW(f, u, v); return [w[0], y, w[1]]; }, ex = f[2], ez = f[3];
+  polyA(G, [p(u0, v0, y0), p(u0, v1, y0), p(u0, v1, y1), p(u0, v0, y1)], sh(col, 0.95), -ex, 0, -ez);
+  polyA(G, [p(u1, v0, y0), p(u1, v1, y0), p(u1, v1, y1), p(u1, v0, y1)], sh(col, 0.95), ex, 0, ez);
+  polyA(G, [p(u0, v0, y0), p(u1, v0, y0), p(u1, v0, y1), p(u0, v0, y1)], col, ez, 0, -ex);
+  polyA(G, [p(u0, v1, y0), p(u1, v1, y0), p(u1, v1, y1), p(u0, v1, y1)], col, -ez, 0, ex);
+  polyA(G, [p(u0, v0, y1), p(u1, v0, y1), p(u1, v1, y1), p(u0, v1, y1)], sh(col, 1.06), 0, 1, 0);
+  if (bottom) polyA(G, [p(u0, v0, y0), p(u1, v0, y0), p(u1, v1, y0), p(u0, v1, y0)], sh(col, 0.72), 0, -1, 0);
+}
+// thin bar between two 3D points (square section w)
+function lmBar(G, A, B, w, col) {
+  const dx = B[0] - A[0], dy = B[1] - A[1], dz = B[2] - A[2], L = Math.hypot(dx, dy, dz); if (L < 1e-4) return;
+  const d = [dx / L, dy / L, dz / L], up = Math.abs(d[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const cr = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]], nm = a => { const l = Math.hypot(...a); return a.map(x => x / l); };
+  const s1 = nm(cr(d, up)), s2 = cr(s1, d), h = w / 2;
+  const off = (P, a, b) => [P[0] + (s1[0] * a + s2[0] * b) * h, P[1] + (s1[1] * a + s2[1] * b) * h, P[2] + (s1[2] * a + s2[2] * b) * h];
+  for (const [a1, b1, a2, b2] of [[1, 1, 1, -1], [1, -1, -1, -1], [-1, -1, -1, 1], [-1, 1, 1, 1]]) {
+    const n = [s1[0] * (a1 + a2) / 2 + s2[0] * (b1 + b2) / 2, s1[1] * (a1 + a2) / 2 + s2[1] * (b1 + b2) / 2, s1[2] * (a1 + a2) / 2 + s2[2] * (b1 + b2) / 2];
+    polyA(G, [off(A, a1, b1), off(A, a2, b2), off(B, a2, b2), off(B, a1, b1)], col, n[0], n[1], n[2]);
+  }
+}
+// lathe with normals smooth around the axis (columns, lamp posts, globes)
+function lmLathe(G, cx, cz, y0, prof, seg, col) {
+  for (let k = 0; k < prof.length - 1; k++) {
+    const [r0, h0] = prof[k], [r1, h1] = prof[k + 1], dr = r1 - r0, dh = h1 - h0, l = Math.hypot(dr, dh) || 1, nr = dh / l, ny = -dr / l;
+    for (let s = 0; s < seg; s++) {
+      const a0 = s * 2 * Math.PI / seg, a1 = (s + 1) * 2 * Math.PI / seg, c0 = Math.cos(a0), s0 = Math.sin(a0), c1 = Math.cos(a1), s1 = Math.sin(a1);
+      const v = [G.vert(cx + r0 * c0, y0 + h0, cz + r0 * s0, nr * c0, ny, nr * s0, col), G.vert(cx + r0 * c1, y0 + h0, cz + r0 * s1, nr * c1, ny, nr * s1, col),
+        G.vert(cx + r1 * c1, y0 + h1, cz + r1 * s1, nr * c1, ny, nr * s1, col), G.vert(cx + r1 * c0, y0 + h1, cz + r1 * s0, nr * c0, ny, nr * s0, col)];
+      G.tri(v[0], v[2], v[1]); G.tri(v[0], v[3], v[2]);
+    }
+  }
+}
+
+/* One wall from Pw to Qw between y0 and y1, with openings cut into it. An opening is {s0, s1, y0, y1, d (depth),
+   tile, lit, sill, kind}; the wall around it is split into rectangles, the reveals and the window or door at the
+   bottom of the recess are added. s grows to the viewer's left, so tiles are laid in mirrored. */
+function lmWall(K, Pw, Qw, y0, y1, ops, st) {
+  const F = lmWF(Pw, Qw), L = F.L; if (L < 0.02 || y1 <= y0 + 0.01) return;
+  const W = st.tex === 0 ? K.ash : K.ren, S = st.tex === 0 ? 6 : 8, so = Pw[0] * F.tx + Pw[1] * F.tz, N = [F.nx, 0, F.nz], at = F.at;
+  const colAt = y => (st.plinth && y < st.plinth) ? st.pcol : st.col;
+  const uvR = (sa, sb, ya, yb) => [(so + sa) / S, ya / S, (so + sb) / S, ya / S, (so + sb) / S, yb / S, (so + sa) / S, yb / S];
+  const piece = (sa, sb, ya, yb) => { if (sb - sa > 0.004) W.q(at(sa, ya, 0), at(sb, ya, 0), at(sb, yb, 0), at(sa, yb, 0), N, uvR(sa, sb, ya, yb), colAt((ya + yb) / 2)); };
+  const ys = [y0, y1]; if (st.plinth > y0 && st.plinth < y1) ys.push(st.plinth);
+  for (const o of ops) for (const y of [o.y0, o.y1]) if (y > y0 && y < y1) ys.push(y);
+  ys.sort((a, b) => a - b); const yu = ys.filter((y, k) => !k || y - ys[k - 1] > 1e-3);
+  for (let k = 0; k < yu.length - 1; k++) {
+    const ya = yu[k], yb = yu[k + 1], cov = ops.filter(o => o.y0 <= ya + 1e-3 && o.y1 >= yb - 1e-3).sort((a, b) => a.s0 - b.s0);
+    let s = 0; for (const o of cov) { if (o.s0 > s) piece(s, o.s0, ya, yb); s = Math.max(s, o.s1); } if (s < L) piece(s, L, ya, yb);
+  }
+  for (const o of ops) {
+    const ya = Math.max(y0, o.y0), yb = Math.min(y1, o.y1); if (yb <= ya + 1e-3) continue;
+    const d = o.d || 0, rc = sh(o.rcol || st.col, 0.84), ud = d / S;
+    if (d > 0.04) {
+      W.q(at(o.s0, ya, 0), at(o.s0, ya, d), at(o.s0, yb, d), at(o.s0, yb, 0), [F.tx, 0, F.tz], [0, ya / S, ud, ya / S, ud, yb / S, 0, yb / S], rc);
+      W.q(at(o.s1, ya, d), at(o.s1, ya, 0), at(o.s1, yb, 0), at(o.s1, yb, d), [-F.tx, 0, -F.tz], [0, ya / S, ud, ya / S, ud, yb / S, 0, yb / S], rc);
+      if (yb < y1 - 1e-3) W.q(at(o.s0, yb, 0), at(o.s1, yb, 0), at(o.s1, yb, d), at(o.s0, yb, d), [0, -1, 0], uvR(o.s0, o.s1, 0, d), sh(rc, 0.85));
+      if (ya > y0 + 1e-3 && !o.noFloor) W.q(at(o.s0, ya, d), at(o.s1, ya, d), at(o.s1, ya, 0), at(o.s0, ya, 0), [0, 1, 0], uvR(o.s0, o.s1, 0, d), rc);
+    }
+    if (o.tile) {
+      const t = LMT[o.tile], f0 = (ya - o.y0) / (o.y1 - o.y0), f1 = (yb - o.y0) / (o.y1 - o.y0), va = t.v0 + (t.v1 - t.v0) * f0, vb = t.v0 + (t.v1 - t.v0) * f1;
+      K.det.q(at(o.s0, ya, d), at(o.s1, ya, d), at(o.s1, yb, d), at(o.s0, yb, d), N, [t.u1, va, t.u0, va, t.u0, vb, t.u1, vb], LMWHITE, o.lit ? 1 : 0);
+    }
+    if (o.sill && ya > y0 + 0.1) lmBoxW(K.plain, F, o.s0 - 0.06, o.s1 + 0.06, ya - 0.07, ya, -0.1, d, o.sill);
+  }
+}
+/* Openings are given in the building's local frame by the point on the wall line where they are centred; each
+   wall picks up the ones that lie on it. */
+function lmOpsFor(f, ops, Pl, Ql) {
+  const P = lmW(f, Pl[0], Pl[1]), Q = lmW(f, Ql[0], Ql[1]), dx = Q[0] - P[0], dz = Q[1] - P[1], L = Math.hypot(dx, dz), tx = dx / L, tz = dz / L, out = [];
+  for (const o of ops) {
+    const A = lmW(f, o.a[0], o.a[1]), s = (A[0] - P[0]) * tx + (A[1] - P[1]) * tz, dist = Math.abs((A[0] - P[0]) * tz - (A[1] - P[1]) * tx);
+    if (dist < 0.06 && s > 0.01 && s < L - 0.01) out.push(Object.assign({}, o, { s0: Math.max(0, s - o.w / 2), s1: Math.min(L, s + o.w / 2) }));
+  }
+  return out;
+}
+/* A block: plan polygon in the local frame (holes allowed), walls from y0 to top with their style, flat roof,
+   cornices [y0, y1, projection, colour]. Polygons are re-oriented to the cadastre convention (outer ring area > 0). */
+function lmBlock(K, f, blk, ops) {
+  const rings = [blk.poly, ...(blk.holes || [])].map((pl, k) => {
+    let r = []; for (const [u, v] of pl) r.push(...lmW(f, u, v)); let loc = pl.slice();
+    if ((k === 0) !== (area2(r) > 0)) { r = Array.from(reversed(r)); loc = loc.reverse(); }
+    return { r, loc };
+  });
+  const y0 = blk.y0 || 0;
+  for (const { r, loc } of rings) {
+    const n = loc.length;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n, Pw = [r[2 * i], r[2 * i + 1]], Qw = [r[2 * j], r[2 * j + 1]];
+      const st = typeof blk.st === 'function' ? blk.st(loc[i], loc[j]) : blk.st;
+      lmWall(K, Pw, Qw, y0, blk.top, lmOpsFor(f, ops, loc[i], loc[j]), st);
+    }
+  }
+  const R = rings.map(x => x.r);
+  for (const [ya, yb, pj, col] of blk.cornice || []) for (const r of R) { const q = offsetRing(r, pj); vband(K.plain, q, ya, yb, col); band(K.plain, r, q, ya, sh(col, 0.75), true); band(K.plain, r, q, yb, sh(col, 1.04), false); }
+  if (blk.roof) flatPlain(K.plain, R, blk.roofY != null ? blk.roofY : blk.top, blk.roof, false);
+  return R;
+}
+const lmOp = (ops, u, v, w, y0, y1, tile, o) => ops.push(Object.assign({ a: [u, v], w, y0, y1, tile, d: 0.25 }, o || {}));
+// n openings centred in n equal bays along the line from (u1, v1) to (u2, v2); o may depend on the bay index
+const lmRow = (ops, u1, v1, u2, v2, n, w, y0, y1, tile, o) => { for (let k = 0; k < n; k++) { const t = (k + 0.5) / n; lmOp(ops, u1 + (u2 - u1) * t, v1 + (v2 - v1) * t, w, y0, y1, typeof tile === 'function' ? tile(k) : tile, typeof o === 'function' ? o(k) : o); } };
+const lmLit = p => lr() < p;
+
+/* ---- Vienības nams ---- */
+function lmUnityHouse(K) {
+  const f = LMF.vn, ops = [];
+  const WALL = hb('#aeaba3'), PLINTH = hb('#7d7871'), TRIM = hb('#a19e96'), STONE = hb('#a29f97'), STEP = hb('#8f8b84'), ROOF = hb('#5d5e5f'), IRON = hb('#33373a');
+  const ash = { tex: 0, col: WALL }, ren = { tex: 1, col: WALL, plinth: 0.8, pcol: PLINTH };
+  const winS = { d: 0.25, sill: TRIM };
+  // portico façade: two pylons and the loggia between them, 3 m deep, under an 18 m cornice
+  lmOp(ops, 0, 14.7, 18.3, 1.07, 14.6, null, { d: 3.0, noFloor: true });
+  for (const v of [2.8, 26.6]) lmOp(ops, 0, v, 0.6, 16.45, 17.05, 'vnVent', { d: 0.12 });
+  // shoulders and the sides of the portico block: small doors, a tall stair window
+  lmOp(ops, 2.6, -1.8, 1.15, 0, 2.55, 'vnSideDoor', { d: 0.3 }); lmOp(ops, 2.9, 30.95, 1.15, 0, 2.55, 'vnSideDoor', { d: 0.3 });
+  lmOp(ops, 13.6, -3.0, 1.5, 0, 2.9, 'vnSideDoor', { d: 0.3 }); lmOp(ops, 19.5, -3.0, 0.95, 1.6, 15.8, 'vnStrip', { d: 0.35, lit: lmLit(0.7) });
+  lmOp(ops, 14.0, 31.2, 1.5, 0, 2.9, 'vnSideDoor', { d: 0.3 }); lmOp(ops, 19.8, 31.2, 0.95, 1.6, 15.8, 'vnStrip', { d: 0.35, lit: lmLit(0.7) });
+  // floors of the wings
+  const FW = [[1.35, 3.5], [4.85, 7.0], [8.35, 10.5], [11.85, 13.8]];
+  // concert-hall wing: entrance with canopy and lettering, stair windows, three storeys
+  lmOp(ops, 30, -7.2, 3.4, 0, 3.4, 'vnKonc', { d: 0.35, lit: true });
+  lmOp(ops, 30, -13.3, 1.3, 1.0, 6.3, 'vnTall', { d: 0.3, lit: lmLit(0.6) }); lmOp(ops, 30, -13.3, 1.3, 7.3, 12.6, 'vnTall', { d: 0.3, lit: lmLit(0.6) });
+  for (const v of [-10.3, -4.1]) lmOp(ops, 30, v, 1.45, FW[0][0], FW[0][1], 'vnWin', Object.assign({ lit: lmLit(0.4) }, winS));
+  for (const [y0, y1] of FW.slice(1)) for (const v of [-10.3, -7.2, -4.1]) lmOp(ops, 30, v, 1.45, y0, Math.min(y1, 13.6), 'vnWin', Object.assign({ lit: lmLit(0.45) }, winS));
+  for (const u of [32.5, 35.5, 42.5, 45.5]) lmOp(ops, u, -15, 1.1, 1.5, 2.6, 'vnPort', { d: 0.2, lit: lmLit(0.5) });
+  lmOp(ops, 39.0, -15, 1.6, 0, 2.9, 'vnSideDoor', { d: 0.3 });
+  lmRow(ops, 30, -15, 48.5, -15, 5, 1.6, 5.2, 8.1, 'vnWin', () => Object.assign({ lit: lmLit(0.5) }, winS));
+  lmRow(ops, 30, -15, 48.5, -15, 5, 1.6, 9.3, 12.2, 'vnWin', () => Object.assign({ lit: lmLit(0.5) }, winS));
+  // Rīgas iela: shops under the tall windows of the concert hall
+  lmRow(ops, 48.5, -16.7, 86.7, -16.9, 9, 3.6, 0.35, 3.95, k => ['vnShopA', 'vnShopB', 'vnShopC'][k % 3], { d: 0.2, lit: true });
+  lmRow(ops, 48.5, -16.7, 86.7, -16.9, 9, 1.7, 5.6, 13.4, 'vnTall', () => ({ d: 0.3, lit: lmLit(0.85) }));
+  // Ģimnāzijas iela: shops, three floors of offices
+  lmRow(ops, 86.7, -16.9, 86.7, -2.7, 4, 3.0, 0.35, 3.95, k => ['vnShopB', 'vnShopC', 'vnShopA', 'vnShopB'][k], { d: 0.2, lit: true });
+  lmRow(ops, 87.8, -2.7, 87.8, 41.8, 12, 3.0, 0.35, 3.95, k => ['vnShopA', 'vnShopC', 'vnShopB'][k % 3], { d: 0.2, lit: true });
+  for (const [y0, y1] of FW.slice(1)) { lmRow(ops, 86.7, -16.9, 86.7, -2.7, 4, 1.45, y0, y1, 'vnWin', () => Object.assign({ lit: lmLit(0.35) }, winS)); lmRow(ops, 87.8, -2.7, 87.8, 41.8, 12, 1.45, y0, y1, 'vnWin', () => Object.assign({ lit: lmLit(0.35) }, winS)); }
+  // Saules iela: four floors, a stair window over the side entrance
+  for (let k = 0; k < 13; k++) {
+    const t = (k + 0.5) / 13, u = 84.4 + (39.5 - 84.4) * t, v = 45.2 + 0.1 * t;
+    if (k === 3) { lmOp(ops, u, v, 1.1, 3.4, 14.3, 'vnStrip', { d: 0.3, lit: lmLit(0.7) }); lmOp(ops, u, v, 1.6, 0, 2.9, 'vnSideDoor', { d: 0.3 }); continue; }
+    for (const [y0, y1] of FW) lmOp(ops, u, v, 1.45, y0, y1, 'vnWin', Object.assign({ lit: lmLit(0.35) }, winS));
+  }
+  // courtyard
+  const court = [[58, 2.3, 74, 2.3, 4], [74, 2.3, 74, 30.4, 8], [74, 30.4, 58, 30.4, 4], [58, 30.4, 58, 2.3, 8]];
+  for (const [a, b, c, d, n] of court) for (const [y0, y1] of FW) lmRow(ops, a, b, c, d, n, 1.45, y0, y1, 'vnWin', () => Object.assign({ lit: lmLit(0.3) }, winS));
+  // south-west wing (was the Latvian Society's terrace) and its set-back top floor
+  const FN = [[1.6, 3.6], [5.0, 7.2], [8.4, 11.0]];
+  lmRow(ops, 26.2, 44.5, 26.2, 31.0, 5, 0.9, 0.3, 0.85, 'vnBase', { d: 0.15 });
+  for (const [y0, y1] of FN) { lmRow(ops, 26.2, 44.5, 26.2, 31.0, 5, 1.45, y0, y1, 'vnWin', () => Object.assign({ lit: lmLit(0.4) }, winS)); lmRow(ops, 39.5, 44.5, 26.2, 44.5, 4, 1.45, y0, y1, 'vnWin', () => Object.assign({ lit: lmLit(0.4) }, winS)); }
+  lmRow(ops, 39.5, 44.5, 26.2, 44.5, 4, 0.9, 0.3, 0.85, 'vnBase', { d: 0.15 });
+  lmRow(ops, 39.5, 45.3, 39.5, 31.0, 4, 1.3, 13.0, 14.6, 'vnWin', () => ({ d: 0.2, lit: lmLit(0.4) }));
+  for (const [a, b, c, d] of [[30.5, 42.5, 30.5, 33.5], [39.5, 42.5, 30.5, 42.5], [30.5, 33.5, 39.5, 33.5]]) lmRow(ops, a, b, c, d, 3, 1.2, 13.2, 14.8, 'vnWin', () => ({ d: 0.2, lit: lmLit(0.4) }));
+  // stage tower: a row of small windows under the cornice
+  for (const [a, b, c, d, n] of [[38, 2.3, 56, 2.3, 8], [56, 27.5, 38, 27.5, 8], [38, 27.5, 38, 2.3, 10], [56, 2.3, 56, 27.5, 10]]) lmRow(ops, a, b, c, d, n, 0.8, 22.0, 22.8, 'vnSmall', () => ({ d: 0.15, lit: lmLit(0.3) }));
+
+  const blocks = [
+    { poly: [[0, 0], [11.5, 0], [11.5, -3.0], [26.2, -3.0], [26.2, 31.2], [12.6, 31.2], [12.6, 29.4], [0, 29.4]], top: 17.3, st: ash, cornice: [[17.3, 17.55, 0.15, STONE], [17.55, 18.2, 0.75, STONE]], roof: ROOF, roofY: 18.2 },
+    { poly: [[2.6, -3.6], [11.5, -3.6], [11.5, 0], [2.6, 0]], top: 15.75, st: ash, cornice: [[15.75, 15.95, 0.12, STONE], [15.95, 16.55, 0.6, STONE]], roof: ROOF, roofY: 16.55 },
+    { poly: [[2.9, 29.4], [12.6, 29.4], [12.6, 32.5], [2.9, 32.5]], top: 15.75, st: ash, cornice: [[15.75, 15.95, 0.12, STONE], [15.95, 16.55, 0.6, STONE]], roof: ROOF, roofY: 16.55 },
+    { poly: [[26.2, -3.0], [38, -3.0], [38, 31.0], [26.2, 31.0]], top: 15.3, st: ren, cornice: [[15.3, 16.0, 0.3, TRIM]], roof: ROOF, roofY: 16.0 },
+    { poly: [[30, -15], [48.5, -15], [48.5, 2.3], [38, 2.3], [38, -3.0], [30, -3.0]], top: 14.2, st: ren, cornice: [[14.2, 15.0, 0.35, TRIM]], roof: ROOF, roofY: 15.0 },
+    { poly: [[38, 2.3], [56, 2.3], [56, 27.5], [38, 27.5]], top: 23.3, st: ren, cornice: [[23.3, 24.0, 0.4, TRIM]], roof: ROOF, roofY: 24.0 },
+    { poly: [[48.5, -16.7], [86.7, -16.9], [86.7, -2.7], [87.8, -2.7], [87.8, 41.8], [87.34, 43.5], [86.1, 44.74], [84.4, 45.2], [39.5, 45.3], [39.5, 31.0], [38, 31.0], [38, 27.5], [56, 27.5], [56, 2.3], [48.5, 2.3]],
+      holes: [[[58, 2.3], [58, 30.4], [74, 30.4], [74, 2.3]]], top: 14.95, st: ren, cornice: [[14.95, 15.8, 0.35, TRIM]], roof: ROOF, roofY: 15.8 },
+    { poly: [[26.2, 31.0], [39.5, 31.0], [39.5, 44.5], [26.2, 44.5]], top: 12.0, st: ren, cornice: [[12.0, 12.6, 0.3, TRIM]], roof: hb('#6a6b6b'), roofY: 12.6 },
+    { poly: [[30.5, 33.5], [39.5, 33.5], [39.5, 42.5], [30.5, 42.5]], y0: 12.6, top: 15.2, st: { tex: 1, col: WALL } }
+  ];
+  for (const b of blocks) lmBlock(K, f, b, ops);
+
+  const G = K.plain, at = (u, v, y) => { const w = lmW(f, u, v); return [w[0], y, w[1]]; };
+  // loggia: back wall with five bays of doors and windows, stylobate, soffit
+  const back = [], bays = [8.21, 11.43, 14.65, 17.87, 21.09];
+  bays.forEach((v, k) => {
+    lmOp(back, 3.0, v, 1.62, 1.07, 5.15, k % 2 ? 'vnShopWin' : 'vnDoor', { d: 0.3, lit: true });
+    lmOp(back, 3.0, v, 1.55, 7.2, 9.6, 'vnWinMid', { d: 0.3, lit: lmLit(0.85), sill: TRIM });
+    lmOp(back, 3.0, v, 1.85, 11.55, 13.25, 'vnWinTop', { d: 0.3, lit: lmLit(0.7) });
+  });
+  const bP = lmW(f, 3.0, 23.85), bQ = lmW(f, 3.0, 5.55);
+  lmWall(K, bP, bQ, 1.07, 14.6, lmOpsFor(f, back, [3.0, 23.85], [3.0, 5.55]), ash);
+  const BF = lmWF(bP, bQ); lmBoxW(G, BF, 0, 18.3, 9.6, 9.72, -0.08, 0, TRIM); lmBoxW(G, BF, 0, 18.3, 11.3, 11.4, -0.06, 0, TRIM);
+  // steps, granite
+  for (let k = 0; k < 7; k++) lmBoxL(G, f, -2.8 + 0.4 * k, 0.02, -0.4, 29.8, k * 0.153, (k + 1) * 0.153, sh(STEP, 0.96 + (k % 2) * 0.05), false);
+  lmBoxL(G, f, 0, 3.0, 5.55, 23.85, 0, 1.071, STEP, false);
+  // entablature over the columns
+  lmBoxL(G, f, -0.2, 0.5, 5.4, 24.0, 14.55, 14.98, STONE);
+  // six columns with Corinthian capitals
+  for (let k = 0; k < 6; k++) {
+    const v = 6.6 + k * 3.22, [cx, cz] = lmW(f, 1.0, v);
+    lmBoxL(G, f, 0.25, 1.75, v - 0.75, v + 0.75, 1.07, 1.35, STONE, false);
+    lmLathe(G, cx, cz, 1.35, [[0.75, 0], [0.78, 0.08], [0.74, 0.18], [0.66, 0.24], [0.68, 0.3], [0.62, 0.36]], 20, STONE);
+    lmLathe(G, cx, cz, 1.71, [[0.62, 0], [0.625, 1.5], [0.61, 5.0], [0.58, 8.5], [0.555, 11.34]], 20, STONE);
+    lmLathe(G, cx, cz, 13.05, [[0.555, 0], [0.6, 0.05], [0.6, 0.12], [0.56, 0.16], [0.6, 0.5], [0.7, 0.95], [0.84, 1.25], [0.86, 1.35]], 20, STONE);
+    for (let r = 0; r < 2; r++) for (let i = 0; i < 8; i++) {   // acanthus leaves in two rows, tips curling out
+      const a = (i + r * 0.5) / 8 * 2 * Math.PI, ca = Math.cos(a), sa = Math.sin(a), ta = -sa, tb = ca, y0 = 13.2 + r * 0.38, y1 = y0 + 0.62, r0 = 0.6, r1 = 0.82, w0 = 0.16, w1 = 0.2;
+      const p = (rr, y, w) => [cx + ca * rr + ta * w, y, cz + sa * rr + tb * w];
+      polyA(G, [p(r0, y0, -w0), p(r0, y0, w0), p(r1, y1, w1), p(r1, y1, -w1)], sh(STONE, 1.03), ca, -0.3, sa);
+      polyA(G, [p(r1, y1, -w1), p(r1, y1, w1), p(r1 + 0.12, y1 - 0.14, w1 * 0.6), p(r1 + 0.12, y1 - 0.14, -w1 * 0.6)], sh(STONE, 0.95), ca, 0.6, sa);
+    }
+    for (let i = 0; i < 4; i++) { const a = Math.PI / 4 + i * Math.PI / 2 + Math.atan2(f[3], f[2]), [x, z] = [cx + Math.cos(a) * 0.86, cz + Math.sin(a) * 0.86]; lmLathe(G, x, z, 14.06, [[0, 0], [0.14, 0.02], [0.17, 0.17], [0.14, 0.32], [0, 0.34]], 8, sh(STONE, 1.02)); }
+    lmBoxL(G, f, 1.0 - 0.95, 1.0 + 0.95, v - 0.95, v + 0.95, 14.4, 14.6, STONE);
+  }
+  // poster cases on the pylons
+  for (const v of [2.75, 26.65]) {
+    lmBoxL(G, f, -0.12, 0.0, v - 1.82, v + 1.82, 1.03, 3.62, hb('#2b2d2f'));
+    const P = lmW(f, -0.125, v + 1.8), Q = lmW(f, -0.125, v - 1.8), F = lmWF(P, Q), t = LMT.vnPoster;
+    K.det.q(F.at(0, 1.05, 0), F.at(3.6, 1.05, 0), F.at(3.6, 3.55, 0), F.at(0, 3.55, 0), [F.nx, 0, F.nz], [t.u1, t.v0, t.u0, t.v0, t.u0, t.v1, t.u1, t.v1], LMWHITE, 1);
+  }
+  // "Info centrs" sign over the side door
+  { const P = lmW(f, 14.85, 31.27), Q = lmW(f, 13.15, 31.27), F = lmWF(P, Q), t = LMT.vnInfo; K.det.q(F.at(0, 3.05, 0), F.at(1.7, 3.05, 0), F.at(1.7, 3.47, 0), F.at(0, 3.47, 0), [F.nx, 0, F.nz], [t.u1, t.v0, t.u0, t.v0, t.u0, t.v1, t.u1, t.v1], LMWHITE, 1); }
+  // lettering over the portico
+  lmSign(K, f, [-0.03, 9.7], [-0.03, 19.6], 15.98, 16.62, 'vnName', 0);
+  // concert-hall entrance canopy with its name
+  lmBoxL(G, f, 28.3, 30.0, -9.3, -5.1, 3.55, 3.95, hb('#3c3f42'));
+  lmSign(K, f, [28.27, -9.05], [28.27, -5.35], 3.6, 3.9, 'konc', 1);
+  // shop canopies along Rīgas iela and Ģimnāzijas iela
+  { const F1 = lmWF(lmW(f, 48.5, -16.7), lmW(f, 86.7, -16.9)); lmBoxW(G, F1, 0.4, F1.L - 0.4, 4.15, 4.35, -1.3, 0, hb('#3e4246')); }
+  { const F2 = lmWF(lmW(f, 86.7, -16.9), lmW(f, 86.7, -2.7)); lmBoxW(G, F2, 0.3, F2.L, 4.15, 4.35, -1.3, 0, hb('#3e4246')); }
+  { const F3 = lmWF(lmW(f, 87.8, -2.7), lmW(f, 87.8, 41.8)); lmBoxW(G, F3, 0, F3.L - 0.3, 4.15, 4.35, -1.3, 0, hb('#3e4246')); }
+  // side entrance canopy on Saules iela
+  { const u = 84.4 + (39.5 - 84.4) * (3.5 / 13), F4 = lmWF(lmW(f, 84.4, 45.2), lmW(f, 39.5, 45.3)), s = (84.4 - u); lmBoxW(G, F4, s - 1.3, s + 1.3, 3.0, 3.2, -1.1, 0, hb('#3e4246')); }
+  // terrace railing on the south-west wing, hipped metal roof of its top floor
+  for (const [u0, v0, u1, v1] of [[26.45, 31.3, 26.45, 44.25], [26.45, 44.25, 39.4, 44.25], [26.45, 31.3, 30.3, 31.3]]) {
+    const A = lmW(f, u0, v0), B = lmW(f, u1, v1), L = Math.hypot(B[0] - A[0], B[1] - A[1]);
+    lmBar(G, [A[0], 13.6, A[1]], [B[0], 13.6, B[1]], 0.06, IRON); lmBar(G, [A[0], 13.1, A[1]], [B[0], 13.1, B[1]], 0.03, IRON);
+    for (let s = 0; s <= L + 0.01; s += L / Math.max(1, Math.round(L / 1.5))) { const x = A[0] + (B[0] - A[0]) * s / L, z = A[1] + (B[1] - A[1]) * s / L; lmBar(G, [x, 12.6, z], [x, 13.63, z], 0.05, IRON); }
+  }
+  { const M = hb('#b5babd'), e0 = 15.2, top = 16.9, a = at(30.2, 33.2, e0), b = at(39.8, 33.2, e0), c = at(39.8, 42.8, e0), d = at(30.2, 42.8, e0), apex = at(35, 38, top);
+    polyA(G, [a, b, apex], M, f[3], 1, -f[2]); polyA(G, [b, c, apex], sh(M, 0.95), f[2], 1, f[3]); polyA(G, [c, d, apex], M, -f[3], 1, f[2]); polyA(G, [d, a, apex], sh(M, 0.9), -f[2], 1, -f[3]);
+    polyA(G, [a, b, c, d], sh(WALL, 0.6), 0, -1, 0); }
+  // flagpole with the Latvian flag on the stage tower
+  { const [x, z] = lmW(f, 47, 4.0); lmBar(G, [x, 24, z], [x, 31.2, z], 0.09, hb('#d9d9d6')); lmLathe(G, x, z, 31.2, [[0, 0], [0.09, 0.05], [0.07, 0.15], [0, 0.2]], 8, hb('#c9a24a'));
+    const CAR = hb('#9e3039'), WH = hb('#f3f1ec'), dir = [-f[3], f[2]], fl = (y0, y1, col) => {
+      const A = [x, y0, z], B = [x + dir[0] * 2.1, y0 - 0.05, z + dir[1] * 2.1], Cc = [x + dir[0] * 2.1, y1 - 0.05, z + dir[1] * 2.1], D = [x, y1, z]; polyA(G, [A, B, Cc, D], col, f[2], 0, f[3]); polyA(G, [A, B, Cc, D], col, -f[2], 0, -f[3]); };
+    fl(29.6, 30.02, CAR); fl(30.02, 30.23, WH); fl(30.23, 30.65, CAR); }
+  // roof boxes
+  lmBoxL(G, f, 64, 68, -12, -8, 15.8, 16.9, hb('#8d9091')); lmBoxL(G, f, 78, 81, 34, 38, 15.8, 16.6, hb('#8d9091')); lmBoxL(G, f, 30, 33, 5, 9, 16.0, 17.2, hb('#8d9091'));
+  // collisions for the steps (the building itself collides through its cadastre outline)
+  const s0 = lmW(f, -2.8, -0.4), s1 = lmW(f, -2.8, 29.8), s2 = lmW(f, 0, -0.4), s3 = lmW(f, 0, 29.8);
+  COL.add(s0[0], s0[1], s1[0], s1[1], 0, 0); COL.add(s0[0], s0[1], s2[0], s2[1], 0, 0); COL.add(s1[0], s1[1], s3[0], s3[1], 0, 0);
+}
+// an upright sign between two local points, the first at the viewer's left; it faces that viewer
+function lmSign(K, f, pl, pr, y0, y1, name, lit, B = K.txt, t = LMS[name]) {
+  const F = lmWF(lmW(f, pr[0], pr[1]), lmW(f, pl[0], pl[1]));   // runs right to left, so its normal points at the viewer
+  B.q(F.at(0, y0, 0), F.at(F.L, y0, 0), F.at(F.L, y1, 0), F.at(0, y1, 0), [F.nx, 0, F.nz], [t.u1, t.v0, t.u0, t.v0, t.u0, t.v1, t.u1, t.v1], LMWHITE, lit);
+}
+
+/* ---- Park Hotel Latgola (hotel "Latvija", 1975–85, reconstructed in the 2000s) and the Latgola shopping centre ---- */
+const LAT_FL = f => 4.2 + (f - 2) * 2.9;                     // floors 2..10 above a 4.2 m ground floor
+const latWave = v => { const t = Math.max(0, Math.min(1, (v - 7.2) / 44.2)); return 33.7 + 0.9 * t + 2.3 * Math.sin(Math.PI * Math.pow(t, 0.85)); };
+function lmLatgola(K) {
+  const f = LMF.lat, ops = [], G = K.plain, at = (u, v, y) => { const w = lmW(f, u, v); return [w[0], y, w[1]]; };
+  const GREY = hb('#b3b7b5'), BEIGE = hb('#ead6a8'), BACK = hb('#d8d2c2'), YEL = hb('#f2d15a'), CAP = hb('#e4e5e2'), STEEL = hb('#8e9396'), FRAME = hb('#8f989e');
+  const grey = { tex: 1, col: GREY }, beige = { tex: 1, col: BEIGE }, back = { tex: 1, col: BACK }, yel = { tex: 1, col: YEL, plinth: 0.4, pcol: hb('#8d8f90') };
+  const byFace = (a, b) => Math.abs(b[1] - a[1]) < 0.01 && a[1] > 51 ? beige : Math.abs(b[0] - a[0]) < 0.01 && a[0] > 19 ? back : grey;
+  // ground floor: shop windows, slatted bays, the hotel entrance
+  for (let k = 0; k < 16; k++) lmOp(ops, 0, (k + 0.5) * 3.6625, 3.6625, 0.05, 4.15, k === 7 || k === 8 ? 'latDoor' : k % 4 === 3 ? 'latSlat' : 'latStore', { d: 0.3, lit: true });
+  for (let fl = 2; fl <= 10; fl++) {
+    const y = LAT_FL(fl);
+    lmOp(ops, 0, 3.6, 1.25, y + 0.85, y + 2.1, 'latSq', { d: 0.12, lit: lmLit(0.5) });           // stair window in the north-west end
+    lmOp(ops, 5.1, -1.75, 1.0, y + 1.0, y + 2.0, 'latSq', { d: 0.12, lit: lmLit(0.4) });
+    lmOp(ops, 12.25, -3.5, 1.0, y + 1.0, y + 2.0, 'latSq', { d: 0.12, lit: lmLit(0.4) });
+    for (let g = 0; g < 6; g++) for (let k = 0; k < 3; k++) {                                     // rooms: six groups of three windows
+      if ((g === 3 || g === 4) && (fl === 7 || fl === 8)) continue;
+      lmOp(ops, 0, 7.2 + g * 7.367 + (k + 0.5) * 2.4557, 2.4557, y, y + 2.9, 'lat' + (fl % 2 ? 'A' : 'B') + 'LMR'[k], { d: 0.03, lit: lmLit(0.42) });
+    }
+    for (let c = 0; c < 6; c++) lmOp(ops, 0, 51.4 + (c + 0.5) * 1.2, 1.2, y, y + 2.9, 'latCurt', { d: 0.03, lit: true });   // glazed stair and lift hall
+    if (fl >= 4) { lmOp(ops, 9.6, 58.6, 1.4, y, y + 2.9, 'latStripO', { d: 0.05, lit: lmLit(0.5) }); lmRow(ops, 19.4, 57, 19.4, -2, 20, 1.9, y + 0.75, y + 2.25, 'latBackW', () => ({ d: 0.15, lit: lmLit(0.4) })); }
+  }
+  lmOp(ops, 0, 36.68, 14.74, 18.7, 24.5, 'latFrameGl', { d: 0.4, lit: lmLit(0.8) });               // the framed two-storey window
+  lmOp(ops, 3.1, 58.6, 3.2, 0.05, 4.15, 'latStore', { d: 0.3, lit: true });
+  lmOp(ops, 0, 3.6, 1.25, 31.0, 32.25, 'latSq', { d: 0.12, lit: lmLit(0.5) });
+  for (let c = 0; c < 6; c++) for (const [y0, y1] of [[30.3, 33.2], [33.2, 36.1]]) lmOp(ops, 0, 51.4 + (c + 0.5) * 1.2, 1.2, y0, y1, 'latCurt', { d: 0.03, lit: true });
+  lmOp(ops, 9.6, 58.6, 1.4, 30.3, 33.2, 'latStripO', { d: 0.05, lit: lmLit(0.5) });
+  // annex with the PLAZA entrance and its glass vestibule
+  for (const [v, w, tile] of [[60.35, 1.7, 'mallGlass'], [62.05, 1.7, 'mallGlass'], [64.65, 3.5, 'mallDoor'], [67.25, 1.7, 'mallGlass'], [68.95, 1.7, 'mallGlass']]) lmOp(ops, -0.5, v, w, 0, 3.3, tile, { d: 0.03, lit: true });
+  lmRow(ops, -0.5, 69.8, 6.35, 69.8, 4, 1.71, 0, 3.3, 'mallGlass', { d: 0.03, lit: true }); lmRow(ops, 6.35, 59.5, -0.5, 59.5, 4, 1.71, 0, 3.3, 'mallGlass', { d: 0.03, lit: true });
+  // shopping centre
+  const MALL = [[19.4, -3.5], [84.2, -3.2], [87.4, -3.2], [86.4, 61.6], [82.7, 65.7], [79.1, 69.6], [23.4, 68.8], [19.3, 68.8]];
+  const seg = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], se = u => seg([23.4, 68.8], [79.1, 69.6], (u - 23.4) / 55.7);
+  for (let c = 0; c < 10; c++) for (const [y0, y1] of [[0, 2.45], [2.45, 4.9], [4.9, 7.35], [7.35, 9.8]]) { const p = se(33 + (c + 0.5) * 1.4); lmOp(ops, p[0], p[1], 1.4, y0, y1, 'mallGlass', { d: 0.03, lit: true }); }
+  { const p = se(52); lmOp(ops, p[0], p[1], 4.0, 0, 3.6, 'mallDoor', { d: 0.4, lit: true }); }
+  for (const u of [63, 67, 71, 75]) { const p = se(u); lmOp(ops, p[0], p[1], 3.6, 0.3, 3.9, 'mallStore', { d: 0.25, lit: true }); }
+  { const p = seg(MALL[3], MALL[4], 0.5); lmOp(ops, p[0], p[1], 3.6, 0.3, 3.9, 'mallStore', { d: 0.25, lit: true }); const q = seg(MALL[4], MALL[5], 0.5); lmOp(ops, q[0], q[1], 4.0, 0, 3.6, 'mallDoor', { d: 0.4, lit: true }); }
+  { const a = seg(MALL[2], MALL[3], 0.08), b = seg(MALL[2], MALL[3], 0.92); lmRow(ops, a[0], a[1], b[0], b[1], 8, 3.6, 0.3, 3.9, 'mallStore', { d: 0.25, lit: true }); }
+  { const a = seg(MALL[0], MALL[1], 0.1), b = seg(MALL[0], MALL[1], 0.75); lmRow(ops, a[0], a[1], b[0], b[1], 6, 3.6, 0.3, 3.9, 'mallStore', { d: 0.25, lit: true }); const c = seg(MALL[0], MALL[1], 0.88); lmOp(ops, c[0], c[1], 3.0, 0, 3.2, 'mallService', { d: 0.2 }); }
+
+  const blocks = [
+    { poly: [[0, 0], [0, 58.6], [19.4, 58.6], [19.4, -3.5], [5.1, -3.5], [5.1, 0]], top: 30.3, st: byFace, roof: hb('#9b9d9c') },
+    { poly: [[0, 0], [0, 7.2], [19.4, 7.2], [19.4, -3.5], [5.1, -3.5], [5.1, 0]], y0: 30.3, top: 33.7, st: grey },
+    { poly: [[0, 51.4], [0, 58.6], [19.4, 58.6], [19.4, 51.4]], y0: 30.3, top: 35.4, st: byFace },
+    { poly: [[2, 52.4], [2, 57.6], [11, 57.6], [11, 52.4]], y0: 36.0, top: 38.2, st: { tex: 1, col: hb('#dcdcd6') } },
+    { poly: [[6.3, 58.6], [6.4, 69.0], [19.3, 68.8], [19.3, 58.6]], top: 8.4, st: yel, cornice: [[8.4, 9.0, 0.12, hb('#b9bcbd')]], roof: hb('#77797a'), roofY: 9.0 },
+    { poly: [[-0.5, 59.5], [-0.5, 69.8], [6.35, 69.8], [6.35, 59.5]], top: 3.3, st: yel },
+    { poly: MALL, top: 9.8, st: yel, cornice: [[9.8, 10.5, 0.15, hb('#a9adb0')]], roof: hb('#6f7173'), roofY: 10.5 }
+  ];
+  for (const b of blocks) lmBlock(K, f, b, ops);
+  // frame around the two-storey window
+  lmBoxL(G, f, -0.35, 0.02, 28.5, 44.85, 24.5, 25.3, FRAME); lmBoxL(G, f, -0.35, 0.02, 28.5, 44.85, 17.9, 18.7, FRAME);
+  lmBoxL(G, f, -0.35, 0.02, 28.5, 29.31, 18.7, 24.5, FRAME, false); lmBoxL(G, f, -0.35, 0.02, 44.05, 44.85, 18.7, 24.5, FRAME, false);
+  // canopy over the ground floor
+  lmBoxL(G, f, -1.7, 0.02, 0, 58.6, 4.15, 4.45, CAP);
+  // glazed top floor under the wave
+  for (let m = 0; m < 18; m++) {
+    const v0 = 7.2 + m * 2.4557, v1 = v0 + 2.4557, t = LMT.latTop, lit = lmLit(0.85) ? 1 : 0;
+    K.det.q(at(1.2, v0, 30.3), at(1.2, v1, 30.3), at(1.2, v1, latWave(v1)), at(1.2, v0, latWave(v0)), [-f[2], 0, -f[3]], [t.u0, t.v0, t.u1, t.v0, t.u1, t.v1, t.u0, t.v1], LMWHITE, lit);
+    K.det.q(at(19.4, v1, 30.3), at(19.4, v0, 30.3), at(19.4, v0, latWave(v0)), at(19.4, v1, latWave(v1)), [f[2], 0, f[3]], [t.u0, t.v0, t.u1, t.v0, t.u1, t.v1, t.u0, t.v1], LMWHITE, lit);
+    const r = LMT.latRail; K.det.q(at(0.08, v0, 30.3), at(0.08, v1, 30.3), at(0.08, v1, 31.4), at(0.08, v0, 31.4), [-f[2], 0, -f[3]], [r.u0, r.v0, r.u1, r.v0, r.u1, r.v1, r.u0, r.v1], LMWHITE, 0);
+    const l = LMT.latLight, vm = (v0 + v1) / 2, yl = latWave(vm) - 0.03;
+    K.det.q(at(-1.05, vm - 0.17, yl), at(-0.7, vm - 0.17, yl), at(-0.7, vm + 0.17, yl), at(-1.05, vm + 0.17, yl), [0, -1, 0], [l.u0, l.v0, l.u1, l.v0, l.u1, l.v1, l.u0, l.v1], LMWHITE, 1);
+  }
+  { const A = at(0.08, 7.2, 31.42), B = at(0.08, 51.4, 31.42); lmBar(G, A, B, 0.07, STEEL); }
+  // the wave: a thin roof over the top floor, flat over the north-west stair block
+  const vs = [-0.6, 7.2]; for (let k = 1; k <= 44; k++) vs.push(7.2 + 44.2 * k / 44);
+  const hc = v => v <= 7.2 ? 33.7 : latWave(v), TH = 0.5;
+  for (let k = 0; k < vs.length - 1; k++) {
+    const va = vs[k], vb = vs[k + 1], ya = hc(va), yb = hc(vb);
+    polyA(G, [at(-1.6, va, ya), at(20.6, va, ya), at(20.6, vb, yb), at(-1.6, vb, yb)], hb('#cfd1cf'), 0, -1, 0);
+    polyA(G, [at(-1.6, va, ya + TH), at(20.6, va, ya + TH), at(20.6, vb, yb + TH), at(-1.6, vb, yb + TH)], hb('#c9cbca'), 0, 1, 0);
+    polyA(G, [at(-1.6, va, ya), at(-1.6, vb, yb), at(-1.6, vb, yb + TH), at(-1.6, va, ya + TH)], CAP, -f[2], 0, -f[3]);
+    polyA(G, [at(20.6, va, ya), at(20.6, vb, yb), at(20.6, vb, yb + TH), at(20.6, va, ya + TH)], CAP, f[2], 0, f[3]);
+  }
+  polyA(G, [at(-1.6, -0.6, 33.7), at(20.6, -0.6, 33.7), at(20.6, -0.6, 34.2), at(-1.6, -0.6, 34.2)], CAP, f[3], 0, -f[2]);
+  // caps of the south-east block and of the machine room, the clock
+  lmBoxL(G, f, -1.0, 20.4, 50.4, 59.6, 35.4, 36.0, CAP); lmBoxL(G, f, 1.4, 11.6, 51.8, 58.2, 38.2, 38.55, CAP);
+  lmSign(K, f, [1.97, 53.1], [1.97, 56.9], 36.45, 37.85, null, 0, K.clk, { u0: 0, u1: 1, v0: 0, v1: 1 });
+  lmBoxL(G, f, 1.97, 2.02, 52.95, 57.05, 36.3, 38.0, hb('#2a2c2e'));
+  // lettering: HOTEL on the roof, PLAZA over the side entrance, the Latgola sign of the shopping centre
+  lmSign(K, f, [-0.3, -0.4], [-0.3, 6.6], 34.3, 36.1, 'hotel', 1);
+  { const [x, z] = lmW(f, 0.1, -0.2), [x2, z2] = lmW(f, 0.1, 6.4); lmBar(G, [x, 34.2, z], [x2, 34.2, z2], 0.08, STEEL); }
+  lmSign(K, f, [6.265, 61.2], [6.315, 66.4], 4.6, 6.2, 'plaza', 1);
+  lmBoxL(G, f, -1.1, 6.35, 59.0, 70.3, 3.3, 3.55, CAP);
+  { const pl = se(22.4), pr = se(31.6); lmSign(K, f, [pl[0], pl[1] + 0.06], [pr[0], pr[1] + 0.06], 4.4, 8.6, 'latgola', 1); }
+  { const p = se(57.5), t = LMT.mallSigns; lmBoxL(G, f, p[0] - 1.05, p[0] + 1.05, p[1], p[1] + 0.15, 1.4, 8.6, hb('#2e3134')); lmSign(K, f, [p[0] - 1.0, p[1] + 0.16], [p[0] + 1.0, p[1] + 0.16], 1.5, 8.5, null, 1, K.det, t); }
+  { const F = lmWF(lmW(f, 79.1, 69.6), lmW(f, 23.4, 68.8)), s = 79.1 - 52; lmBoxW(G, F, s - 2.4, s + 2.4, 3.75, 3.95, -1.6, 0, hb('#5a5f63')); }
+  // roof plant on the shopping centre
+  for (const [u0, u1, v0, v1, h] of [[40, 44, 20, 23, 1.6], [60, 65, 35, 38, 1.3], [55, 58, 10, 12, 1.1], [70, 74, 50, 54, 1.5], [30, 33, 45, 49, 1.2]]) lmBoxL(G, f, u0, u1, v0, v1, 10.5, 10.5 + h, hb('#9da1a3'), false);
+}
+
+/* ---- the square in front: paving, flower beds, candelabra, benches ---- */
+const sphereProf = r => { const p = []; for (let k = 0; k <= 8; k++) { const a = -Math.PI / 2 + k * Math.PI / 8; p.push([Math.abs(Math.cos(a)) * r, r + Math.sin(a) * r]); } return p; };
+function lmCandelabrum(G, Gl, x, z, y0, rot) {
+  const IRON = hb('#262b2f'), GLOBE = hb('#f4f1e8');
+  lmLathe(G, x, z, y0, [[0.36, 0], [0.36, 0.1], [0.3, 0.16], [0.3, 0.5], [0.24, 0.62], [0.26, 0.7], [0.17, 0.86], [0.14, 1.0]], 12, IRON);
+  lmLathe(G, x, z, y0 + 1.0, [[0.14, 0], [0.12, 2.2], [0.16, 2.28], [0.16, 2.36], [0.1, 2.42], [0.08, 2.5], [0.07, 3.6]], 12, IRON);
+  for (let k = 0; k < 4; k++) {
+    const a = rot + Math.PI / 4 + k * Math.PI / 2, c = Math.cos(a), s = Math.sin(a), Pt = (r, y) => [x + c * r, y0 + y, z + s * r];
+    lmBar(G, Pt(0.07, 2.75), Pt(0.35, 2.95), 0.05, IRON); lmBar(G, Pt(0.35, 2.95), Pt(0.62, 3.0), 0.05, IRON); lmBar(G, Pt(0.62, 3.0), Pt(0.72, 3.12), 0.05, IRON); lmBar(G, Pt(0.08, 2.55), Pt(0.35, 2.95), 0.035, IRON);
+    const [gx, , gz] = Pt(0.72, 0);
+    lmLathe(G, gx, gz, y0 + 3.1, [[0.04, 0], [0.1, 0.06], [0.12, 0.12]], 10, IRON); lmLathe(Gl, gx, gz, y0 + 3.13, sphereProf(0.2), 12, GLOBE);
+  }
+  lmLathe(G, x, z, y0 + 3.6, [[0.07, 0], [0.13, 0.08], [0.14, 0.14]], 10, IRON); lmLathe(Gl, x, z, y0 + 3.63, sphereProf(0.23), 12, GLOBE);
+}
+// bench with its seat along v; the sitter looks towards +u (face 1) or -u (face -1)
+function lmBench(G, f, u, v, face) {
+  const WOODC = hb('#8a5a36'), IRONC = hb('#2b2f33');
+  for (const dv of [-0.75, 0.75]) { lmBoxL(G, f, u - 0.24, u + 0.24, v + dv - 0.035, v + dv + 0.035, 0, 0.43, IRONC, false); const ub = u - face * 0.25; lmBoxL(G, f, ub - 0.03, ub + 0.03, v + dv - 0.035, v + dv + 0.035, 0.43, 0.88, IRONC, false); }
+  for (let k = 0; k < 3; k++) { const uu = u - 0.16 + k * 0.16; lmBoxL(G, f, uu - 0.065, uu + 0.065, v - 0.9, v + 0.9, 0.43, 0.47, WOODC); }
+  for (let k = 0; k < 2; k++) { const ub = u - face * 0.27; lmBoxL(G, f, ub - 0.025, ub + 0.025, v - 0.9, v + 0.9, 0.55 + k * 0.16, 0.66 + k * 0.16, WOODC); }
+}
+function lmGrounds(K) {
+  const f = LMF.vn, G = K.plain, CURB = hb('#9a958e');
+  // paved forecourt of the theatre and of the concert-hall wing
+  { const pv = new GB(false), col = hb('#988779'), c = [[-10.5, -21.5], [30.5, -21.5], [30.5, 34.5], [-10.5, 34.5]].map(([u, v]) => lmW(f, u, v)), k = c.map(([x, z]) => pv.vert(x, 0, z, 0, 1, 0, col));
+    pv.triUp(k[0], k[1], k[2]); pv.triUp(k[0], k[2], k[3]); const m = pv.mesh(M_PAVE); m.renderOrder = -37.3; m.frustumCulled = false; m.receiveShadow = true; scene.add(m); }
+  const flowerTex = lmFlowerAtlas(), matFlower = lmStd({ map: flowerTex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.85, metalness: 0 }, 'lm-flower');
+  const inst = LM_FLOWERS.map(() => []);
+  for (const b of LM_BEDS) {
+    // outline: rounded rectangle, 6 points per corner
+    const ring = grow => { const pts = [], hu = b.hu + grow, hv = b.hv + grow, r = b.r + grow;
+      for (const [sx, sy, a0] of [[1, 1, 0], [-1, 1, 0.5], [-1, -1, 1], [1, -1, 1.5]]) for (let k = 0; k <= 6; k++) { const a = (a0 + k / 12) * Math.PI; pts.push(lmW(f, b.cu + sx * (hu - r) + Math.cos(a) * r, b.cv + sy * (hv - r) + Math.sin(a) * r)); }
+      let flat = []; for (const p of pts) flat.push(p[0], p[1]); if (area2(flat) < 0) flat = Array.from(reversed(flat)); return flat; };
+    const inner = ring(0), outer = ring(0.16);
+    vband(G, outer, 0, 0.18, CURB); band(G, inner, outer, 0.18, sh(CURB, 1.05), false); vband(G, inner, 0.13, 0.18, sh(CURB, 0.9), -1);
+    for (let i = 0; i < outer.length / 2; i++) { const j = (i + 1) % (outer.length / 2); COL.add(outer[2 * i], outer[2 * i + 1], outer[2 * j], outer[2 * j + 1], 0, 0); }
+    // soil surface painted with the planting pattern
+    const PXM = 32, W = Math.round(2 * b.hu * PXM), H = Math.round(2 * b.hv * PXM), cv = mkCanvas(W, H), g = cv.getContext('2d'), id = g.createImageData(W, H), d = id.data;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const du = (x + 0.5) / PXM - b.hu, dv = (y + 0.5) / PXM - b.hv, sp = bedSpecies(b, du, dv, bedDist(b, b.cu + du, b.cv + dv)), n = 0.42 + Math.random() * 0.3;
+      const c = sp < 0 ? [92, 74, 58] : (Math.random() < 0.45 ? [58, 88, 40] : hb(LM_FLOWERS[sp].col)), k = 4 * (y * W + x);
+      d[k] = c[0] * n; d[k + 1] = c[1] * n; d[k + 2] = c[2] * n; d[k + 3] = 255;
+    }
+    g.putImageData(id, 0, 0);
+    const sp = [], uv = [], ix = [], [cx, cz] = lmW(f, b.cu, b.cv); sp.push(cx, 0.13, cz); uv.push(0.5, 0.5);
+    for (let i = 0; i < inner.length / 2; i++) { const [lu, lv] = lmL(f, inner[2 * i], inner[2 * i + 1]); sp.push(inner[2 * i], 0.13, inner[2 * i + 1]); uv.push((lu - b.cu + b.hu) / (2 * b.hu), 1 - (lv - b.cv + b.hv) / (2 * b.hv)); }
+    const n = inner.length / 2; for (let i = 0; i < n; i++) ix.push(0, 1 + (i + 1) % n, 1 + i);
+    const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3)); sg.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    sg.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(sp.length).fill(0).map((_, k) => k % 3 === 1 ? 1 : 0), 3)); sg.setIndex(ix);
+    const sm = new THREE.Mesh(sg, lmStd({ map: toTex(cv, true, false), roughness: 0.95, metalness: 0, side: THREE.DoubleSide }, 'lm-bed')); sm.receiveShadow = true; scene.add(sm);
+    // plants on a jittered grid
+    for (let a = -b.hu; a < b.hu; a += 0.24) for (let c = -b.hv; c < b.hv; c += 0.24) {
+      const du = a + (lr() - 0.5) * 0.18, dv = c + (lr() - 0.5) * 0.18, dd = bedDist(b, b.cu + du, b.cv + dv); if (dd > -0.1) continue;
+      const s = bedSpecies(b, du, dv, dd); if (s < 0) continue;
+      const [x, z] = lmW(f, b.cu + du, b.cv + dv); inst[s].push(x, z, lr() * 6.283, 0.85 + lr() * 0.35);
+    }
+    // candelabra at the ends of the carpet bed, on granite pedestals
+    for (const lv of b.lamps) { lmBoxL(G, f, b.cu - 0.5, b.cu + 0.5, lv - 0.5, lv + 0.5, 0, 0.75, hb('#8d8780'), false); const [x, z] = lmW(f, b.cu, lv); lmCandelabrum(G, K.globe, x, z, 0.75, Math.atan2(f[3], f[2])); }
+  }
+  // benches facing the beds
+  for (const v of [6.6, 11.6, 17.8, 22.9]) lmBench(G, f, -21.6, v, 1);
+  for (const v of [-15.4, -10.6]) lmBench(G, f, 1.2, v, 1);
+  // one instanced mesh per plant: two crossed upright cards and one seen from above
+  const M4 = new THREE.Matrix4(), Q4 = new THREE.Quaternion(), V3 = new THREE.Vector3(), S3 = new THREE.Vector3(), UPY = new THREE.Vector3(0, 1, 0), C3 = new THREE.Color();
+  LM_FLOWERS.forEach((fl, s) => {
+    const list = inst[s], n = list.length / 4; if (!n) return;
+    const w = 0.36, h = fl.h, yt = h * 0.78, u0 = s / 8, u1 = (s + 1) / 8;
+    const pos = [-w / 2, 0, 0, w / 2, 0, 0, w / 2, h, 0, -w / 2, h, 0, 0, 0, -w / 2, 0, 0, w / 2, 0, h, w / 2, 0, h, -w / 2, -w / 2, yt, -w / 2, w / 2, yt, -w / 2, w / 2, yt, w / 2, -w / 2, yt, w / 2];
+    const uvs = [u0, 0.5, u1, 0.5, u1, 1, u0, 1, u0, 0.5, u1, 0.5, u1, 1, u0, 1, u0, 0, u1, 0, u1, 0.5, u0, 0.5];
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(36).fill(0).map((_, k) => k % 3 === 1 ? 1 : 0), 3)); geo.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7, 8, 9, 10, 8, 10, 11]);
+    const im = new THREE.InstancedMesh(geo, matFlower, n);
+    for (let i = 0; i < n; i++) { const sc = list[4 * i + 3]; Q4.setFromAxisAngle(UPY, list[4 * i + 2]); M4.compose(V3.set(list[4 * i], 0.13, list[4 * i + 1]), Q4, S3.set(sc, sc * (0.9 + lr() * 0.2), sc)); im.setMatrixAt(i, M4); const t = 0.85 + lr() * 0.25; im.setColorAt(i, C3.setRGB(t, t, t)); }
+    im.instanceMatrix.needsUpdate = true; im.instanceColor.needsUpdate = true; im.frustumCulled = false; im.receiveShadow = true; scene.add(im);
+  });
+}
+
+/* ---- materials, night lights, the hotel clock ---- */
+const LMM = {}; let lmClk = null;
+function lmNight(n) {
+  if (!LMM.det) return;
+  LMM.det.emissiveIntensity = n * 1.7; LMM.txt.emissiveIntensity = n * 1.5; LMM.ash.emissiveIntensity = n * 0.16; LMM.globe.emissiveIntensity = n * 3.2; LMM.clk.emissiveIntensity = 0.9 + n * 1.3;
+}
+function lmTick() {
+  if (!lmClk) return;
+  const m = Math.floor((TX.ok ? TX.sec : rigaNow().sec) / 60) % 1440; if (m === lmClk.m) return; lmClk.m = m;
+  const g = lmClk.g, W = lmClk.cv.width, H = lmClk.cv.height;
+  g.fillStyle = '#111213'; g.fillRect(0, 0, W, H); g.font = '700 50px "Courier New", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = '#2a1210'; g.fillText('88:88', W / 2, H / 2 + 2); g.fillStyle = '#ff3a22'; g.fillText(Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0'), W / 2, H / 2 + 2);
+  lmClk.tex.needsUpdate = true;
+}
+const LM_SAFE = s => { s.fragmentShader = s.fragmentShader.replace('gl_FragColor = vec4( outgoingLight, diffuseColor.a );',
+  '#if __VERSION__ >= 300\nif (any(isnan(outgoingLight)) || any(isinf(outgoingLight))) outgoingLight = diffuseColor.rgb * 0.3;\n#endif\ngl_FragColor = vec4( min( outgoingLight, vec3( 40.0 ) ), diffuseColor.a );'); };
+const lmStd = (opts, key, patch) => std(opts, key, s => { LM_SAFE(s); if (patch) patch(s); });
+function buildLandmarks() {
+  const [dc, dorm, dglow] = lmTiles(), [sc, sglow] = lmSigns(), ashT = lmWallTex(0), renT = lmWallTex(1);
+  const litPatch = s => {
+    s.vertexShader = 'attribute float aLit; varying float vLit;\n' + s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvLit = aLit;');
+    s.fragmentShader = 'varying float vLit;\n' + s.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= vLit;');
+  };
+  LMM.ash = lmStd({ vertexColors: true, map: ashT, roughness: 0.92, metalness: 0, emissive: new THREE.Color(1, 0.84, 0.64), emissiveMap: ashT, emissiveIntensity: 0 }, 'lm-ash');
+  LMM.ren = lmStd({ vertexColors: true, map: renT, roughness: 0.9, metalness: 0 }, 'lm-ren');
+  LMM.det = lmStd({ vertexColors: true, map: dc, roughnessMap: dorm, metalnessMap: dorm, roughness: 1, metalness: 1, emissive: new THREE.Color(1, 1, 1), emissiveMap: dglow, emissiveIntensity: 0 }, 'lm-det', litPatch);
+  LMM.txt = lmStd({ vertexColors: true, map: sc, alphaTest: 0.5, roughness: 0.35, metalness: 0.45, emissive: new THREE.Color(1, 1, 1), emissiveMap: sglow, emissiveIntensity: 0 }, 'lm-txt', litPatch);
+  LMM.globe = lmStd({ vertexColors: true, roughness: 0.3, metalness: 0, emissive: new THREE.Color(1, 0.82, 0.58), emissiveIntensity: 0 }, 'lm-globe');
+  LMM.plain = lmStd({ vertexColors: true, roughness: 0.85, metalness: 0 }, 'lm-plain');
+  const ccv = mkCanvas(256, 80); lmClk = { cv: ccv, g: ccv.getContext('2d'), m: -1, tex: toTex(ccv, true, false) };
+  LMM.clk = hook(new THREE.MeshStandardMaterial({ map: lmClk.tex, emissive: new THREE.Color(1, 1, 1), emissiveMap: lmClk.tex, roughness: 0.5, metalness: 0 }), 'lm-clk', LM_SAFE); allMats.push(LMM.clk); lmTick();
+  const K = { ash: new LMB(), ren: new LMB(), det: new LMB(), txt: new LMB(), clk: new LMB(), plain: new GB(false), globe: new GB(false) };
+  lmUnityHouse(K); lmLatgola(K); lmGrounds(K);
+  K.ash.mesh(LMM.ash); K.ren.mesh(LMM.ren); K.det.mesh(LMM.det); K.txt.mesh(LMM.txt, false); K.clk.mesh(LMM.clk, false);
+  const pm = K.plain.mesh(LMM.plain); if (pm) { pm.castShadow = pm.receiveShadow = true; scene.add(pm); }
+  const gm = K.globe.mesh(LMM.globe); if (gm) { gm.receiveShadow = true; scene.add(gm); }
+  lmNight(U.night.value);
+}
+
 let goldGB;
 function buildBuildings(from, to) {
   for (let id = from; id < to; id++) {
@@ -1041,6 +1763,7 @@ function buildBuildings(from, to) {
     BLD.push({ ring: outer, bb, kind: style }); const bid = BLD.length - 1;
     for (let i = Math.floor(bb[0] / 60); i <= Math.floor(bb[2] / 60); i++) for (let j = Math.floor(bb[1] / 60); j <= Math.floor(bb[3] / 60); j++) { const k = (i + 2000) * 4096 + j + 2000; let l = BGRID.get(k); if (!l) BGRID.set(k, l = []); l.push(bid); }
     if (mh < 2.2 && style !== 12) for (const r of rings) { const n = r.length >> 1; for (let i = 0; i < n; i++) { const j = (i + 1) % n; COL.add(r[2 * i], r[2 * i + 1], r[2 * j], r[2 * j + 1], 0, 0); } }
+    if (lmOwns(outer, bb)) continue;   // drawn by buildLandmarks
     const small = (flags & 4) !== 0, T = tileOf(cx, cz), G = small ? T.d : T.m, D = T.d, seed = Math.floor(rnd(id, 9) * 255);
     // special structures
     if (style === 12) { // canopy on posts
@@ -1399,7 +2122,7 @@ function buildTrees() {
   farGeo.setAttribute('aQ', new THREE.Float32BufferAttribute([0, 0, 0, 0, 1, 1, 1, 1], 1));
   farGeo.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
   const add = (x, z, type, sc, v) => {
-    if (Math.abs(x) > HX || Math.abs(z) > HY) return;
+    if (Math.abs(x) > HX || Math.abs(z) > HY || lmClear(x, z)) return;
     const i = Math.floor(x / TTILE), j = Math.floor(z / TTILE), k = (i + 100) * 1000 + j + 100;
     let t = treeTiles.get(k); if (!t) treeTiles.set(k, t = { x0: i * TTILE, z0: j * TTILE, list: [] }); t.list.push(x, z, type, sc, v);
   };
@@ -1750,6 +2473,8 @@ function drawVehicles(ctx, ox, oz, ppm, w, h, r) {
 /* ---------- places ---------- */
 const PLACES = [
   ['Площадь Единства', 'Vienības laukums, центр города', -1487, 1263, 0.6],
+  ['Дом Единства', 'Vienības nams, 1937 · клумбы перед портиком', -1490.7, 1376.3, -0.28],
+  ['Гостиница «Латгола»', 'Park Hotel Latgola и ТЦ Latgola', -1492.9, 1235.4, -1.02],
   ['Рижская улица', 'пешеходная Rīgas iela', -1053, 1030, 1.05],
   ['Вокзал', 'Daugavpils dzelzceļa stacija', -815, 880, -2.1],
   ['Дубровинский парк', 'Dubrovina parks', -1833, 1416, 0],
@@ -1842,7 +2567,7 @@ function setTime(i) {
   sun.color.copy(sc); sun.intensity = T.sunI; U.sunCol.value.copy(sc).multiplyScalar(T.sunI);
   hemi.intensity = T.hemi;
   renderer.toneMappingExposure = T.exp;
-  U.night.value = i === 2 ? 1 : i === 1 ? 0.8 : 0; U.lit.value = T.lit;
+  U.night.value = i === 2 ? 1 : i === 1 ? 0.8 : 0; U.lit.value = T.lit; lmNight(U.night.value);
   if (envRT) envRT.dispose(); envRT = pmrem.fromScene(envScene, 0, 0.1, 100); scene.environment = envRT.texture;
   if (lampHeads) { lampHeads.material = T.lamps ? matHeadNight : matHeadDay; lampPools.visible = T.lamps; }
   for (const g of TX.glow) g.visible = T.lamps;
@@ -1881,7 +2606,7 @@ void main() {
   vec3 P = posAt(vUv);
   vec3 l = posAt(vUv - vec2(uPx.x, 0.0)), r = posAt(vUv + vec2(uPx.x, 0.0)), dn = posAt(vUv - vec2(0.0, uPx.y)), up = posAt(vUv + vec2(0.0, uPx.y));
   vec3 dx = abs(l.z - P.z) < abs(r.z - P.z) ? P - l : r - P, dy = abs(dn.z - P.z) < abs(up.z - P.z) ? P - dn : up - P;
-  vec3 n = normalize(cross(dy, dx));
+  vec3 cn = cross(dy, dx); float cl = length(cn); vec3 n = cl > 1e-12 ? cn / cl : vec3(0.0, 0.0, -1.0);
   float R = clamp(P.z * 0.03, 0.8, 14.0), rPix = min(R / (P.z * uProj.w) * 0.5 * uAoRes, 0.12 * uAoRes), ao = 1.0;
   if (rPix > 1.5) {
     float phi = ign(gl_FragCoord.xy) * 6.2831853, sum = 0.0;
@@ -1893,6 +2618,7 @@ void main() {
     }
     ao = max(0.0, 1.0 - sum * 5.0 / (float(NS) * R * R * R * R * R * R));
   }
+  if (isnan(ao) || isinf(ao) || !(ao >= 0.0)) ao = 1.0;   // recessed windows can leave a degenerate depth stencil
   gl_FragColor = vec4(ao, P.z, 0.0, 1.0);
 }`;
 const BRIGHT_FRAG = `uniform sampler2D tSrc; uniform vec2 uPx; uniform float uThresh; uniform float uExposure; varying vec2 vUv;
@@ -1926,7 +2652,7 @@ void main() {
       vec2 s = textureLod(tAO, vUv + vec2(float(i), float(j)) * uAoPx, 0.0).rg;
       float k = max(0.0, 1.0 - abs(s.g - z) / (0.08 * z + 0.05)) + 1e-3; a += s.r * k; w += k;
     }
-    a /= w;
+    a /= w; if (isnan(a) || isinf(a)) a = 1.0;
     a = mix(a, 1.0, clamp(dot(col, vec3(0.2126, 0.7152, 0.0722)) * 0.4, 0.0, 0.65));   // sunlit surfaces keep most of their brightness
     col *= mix(1.0, a, uAo * (1.0 - smoothstep(1500.0, 3000.0, z)));
   }
@@ -2139,7 +2865,7 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now; clock += dt;
   if (started) { if ($('start').hidden && big.hidden) step(dt); }
   else { introT += reduceMotion ? 0 : dt; P.yaw = 0.6 + introT * 0.05; P.x = -1350 + Math.sin(P.yaw) * 420; P.z = 1250 + Math.cos(P.yaw) * 420; P.y = 150; P.pitch = -0.33; }
-  updateTransit(dt);
+  updateTransit(dt); lmTick();
   if (!reduceMotion) U.time.value = clock;
   if (waterNormal) waterNormal.offset.set(clock * 0.012, clock * 0.007);
   const bob = (!P.fly && started && !reduceMotion) ? Math.sin(P.walked * 2.1) * 0.035 : 0;
@@ -2147,7 +2873,7 @@ function frame(now) {
   const far = QUALITY[qi].far + Math.max(0, P.y - 2) * 9; scene.fog.far = far;
   if (Math.abs(camera.far - (far + 100)) > 20) { camera.far = far + 100; camera.updateProjectionMatrix(); }
   sky.position.copy(camera.position);
-  if (sun.castShadow) updateSun();
+  updateSun();
   if ((lodTimer -= dt) <= 0) { lodTimer = 0.3; updateLod(); }
   renderFrame();
   camera.updateMatrixWorld(); updateTags();
@@ -2166,6 +2892,7 @@ const tick = msg => { progress.textContent = msg; return new Promise(r => setTim
     const N = C.b.length;
     for (let i = 0; i < N; i += 4000) { await tick('Строю дома: ' + Math.min(N, i + 4000).toLocaleString('ru') + ' из ' + N.toLocaleString('ru') + '…'); buildBuildings(i, Math.min(N, i + 4000)); }
     await tick('Собираю кварталы…'); finishBuildings();
+    await tick('Строю Дом Единства и гостиницу «Латгола»…'); buildLandmarks();
     const lamps = buildLamps(); setTime(timeI);
     await tick('Сажаю деревья…'); const trees = buildTrees();
     await tick('Выпускаю трамваи и автобусы на линии…'); const tripsN = buildTransit();
