@@ -52,6 +52,7 @@ for (const w of ways) {
   else if (t.man_made === 'bridge' && w.closed) F.bridges.push([t.material || '', flat(w.pts)]);
 }
 for (const [t, p] of nodeTags) if (t.barrier === 'sally_port' || t.barrier === 'city_gate') F.ports.push([t.name || '', p[0], p[1]]);
+F.guns = []; for (const [t, p] of nodeTags) if (t.historic === 'cannon') F.guns.push([t.name || '', p[0], p[1]]);
 
 // The escarp of the inner rampart is mapped as a few long open walls; chain them end to end (the high side stays on
 // the left) and keep the rest as separate walls.
@@ -70,6 +71,6 @@ for (const w of openWalls) if (!used.has(w.id)) F.walls.push(flat(w.pts));
 
 const round = a => a.map(v => Math.round(v * 10) / 10);
 const out = { rings: F.rings.map(([k, n, p]) => [k, n, round(p)]), main: round(F.main), walls: F.walls.map(round), banks: F.banks.map(([k, p]) => [k, round(p)]),
-  moats: F.moats.map(([k, p]) => [k, round(p)]), ditches: F.ditches.map(round), tunnels: F.tunnels.map(([n, p]) => [n, round(p)]), bridges: F.bridges.map(([m, p]) => [m, round(p)]), ports: F.ports };
+  moats: F.moats.map(([k, p]) => [k, round(p)]), ditches: F.ditches.map(round), tunnels: F.tunnels.map(([n, p]) => [n, round(p)]), bridges: F.bridges.map(([m, p]) => [m, round(p)]), ports: F.ports, guns: F.guns };
 fs.writeFileSync(outFile, '/* Daugavpils fortress from OpenStreetMap (© OpenStreetMap contributors, ODbL), built by tools/fortress.js */\nwindow.FORTRESS = ' + JSON.stringify(out) + ';\n');
-console.log(`rings ${out.rings.length}, main escarp ${out.main.length / 2} points, walls ${out.walls.length}, embankments ${out.banks.length}, moats ${out.moats.length}, ditches ${out.ditches.length}, tunnels ${out.tunnels.length}, bridges ${out.bridges.length}, gates ${out.ports.length}`);
+console.log(`rings ${out.rings.length}, main escarp ${out.main.length / 2} points, walls ${out.walls.length}, embankments ${out.banks.length}, moats ${out.moats.length}, ditches ${out.ditches.length}, tunnels ${out.tunnels.length}, bridges ${out.bridges.length}, gates ${out.ports.length}, guns ${out.guns.length}`);

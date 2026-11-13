@@ -2279,7 +2279,8 @@ function buildBuildings(from, to) {
       continue;
     }
     const worship = style >= 8 && style <= 11, row = worship ? 0 : style;
-    const tint = worship ? (style === 8 ? (/Бориса/.test(name) ? hb('#a9c4e4') : hb('#f0ebe0')) : style === 9 ? hb('#f2eee6') : style === 10 ? hb('#a5503a') : hb('#e6dccb')) : pick(WALLPAL[row], id, 1);
+    const tint = worship ? (style === 8 ? (/Бориса/.test(name) ? hb('#a9c4e4') : hb('#f0ebe0')) : style === 9 ? hb('#f2eee6') : style === 10 ? hb('#a5503a') : hb('#e6dccb'))
+      : row === 0 && floors <= 3 && fortIn(cx, cz, -60) ? pick(FORT_PAL, id, 1) : pick(WALLPAL[row], id, 1);   // the barracks and stores of the fortress
     let mat = rec[4] & 15; const pitched = rec[4] >= 16 || worship;
     if (!mat) mat = pitched ? (row === 5 || row === 7 ? [1, 1, 2, 1, 4][Math.floor(rnd(id, 3) * 5)] : row <= 1 ? 2 : 1) : (row === 6 && rnd(id, 3) < 0.5 ? 0 : 5);
     if (worship) mat = 2;
@@ -2401,6 +2402,8 @@ const fortIn = (x, z, m = 0) => FORT.ok && Math.hypot(x - FORT.cx, z - FORT.cz) 
 const fss = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
 /* gates: the passage of each runs along u from the field (u < 0) into the town (u > 0); a = half its length,
    b = half the width of the gate block across it. Recognised by the centre of the OSM tunnel outline. */
+// rendered buildings of the fortress (barracks, stores, officers' houses): ochre, yellow and salmon as on the photographs
+const FORT_PAL = PB(['#d9c38a', '#e0c98f', '#d6b77c', '#e6cf9b', '#cfae78', '#dba98a', '#d39a7c', '#e3d2a8']);
 const FORT_GATE_KEYS = [['nik', -2754.9, -115.2, 1], ['mih', -2552.7, -97.3, 0], ['ale', -2468.4, -484.5, 0], ['pst', -2505.7, -114.9, 0], ['pst', -2419.6, -180.4, 0], ['pst', -2401.0, -272.8, 0]];
 let FG = null;
 function fortGates() {
@@ -2521,7 +2524,7 @@ function fortGridH(x, z) {
   const fx = fx0 - i, fz = fz0 - j, k = j * G.N + i, H = G.H, a = H[k], b = H[k + 1], d = H[k + G.N], e = H[k + G.N + 1];
   return fx + fz <= 1 ? a + fx * (b - a) + fz * (d - a) : e + (1 - fx) * (d - e) + (1 - fz) * (b - e);
 }
-function fortNoTree(x, z) { if (!fortIn(x, z, 30) || !FS.SEG) return false; if (fortNearBld(x, z, 2)) return true; const p = fortPoint(x, z); return (p.b & (8 | 16 | 32)) !== 0 || Math.abs(p.h - p.w) > 0.5; }
+function fortNoTree(x, z) { if (!fortIn(x, z, 30) || !FS.SEG) return false; if (fortNearBld(x, z, 2) || Math.hypot(x - FORT_FOUNTAIN[0], z - FORT_FOUNTAIN[1]) < 9) return true; const p = fortPoint(x, z); return (p.b & (8 | 16 | 32)) !== 0 || Math.abs(p.h - p.w) > 0.5; }
 
 /* ---- textures of the fortress: fieldstone escarps, granite dressings, sandstone, planks ---- */
 function fortTex(kind) {
@@ -2705,7 +2708,7 @@ function fortField(K) {
   const op = [], oi = []; for (let q = 0; q < occ.length; q += 4) { const v = op.length / 3; op.push(occ[q], -0.05, occ[q + 1], occ[q + 2], -0.05, occ[q + 1], occ[q + 2], -0.05, occ[q + 3], occ[q], -0.05, occ[q + 3]); oi.push(v, v + 2, v + 1, v, v + 3, v + 2); }
   const og = new THREE.BufferGeometry(); og.setAttribute('position', new THREE.Float32BufferAttribute(op, 3)); og.setIndex(oi);
   const om = new THREE.Mesh(og, new THREE.MeshBasicMaterial({ colorWrite: false, side: THREE.DoubleSide })); om.renderOrder = -30; om.frustumCulled = false; scene.add(om);
-  FORT.grid = { H, B, N, X0, Z0, c };
+  FORT.grid = { H, B, WET, N, X0, Z0, c };
 }
 function valueNoiseAt(x, z) { const i = Math.floor(x / 9), j = Math.floor(z / 9), fx = x / 9 - i, fz = z / 9 - j, h = (a, b) => hash(a * 73856093 ^ b * 19349663);
   const sx = fx * fx * (3 - 2 * fx), sz = fz * fz * (3 - 2 * fz); return (h(i, j) * (1 - sx) + h(i + 1, j) * sx) * (1 - sz) + (h(i, j + 1) * (1 - sx) + h(i + 1, j + 1) * sx) * sz; }
@@ -3194,6 +3197,89 @@ function fortArsenal(K, B) {
   for (const [u, v] of B.flags || []) { const w = lmW(f, u, v); lmFlag(K.cap, w[0], w[1], 0, 9.5, [f[2], f[3]], 1.8); }
 }
 function fortBuildings(K) { for (const B of FORT_BLD) fortArsenal(K, B); }
+/* ---- monuments of the fortress ----
+   The fountain in the fortress garden: four cast-iron barrels standing on their square breeches and leaning
+   together, on a granite block with the name ДИНАБУРГЪ and lions' heads, on a stepped base in a round basin with a
+   curb of rounded granite blocks (photographs: Wikimedia Commons, "Fountain in Daugavpils Fortress Garden"). The
+   historic guns mapped in OSM stand on garrison carriages; the one named Mortīra is a mortar on its bed. */
+const FORT_FOUNTAIN = [-2815.6, -442.5];
+// a lathe around any axis: prof is [radius, distance along the axis]
+function fortLatheAx(G, O, D, prof, seg, col) {
+  const up = Math.abs(D[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0], cr = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  let A = cr(D, up); const la = Math.hypot(...A); A = A.map(v => v / la); const B = cr(D, A);
+  for (let k = 0; k < prof.length - 1; k++) {
+    const [r0, h0] = prof[k], [r1, h1] = prof[k + 1], dr = r1 - r0, dh = h1 - h0, l = Math.hypot(dr, dh) || 1, nr = dh / l, nd = -dr / l;
+    for (let s = 0; s < seg; s++) {
+      const vs = [];
+      for (const [t, r, hh] of [[s, r0, h0], [s + 1, r0, h0], [s + 1, r1, h1], [s, r1, h1]]) {
+        const a = t * 2 * Math.PI / seg, c = Math.cos(a), sn = Math.sin(a), rd = [A[0] * c + B[0] * sn, A[1] * c + B[1] * sn, A[2] * c + B[2] * sn];
+        vs.push(G.vert(O[0] + D[0] * hh + rd[0] * r, O[1] + D[1] * hh + rd[1] * r, O[2] + D[2] * hh + rd[2] * r, nr * rd[0] + nd * D[0], nr * rd[1] + nd * D[1], nr * rd[2] + nd * D[2], col));
+      }
+      G.tri(vs[0], vs[1], vs[2]); G.tri(vs[0], vs[2], vs[3]);
+    }
+  }
+}
+function fortFountain(K) {
+  const [cx, cz] = FORT_FOUNTAIN, f = [cx, cz, 1, 0], GR = [146, 142, 136], IRON = hb('#2b2d30'), P = (u, v, y) => fortP(f, u, v, y);
+  // basin: a ring of rounded granite blocks and a floor of dark stone
+  const N = 22, R0 = 3.0, R1 = 3.6;
+  for (let k = 0; k < N; k++) {
+    const a0 = k / N * 2 * Math.PI + 0.01, a1 = (k + 1) / N * 2 * Math.PI - 0.01, am = (a0 + a1) / 2, col = sh(GR, 0.88 + hash(k * 31) * 0.2);
+    const p = (r, a, y) => [cx + Math.cos(a) * r, y, cz + Math.sin(a) * r];
+    polyA(K.cap, [p(R1, a0, 0), p(R1, a1, 0), p(R1, a1, 0.38), p(R1, a0, 0.38)], col, Math.cos(am), 0, Math.sin(am));
+    polyA(K.cap, [p(R0, a0, -0.3), p(R0, a1, -0.3), p(R0, a1, 0.38), p(R0, a0, 0.38)], sh(col, 0.85), -Math.cos(am), 0, -Math.sin(am));
+    polyA(K.cap, [p(R0, a0, 0.38), p(R0, a1, 0.38), p(R1 - 0.08, a1, 0.46), p(R1 - 0.08, a0, 0.46)], sh(col, 1.06), 0, 1, 0);
+    polyA(K.cap, [p(R1 - 0.08, a0, 0.46), p(R1 - 0.08, a1, 0.46), p(R1, a1, 0.38), p(R1, a0, 0.38)], sh(col, 1.0), Math.cos(am), 1, Math.sin(am));
+    polyA(K.cap, [[cx, -0.3, cz], p(R0, a0, -0.3), p(R0, a1, -0.3)], hb('#55524c'), 0, 1, 0);
+  }
+  // stepped granite base, the block with the plaque and the lions' heads
+  fortTBox(K.gra, f, -1.35, 1.35, -1.35, 1.35, -0.3, 0.25, FTS[1], GR);
+  fortTBox(K.gra, f, -1.05, 1.05, -1.05, 1.05, 0.25, 0.5, FTS[1], sh(GR, 1.04));
+  fortTBox(K.gra, f, -0.9, 0.9, -0.9, 0.9, 0.5, 1.25, FTS[1], [176, 150, 132]);
+  fortTBox(K.gra, f, -0.98, 0.98, -0.98, 0.98, 1.25, 1.36, FTS[1], [176, 150, 132]);
+  for (const [u, v, nu, nv] of [[0, -0.905, 0, -1], [0, 0.905, 0, 1], [-0.905, 0, -1, 0], [0.905, 0, 1, 0]]) {
+    const A = P(u - nv * 0.55, v + nu * 0.55, 0.68), Bq = P(u + nv * 0.55, v - nu * 0.55, 0.68), Cq = P(u + nv * 0.55, v - nu * 0.55, 1.02), D = P(u - nv * 0.55, v + nu * 0.55, 1.02);
+    polyA(K.cap, [A, Bq, Cq, D], hb('#6e4a35'), nu, 0, nv);   // bronze plaque
+  }
+  for (const [u, v] of [[-0.9, -0.9], [0.9, -0.9], [0.9, 0.9], [-0.9, 0.9]]) lmLathe(K.cap, ...lmW(f, u, v), 0.75, [[0, 0], [0.2, 0.05], [0.22, 0.2], [0.14, 0.36], [0, 0.4]], 8, hb('#8f8a82'));
+  // four barrels on square breeches, leaning in so that their muzzles meet
+  for (const [su, sv] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    const bx = su * 0.56, bv = sv * 0.56, base = P(bx, bv, 1.92), top = P(su * 0.19, sv * 0.19, 6.0), D = [top[0] - base[0], top[1] - base[1], top[2] - base[2]], L = Math.hypot(...D);
+    const d = D.map(x => x / L);
+    lmBoxL(K.cap, f, bx - 0.28, bx + 0.28, bv - 0.28, bv + 0.28, 1.36, 1.92, IRON);
+    fortLatheAx(K.cap, base, d, [[0.27, 0], [0.27, 1.1], [0.245, 1.15], [0.245, 2.1], [0.215, 2.15], [0.18, L - 0.3], [0.2, L - 0.25], [0.2, L - 0.1], [0.11, L - 0.1], [0, L - 0.25]], 12, IRON);
+    // trunnions with hooks on the outer sides
+    for (const [du, dv] of [[su, 0], [0, sv]]) { const c = P(bx + du * 0.25, bv + dv * 0.25, 3.0); lmBar(K.cap, c, [c[0] + du * 0.16, c[1], c[2] + dv * 0.16], 0.14, IRON); }
+  }
+  // low iron posts with chains round the lawn
+  for (let k = 0; k < 10; k++) {
+    const a = k / 10 * 2 * Math.PI, a1 = (k + 1) / 10 * 2 * Math.PI, R = 7.5, x = cx + Math.cos(a) * R, z = cz + Math.sin(a) * R, x1 = cx + Math.cos(a1) * R, z1 = cz + Math.sin(a1) * R;
+    lmBoxL(K.cap, [x, z, 1, 0], -0.12, 0.12, -0.12, 0.12, 0, 0.5, IRON);
+    const n = 6; for (let s = 0; s < n; s++) { const t0 = s / n, t1 = (s + 1) / n, y = t => 0.42 - Math.sin(t * Math.PI) * 0.15;
+      lmBar(K.cap, [x + (x1 - x) * t0, y(t0), z + (z1 - z) * t0], [x + (x1 - x) * t1, y(t1), z + (z1 - z) * t1], 0.018, IRON); }
+  }
+}
+// a cast-iron gun on a garrison carriage pointing along (dx, dz), or a mortar on its bed
+function fortGun(K, x, z, dx, dz, mortar) {
+  const f = [x, z, dx, dz], IRON = hb('#2e3033'), WOOD = hb('#5b4a3a'), P = (u, v, y) => fortP(f, u, v, y);
+  if (mortar) {
+    lmBoxL(K.cap, f, -0.8, 0.8, -0.55, 0.55, 0, 0.45, WOOD);
+    const d = [dx * 0.7071, 0.7071, dz * 0.7071]; fortLatheAx(K.cap, P(-0.2, 0, 0.45), d, [[0, -0.25], [0.38, -0.2], [0.42, 0.2], [0.36, 0.8], [0.4, 0.95], [0.4, 1.05], [0.28, 1.05], [0.2, 0.9]], 12, IRON);
+    return;
+  }
+  for (const s of [-1, 1]) { lmBoxL(K.cap, f, -1.0, 0.7, s * 0.28 - 0.07, s * 0.28 + 0.07, 0.25, 0.85, WOOD); fortLatheAx(K.cap, P(0.35, s * 0.36, 0.42), [-dz * s, 0, dx * s], [[0, 0], [0.42, 0], [0.42, 0.1], [0, 0.1]], 14, WOOD); }
+  lmBar(K.cap, P(0.35, -0.45, 0.42), P(0.35, 0.45, 0.42), 0.12, IRON); lmBoxL(K.cap, f, -1.1, -0.85, -0.3, 0.3, 0, 0.35, WOOD);
+  const d = [dx * 0.995, 0.1, dz * 0.995]; fortLatheAx(K.cap, P(-0.95, 0, 0.92), d, [[0, -0.15], [0.12, -0.12], [0.24, 0], [0.26, 0.6], [0.23, 0.65], [0.21, 1.5], [0.17, 2.6], [0.2, 2.7], [0.2, 2.8], [0.1, 2.8], [0.1, 2.5]], 12, IRON);
+  lmBar(K.cap, P(0.15, -0.3, 0.98), P(0.15, 0.3, 0.98), 0.14, IRON);
+}
+function fortMonuments(K) {
+  fortFountain(K);
+  for (const [name, x, z] of FT.guns || []) {
+    // point away from the nearest building
+    let best = 1e9, bx = 0, bz = 1; for (const b of BLD) { const cx = (b.bb[0] + b.bb[2]) / 2, cz = (b.bb[1] + b.bb[3]) / 2, d = Math.hypot(cx - x, cz - z); if (d < best) { best = d; bx = x - cx; bz = z - cz; } }
+    const l = Math.hypot(bx, bz) || 1; fortGun(K, x, z, bx / l, bz / l, /mort/i.test(name));
+  }
+}
 function buildFortress() {
   if (!FORT.ok) return;
   fortPrep();
@@ -3205,7 +3291,7 @@ function buildFortress() {
     roof: lmStd({ vertexColors: true, map: TX4[4], roughness: 0.62, metalness: 0.12 }, 'ft-roof'), brk: bt ? lmStd({ vertexColors: true, map: bt, roughness: 0.88, metalness: 0 }, 'ft-brk') : LMM.brick, cut: lmStd({ vertexColors: true, map: ct, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.6, metalness: 0 }, 'ft-cut')
   };
   const K = { rub: new LMB(), gra: new LMB(), snd: new LMB(), wood: new LMB(), brk: new LMB(), ren: new LMB(), det: new LMB(), cut: new LMB(), cnc: new LMB(), rus: new LMB(), roof: new LMB(), cap2b: new LMB(), cap: new GB(false), cap2: new GB(false) };
-  fortField(K); fortWalls(K); fortDitches(); fortGateModels(K); fortBuildings(K); fortPaths();
+  fortField(K); fortWalls(K); fortDitches(); fortGateModels(K); fortBuildings(K); fortMonuments(K); fortPaths();
   K.rub.mesh(M.rub); K.gra.mesh(M.gra); K.snd.mesh(M.snd); K.wood.mesh(M.wood); K.det.mesh(M.det); K.cut.mesh(M.cut, false); K.cnc.mesh(M.gra); K.rus.mesh(M.rus); K.roof.mesh(M.roof); K.cap2b.mesh(LMM.plain);
   K.brk.mesh(M.brk); K.ren.mesh(LMM.ren);
   for (const b of [K.cap, K.cap2]) { const m = b.mesh(LMM.plain); if (m) { m.castShadow = m.receiveShadow = true; scene.add(m); } }
@@ -3214,7 +3300,9 @@ function buildFortress() {
 function fortPaths() {
   const G = FORT.grid, PB = new GB(false), cellFlat = (x, z) => {
     const i = Math.floor((x - G.X0) / G.c), j = Math.floor((z - G.Z0) / G.c); if (i < 0 || j < 0 || i >= G.N - 1 || j >= G.N - 1) return true;
-    for (const k of [j * G.N + i, j * G.N + i + 1, (j + 1) * G.N + i, (j + 1) * G.N + i + 1]) if (Math.abs(G.H[k]) >= 0.03 || (G.B[k] & 3)) return false; return true; };
+    for (const k of [j * G.N + i, j * G.N + i + 1, (j + 1) * G.N + i, (j + 1) * G.N + i + 1]) if (Math.abs(G.H[k]) >= 0.03 || (G.B[k] & 3)) return false; return true; },
+    cellSolid = (x, z) => { const i = Math.floor((x - G.X0) / G.c), j = Math.floor((z - G.Z0) / G.c); if (i < 0 || j < 0 || i >= G.N - 1 || j >= G.N - 1) return false;
+      for (const k of [j * G.N + i, j * G.N + i + 1, (j + 1) * G.N + i, (j + 1) * G.N + i + 1]) if ((G.B[k] & 8) || G.WET[k]) return false; return true; };
   for (const l of LINES) {
     if (l.cls !== 5 && l.cls !== 6 && l.cls !== 7 && l.cls !== 15) continue;
     const p = l.pts, n = p.length >> 1, hw = l.w / 2, col = hb(LINE[l.cls][1]);
@@ -3224,6 +3312,8 @@ function fortPaths() {
       for (let s = 0; s < steps; s++) {
         const a = s * L / steps, b = (s + 1) * L / steps, A = [x1 + tx * a, z1 + tz * a], B = [x1 + tx * b, z1 + tz * b];
         if (cellFlat(A[0], A[1]) && cellFlat(B[0], B[1])) continue;
+        // no terrain under the gate blocks and the water: a path there would hang between the heights around
+        if (!cellSolid(A[0], A[1]) || !cellSolid(B[0], B[1]) || Math.abs(fortGridH(A[0], A[1]) - fortGridH(B[0], B[1])) > (b - a) * 0.9) continue;
         if (FS.bridge && pip((A[0] + B[0]) / 2, (A[1] + B[1]) / 2, FS.bridge)) continue;
         const P = (x, z) => [x, fortGridH(x, z) + 0.07, z];
         polyA(PB, [P(A[0] + nx, A[1] + nz), P(B[0] + nx, B[1] + nz), P(B[0] - nx, B[1] - nz), P(A[0] - nx, A[1] - nz)], col, 0, 1, 0);
