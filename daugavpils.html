@@ -960,6 +960,11 @@ function buildLines() {
     }
     l.bb = bbox(pts); l.w = def[0]; LINES.push(l);
     const hw = def[0] / 2;
+    if (l.bridge && vbOnLine(pts)) {   // on Vienības tilts: lmVienibas draws the deck, the line still guides traffic and walking
+      if (cls <= 4) for (let i = 0; i < n - 1; i++) CARROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, cls);
+      for (let i = 0; i < n - 1; i++) ROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw + (cls <= 3 ? 2.6 : 0), cls <= 7 ? l.name : -1);
+      continue;
+    }
     if (cls === 10 || cls === 11) for (let i = 0; i < n - 1; i++) STREAM.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, 0);
     if (cls <= 3) { ribbon(walk, pts, hw + 1.4, 1.3, PAVE); ribbon(walk, pts, -hw - 1.4, 1.3, PAVE); ribbon(marks, pts, hw + 0.08, 0.12, CURB); ribbon(marks, pts, -hw - 0.08, 0.12, CURB); }
     ribbon(groups[def[2]], pts, 0, hw, lineCol[cls]);
@@ -1004,6 +1009,107 @@ function bridge(b, p, hw) {
     for (let t = 15; t < L; t += 32) { const cx = x1 + tx * t, cz = z1 + tz * t; if (inWater(cx, cz)) box(b, cx, cz, nx, nz, hw * 0.8, 1.0, WL - 1, -1.3, sh(CON, 0.85), false); }
   }
 }
+
+/* ---------- Vienības tilts (Unity Bridge) over the Daugava ----------
+   Built 1931–35 by a German firm, the first steel bridge of its kind in the Baltics; blown up in 1941 and 1944, rebuilt,
+   reconstructed in 1989 (lv.wikipedia). 328 m on three stone piers, four spans of about 82 m; OSM outline (way
+   901241407: man_made=bridge, cantilever, beam) 326 × 14.5 m. On the photographs (Wikimedia Commons, category "Vienības
+   Bridge"): continuous light grey steel plate girders with longitudinal and vertical stiffeners and bolted splices,
+   a concrete cornice with panel joints, a railing of vertical bars, tall lamp posts with an openwork ornament, piers of
+   rough granite ashlar with pointed cutwaters, concrete abutments with paved slopes. The city is flat and the river lies
+   only 1.7 m below it, so the deck rises in a crest curve to 6 m over the middle, the approaches on the banks become
+   paved embankments, and one walks and drives on the deck at its height. Frame: s from the Grīva end along the axis,
+   d across it (positive upstream, to the east). */
+const VB = (() => { const A = [-1799.1, 2015.6], B = [-1685.05, 1710.45], L = Math.hypot(B[0] - A[0], B[1] - A[1]), T = [(B[0] - A[0]) / L, (B[1] - A[1]) / L];
+  return { A, L, T, N: [-T[1], T[0]], H: 6.0, HW: 7.25, SW: [38, 288], PIERS: [L / 4, L / 2, 3 * L / 4] }; })();
+const vbY = s => s <= 0 || s >= VB.L ? 0 : VB.H * (1 - (2 * s / VB.L - 1) ** 2);
+const vbLocal = (x, z) => { const dx = x - VB.A[0], dz = z - VB.A[1]; return [dx * VB.T[0] + dz * VB.T[1], dx * VB.N[0] + dz * VB.N[1]]; };
+const vbP = (s, d, y) => [VB.A[0] + VB.T[0] * s + VB.N[0] * d, y, VB.A[1] + VB.T[1] * s + VB.N[1] * d];
+// the height to stand on (0 off the bridge), the sidewalks 0.18 m up
+function vbGround(x, z) { const [s, d] = vbLocal(x, z); if (s < 0 || s > VB.L || Math.abs(d) > VB.HW) return 0; return vbY(s) + (Math.abs(d) > 5.3 ? 0.18 : 0); }
+// a line drawn by lmVienibas instead of buildLines: every point on the deck
+function vbOnLine(pts) { for (let i = 0; i < pts.length; i += 2) { const [s, d] = vbLocal(pts[i], pts[i + 1]); if (s < -1 || s > VB.L + 1 || Math.abs(d) > 8) return false; } return true; }
+const vbEmb = s => Math.max(0, vbY(s) - 0.8) * 1.5;   // how far an embankment slope reaches beyond the deck edge
+function vbNoTree(x, z) { const [s, d] = vbLocal(x, z); return s > -3 && s < VB.L + 3 && Math.abs(d) < VB.HW + vbEmb(Math.max(0, Math.min(VB.L, s))) + 3; }
+function lmVienibas(K) {
+  const G = K.plain, { L, T, N, HW, SW, PIERS } = VB, y = vbY, P = vbP;
+  const STEEL = hb('#bcc0c2'), STEEL2 = sh(STEEL, 0.86), CONC = hb('#cfccc4'), SLOPE = hb('#a9a79f'), RAILC = hb('#b4b8bb'), STONE = [236, 228, 218];
+  const stations = (a, b, step = 2) => { const r = [a]; for (let s = Math.ceil(a / step) * step; s < b - 1e-3; s += step) if (s > a + 1e-3) r.push(s); r.push(b); return r; };
+  // a box that follows the deck: d0..d1 across, dy0..dy1 relative to the deck, from s0 to s1
+  const deckBox = (B, s0, s1, d0, d1, dy0, dy1, col, faces = 'tbio') => { const st = stations(s0, s1);
+    for (let k = 0; k < st.length - 1; k++) { const a = st[k], b = st[k + 1];
+      if (faces.includes('t')) polyA(B, [P(a, d0, y(a) + dy1), P(b, d0, y(b) + dy1), P(b, d1, y(b) + dy1), P(a, d1, y(a) + dy1)], sh(col, 1.04), 0, 1, 0);
+      if (faces.includes('b')) polyA(B, [P(a, d0, y(a) + dy0), P(b, d0, y(b) + dy0), P(b, d1, y(b) + dy0), P(a, d1, y(a) + dy0)], sh(col, 0.72), 0, -1, 0);
+      for (const [d, sg] of [[d0, -1], [d1, 1]]) if (faces.includes(sg > 0 ? 'o' : 'i')) polyA(B, [P(a, d, y(a) + dy0), P(b, d, y(b) + dy0), P(b, d, y(b) + dy1), P(a, d, y(a) + dy1)], col, N[0] * sg, 0, N[1] * sg); }
+    for (const [s, sg] of [[s0, -1], [s1, 1]]) polyA(B, [P(s, d0, y(s) + dy0), P(s, d1, y(s) + dy0), P(s, d1, y(s) + dy1), P(s, d0, y(s) + dy1)], sh(col, 0.9), T[0] * sg, 0, T[1] * sg); };
+  // ---- the deck: asphalt between raised sidewalks, markings, curbs, the concrete cornice with its panel joints
+  const asph = groundMaterial(detailTex(1), 1 / 5, 0.45, 'vb-asph'), pave = groundMaterial(detailTex(2), 1 / 4, 0.5, 'vb-pave'); asph.depthWrite = pave.depthWrite = true;
+  const RD = new GB(false), SW_ = new GB(false), MK = new GB(false);
+  deckBox(RD, 0, L, -5.3, 5.3, -0.25, 0, hb('#4a4b4d'), 't');
+  for (const sg of [-1, 1]) { const a = Math.min(sg * 5.3, sg * 6.95), b = Math.max(sg * 5.3, sg * 6.95); deckBox(SW_, 0, L, a, b, -0.2, 0.18, hb('#9a9488'), 't');
+    deckBox(G, 0, L, sg * 5.3 - 0.01, sg * 5.3 + 0.01, 0, 0.18, hb('#a9a69e'), sg > 0 ? 'i' : 'o');
+    for (const d of [sg * 5.05]) deckBox(MK, 0, L, d - 0.06, d + 0.06, 0, 0.025, hb('#e6e4dc'), 't'); }
+  for (const d of [-0.12, 0.12]) deckBox(MK, 3, L - 3, d - 0.05, d + 0.05, 0, 0.025, hb('#e6e4dc'), 't');
+  for (const [b, m] of [[RD, asph], [SW_, pave], [MK, LMM.plain]]) { const me = b.mesh(m); if (me) { me.receiveShadow = true; scene.add(me); } }
+  for (const sg of [-1, 1]) { const a = sg > 0 ? 6.95 : -7.25, b = sg > 0 ? 7.25 : -6.95; deckBox(G, 0, L, a, b, -0.8, 0.3, CONC);
+    for (let s = 3; s < L; s += 6) deckBox(G, s - 0.02, s + 0.02, sg > 0 ? 7.25 : -7.26, sg > 0 ? 7.26 : -7.25, -0.8, 0.3, sh(CONC, 0.8), sg > 0 ? 'o' : 'i'); }
+  // ---- steel girders over the river: four lines, the outer webs with stiffeners and splice plates; the soffit
+  const [sA, sB] = [SW[0] - 1, SW[1] + 1];
+  deckBox(G, sA, sB, -6.95, 6.95, -0.8, -0.79, sh(STEEL, 0.8), 'b');
+  for (const d of [-6.6, -2.3, 2.3, 6.6]) { deckBox(G, sA, sB, d - 0.03, d + 0.03, -3.0, -0.8, STEEL, 'io'); deckBox(G, sA, sB, d - 0.35, d + 0.35, -3.06, -2.98, STEEL2); }
+  for (const sg of [-1, 1]) { const dw = sg * 6.63;
+    for (const dy of [-1.45, -2.05, -2.55]) deckBox(G, sA, sB, Math.min(dw, dw + sg * 0.07), Math.max(dw, dw + sg * 0.07), dy - 0.04, dy + 0.04, sh(STEEL, 0.94));
+    for (let s = sA + 1.3; s < sB; s += 2.6) lmBar(G, P(s, dw + sg * 0.03, y(s) - 0.85), P(s, dw + sg * 0.03, y(s) - 2.97), 0.07, sh(STEEL, 0.92));
+    for (let s = sA + 13; s < sB - 5; s += 13) deckBox(G, s - 0.3, s + 0.3, Math.min(dw, dw + sg * 0.04), Math.max(dw, dw + sg * 0.04), -2.95, -0.85, sh(STEEL, 0.83)); }
+  // ---- piers: rough granite ashlar with pointed cutwaters and a slight batter, a granite cap and bearings
+  const W2 = K.walls[2];
+  for (const sp of PIERS) {
+    const yt = y(sp) - 3.0 - 0.85, plan = [[-2, -8.6], [0, -11.2], [2, -8.6], [2, 8.6], [0, 11.2], [-2, 8.6]];
+    const ring = (yy, grow) => plan.map(([a, b]) => { const sc = 1 + grow * 0.12; return P(sp + a * sc, b + Math.sign(b) * grow * 0.3, yy); });
+    let per = 0;
+    for (let i = 0; i < plan.length; i++) { const j = (i + 1) % plan.length, [a0, b0] = plan[i], [a1, b1] = plan[j], len = Math.hypot(a1 - a0, b1 - b0), nn = [(b1 - b0) / len, -(a1 - a0) / len], nw = [T[0] * nn[0] + N[0] * nn[1], T[1] * nn[0] + N[1] * nn[1]];
+      const cen = (a0 + a1) / 2 * nn[0] + (b0 + b1) / 2 * nn[1], sgn = cen > 0 ? 1 : -1, n3 = [nw[0] * sgn, 0, nw[1] * sgn];
+      for (const [y0, y1, g0, g1, col] of [[-4.5, WL + 0.3, 1, 0.55, sh(STONE, 0.62)], [WL + 0.3, yt, 0.55, 0, STONE]]) {
+        const r0 = ring(y0, g0), r1 = ring(y1, g1);
+        W2.q(r0[i], r0[j], r1[j], r1[i], n3, [per / 6, y0 / 6, (per + len) / 6, y0 / 6, (per + len) / 6, y1 / 6, per / 6, y1 / 6], col); }
+      per += len; }
+    const cap = plan.map(([a, b]) => [a * 1.12, b + Math.sign(b) * 0.25]);
+    for (const [yy, up] of [[yt, false], [yt + 0.4, true]]) { const c = P(sp, 0, yy); for (let i = 0; i < cap.length; i++) { const j = (i + 1) % cap.length; polyA(K.stone, [c, P(sp + cap[i][0], cap[i][1], yy), P(sp + cap[j][0], cap[j][1], yy)], sh(hb('#9d9890'), up ? 1.05 : 0.7), 0, up ? 1 : -1, 0); } }
+    for (let i = 0; i < cap.length; i++) { const j = (i + 1) % cap.length; polyA(K.stone, [P(sp + cap[i][0], cap[i][1], yt), P(sp + cap[j][0], cap[j][1], yt), P(sp + cap[j][0], cap[j][1], yt + 0.4), P(sp + cap[i][0], cap[i][1], yt + 0.4)], hb('#9d9890'), T[0] * (cap[i][0] + cap[j][0]) + N[0] * (cap[i][1] + cap[j][1]), 0, T[1] * (cap[i][0] + cap[j][0]) + N[1] * (cap[i][1] + cap[j][1])); }
+    for (const d of [-6.6, -2.3, 2.3, 6.6]) { const c = P(sp, d, 0); box(G, c[0], c[2], T[0], T[1], 0.55, 0.45, yt + 0.4, yt + 0.86, hb('#55595c')); }
+  }
+  // ---- the banks: paved embankments carry the deck down to the street, concrete abutments face the river
+  for (const [s0, s1, sw, dir] of [[0, SW[0], SW[0], 1], [SW[1], L, SW[1], -1]]) {
+    for (const sg of [-1, 1]) { const st = stations(s0, s1, 2);
+      for (let k = 0; k < st.length - 1; k++) { const a = st[k], b = st[k + 1], ha = Math.max(0, y(a) - 0.8), hb_ = Math.max(0, y(b) - 0.8); if (ha + hb_ < 0.01) continue;
+        polyA(G, [P(a, sg * HW, ha), P(b, sg * HW, hb_), P(b, sg * (HW + vbEmb(b)), 0.03), P(a, sg * (HW + vbEmb(a)), 0.03)], SLOPE, N[0] * sg, 1.5, N[1] * sg);
+        COL.add(...(([x0, , z0]) => [x0, z0])(P(a, sg * (HW + vbEmb(a)), 0)), ...(([x1, , z1]) => [x1, z1])(P(b, sg * (HW + vbEmb(b)), 0)), 0, 0); } }
+    const h = y(sw) - 0.8, e = vbEmb(sw), bot = WL - 0.6, nrm = [T[0] * dir, 0, T[1] * dir], AB = hb('#b3b0a8');
+    polyA(G, [P(sw, -HW, bot), P(sw, HW, bot), P(sw, HW, h), P(sw, -HW, h)], AB, nrm[0], 0, nrm[2]);
+    for (const sg of [-1, 1]) polyA(G, [P(sw, sg * HW, bot), P(sw, sg * (HW + e + 0.8), bot), P(sw, sg * (HW + e), 0.03), P(sw, sg * HW, h)], AB, nrm[0], 0, nrm[2]);
+    polyA(G, [P(sw, -HW, h), P(sw, HW, h), P(sw - dir * 1.2, HW, h), P(sw - dir * 1.2, -HW, h)], sh(AB, 1.05), 0, 1, 0);
+  }
+  // ---- railings of vertical bars on the cornices, steel guard rails between the road and the sidewalks
+  for (const sg of [-1, 1]) { const d = sg * 7.12, st = stations(0, L, 2.5);
+    for (let k = 0; k < st.length - 1; k++) { const a = st[k], b = st[k + 1];
+      for (const h of [0.42, 1.4]) lmBar(G, P(a, d, y(a) + h), P(b, d, y(b) + h), h > 1 ? 0.09 : 0.05, RAILC);
+      lmBar(G, P(a, d, y(a) + 0.3), P(a, d, y(a) + 1.45), 0.08, RAILC);
+      for (let s = a + 0.16; s < b - 0.05; s += 0.16) lmBar(G, P(s, d, y(s) + 0.42), P(s, d, y(s) + 1.4), 0.025, RAILC);
+      COL.add(...(([x0, , z0]) => [x0, z0])(P(a, d, 0)), ...(([x1, , z1]) => [x1, z1])(P(b, d, 0)), 0, 0); }
+    lmBar(G, P(L, d, 0.3), P(L, d, 1.45), 0.08, RAILC);
+    const dg = sg * 5.45; deckBox(G, 2, L - 2, dg - 0.04, dg + 0.04, 0.5, 0.82, hb('#a2a7aa')); for (let s = 2; s < L - 1; s += 4) lmBar(G, P(s, dg + sg * 0.1, y(s) + 0.18), P(s, dg + sg * 0.1, y(s) + 0.8), 0.1, hb('#8e9396')); }
+  // ---- lamp posts: a single arm with a cobra head over the road, an openwork lyre on the pole
+  const LAMPC = hb('#a9adb0');
+  for (const sg of [-1, 1]) for (let s = sg > 0 ? 14 : 28; s < L - 5; s += 28) {
+    const d = sg * 6.98, yb = y(s) + 0.3, [x, , z] = P(s, d, 0), q = (dd, hh) => P(s, d - sg * dd, yb + hh);
+    lmLathe(G, x, z, yb, [[0.16, 0], [0.16, 0.35], [0.11, 0.42], [0.075, 9.4], [0.05, 9.6], [0, 9.65]], 8, LAMPC);
+    lmBar(G, q(0, 9.3), q(1.9, 9.85), 0.08, LAMPC); lmBar(G, q(1.6, 9.82), q(2.4, 9.88), 0.3, hb('#8c9093'));
+    const [lx, , lz] = q(2.0, 0); lmLathe(K.globe, lx, lz, yb + 9.62, [[0, 0], [0.2, 0.03], [0.2, 0.12], [0, 0.16]], 8, hb('#f4efe2'));
+    const lyre = (w, sgn) => { for (let k = 0; k < 10; k++) { const t0 = k / 10, t1 = (k + 1) / 10, o = t => 0.12 + w * Math.sin(Math.PI * t) * (1 + sgn * 0.3 * Math.sin(2 * Math.PI * t)); lmBar(G, q(o(t0), 5.4 + 3.4 * t0), q(o(t1), 5.4 + 3.4 * t1), 0.035, LAMPC); } };
+    lyre(0.55, 1); lyre(0.3, -1); for (const t of [0.25, 0.5, 0.75]) lmBar(G, q(0.12, 5.4 + 3.4 * t), q(0.12 + 0.55 * Math.sin(Math.PI * t), 5.4 + 3.4 * t + 0.25), 0.03, LAMPC);
+  }
+}
+
 
 /* ---------- buildings ---------- */
 const tiles = new Map();
@@ -2681,7 +2787,7 @@ function buildLandmarks() {
   LMM.clk = hook(new THREE.MeshStandardMaterial({ map: lmClk.tex, emissive: new THREE.Color(1, 1, 1), emissiveMap: lmClk.tex, roughness: 0.5, metalness: 0 }), 'lm-clk', LM_SAFE); allMats.push(LMM.clk); lmTick();
   const K = { ash: new LMB(), ren: new LMB(), det: new LMB(), txt: new LMB(), clk: new LMB(), plain: new GB(false), stone: new GB(false), globe: new GB(false) };
   K.walls = [K.ash, K.ren, new LMB(), new LMB(), new LMB(), new LMB(), new LMB()];
-  lmUnityHouse(K); lmLatgola(K); lmGrounds(K); lmDUMain(K); lmDUParades(K); lmDULab(K); lmRenesanse(K); lmRigas(K); lmVesma(K); lmTVTower(K); lmStation(K);
+  lmUnityHouse(K); lmLatgola(K); lmGrounds(K); lmDUMain(K); lmDUParades(K); lmDULab(K); lmRenesanse(K); lmRigas(K); lmVesma(K); lmTVTower(K); lmStation(K); lmVienibas(K);
   [LMM.ash, LMM.ren, LMM.duw, LMM.brick, LMM.tile, LMM.panel, LMM.buff].forEach((m, k) => K.walls[k].mesh(m)); K.det.mesh(LMM.det); K.txt.mesh(LMM.txt, false); K.clk.mesh(LMM.clk, false);
   for (const [b, m] of [[K.plain, LMM.plain], [K.stone, LMM.stone]]) { const pm = b.mesh(m); if (pm) { pm.castShadow = pm.receiveShadow = true; scene.add(pm); } }
   const gm = K.globe.mesh(LMM.globe); if (gm) { gm.receiveShadow = true; scene.add(gm); }
@@ -4141,7 +4247,7 @@ function buildTrees() {
   farGeo.setAttribute('aQ', new THREE.Float32BufferAttribute([0, 0, 0, 0, 1, 1, 1, 1], 1));
   farGeo.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
   const add = (x, z, type, sc, v) => {
-    if (Math.abs(x) > HX || Math.abs(z) > HY || lmClear(x, z) || wetTree(x, z) || fortNoTree(x, z)) return;
+    if (Math.abs(x) > HX || Math.abs(z) > HY || lmClear(x, z) || wetTree(x, z) || fortNoTree(x, z) || vbNoTree(x, z)) return;
     const i = Math.floor(x / TTILE), j = Math.floor(z / TTILE), k = (i + 100) * 1000 + j + 100;
     let t = treeTiles.get(k); if (!t) treeTiles.set(k, t = { x0: i * TTILE, z0: j * TTILE, list: [] }); t.list.push(x, z, type, sc, v);
   };
@@ -4378,7 +4484,7 @@ function nextDeparture() { // first trip start after now (today or tomorrow)
   }
   return null;
 }
-const PO = [0, 0, 0, 0], PA = [0, 0, 0, 0], PB2 = [0, 0, 0, 0], MX = new THREE.Matrix4(), QY = new THREE.Quaternion(), VUP = new THREE.Vector3(0, 1, 0), VP = new THREE.Vector3(), VS = new THREE.Vector3();
+const PO = [0, 0, 0, 0], PA = [0, 0, 0, 0], PB2 = [0, 0, 0, 0], MX = new THREE.Matrix4(), QY = new THREE.Quaternion(), VUP = new THREE.Vector3(0, 1, 0), VP = new THREE.Vector3(), VS = new THREE.Vector3(), VE = new THREE.Euler();
 function updateTransit(dt) {
   if (!TX.ok) return;
   const sp = SPEEDS[TX.si];
@@ -4396,9 +4502,10 @@ function updateTransit(dt) {
       if (cnt[kind] >= VCAP[kind]) break;
       lanePoint(shapeAt(sh, front - 0.3, PA), kind); lanePoint(shapeAt(sh, front - L + 0.3, PB2), kind);
       const cx = (PA[0] + PB2[0]) / 2, cz = (PA[1] + PB2[1]) / 2, yaw = Math.atan2(PA[0] - PB2[0], PA[1] - PB2[1]);
-      QY.setFromAxisAngle(VUP, yaw);
-      MX.compose(VP.set(cx, 0, cz), QY, VS.set(1, 1, L / MODEL_LEN[kind])); M.b.setMatrixAt(cnt[kind], MX); M.g.setMatrixAt(cnt[kind], MX);
-      MX.compose(VP.set(cx, 0.035, cz), QY, VS.set(3.6, 1, L + 1.6)); M.s.setMatrixAt(cnt[kind], MX);
+      const ya = vbGround(PA[0], PA[1]), yb = vbGround(PB2[0], PB2[1]), gy = (ya + yb) / 2;   // over Vienības tilts: up the deck, nose up or down
+      if (ya || yb) QY.setFromEuler(VE.set(-Math.atan2(ya - yb, L), yaw, 0, 'YXZ')); else QY.setFromAxisAngle(VUP, yaw);
+      MX.compose(VP.set(cx, gy, cz), QY, VS.set(1, 1, L / MODEL_LEN[kind])); M.b.setMatrixAt(cnt[kind], MX); M.g.setMatrixAt(cnt[kind], MX);
+      MX.compose(VP.set(cx, gy + 0.035, cz), QY, VS.set(3.6, 1, L + 1.6)); M.s.setMatrixAt(cnt[kind], MX);
       if (first) placed.push({ x: cx, z: cz, kind, route: TR.routes[p.route][0], dest: TR.stops[p.stops[p.stops.length - 1]][0] });
       cnt[kind]++; front -= L + 0.7; first = false;
     }
@@ -4510,7 +4617,7 @@ const PLACES = [
   ['Николаевские ворота', 'крепость: деревянный мост через ров', -2788.1, -65.4, -0.589],
   ['Михайловские ворота', 'гранитный портал с секирами, вид из крепости', -2564.6, -133.2, -2.82],
   ['Александровские ворота', 'кирпичный портал с меандром', -2411.7, -514.2, 2.052],
-  ['Мост Единства', 'через Даугаву в Гриву', -2205, 1953, 0],
+  ['Мост Единства', 'Vienības tilts, 1935 · через Даугаву в Гриву', -1666.0, 1745.1, 2.513],
   ['Грива', 'левый берег, костёл Девы Марии', -1515, 2570, 0],
   ['Стадион «Локомотив»', 'спидвей', 372, 300, 3.1],
   ['Химия · Дворец культуры', 'микрорайон Ķīmija', 900, -500, 0],
@@ -4530,7 +4637,7 @@ function freeSpot(x, z) {
 }
 function teleport(x, z, yaw) {
   x = Math.max(-HX + 5, Math.min(HX - 5, x)); z = Math.max(-HY + 5, Math.min(HY - 5, z));
-  if (P.fly) { P.x = x; P.z = z; } else { [P.x, P.z] = freeSpot(x, z); P.y = 1.7 + fortGround(P.x, P.z); }
+  if (P.fly) { P.x = x; P.z = z; } else { [P.x, P.z] = freeSpot(x, z); P.y = 1.7 + fortGround(P.x, P.z) + vbGround(P.x, P.z); }
   if (yaw != null) { P.yaw = yaw; P.pitch = P.fly ? -0.45 : 0; }
   hudTimer = 0; mapTimer = 0; lodTimer = 0;
 }
@@ -4563,7 +4670,7 @@ function step(dt) {
     P.walked += sp * dt * l;
   }
   P.x = Math.max(-HX, Math.min(HX, P.x)); P.z = Math.max(-HY, Math.min(HY, P.z));
-  if (!P.fly) P.y = 1.7 + fortGround(P.x, P.z);   // up the ramparts, down into the moats
+  if (!P.fly) P.y = 1.7 + fortGround(P.x, P.z) + vbGround(P.x, P.z);   // up the ramparts, down into the moats, over the bridge
 }
 function setFly(on) {
   P.fly = on; $('bFly').setAttribute('aria-pressed', on);
