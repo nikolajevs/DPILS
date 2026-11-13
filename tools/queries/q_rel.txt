@@ -1,6 +1,7 @@
 [out:json][timeout:180];
 (
 relation["building"](55.825,26.44,55.94,26.64);
+relation["building:part"](55.825,26.44,55.94,26.64);
 relation["natural"~"^(water|wood|scrub|sand|beach)$"](55.825,26.44,55.94,26.64);
 relation["waterway"="riverbank"](55.825,26.44,55.94,26.64);
 relation["landuse"~"^(forest|grass|meadow|cemetery|residential|industrial|allotments|farmland)$"](55.825,26.44,55.94,26.64);

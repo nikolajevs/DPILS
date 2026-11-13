@@ -9,8 +9,10 @@ let R = JSON.parse(fs.readFileSync(dir + '/rest.json', 'utf8')).elements;
 // relations downloaded separately with full member geometry replace the member-less copies
 if (fs.existsSync(dir + '/rel.json')) {
   const REL = JSON.parse(fs.readFileSync(dir + '/rel.json', 'utf8')).elements;
-  B = B.filter(e => e.type !== 'relation').concat(REL.filter(e => e.tags && e.tags.building));
-  R = R.filter(e => e.type !== 'relation').concat(REL.filter(e => e.tags && !e.tags.building));
+  // building:part relations too: without them a building mapped only in parts (the former cinema Renesanse) vanishes
+  const isB = e => e.tags && (e.tags.building || e.tags['building:part']);
+  B = B.filter(e => e.type !== 'relation').concat(REL.filter(isB));
+  R = R.filter(e => e.type !== 'relation').concat(REL.filter(e => e.tags && !isB(e)));
 }
 const CAD = cadFile && cadFile !== '-' ? JSON.parse(fs.readFileSync(cadFile, 'utf8')) : [];
 

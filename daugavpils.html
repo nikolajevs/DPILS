@@ -814,7 +814,7 @@ const PLINTH_H = [0.9, 0.8, 0.6, 0.7, 0.45, 0.5, 0.3, 0.15];
 
 /* ---------- world data kept for map, collisions and lookups ---------- */
 const AREAS = [], LINES = [], BLD = [], WATER = [];
-const ROAD = new SegGrid(40), COL = new SegGrid(20), BGRID = new Map();
+const ROAD = new SegGrid(40), COL = new SegGrid(20), BGRID = new Map(), STREAM = new SegGrid(20);
 const TRAMLINES = [];
 function inBuilding(x, z) {
   const l = BGRID.get((Math.floor(x / 60) + 2000) * 4096 + Math.floor(z / 60) + 2000); if (!l) return false;
@@ -824,6 +824,33 @@ function inBuilding(x, z) {
 function inWater(x, z) {
   for (const a of WATER) { const bb = a.bb; if (x < bb[0] || x > bb[2] || z < bb[1] || z > bb[3]) continue; if (!pip(x, z, a.rings[0])) continue; let hole = false; for (let k = 1; k < a.rings.length; k++) if (pip(x, z, a.rings[k])) { hole = true; break; } if (!hole) return true; }
   return false;
+}
+/* trees must not stand in water: a 4 m raster of the water polygons (0 land, 1 water, 2 by a shore) settles most
+   points at once; by a shore the polygons are tested exactly with a metre of margin, streams by their drawn width */
+let WMASK = null;
+function waterMask() {
+  const S = 4, X0 = -HX - 8, Z0 = -HY - 8, NX = Math.ceil((2 * HX + 16) / S), NZ = Math.ceil((2 * HY + 16) / S), m = new Uint8Array(NX * NZ);
+  for (const a of WATER) {
+    const bb = a.bb, j0 = Math.max(0, Math.floor((bb[1] - Z0) / S)), j1 = Math.min(NZ - 1, Math.floor((bb[3] - Z0) / S));
+    for (let j = j0; j <= j1; j++) {
+      const z = Z0 + (j + 0.5) * S, xs = [];
+      for (const r of a.rings) { const n = r.length >> 1; for (let i = 0, k = n - 1; i < n; k = i++) { const zi = r[2 * i + 1], zk = r[2 * k + 1]; if ((zi > z) !== (zk > z)) xs.push(r[2 * i] + (r[2 * k] - r[2 * i]) * (z - zi) / (zk - zi)); } }
+      xs.sort((p, q) => p - q);
+      for (let q = 0; q + 1 < xs.length; q += 2) { const i0 = Math.max(0, Math.ceil((xs[q] - X0) / S - 0.5)), i1 = Math.min(NX - 1, Math.floor((xs[q + 1] - X0) / S - 0.5)); for (let i = i0; i <= i1; i++) m[j * NX + i] = 1; }
+    }
+  }
+  for (const a of WATER) for (const r of a.rings) { const n = r.length >> 1; for (let i = 0, k = n - 1; i < n; k = i++) {
+    const x1 = r[2 * k], z1 = r[2 * k + 1], x2 = r[2 * i], z2 = r[2 * i + 1], steps = Math.max(1, Math.ceil(Math.hypot(x2 - x1, z2 - z1) / 1.5));
+    for (let s = 0; s <= steps; s++) { const ci = Math.floor((x1 + (x2 - x1) * s / steps - X0) / S), cj = Math.floor((z1 + (z2 - z1) * s / steps - Z0) / S);
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = ci + di, jj = cj + dj; if (ii >= 0 && jj >= 0 && ii < NX && jj < NZ) m[jj * NX + ii] = 2; } } } }
+  WMASK = { m, S, X0, Z0, NX, NZ };
+}
+function wetTree(x, z) {
+  if (!WMASK) waterMask();
+  const W = WMASK, i = Math.floor((x - W.X0) / W.S), j = Math.floor((z - W.Z0) / W.S), v = i >= 0 && j >= 0 && i < W.NX && j < W.NZ ? W.m[j * W.NX + i] : 0;
+  if (v === 1) return true;
+  if (v === 2 && (inWater(x, z) || inWater(x + 1.2, z) || inWater(x - 1.2, z) || inWater(x, z + 1.2) || inWater(x, z - 1.2))) return true;
+  let wet = false; STREAM.near(x, z, 6, (id, d) => { if (d < STREAM.s[id * 6 + 4] + 1.0) wet = true; }); return wet;
 }
 function onRoad(x, z, margin) { let ok = false; ROAD.near(x, z, 14, (id, d) => { if (d < ROAD.s[id * 6 + 4] + margin) ok = true; }); return ok; }
 
@@ -931,6 +958,7 @@ function buildLines() {
     }
     l.bb = bbox(pts); l.w = def[0]; LINES.push(l);
     const hw = def[0] / 2;
+    if (cls === 10 || cls === 11) for (let i = 0; i < n - 1; i++) STREAM.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, 0);
     if (cls <= 3) { ribbon(walk, pts, hw + 1.4, 1.3, PAVE); ribbon(walk, pts, -hw - 1.4, 1.3, PAVE); ribbon(marks, pts, hw + 0.08, 0.12, CURB); ribbon(marks, pts, -hw - 0.08, 0.12, CURB); }
     ribbon(groups[def[2]], pts, 0, hw, lineCol[cls]);
     if (cls <= 2) dashes(marks, pts, 0, 0.07, 3, 9, WHITE);
@@ -1037,12 +1065,15 @@ function church(b, gold, kind, o, h, r, wallCol, name) {
    gives collisions and the map footprint. Proportions are measured on photographs (Wikimedia Commons,
    visitdaugavpils.lv, celotajs.lv, militaryheritagetourism.info, neighborhood.lv); the portico, its 29.4 m width,
    the 18 m cornice and the 12 m columns match the cadastre outline. */
-const LMF = { vn: [-1488, 1328.7, 0.8678, -0.4969], lat: [-1448.3, 1174.1, 0.8528, -0.5223], du: [-1497.7, 1537.4, -0.8604, 0.5097], p1: [-2088.2, 1366.8, 0.8607, -0.5090] };
+const LMF = { vn: [-1488, 1328.7, 0.8678, -0.4969], lat: [-1448.3, 1174.1, 0.8528, -0.5223], du: [-1497.7, 1537.4, -0.8604, 0.5097], p1: [-2088.2, 1366.8, 0.8607, -0.5090], ren: [-1759.53, 1019.91, -0.5075, -0.8616] };
 const lmW = (f, u, v) => [f[0] + u * f[2] - v * f[3], f[1] + u * f[3] + v * f[2]];
 const lmL = (f, x, z) => [(x - f[0]) * f[2] + (z - f[1]) * f[3], -(x - f[0]) * f[3] + (z - f[1]) * f[2]];
 // a cadastre building whose outline contains one of these points is left to buildLandmarks
 const LM_KEYS = [lmW(LMF.vn, 40, 15), lmW(LMF.lat, 10, 30), lmW(LMF.lat, 50, 30), lmW(LMF.lat, 2.6, 64.6),
-  lmW(LMF.du, 8, 38), lmW(LMF.p1, 20, 80), lmW(LMF.p1, 36.2, 3), lmW(LMF.p1, 70, -15)];
+  lmW(LMF.du, 8, 38), lmW(LMF.p1, 20, 80), lmW(LMF.p1, 36.2, 3), lmW(LMF.p1, 70, -15), lmW(LMF.ren, 22, 30), lmW(LMF.ren, 5, 54), lmW(LMF.ren, 20, 12)];
+// outlines that are not real buildings: the canopy of the cinema Renesanse, mapped in OSM as its only building:part way
+const LM_DROP = [lmW(LMF.ren, -8.85, 40.6)];
+function lmDrops(ring, bb) { for (const [x, z] of LM_DROP) if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pip(x, z, ring)) return true; return false; }
 function lmOwns(ring, bb) { for (const [x, z] of LM_KEYS) if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pip(x, z, ring)) return true; return false; }
 /* Flower beds by Vienības nams (frame vn): the long carpet bed in the garden strip in front of the portico with a
    five-globe candelabrum at each end, and the bed in front of the concert-hall wing towards Rīgas iela. */
@@ -1099,15 +1130,17 @@ function lmWallTex(kind) {
 /* more wall surfaces, metres per tile in LMWS: 2 the university's ochre render scored into 1.5 × 0.75 m ashlar,
    3 red facing brick (colour baked in, laid in stretcher bond), 4 small beige ceramic tiles of the 1980s slabs with a
    panel joint every 3 m, 5 white precast panels */
-const LMWS = [6, 8, 6, 3, 6, 6];
+const LMWS = [6, 8, 6, 3, 6, 6, 3];
 function lmWallTex2(kind) {
   const S = 512, cv = mkCanvas(S, S), g = cv.getContext('2d'), id = g.createImageData(S, S), d = id.data, n1 = fbm(S, [4, 16, 64], 41 + kind);
   const tone = []; for (let k = 0; k < 4096; k++) tone.push(lr());
-  const BR = [[178, 74, 46], [168, 66, 42], [188, 88, 54], [158, 60, 40], [182, 80, 50], [146, 56, 40], [194, 96, 60], [172, 72, 48]];
+  const BR = kind === 6   // 6: the buff brick of the 1970s cinema, pale yellow to ochre with a few pinkish bricks
+    ? [[206, 172, 116], [196, 160, 104], [214, 184, 132], [186, 148, 96], [200, 164, 110], [192, 140, 100], [218, 190, 140], [180, 142, 92]]
+    : [[178, 74, 46], [168, 66, 42], [188, 88, 54], [158, 60, 40], [182, 80, 50], [146, 56, 40], [194, 96, 60], [172, 72, 48]];
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
     const i = y * S + x, grain = (Math.random() - 0.5) * 0.06 + (n1[i] - 0.5) * 0.08;
     let r, gg, b;
-    if (kind === 3) {
+    if (kind === 3 || kind === 6) {
       const row = Math.floor(y * 40 / S), off = row % 2 ? S / 24 : 0, xx = (x + off) % S, col = Math.floor(xx * 12 / S) % 12, bx = xx - col * S / 12, by = y - row * S / 40;
       if (bx < 2.2 || by < 2.0) { const m = 0.72 + grain; r = 184 * m; gg = 176 * m; b = 166 * m; }
       else { const c = BR[Math.floor(tone[(row * 13 + col * 7) % 4096] * 8)], m = 0.9 + tone[(row * 31 + col * 17 + 5) % 4096] * 0.16 + grain * 1.3 - (by < 3.5 || bx < 4 ? 0.06 : 0); r = c[0] * m; gg = c[1] * m; b = c[2] * m; }
@@ -1263,6 +1296,24 @@ function lmTiles() {
   T('labGl', 1.4, 3.3, () => { R(0, 0, 1.4, 3.3, '#5a6268', 1); glass(0.05, 0.05, 1.3, 3.2, 1, '#fff4e0'); R(0, 1.6, 1.4, 0.05, '#5a6268', 1); });
   T('labDoor', 2.4, 3.0, () => { R(0, 0, 2.4, 3.0, LMF_, 1); glass(0.06, 0.06, 2.28, 0.7, 1, '#fff4e0'); glass(0.06, 0.82, 1.1, 2.12, 0, '#fff4e0'); glass(1.24, 0.82, 1.1, 2.12, 0, '#fff4e0'); });
   T('labBox', 6.0, 1.4, () => { R(0, 0, 6.0, 1.4, '#2f3438', 1); for (let k = 0; k < 4; k++) glass(0.06 + k * 1.485, 0.06, 1.425, 1.28, 0, '#ffeccc'); });
+  // ---- the former cinema "Oktobris" / "Renesanse", now Daugavpils Innovation Centre: black-framed glazing with a
+  // frosted ornament band, the upper windows, a louvred grille, the LED sign by the doors
+  const ornament = (x, y, w) => { for (let k = 0; k < w / 0.09; k++) { const cx = x + k * 0.09 + 0.045; R(cx - 0.03, y + 0.02 + (k % 3) * 0.025, 0.06, 0.04, 'rgba(240,242,244,0.9)', 0, '#fff8ec'); if (k % 4 === 0) R(cx - 0.012, y, 0.024, 0.13, 'rgba(240,242,244,0.85)', 0, '#fff8ec'); } };
+  for (const [k, door] of [['dicGlass', 0], ['dicDoor', 1]]) T(k, 2.0, 2.5, () => {
+    R(0, 0, 2.0, 2.5, '#1c1e20', 1); glass(0.06, 0.06, 0.91, 2.38, 0, '#fff0d4'); glass(1.03, 0.06, 0.91, 2.38, 0, '#fff0d4');
+    ornament(0.06, 0.55, 1.88); ornament(0.06, 1.35, 1.88);
+    if (door) { R(0.9, 1.1, 0.04, 0.5, '#b8bcbf', 1); R(1.06, 1.1, 0.04, 0.5, '#b8bcbf', 1); }
+  });
+  T('dicWin', 1.6, 1.4, () => { R(0, 0, 1.6, 1.4, '#232527', 1); glass(0.06, 0.06, 1.48, 1.28, 0, '#ffe2b4'); });
+  T('dicGrille', 3.2, 0.8, () => { R(0, 0, 3.2, 0.8, '#b9ad8f', 1); for (let k = 0; k < 7; k++) R(0.06, 0.06 + k * 0.1, 3.08, 0.05, '#6f6756', 1); });
+  T('dicStrip', 1.2, 8.0, () => sash(0, 0, 1.2, 8.0, '#2a2c2e', 0.05, 1, 8, 0, '#ffe2b4'));
+  T('dicLED', 4.6, 3.0, () => {
+    R(0, 0, 4.6, 3.0, '#13192e', 0, '#0a1030'); R(0.06, 0.06, 4.48, 2.88, '#1d2b5e', 0, '#1a2a70');
+    for (let k = 0; k < 120; k++) { const a = -1.9 + k / 120 * 3.8, rr = 1.05 + Math.sin(k * 1.7) * 0.06, x = 1.15 + Math.cos(a) * rr * 0.62, y = 1.5 + Math.sin(a) * rr, c = ['#e83a7a', '#3ab4e8', '#f2c230', '#8a5ad8', '#ffffff'][k % 5];
+      R(x - 0.025, y - 0.025, 0.05, 0.05, c, 0, c); }
+    txt('DAUGAVPILS', 1.5, 1.05, 0.3, '#ffffff', '600', 'left'); txt('INOVĀCIJU', 1.5, 1.5, 0.3, '#ff4d7e', '600', 'left'); txt('CENTRS', 1.5, 1.95, 0.3, '#ffffff', '600', 'left');
+    e.font = g.font; e.textAlign = 'left'; e.textBaseline = 'middle'; for (const [s, y, c] of [['DAUGAVPILS', 1.05, '#ffffff'], ['INOVĀCIJU', 1.5, '#ff6a90'], ['CENTRS', 1.95, '#ffffff']]) { e.font = `600 ${0.3 * PX}px "Golos Text", "Trebuchet MS", sans-serif`; e.fillStyle = c; e.fillText(s, X + 1.5 * PX, Y + y * PX); }
+  });
   // shelf packing, tallest first
   defs.sort((a, b) => b.h - a.h);
   let sx = 2, sy = 2, rowH = 0;
@@ -2006,6 +2057,73 @@ function lmDULab(K) {
     lmBlock(K, f, { poly: br, top: 7.4, st: { tex: 5, col: WH }, roof: hb('#6a6d70'), roofY: 7.4, cornice: [[3.5, 3.85, 0.04, DARK], [7.0, 7.4, 0.08, DARK]], wy0: lmFoot([[br[5], br[0], 99], [br[2], br[3], 99]]) }, o); }
 }
 
+/* ---- Former cinema "Oktobris" (1978), later "Renesanse", Vienības iela 30; Daugavpils Innovation Centre since 2022 ----
+   OpenStreetMap maps the building in building:part relations, which the data build did not download, so its outline
+   is missing from citydata.js: the named outline left only its centre (the place "Daugavpils inovāciju centrs"), and
+   the one part mapped as a way survived as a 27 × 2.5 m "building" in front, which is the canopy over the lobby. The plan
+   is anchored on that canopy and laid square to Vienības iela; the massing follows photographs: Wikimedia Commons
+   ("Daugavpils oktobris cinema", "Кинотеатр Ренесанс - panoramio"), LSM (2022). Buff brick throughout: the big hall on
+   the west with its rounded corner and a louvred grille, the lobby with a band of upper windows over a thick rounded
+   canopy, black-framed glazing with a frosted ornament and the LED sign of the Innovation Centre, the taller east block
+   with a rounded front, the small hall and the service block behind; a terrace, steps and a ramp with steel railings.
+   Frame ren: u from the front into the building, v east along it. */
+const lmArc = (cu, cv, r, t0, t1, n) => { const p = []; for (let k = 0; k <= n; k++) { const t = t0 + (t1 - t0) * k / n; p.push([cu + r * Math.cos(t), cv + r * Math.sin(t)]); } return p; };
+function lmRenesanse(K) {
+  const f = LMF.ren, G = K.plain, GS = K.stone, at = (u, v, y) => { const w = lmW(f, u, v); return [w[0], y, w[1]]; };
+  const buff = { tex: 6, col: [244, 238, 230] }, GREY = hb('#8f8c86'), METAL = hb('#8e9195'), CANOPY = hb('#7b7e81'), CONC = hb('#9b9893'), RAIL = hb('#c3c7ca'), FLAT = hb('#5a5c5e');
+  const trim = top => [[0, 0.9, 0.04, GREY], [top - 0.15, top, 0.07, METAL]];
+  const H = { hall: 12.0, lobby: 9.8, east: 12.6, small: 10.6, rear: 7.0 };
+  const UF = -7.6, UG = -5.4, UB = 44, V0 = 26.9, V1 = 48, V2 = 59.8, CV1 = 54.3;     // lobby front and glazing, back; lobby west and east, east block, canopy end
+  const WA = lmArc(UF + 12, 16, 12, Math.PI, 1.5 * Math.PI, 8), EA = lmArc(UG + 6, V2 - 6, 6, Math.PI, Math.PI / 2, 6);   // rounded corners
+  const west = [[UF, V0], ...WA, [UB, 4], [UB, V0], [5, V0]];   // WA runs from (UF, 16) to (UF + 12, 4)
+  const lobby = [[UF, V0], [UF, V1], [UG, V1], [5, V1], [5, V0]];
+  const east = [[UG, V1], ...EA, [18, V2], [18, V1], [5, V1]];
+  const small = [[5, V0], [5, V1], [18, V1], [36, V1], [UB, V1], [UB, V0]], rear = [[18, V1], [18, V2], [36, V2], [36, V1]];
+  // big hall: the grille high on its front, a service door at the back
+  { const o = []; lmOp(o, UF, 21.5, 3.2, 9.9, 10.7, 'dicGrille', { d: 0.08 }); lmOp(o, UB, 14, 1.5, 0, 2.9, 'vnSideDoor', { d: 0.2 });
+    lmBlock(K, f, { poly: west, top: H.hall, st: buff, roof: FLAT, roofY: H.hall, cornice: trim(H.hall), wy0: lmFoot([[[UB, V0], [5, V0], H.small], [[5, V0], [UF, V0], H.lobby]]) }, o); }
+  // east block: a tall stair window on its side
+  { const o = []; lmOp(o, 10, V2, 1.2, 1.6, 9.6, 'dicStrip', { d: 0.2, lit: lmLit(0.6) });
+    lmBlock(K, f, { poly: east, top: H.east, st: buff, roof: FLAT, roofY: H.east, cornice: trim(H.east), wy0: lmFoot([[[18, V1], [5, V1], H.small], [[5, V1], [UG, V1], H.lobby], [[18, V2], [18, V1], H.rear]]) }, o); }
+  lmBlock(K, f, { poly: small, top: H.small, st: buff, roof: FLAT, roofY: H.small, cornice: trim(H.small),
+    wy0: lmFoot([[[5, V0], [5, V1], H.lobby], [[5, V1], [18, V1], 99], [[18, V1], [36, V1], H.rear], [[UB, V0], [5, V0], 99]]) }, []);
+  { const o = []; lmOp(o, 36, 54, 1.5, 0, 2.9, 'vnSideDoor', { d: 0.2 });
+    lmBlock(K, f, { poly: rear, top: H.rear, st: buff, roof: FLAT, roofY: H.rear, cornice: trim(H.rear), wy0: lmFoot([[[18, V1], [18, V2], 99], [[36, V1], [18, V1], 99]]) }, o); }
+  // lobby: the ground floor recessed 2.2 m under the canopy, a band of upper windows on the west half of the front
+  { const o = [], a = [UF, V0], b = [UF, V1], wo = () => ({ d: 0.18, lit: lmLit(0.6) }), vm = (V0 + V1) / 2;
+    lmOp(o, UF, vm, V1 - V0 - 0.6, 0, 3.4, null, { d: UG - UF, noFloor: true });
+    lmStrip(o, a, b, 0.6, 2.0, 1.4, 4.9, 6.3, 'dicWin', wo); lmStrip(o, a, b, 2.8, 7.6, 1.6, 4.9, 6.3, 'dicWin', wo); lmStrip(o, a, b, 8.6, 13.4, 1.6, 4.9, 6.3, 'dicWin', wo);
+    lmBlock(K, f, { poly: lobby, top: H.lobby, st: buff, roof: FLAT, roofY: H.lobby, cornice: [[H.lobby - 0.15, H.lobby, 0.07, METAL]], wy0: lmFoot([[[UG, V1], [5, V1], 99], [[5, V1], [5, V0], 99], [[5, V0], [UF, V0], 99]]) }, o);
+    const g = [], ga = [UG, V0 + 0.3], gb = [UG, V1 - 0.3]; lmStrip(g, ga, gb, 0, 12, 2.0, 0.9, 3.4, k => k === 2 || k === 3 ? 'dicDoor' : 'dicGlass', { d: 0.05, lit: true });
+    lmOp(g, UG, V1 - 4.6, 4.0, 0.95, 3.4, 'dicLED', { d: 0.03, lit: true });
+    lmWallTo(K, f, ga, gb, [UF - 5, vm], 0.9, 3.4, g, { tex: 5, col: hb('#2c2e31') }); }
+  // the canopy: a thick slab with a rounded nose, downlights in its soffit; it runs on in front of the east block
+  { const u1 = UG, v0 = V0, v1 = CV1, y0 = 3.4, y1 = 4.3, r = (y1 - y0) / 2, yc = (y0 + y1) / 2, u0 = -10.1 + r;
+    lmBoxL(G, f, u0, u1, v0, v1, y0, y1, CANOPY);
+    for (let k = 0; k < 10; k++) { const a0 = Math.PI / 2 + k / 10 * Math.PI, a1 = Math.PI / 2 + (k + 1) / 10 * Math.PI, am = (a0 + a1) / 2, P = (a, v) => at(u0 + r * Math.cos(a), v, yc + r * Math.sin(a));
+      polyA(G, [P(a0, v0), P(a1, v0), P(a1, v1), P(a0, v1)], sh(CANOPY, 0.95 + 0.1 * Math.sin(am)), f[2] * Math.cos(am), Math.sin(am), f[3] * Math.cos(am));
+      for (const [v, s] of [[v0, -1], [v1, 1]]) polyA(G, [at(u0, v, yc), P(a0, v), P(a1, v)], CANOPY, -f[3] * s, 0, f[2] * s); }
+    for (let v = 28; v < v1 - 0.5; v += 2.4) for (const u of [-9.0, -6.6]) lmDisc(K.globe, at(u, v, y0 - 0.01), 0.09, [f[2], 0, f[3]], [-f[3], 0, f[2]], hb('#fff6e6'), [0, -1, 0]); }
+  // forecourt: a granite terrace at the lobby floor, steps at its west end, a ramp with steel railings along the front
+  { const ut = -13.4; lmBoxL(GS, f, ut, UG, V0 - 0.9, CV1 + 0.7, 0, 0.9, CONC, false);
+    for (let k = 0; k < 6; k++) lmBoxL(GS, f, ut - 0.32 * (6 - k), ut + 0.02, V0 - 0.8, V0 + 3.2, k * 0.15, (k + 1) * 0.15, sh(CONC, 0.95 + (k % 2) * 0.06), false);
+    const ua = ut - 2.1, ub = ut, va = V0 + 3.6, vb = V1, yr = v => 0.9 * (vb - v) / (vb - va);
+    polyA(GS, [at(ua, va, 0.9), at(ub, va, 0.9), at(ub, vb, 0), at(ua, vb, 0)], sh(CONC, 1.04), 0, 1, 0);
+    polyA(GS, [at(ua, va, 0), at(ua, va, 0.9), at(ua, vb, 0)], sh(CONC, 0.9), -f[2], 0, -f[3]); polyA(GS, [at(ua, va, 0), at(ub, va, 0), at(ub, va, 0.9), at(ua, va, 0.9)], sh(CONC, 0.85), f[3], 0, -f[2]);
+    const rails = (u, base) => { for (let v = va; v <= vb + 0.01; v += (vb - va) / 12) lmBar(G, at(u, v, base(v)), at(u, v, base(v) + 0.95), 0.05, RAIL);
+      for (const h of [0.5, 0.95]) lmBar(G, at(u, va, base(va) + h), at(u, vb, base(vb) + h), 0.045, RAIL); };
+    rails(ua + 0.08, yr); rails(ub + 0.06, () => 0.9);
+    const us = ut - 1.92; for (const v of [V0 - 0.65, V0 + 3.05]) { lmBar(G, at(us, v, 0.95), at(ut, v, 1.85), 0.045, RAIL); lmBar(G, at(us, v, 0), at(us, v, 0.95), 0.05, RAIL); lmBar(G, at(ut, v, 0.9), at(ut, v, 1.85), 0.05, RAIL); } }
+  // plant on the roofs
+  for (const [u, v, w, d, y, h] of [[24, 14, 4, 3, H.hall, 1.4], [24, 38, 5, 3, H.small, 1.2], [6, 54, 2.4, 2.4, H.east, 1.0]]) lmBoxL(G, f, u - w / 2, u + w / 2, v - d / 2, v + d / 2, y, y + h, hb('#8d9091'));
+  // the building is missing from the data, so it registers its own outline: collisions, the map, no trees inside
+  const out = [...WA, [UB, 4], [UB, V1], [36, V1], [36, V2], ...EA.slice().reverse(), [UG, V1], [UF, V1], [UF, V0]];
+  let ring = []; for (const [u, v] of out) ring.push(...lmW(f, u, v)); ring = new Float32Array(ring); if (area2(ring) < 0) ring = reversed(ring);
+  const bb = bbox(ring); BLD.push({ ring, bb, kind: 2 }); const bid = BLD.length - 1;
+  for (let i = Math.floor(bb[0] / 60); i <= Math.floor(bb[2] / 60); i++) for (let j = Math.floor(bb[1] / 60); j <= Math.floor(bb[3] / 60); j++) { const k = (i + 2000) * 4096 + j + 2000; let l = BGRID.get(k); if (!l) BGRID.set(k, l = []); l.push(bid); }
+  const n = ring.length >> 1; for (let i = 0; i < n; i++) { const j = (i + 1) % n; COL.add(ring[2 * i], ring[2 * i + 1], ring[2 * j], ring[2 * j + 1], 0, 0); }
+}
+
 /* ---- the square in front: paving, flower beds, candelabra, benches ---- */
 const sphereProf = r => { const p = []; for (let k = 0; k <= 8; k++) { const a = -Math.PI / 2 + k * Math.PI / 8; p.push([Math.abs(Math.cos(a)) * r, r + Math.sin(a) * r]); } return p; };
 function lmCandelabrum(G, Gl, x, z, y0, rot) {
@@ -2101,7 +2219,7 @@ const LM_SAFE = s => { s.fragmentShader = s.fragmentShader.replace('gl_FragColor
   '#if __VERSION__ >= 300\nif (any(isnan(outgoingLight)) || any(isinf(outgoingLight))) outgoingLight = diffuseColor.rgb * 0.3;\n#endif\ngl_FragColor = vec4( min( outgoingLight, vec3( 40.0 ) ), diffuseColor.a );'); };
 const lmStd = (opts, key, patch) => std(opts, key, s => { LM_SAFE(s); if (patch) patch(s); });
 function buildLandmarks() {
-  const [dc, dorm, dglow] = lmTiles(), [sc, sglow] = lmSigns(), WT = [0, 1, 2, 3, 4, 5].map(lmWallTex), ashT = WT[0], renT = WT[1];
+  const [dc, dorm, dglow] = lmTiles(), [sc, sglow] = lmSigns(), WT = [0, 1, 2, 3, 4, 5, 6].map(lmWallTex), ashT = WT[0], renT = WT[1];
   const litPatch = s => {
     s.vertexShader = 'attribute float aLit; varying float vLit;\n' + s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvLit = aLit;');
     s.fragmentShader = 'varying float vLit;\n' + s.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= vLit;');
@@ -2112,6 +2230,7 @@ function buildLandmarks() {
   LMM.brick = lmStd({ vertexColors: true, map: WT[3], roughness: 0.88, metalness: 0 }, 'lm-brick');
   LMM.tile = lmStd({ vertexColors: true, map: WT[4], roughness: 0.55, metalness: 0 }, 'lm-tile');
   LMM.panel = lmStd({ vertexColors: true, map: WT[5], roughness: 0.7, metalness: 0 }, 'lm-panel');
+  LMM.buff = lmStd({ vertexColors: true, map: WT[6], roughness: 0.88, metalness: 0 }, 'lm-buff');
   LMM.det = lmStd({ vertexColors: true, map: dc, roughnessMap: dorm, metalnessMap: dorm, roughness: 1, metalness: 1, emissive: new THREE.Color(1, 1, 1), emissiveMap: dglow, emissiveIntensity: 0 }, 'lm-det', litPatch);
   LMM.txt = lmStd({ vertexColors: true, map: sc, alphaTest: 0.5, roughness: 0.35, metalness: 0.45, emissive: new THREE.Color(1, 1, 1), emissiveMap: sglow, emissiveIntensity: 0 }, 'lm-txt', litPatch);
   LMM.globe = lmStd({ vertexColors: true, roughness: 0.3, metalness: 0, emissive: new THREE.Color(1, 0.82, 0.58), emissiveIntensity: 0 }, 'lm-globe');
@@ -2120,9 +2239,9 @@ function buildLandmarks() {
   const ccv = mkCanvas(256, 80); lmClk = { cv: ccv, g: ccv.getContext('2d'), m: -1, tex: toTex(ccv, true, false) };
   LMM.clk = hook(new THREE.MeshStandardMaterial({ map: lmClk.tex, emissive: new THREE.Color(1, 1, 1), emissiveMap: lmClk.tex, roughness: 0.5, metalness: 0 }), 'lm-clk', LM_SAFE); allMats.push(LMM.clk); lmTick();
   const K = { ash: new LMB(), ren: new LMB(), det: new LMB(), txt: new LMB(), clk: new LMB(), plain: new GB(false), stone: new GB(false), globe: new GB(false) };
-  K.walls = [K.ash, K.ren, new LMB(), new LMB(), new LMB(), new LMB()];
-  lmUnityHouse(K); lmLatgola(K); lmGrounds(K); lmDUMain(K); lmDUParades(K); lmDULab(K);
-  [LMM.ash, LMM.ren, LMM.duw, LMM.brick, LMM.tile, LMM.panel].forEach((m, k) => K.walls[k].mesh(m)); K.det.mesh(LMM.det); K.txt.mesh(LMM.txt, false); K.clk.mesh(LMM.clk, false);
+  K.walls = [K.ash, K.ren, new LMB(), new LMB(), new LMB(), new LMB(), new LMB()];
+  lmUnityHouse(K); lmLatgola(K); lmGrounds(K); lmDUMain(K); lmDUParades(K); lmDULab(K); lmRenesanse(K);
+  [LMM.ash, LMM.ren, LMM.duw, LMM.brick, LMM.tile, LMM.panel, LMM.buff].forEach((m, k) => K.walls[k].mesh(m)); K.det.mesh(LMM.det); K.txt.mesh(LMM.txt, false); K.clk.mesh(LMM.clk, false);
   for (const [b, m] of [[K.plain, LMM.plain], [K.stone, LMM.stone]]) { const pm = b.mesh(m); if (pm) { pm.castShadow = pm.receiveShadow = true; scene.add(pm); } }
   const gm = K.globe.mesh(LMM.globe); if (gm) { gm.receiveShadow = true; scene.add(gm); }
   lmNight(U.night.value);
@@ -2135,6 +2254,7 @@ function buildBuildings(from, to) {
     const rings = []; for (let k = 7; k < rec.length; k++) { let r = dec(rec[k]); if (r.length < 6) continue; const A = area2(r); if ((k === 7) !== (A > 0)) r = reversed(r); rings.push(r); }
     if (!rings.length) continue;
     const outer = rings[0], bb = bbox(outer), cx = (bb[0] + bb[2]) / 2, cz = (bb[1] + bb[3]) / 2;
+    if (lmDrops(outer, bb)) continue;   // drawn by buildLandmarks as part of another building
     const name = rec[3] >= 0 ? NAMES[rec[3]] : '';
     BLD.push({ ring: outer, bb, kind: style }); const bid = BLD.length - 1;
     for (let i = Math.floor(bb[0] / 60); i <= Math.floor(bb[2] / 60); i++) for (let j = Math.floor(bb[1] / 60); j <= Math.floor(bb[3] / 60); j++) { const k = (i + 2000) * 4096 + j + 2000; let l = BGRID.get(k); if (!l) BGRID.set(k, l = []); l.push(bid); }
@@ -2498,7 +2618,7 @@ function buildTrees() {
   farGeo.setAttribute('aQ', new THREE.Float32BufferAttribute([0, 0, 0, 0, 1, 1, 1, 1], 1));
   farGeo.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
   const add = (x, z, type, sc, v) => {
-    if (Math.abs(x) > HX || Math.abs(z) > HY || lmClear(x, z)) return;
+    if (Math.abs(x) > HX || Math.abs(z) > HY || lmClear(x, z) || wetTree(x, z)) return;
     const i = Math.floor(x / TTILE), j = Math.floor(z / TTILE), k = (i + 100) * 1000 + j + 100;
     let t = treeTiles.get(k); if (!t) treeTiles.set(k, t = { x0: i * TTILE, z0: j * TTILE, list: [] }); t.list.push(x, z, type, sc, v);
   };
@@ -2853,6 +2973,7 @@ const PLACES = [
   ['Гостиница «Латгола»', 'Park Hotel Latgola и ТЦ Latgola', -1492.9, 1235.4, -1.02],
   ['Университет · старый корпус', 'Daugavpils Universitāte, Vienības iela 13, 1956', -1482.8, 1484.0, 2.105],
   ['Университет · новый корпус', 'Parādes iela 1 и лабораторный корпус 1A', -1975.5, 1439.5, 0.031],
+  ['Кинотеатр «Ренесанс»', 'бывший «Oktobris» (1978), теперь Инновационный центр', -1716.1, 1018.6, 0.533],
   ['Рижская улица', 'пешеходная Rīgas iela', -1053, 1030, 1.05],
   ['Вокзал', 'Daugavpils dzelzceļa stacija', -815, 880, -2.1],
   ['Дубровинский парк', 'Dubrovina parks', -1833, 1416, 0],

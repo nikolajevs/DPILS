@@ -31,6 +31,26 @@
 
 Источники фото и сведений: Wikimedia Commons (категория *Daugavpils University*: Igors Jefimovs 2011, Dāvis Kļaviņš 2010, снимки panoramio), статьи о Даугавпилсском университете в латышской и русской Википедии, [du.lv](https://du.lv/en/about-us/environmental-accessibility/macibu-korpuss-parades-iela-1/) (схемы этажей корпуса на Parādes iela 1), [archidea.lv](https://archidea.lv/lv/portfolio/portfolio/archidea/architecture/71/) («Gada labākā būve Latvijā 2014»: описание и фото лабораторного корпуса).
 
+## Бывший кинотеатр «Ренесанс»
+
+Кинотеатр «Oktobris» (1978), позже «Renesanse», Vienības iela 30; с 2022 года в нём Daugavpils Inovāciju centrs (`lmRenesanse` в [daugavpils.html](daugavpils.html)). В OpenStreetMap здание нарисовано частями-отношениями (building:part), которые сборка данных не скачивала. Поэтому в `citydata.js` его не было: от общего контура остался только центр (место «Daugavpils inovāciju centrs»). Ещё уцелела единственная часть-линия: полоса 27 × 2,5 м перед зданием, то есть козырёк над фойе. В городе она стояла отдельным «домиком», теперь убрана. План привязан к этому козырьку и поставлен перпендикулярно Vienības iela. Модель сама добавляет свой контур для столкновений, карты и посадки деревьев. Точный план по фото не восстановить, поэтому глубина корпусов приблизительная.
+
+Здание целиком из жёлтого кирпича:
+
+- большой зал на западе со скруглённым углом и вентиляционной решёткой;
+- фойе между залами: лента верхних окон над толстым козырьком со скруглённым краем, под ним остекление в чёрных рамах с матовым орнаментом и светодиодная вывеска Инновационного центра;
+- более высокий восточный объём со скруглённым фасадом;
+- малый зал и служебный корпус позади;
+- гранитная терраса, лестница и пандус со стальными перилами.
+
+Запрос [tools/queries/q_rel.txt](tools/queries/q_rel.txt) теперь скачивает и отношения building:part, а `tools/process.js` превращает их в здания. Данные появятся после следующей пересборки `citydata.js`. Участок кинотеатра зарезервирован за ручной моделью.
+
+Источники: Wikimedia Commons (категория *Cinemas in Daugavpils*: «Daugavpils oktobris cinema», «Кинотеатр Ренесанс — panoramio»), [lsm.lv](https://www.lsm.lv/raksts/dzive--stils/tehnologijas-un-zinatne/daugavpili-atvertais-inovaciju-centrs-vilina-gan-bernus-gan-pieaugusos.a486412/) (фото 2022 года), [visitdaugavpils.lv](https://www.visitdaugavpils.lv/en/turisma-objekts/daugavpils-innovation-centre/).
+
+## Деревья и вода
+
+Деревья не ставятся в воду: ни в водные полигоны (реки, озёра, пруды в опущенном русле) ближе 1,2 м к урезу, ни на ленты ручьёв. Для скорости используется растровая маска воды с ячейкой 4 м; точная проверка делается только у берегов.
+
 ## Как пересобрать `citydata.js`
 
 1. Скачать OpenStreetMap через Overpass API запросами из [tools/queries](tools/queries) в файлы `build.json`, `rest.json`, `rel.json` (одна папка).
