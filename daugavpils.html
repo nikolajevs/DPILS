@@ -1067,12 +1067,12 @@ function church(b, gold, kind, o, h, r, wallCol, name) {
    gives collisions and the map footprint. Proportions are measured on photographs (Wikimedia Commons,
    visitdaugavpils.lv, celotajs.lv, militaryheritagetourism.info, neighborhood.lv); the portico, its 29.4 m width,
    the 18 m cornice and the 12 m columns match the cadastre outline. */
-const LMF = { vn: [-1488, 1328.7, 0.8678, -0.4969], lat: [-1448.3, 1174.1, 0.8528, -0.5223], du: [-1497.7, 1537.4, -0.8604, 0.5097], p1: [-2088.2, 1366.8, 0.8607, -0.5090], ren: [-1759.53, 1019.91, -0.5075, -0.8616] };
+const LMF = { vn: [-1488, 1328.7, 0.8678, -0.4969], lat: [-1448.3, 1174.1, 0.8528, -0.5223], du: [-1497.7, 1537.4, -0.8604, 0.5097], p1: [-2088.2, 1366.8, 0.8607, -0.5090], ren: [-1759.53, 1019.91, -0.5075, -0.8616], ves: [-1172.1, 1098.1, -0.523, -0.852] };
 const lmW = (f, u, v) => [f[0] + u * f[2] - v * f[3], f[1] + u * f[3] + v * f[2]];
 const lmL = (f, x, z) => [(x - f[0]) * f[2] + (z - f[1]) * f[3], -(x - f[0]) * f[3] + (z - f[1]) * f[2]];
 // a cadastre building whose outline contains one of these points is left to buildLandmarks
 const LM_KEYS = [lmW(LMF.vn, 40, 15), lmW(LMF.lat, 10, 30), lmW(LMF.lat, 50, 30), lmW(LMF.lat, 2.6, 64.6),
-  lmW(LMF.du, 8, 38), lmW(LMF.p1, 20, 80), lmW(LMF.p1, 36.2, 3), lmW(LMF.p1, 70, -15), lmW(LMF.ren, 22, 30), lmW(LMF.ren, 5, 54), lmW(LMF.ren, 20, 12)];
+  lmW(LMF.du, 8, 38), lmW(LMF.p1, 20, 80), lmW(LMF.p1, 36.2, 3), lmW(LMF.p1, 70, -15), lmW(LMF.ren, 22, 30), lmW(LMF.ren, 5, 54), lmW(LMF.ren, 20, 12), lmW(LMF.ves, 7, 10)];
 // outlines that are not real buildings: the canopy of the cinema Renesanse, mapped in OSM as its only building:part way
 const LM_DROP = [lmW(LMF.ren, -8.85, 40.6)];
 function lmDrops(ring, bb) { for (const [x, z] of LM_DROP) if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pip(x, z, ring)) return true; return false; }
@@ -1333,6 +1333,14 @@ function lmTiles() {
   T('stShopDoor', 1.4, 3.0, () => { R(0, 0, 1.4, 3.0, '#2f3234', 1); glass(0.07, 0.07, 1.26, 0.55, 0, '#fff0d4'); glass(0.07, 0.7, 1.26, 2.23, 0, '#fff0d4'); R(1.1, 1.6, 0.05, 0.4, '#c0c0bc', 1); });
   T('stBalc', 1.25, 2.6, () => { R(0, 0, 1.25, 2.6, '#f1efe8', 1); glass(0.08, 0.08, 1.09, 0.5, 0, '#ffd9a6'); glass(0.08, 0.66, 0.505, 1.86, 0, '#ffd9a6'); glass(0.665, 0.66, 0.505, 1.86, 0, '#ffd9a6'); });
   T('stGate', 3.0, 3.4, () => { R(0, 0, 3.0, 3.4, '#1c1a18', 0, '#3a2a18'); for (let x = 0.1; x < 3.0; x += 0.18) R(x, 0.3, 0.04, 3.1, '#3b3d40', 1); R(0, 1.6, 3.0, 0.06, '#3b3d40', 1); });
+  // ---- gastrobar Vēsma, Rīgas iela 49: green board fascia, shop-front glazing, the summer terrace's tinted glass fence
+  T('vsBoard', 4.0, 1.9, () => { R(0, 0, 4.0, 1.9, '#234a3b', 4); for (let y = 0.15; y < 1.9; y += 0.16) { line(0, y, 4.0, y, 0.025, '#163327', 4); line(0, y + 0.02, 4.0, y + 0.02, 0.012, '#2f5c4a', 4); } });
+  T('vsFront', 2.0, 3.3, () => { R(0, 0, 2.0, 3.3, '#3f4345', 1); glass(0.06, 0.06, 1.88, 0.62, 0, '#ffe2b8'); glass(0.06, 0.74, 1.88, 2.5, 0, '#ffe2b8'); });
+  T('vsDoor', 2.4, 3.3, () => { R(0, 0, 2.4, 3.3, '#3f4345', 1); glass(0.06, 0.06, 2.28, 0.62, 0, '#ffe2b8'); glass(0.06, 0.74, 1.11, 2.5, 0, '#ffe2b8'); glass(1.23, 0.74, 1.11, 2.5, 0, '#ffe2b8'); R(1.05, 1.7, 0.04, 0.5, '#c0c3c5', 1); R(1.31, 1.7, 0.04, 0.5, '#c0c3c5', 1); });
+  for (const [k, ald] of [['vsFence', 0], ['vsFenceA', 1]]) T(k, 3.2, 1.0, () => {
+    R(0, 0, 3.2, 1.0, '#3a3a2c', 1); glass(0.04, 0.04, 3.12, 0.92, 3, '#6a4a28');
+    if (ald) { R(1.0, 0.18, 1.2, 0.5, '#c8202a', 0, '#c8202a'); R(1.04, 0.22, 1.12, 0.42, '#d8262f'); R(1.45, 0.08, 0.3, 0.16, '#f2c230'); txt('Aldaris', 1.6, 0.47, 0.19, '#ffffff', 'italic 700'); }
+  });
   // shelf packing, tallest first
   defs.sort((a, b) => b.h - a.h);
   let sx = 2, sy = 2, rowH = 0;
@@ -1354,8 +1362,8 @@ const LMS = {};
 function lmSigns() {
   const W = 2048, H = 2048, cv = mkCanvas(W, H), g = cv.getContext('2d'), gm = mkCanvas(W, H), e = gm.getContext('2d');
   e.fillStyle = '#000'; e.fillRect(0, 0, W, H);
-  let y = 0;
-  const add = (name, w, h, draw) => { draw(0, y, w, h); LMS[name] = { u0: 0, u1: w / W, v0: 1 - (y + h) / H, v1: 1 - y / H }; y += h + 8; };
+  let x = 0, y = 0, rowH = 0;   // shelves: left to right, a new row when the next sign does not fit
+  const add = (name, w, h, draw) => { if (x + w > W) { x = 0; y += rowH + 8; rowH = 0; } for (const c of [g, e]) { c.save(); c.beginPath(); c.rect(x, y, w, h); c.clip(); } draw(x, y, w, h); g.restore(); e.restore(); LMS[name] = { u0: x / W, u1: (x + w) / W, v0: 1 - (y + h) / H, v1: 1 - y / H }; x += w + 8; rowH = Math.max(rowH, h); if (y + h > H) console.warn('sign atlas overflow'); };
   const font = (px, wt = '700', fam = '"Century Gothic", Futura, "Avenir Next", "Trebuchet MS", sans-serif') => `${wt} ${px}px ${fam}`;
   add('vnName', 2048, 124, (x0, y0, w, h) => {
     const s = 'VIENĪBAS NAMS'; g.font = font(100, '600'); g.textBaseline = 'middle'; g.textAlign = 'center';
@@ -1394,6 +1402,24 @@ function lmSigns() {
     g.font = font(132, '600'); g.textBaseline = 'middle'; g.textAlign = 'center'; e.font = g.font; e.textBaseline = 'middle'; e.textAlign = 'center';
     [['DAUGAVPILS', 0.27], ['UNIVERSITĀTE', 0.76]].forEach(([s, fy]) => { const step = w / s.length; for (let k = 0; k < s.length; k++) { const cx = x0 + step * (k + 0.5), cy = y0 + h * fy;
       g.fillStyle = '#5a2a1a'; g.fillText(s[k], cx + 5, cy + 6); g.fillStyle = '#dfe2e2'; g.fillText(s[k], cx, cy); e.fillStyle = '#e8eef2'; e.fillText(s[k], cx, cy); } });
+  });
+  // Vēsma: the name in white italic letters outlined in turquoise and dark green, "BĀRS ⓥ BISTRO", the feather
+  add('vesma', 1300, 300, (x0, y0, w, h) => {
+    const f = 'italic 800 230px "Trebuchet MS", "Golos Text", sans-serif', cx = x0 + w / 2, cy = y0 + h / 2 + 8;
+    for (const ctx of [g, e]) { ctx.font = f; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round'; }
+    g.lineWidth = 34; g.strokeStyle = '#123d2e'; g.strokeText('VēsmA', cx, cy); g.lineWidth = 16; g.strokeStyle = '#3cc3c4'; g.strokeText('VēsmA', cx, cy); g.fillStyle = '#f4fbfb'; g.fillText('VēsmA', cx, cy);
+    e.lineWidth = 16; e.strokeStyle = '#38c8d0'; e.strokeText('VēsmA', cx, cy); e.fillStyle = '#ffffff'; e.fillText('VēsmA', cx, cy);
+  });
+  add('vesmaBB', 1000, 120, (x0, y0, w, h) => {
+    const cy = y0 + h / 2; g.font = font(64, '700', '"Trebuchet MS", sans-serif'); g.textBaseline = 'middle'; g.fillStyle = '#eef6f4';
+    g.textAlign = 'right'; g.fillText('BĀRS', x0 + w / 2 - 70, cy); g.textAlign = 'left'; g.fillText('BISTRO', x0 + w / 2 + 70, cy);
+    g.beginPath(); g.arc(x0 + w / 2, cy, 50, 0, 6.3); g.fillStyle = '#eef6f4'; g.fill(); g.beginPath(); g.arc(x0 + w / 2, cy, 42, 0, 6.3); g.fillStyle = '#1f6a64'; g.fill();
+    g.font = font(64, '800', '"Trebuchet MS", sans-serif'); g.textAlign = 'center'; g.fillStyle = '#eef6f4'; g.fillText('V', x0 + w / 2, cy + 3);
+    e.font = g.font; e.textAlign = 'center'; e.textBaseline = 'middle'; e.fillStyle = '#b8f0ec'; e.fillText('BĀRS     BISTRO', x0 + w / 2, cy);
+  });
+  add('vesmaLogo', 240, 300, (x0, y0, w, h) => {
+    const sw = (c, lw, pts) => { for (const ctx of [g, e]) { ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x0 + pts[0], y0 + pts[1]); ctx.bezierCurveTo(x0 + pts[2], y0 + pts[3], x0 + pts[4], y0 + pts[5], x0 + pts[6], y0 + pts[7]); ctx.stroke(); } };
+    sw('#eef6f4', 30, [60, 280, 110, 190, 150, 100, 200, 20]); sw('#3cc3c4', 18, [100, 270, 140, 200, 170, 130, 215, 60]); sw('#eef6f4', 10, [130, 260, 160, 210, 185, 160, 225, 110]);
   });
   const t = toTex(cv, true, false), te = toTex(gm, true, false); t.minFilter = te.minFilter = THREE.LinearMipmapLinearFilter; return [t, te];
 }
@@ -2264,6 +2290,65 @@ function lmStreetHouse(K, ring, S) {
   flatPlain(G, [ring], top + 0.28, sh(ROOF, 0.85), false);
 }
 
+/* ---- Gastrobar "Vēsma", Rīgas iela 49 ----
+   A one-storey pavilion on the north side of the pedestrian street (place and photographs: visitdaugavpils.lv). The
+   cadastre outline (43 × 12 m) includes the roofed summer terrace: the glazed front stands 3.8 m behind it, in line
+   with the recessed entrance of the west wing. A deep fascia of dark green boards runs round the top with the name in
+   white italic letters outlined in turquoise, a turquoise and white stripe, "BĀRS ⓥ BISTRO" and the feather; above it a
+   roof terrace with a steel railing and globe lamps. In front, the summer terrace: dark green steel posts, a thin dark
+   roof with a cream awning underneath, a tinted glass fence with Aldaris banners, a wooden deck, hanging baskets,
+   rattan chairs. Frame ves: u from the street into the building, v east along Rīgas iela. */
+function lmVesma(K) {
+  const f = LMF.ves, G = K.plain, at = (u, v, y) => { const w = lmW(f, u, v); return [w[0], y, w[1]]; }, U = [f[2], f[3]];
+  const WHITE = [240, 240, 236], GREEN = hb('#264b3c'), POST = hb('#2d4a3c'), ROOFC = hb('#3a3f3d'), AWN = hb('#ddd3bc'), DECK = hb('#6b4f3a'), TEAL = hb('#3cc3c4'), STEEL = hb('#c3c7ca');
+  const FA = 3.7, FB = 5.6, UF = 3.8, V0 = -9.7, V1 = 34;
+  const body = [[UF, V0], [UF, V1], [11.8, V1], [11.4, -9.3], [10.5, -14.4], [6.1, -14.0]];
+  // the pavilion: glazed front behind the terrace, the entrance in the west wing, white rendered back
+  { const o = [], a = [UF, V0], b = [UF, V1];
+    lmStrip(o, a, b, 0.6, 5.4, 2.4, 0.3, 3.55, 'vsFront', () => ({ d: 0.12, lit: true })); lmOp(o, UF, -2.6, 2.4, 0.3, 3.55, 'vsDoor', { d: 0.15, lit: true });
+    lmStrip(o, a, b, 10.0, 43.4, 2.0, 0.3, 3.55, 'vsFront', () => ({ d: 0.12, lit: lmLit(0.9) }));
+    for (const [p, q] of [[[11.8, V1], [11.4, -9.3]]]) lmRow(o, p[0], p[1], q[0], q[1], 6, 1.2, 1.2, 2.6, 'stWin', () => ({ d: 0.15, lit: lmLit(0.3) }));
+    lmBlock(K, f, { poly: body, top: FA, st: { tex: 1, col: WHITE, plinth: 0.3, pcol: [150, 148, 142] }, wy0: lmFoot([[[UF, V1], [11.8, V1], 99]]) }, o); }
+  // fascia of green boards round the top, the stripes and the lettering on the front
+  for (let i = 0; i < body.length; i++) { const a = body[i], b = body[(i + 1) % body.length]; if (lmNear(a, [UF, V1]) && lmNear(b, [11.8, V1])) continue; lmEdgeBox(G, f, a, b, [8, 10], -0.05, lmLen(a, b) + 0.05, FA, FB, -0.25, 0.2, GREEN); }
+  { const t = LMT.vsBoard, u = UF - 0.205; for (let v = V0; v < V1 - 0.01; v += 4) { const v2 = Math.min(V1, v + 4), P = lmW(f, u, v2), Q = lmW(f, u, v), F = lmWF(P, Q), du = (t.u1 - t.u0) * (v2 - v) / 4;
+      K.det.q(F.at(0, FA, 0), F.at(F.L, FA, 0), F.at(F.L, FB, 0), F.at(0, FB, 0), [-U[0], 0, -U[1]], [t.u0 + du, t.v0, t.u0, t.v0, t.u0, t.v1, t.u0 + du, t.v1], LMWHITE, 0); }
+    lmBoxL(G, f, UF - 0.24, UF - 0.2, V0, V1, 4.06, 4.18, TEAL); lmBoxL(G, f, UF - 0.24, UF - 0.2, V0, V1, 4.24, 4.3, hb('#eef6f4'));
+    lmSign(K, f, [UF - 0.25, -8.6], [UF - 0.25, -1.4], 3.86, 5.52, 'vesma', 1); lmSign(K, f, [UF - 0.25, 3.8], [UF - 0.25, 9.6], 4.36, 5.06, 'vesmaBB', 1); lmSign(K, f, [UF - 0.25, 13.0], [UF - 0.25, 14.4], 3.8, 5.55, 'vesmaLogo', 1); }
+  flatPlain(G, [new Float32Array(body.flatMap(([u, v]) => lmW(f, u, v)))].map(q => area2(q) > 0 ? q : reversed(q)), FB, hb('#9a9c9c'), false);
+  // roof terrace: railing and globe lamps
+  { const R = (a, b) => { const A = lmW(f, a[0], a[1]), B = lmW(f, b[0], b[1]), L = Math.hypot(B[0] - A[0], B[1] - A[1]); for (const h of [0.5, 1.05]) lmBar(G, [A[0], FB + h, A[1]], [B[0], FB + h, B[1]], h > 1 ? 0.05 : 0.03, STEEL);
+      for (let s = 0; s <= L + 0.01; s += L / Math.max(1, Math.round(L / 1.6))) lmBar(G, [A[0] + (B[0] - A[0]) * s / L, FB, A[1] + (B[1] - A[1]) * s / L], [A[0] + (B[0] - A[0]) * s / L, FB + 1.05, A[1] + (B[1] - A[1]) * s / L], 0.04, STEEL); };
+    R([4.3, -9.2], [4.3, 33.6]); R([4.3, -9.2], [10.6, -9.2]); R([4.3, 33.6], [11.3, 33.6]);
+    for (const v of [-8.6, -1.6, 5.4, 12.4, 19.4, 26.4, 33.0]) { const [x, z] = lmW(f, 4.45, v); lmBar(G, [x, FB, z], [x, FB + 1.6, z], 0.07, hb('#2b2e30')); lmLathe(G, x, z, FB + 1.6, [[0, 0], [0.07, 0.03], [0.05, 0.08]], 8, hb('#2b2e30')); lmLathe(K.globe, x, z, FB + 1.66, sphereProf(0.17), 10, hb('#f6f3ea')); } }
+  // the summer terrace
+  { const D = DECK, vs = []; for (let k = 0; k <= 10; k++) vs.push(0.5 + k * (V1 - 1) / 10);
+    lmBoxL(G, f, 0, UF, 0.3, V1 - 0.3, 0, 0.15, D, false);
+    for (const v of vs) lmBoxL(G, f, 0.05, 0.25, v - 0.1, v + 0.1, 0.15, 3.15, POST);
+    lmBoxL(G, f, 0.0, 0.3, 0.3, V1 - 0.3, 2.95, 3.2, POST);
+    const r0 = -0.35, y0 = 3.18, y1 = FA - 0.02;
+    polyA(G, [at(r0, 0.2, y0 + 0.08), at(UF, 0.2, y1 + 0.08), at(UF, V1 - 0.2, y1 + 0.08), at(r0, V1 - 0.2, y0 + 0.08)], ROOFC, 0, 1, 0);
+    polyA(G, [at(r0, 0.2, y0), at(UF, 0.2, y1), at(UF, V1 - 0.2, y1), at(r0, V1 - 0.2, y0)], AWN, 0, -1, 0);
+    polyA(G, [at(r0, 0.2, y0), at(r0, V1 - 0.2, y0), at(r0, V1 - 0.2, y0 + 0.08), at(r0, 0.2, y0 + 0.08)], ROOFC, -U[0], 0, -U[1]);
+    // tinted glass fence between the posts, an Aldaris banner on every other panel; the ends of the terrace
+    const fence = (a, b, k) => { const P = lmW(f, a[0], a[1]), Q = lmW(f, b[0], b[1]), F = lmWF(Q, P), t = LMT[k % 2 ? 'vsFenceA' : 'vsFence'];
+      for (const [Fx, nr] of [[F, 1], [lmWF(P, Q), -1]]) K.det.q(Fx.at(0, 0.15, 0), Fx.at(Fx.L, 0.15, 0), Fx.at(Fx.L, 1.15, 0), Fx.at(0, 1.15, 0), [Fx.nx, 0, Fx.nz], [t.u1, t.v0, t.u0, t.v0, t.u0, t.v1, t.u1, t.v1], LMWHITE, 0); };
+    for (let k = 0; k < vs.length - 1; k++) fence([0.15, vs[k] + 0.1], [0.15, vs[k + 1] - 0.1], k);
+    fence([UF, 0.35], [0.25, 0.35], 0); fence([0.25, V1 - 0.35], [UF, V1 - 0.35], 0);
+    // hanging baskets, tables and rattan chairs
+    for (const v of vs) { const [x, z] = lmW(f, 0.15, v); lmBar(G, [x, 3.0, z], [x, 2.55, z], 0.02, hb('#222')); lmLathe(G, x, z, 2.2, [[0, 0], [0.22, 0.05], [0.28, 0.22], [0.26, 0.34]], 8, hb('#3f6a2e')); lmLathe(G, x, z, 2.5, sphereProf(0.2), 8, hb(['#d23a5a', '#e8e6e0', '#c8202a'][Math.floor(lr() * 3)])); }
+    for (let k = 0; k < vs.length - 1; k++) { const v = (vs[k] + vs[k + 1]) / 2, [x, z] = lmW(f, 1.9, v);
+      lmLathe(G, x, z, 0.15, [[0.25, 0], [0.04, 0.04], [0.04, 0.72], [0.4, 0.74], [0.4, 0.78], [0, 0.78]], 10, hb('#4a4c4e'));
+      for (const dv of [-0.85, 0.85]) { const c = hb('#9a7448'); lmBoxL(G, f, 1.65, 2.15, v + dv - 0.25, v + dv + 0.25, 0.15, 0.6, c); const bk = dv < 0 ? v + dv - 0.25 : v + dv + 0.19; lmBoxL(G, f, 1.65, 2.15, bk, bk + 0.06, 0.6, 1.05, sh(c, 0.92)); } }
+    // the small Vēsma board at the east end of the terrace roof
+    lmSign(K, f, [r0 - 0.02, V1 - 4.4], [r0 - 0.02, V1 - 0.6], y0 + 0.1, y0 + 0.95, 'vesma', 1); }
+  // the entrance: two stone steps, a white column at the corner of the west wing
+  lmBoxL(K.stone, f, 1.7, UF, -4.4, -0.8, 0, 0.15, hb('#8c8984'), false); lmBoxL(K.stone, f, 2.6, UF, -4.0, -1.2, 0.15, 0.3, hb('#94918b'), false);
+  lmBoxL(G, f, UF - 0.4, UF + 0.1, V0 + 0.05, V0 + 0.55, 0, FA, WHITE);
+  // junipers in front of the west wing
+  for (const [u, v, r, h] of [[1.2, -10.8, 1.1, 1.5], [2.6, -12.6, 0.9, 1.2], [0.4, -13.4, 1.0, 1.4], [2.2, -8.6, 0.7, 1.0]]) { const [x, z] = lmW(f, u, v), c = sh(hb('#2f5232'), 0.85 + lr() * 0.25); lmLathe(G, x, z, 0, [[r * 0.6, 0], [r, h * 0.3], [r * 0.9, h * 0.7], [r * 0.45, h * 0.95], [0, h]], 9, c); }
+}
+
 /* ---- the square in front: paving, flower beds, candelabra, benches ---- */
 const sphereProf = r => { const p = []; for (let k = 0; k <= 8; k++) { const a = -Math.PI / 2 + k * Math.PI / 8; p.push([Math.abs(Math.cos(a)) * r, r + Math.sin(a) * r]); } return p; };
 function lmCandelabrum(G, Gl, x, z, y0, rot) {
@@ -2380,7 +2465,7 @@ function buildLandmarks() {
   LMM.clk = hook(new THREE.MeshStandardMaterial({ map: lmClk.tex, emissive: new THREE.Color(1, 1, 1), emissiveMap: lmClk.tex, roughness: 0.5, metalness: 0 }), 'lm-clk', LM_SAFE); allMats.push(LMM.clk); lmTick();
   const K = { ash: new LMB(), ren: new LMB(), det: new LMB(), txt: new LMB(), clk: new LMB(), plain: new GB(false), stone: new GB(false), globe: new GB(false) };
   K.walls = [K.ash, K.ren, new LMB(), new LMB(), new LMB(), new LMB(), new LMB()];
-  lmUnityHouse(K); lmLatgola(K); lmGrounds(K); lmDUMain(K); lmDUParades(K); lmDULab(K); lmRenesanse(K); lmRigas(K);
+  lmUnityHouse(K); lmLatgola(K); lmGrounds(K); lmDUMain(K); lmDUParades(K); lmDULab(K); lmRenesanse(K); lmRigas(K); lmVesma(K);
   [LMM.ash, LMM.ren, LMM.duw, LMM.brick, LMM.tile, LMM.panel, LMM.buff].forEach((m, k) => K.walls[k].mesh(m)); K.det.mesh(LMM.det); K.txt.mesh(LMM.txt, false); K.clk.mesh(LMM.clk, false);
   for (const [b, m] of [[K.plain, LMM.plain], [K.stone, LMM.stone]]) { const pm = b.mesh(m); if (pm) { pm.castShadow = pm.receiveShadow = true; scene.add(pm); } }
   const gm = K.globe.mesh(LMM.globe); if (gm) { gm.receiveShadow = true; scene.add(gm); }
@@ -4051,6 +4136,7 @@ const PLACES = [
   ['Гостиница «Латгола»', 'Park Hotel Latgola и ТЦ Latgola', -1492.9, 1235.4, -1.02],
   ['Университет · старый корпус', 'Daugavpils Universitāte, Vienības iela 13, 1956', -1482.8, 1484.0, 2.105],
   ['Университет · новый корпус', 'Parādes iela 1 и лабораторный корпус 1A', -1975.5, 1439.5, 0.031],
+  ['Гастробар «Vēsma»', 'Rīgas iela 49, летняя терраса', -1170.9, 1111.5, -0.234],
   ['Кинотеатр «Ренесанс»', 'бывший «Oktobris» (1978), теперь Инновационный центр', -1716.1, 1018.6, 0.533],
   ['Рижская улица', 'пешеходная Rīgas iela', -1053, 1030, 1.05],
   ['Вокзал', 'Daugavpils dzelzceļa stacija', -815, 880, -2.1],
