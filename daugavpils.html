@@ -1394,7 +1394,8 @@ function lmBlock(K, f, blk, ops) {
     }
   }
   const R = rings.map(x => x.r);
-  for (const [ya, yb, pj, col] of blk.cornice || []) for (const r of R) { const q = offsetRing(r, pj); vband(K.plain, q, ya, yb, col); band(K.plain, r, q, ya, sh(col, 0.75), true); band(K.plain, r, q, yb, sh(col, 1.04), false); }
+  const TG = blk.trim || K.plain;
+  for (const [ya, yb, pj, col] of blk.cornice || []) for (const r of R) { const q = offsetRing(r, pj); vband(TG, q, ya, yb, col); band(TG, r, q, ya, sh(col, 0.75), true); band(TG, r, q, yb, sh(col, 1.04), false); }
   if (blk.roof) flatPlain(K.plain, R, blk.roofY != null ? blk.roofY : blk.top, blk.roof, false);
   return R;
 }
@@ -1454,9 +1455,9 @@ function lmUnityHouse(K) {
   for (const [a, b, c, d, n] of [[38, 2.3, 56, 2.3, 8], [56, 27.5, 38, 27.5, 8], [38, 27.5, 38, 2.3, 10], [56, 2.3, 56, 27.5, 10]]) lmRow(ops, a, b, c, d, n, 0.8, 22.0, 22.8, 'vnSmall', () => ({ d: 0.15, lit: lmLit(0.3) }));
 
   const blocks = [
-    { poly: [[0, 0], [11.5, 0], [11.5, -3.0], [26.2, -3.0], [26.2, 31.2], [12.6, 31.2], [12.6, 29.4], [0, 29.4]], top: 17.3, st: ash, cornice: [[17.3, 17.55, 0.15, STONE], [17.55, 18.2, 0.75, STONE]], roof: ROOF, roofY: 18.2 },
-    { poly: [[2.6, -3.6], [11.5, -3.6], [11.5, 0], [2.6, 0]], top: 15.75, st: ash, cornice: [[15.75, 15.95, 0.12, STONE], [15.95, 16.55, 0.6, STONE]], roof: ROOF, roofY: 16.55 },
-    { poly: [[2.9, 29.4], [12.6, 29.4], [12.6, 32.5], [2.9, 32.5]], top: 15.75, st: ash, cornice: [[15.75, 15.95, 0.12, STONE], [15.95, 16.55, 0.6, STONE]], roof: ROOF, roofY: 16.55 },
+    { poly: [[0, 0], [11.5, 0], [11.5, -3.0], [26.2, -3.0], [26.2, 31.2], [12.6, 31.2], [12.6, 29.4], [0, 29.4]], top: 17.3, st: ash, cornice: [[17.3, 17.55, 0.15, STONE], [17.55, 18.2, 0.75, STONE]], trim: K.stone, roof: ROOF, roofY: 18.2 },
+    { poly: [[2.6, -3.6], [11.5, -3.6], [11.5, 0], [2.6, 0]], top: 15.75, st: ash, cornice: [[15.75, 15.95, 0.12, STONE], [15.95, 16.55, 0.6, STONE]], trim: K.stone, roof: ROOF, roofY: 16.55 },
+    { poly: [[2.9, 29.4], [12.6, 29.4], [12.6, 32.5], [2.9, 32.5]], top: 15.75, st: ash, cornice: [[15.75, 15.95, 0.12, STONE], [15.95, 16.55, 0.6, STONE]], trim: K.stone, roof: ROOF, roofY: 16.55 },
     { poly: [[26.2, -3.0], [38, -3.0], [38, 31.0], [26.2, 31.0]], top: 15.3, st: ren, cornice: [[15.3, 16.0, 0.3, TRIM]], roof: ROOF, roofY: 16.0 },
     { poly: [[30, -15], [48.5, -15], [48.5, 2.3], [38, 2.3], [38, -3.0], [30, -3.0]], top: 14.2, st: ren, cornice: [[14.2, 15.0, 0.35, TRIM]], roof: ROOF, roofY: 15.0 },
     { poly: [[38, 2.3], [56, 2.3], [56, 27.5], [38, 27.5]], top: 23.3, st: ren, cornice: [[23.3, 24.0, 0.4, TRIM]], roof: ROOF, roofY: 24.0 },
@@ -1476,28 +1477,29 @@ function lmUnityHouse(K) {
     lmOp(back, 3.0, v, 1.85, 11.55, 13.25, 'vnWinTop', { d: 0.3, lit: lmLit(0.7) });
   });
   const bP = lmW(f, 3.0, 23.85), bQ = lmW(f, 3.0, 5.55);
-  lmWall(K, bP, bQ, 1.07, 14.6, lmOpsFor(f, back, [3.0, 23.85], [3.0, 5.55]), ash);
+  lmWall(K, bP, bQ, 1.07, 14.6, lmOpsFor(f, back, [3.0, 23.85], [3.0, 5.55]), { tex: 1, col: WALL });   // plain render, left in shadow when the façade is floodlit
   const BF = lmWF(bP, bQ); lmBoxW(G, BF, 0, 18.3, 9.6, 9.72, -0.08, 0, TRIM); lmBoxW(G, BF, 0, 18.3, 11.3, 11.4, -0.06, 0, TRIM);
   // steps, granite
-  for (let k = 0; k < 7; k++) lmBoxL(G, f, -2.8 + 0.4 * k, 0.02, -0.4, 29.8, k * 0.153, (k + 1) * 0.153, sh(STEP, 0.96 + (k % 2) * 0.05), false);
-  lmBoxL(G, f, 0, 3.0, 5.55, 23.85, 0, 1.071, STEP, false);
+  const GS = K.stone;
+  for (let k = 0; k < 7; k++) lmBoxL(GS, f, -2.8 + 0.4 * k, 0.02, -0.4, 29.8, k * 0.153, (k + 1) * 0.153, sh(STEP, 0.96 + (k % 2) * 0.05), false);
+  lmBoxL(GS, f, 0, 3.0, 5.55, 23.85, 0, 1.071, STEP, false);
   // entablature over the columns
-  lmBoxL(G, f, -0.2, 0.5, 5.4, 24.0, 14.55, 14.98, STONE);
+  lmBoxL(GS, f, -0.2, 0.5, 5.4, 24.0, 14.55, 14.98, STONE);
   // six columns with Corinthian capitals
   for (let k = 0; k < 6; k++) {
     const v = 6.6 + k * 3.22, [cx, cz] = lmW(f, 1.0, v);
-    lmBoxL(G, f, 0.25, 1.75, v - 0.75, v + 0.75, 1.07, 1.35, STONE, false);
-    lmLathe(G, cx, cz, 1.35, [[0.75, 0], [0.78, 0.08], [0.74, 0.18], [0.66, 0.24], [0.68, 0.3], [0.62, 0.36]], 20, STONE);
-    lmLathe(G, cx, cz, 1.71, [[0.62, 0], [0.625, 1.5], [0.61, 5.0], [0.58, 8.5], [0.555, 11.34]], 20, STONE);
-    lmLathe(G, cx, cz, 13.05, [[0.555, 0], [0.6, 0.05], [0.6, 0.12], [0.56, 0.16], [0.6, 0.5], [0.7, 0.95], [0.84, 1.25], [0.86, 1.35]], 20, STONE);
+    lmBoxL(GS, f, 0.25, 1.75, v - 0.75, v + 0.75, 1.07, 1.35, STONE, false);
+    lmLathe(GS, cx, cz, 1.35, [[0.75, 0], [0.78, 0.08], [0.74, 0.18], [0.66, 0.24], [0.68, 0.3], [0.62, 0.36]], 20, STONE);
+    lmLathe(GS, cx, cz, 1.71, [[0.62, 0], [0.625, 1.5], [0.61, 5.0], [0.58, 8.5], [0.555, 11.34]], 20, STONE);
+    lmLathe(GS, cx, cz, 13.05, [[0.555, 0], [0.6, 0.05], [0.6, 0.12], [0.56, 0.16], [0.6, 0.5], [0.7, 0.95], [0.84, 1.25], [0.86, 1.35]], 20, STONE);
     for (let r = 0; r < 2; r++) for (let i = 0; i < 8; i++) {   // acanthus leaves in two rows, tips curling out
       const a = (i + r * 0.5) / 8 * 2 * Math.PI, ca = Math.cos(a), sa = Math.sin(a), ta = -sa, tb = ca, y0 = 13.2 + r * 0.38, y1 = y0 + 0.62, r0 = 0.6, r1 = 0.82, w0 = 0.16, w1 = 0.2;
       const p = (rr, y, w) => [cx + ca * rr + ta * w, y, cz + sa * rr + tb * w];
-      polyA(G, [p(r0, y0, -w0), p(r0, y0, w0), p(r1, y1, w1), p(r1, y1, -w1)], sh(STONE, 1.03), ca, -0.3, sa);
-      polyA(G, [p(r1, y1, -w1), p(r1, y1, w1), p(r1 + 0.12, y1 - 0.14, w1 * 0.6), p(r1 + 0.12, y1 - 0.14, -w1 * 0.6)], sh(STONE, 0.95), ca, 0.6, sa);
+      polyA(GS, [p(r0, y0, -w0), p(r0, y0, w0), p(r1, y1, w1), p(r1, y1, -w1)], sh(STONE, 1.03), ca, -0.3, sa);
+      polyA(GS, [p(r1, y1, -w1), p(r1, y1, w1), p(r1 + 0.12, y1 - 0.14, w1 * 0.6), p(r1 + 0.12, y1 - 0.14, -w1 * 0.6)], sh(STONE, 0.95), ca, 0.6, sa);
     }
-    for (let i = 0; i < 4; i++) { const a = Math.PI / 4 + i * Math.PI / 2 + Math.atan2(f[3], f[2]), [x, z] = [cx + Math.cos(a) * 0.86, cz + Math.sin(a) * 0.86]; lmLathe(G, x, z, 14.06, [[0, 0], [0.14, 0.02], [0.17, 0.17], [0.14, 0.32], [0, 0.34]], 8, sh(STONE, 1.02)); }
-    lmBoxL(G, f, 1.0 - 0.95, 1.0 + 0.95, v - 0.95, v + 0.95, 14.4, 14.6, STONE);
+    for (let i = 0; i < 4; i++) { const a = Math.PI / 4 + i * Math.PI / 2 + Math.atan2(f[3], f[2]), [x, z] = [cx + Math.cos(a) * 0.86, cz + Math.sin(a) * 0.86]; lmLathe(GS, x, z, 14.06, [[0, 0], [0.14, 0.02], [0.17, 0.17], [0.14, 0.32], [0, 0.34]], 8, sh(STONE, 1.02)); }
+    lmBoxL(GS, f, 1.0 - 0.95, 1.0 + 0.95, v - 0.95, v + 0.95, 14.4, 14.6, STONE);
   }
   // poster cases on the pylons
   for (const v of [2.75, 26.65]) {
@@ -1717,7 +1719,7 @@ function lmGrounds(K) {
 const LMM = {}; let lmClk = null;
 function lmNight(n) {
   if (!LMM.det) return;
-  LMM.det.emissiveIntensity = n * 1.7; LMM.txt.emissiveIntensity = n * 1.5; LMM.ash.emissiveIntensity = n * 0.16; LMM.globe.emissiveIntensity = n * 3.2; LMM.clk.emissiveIntensity = 0.9 + n * 1.3;
+  LMM.det.emissiveIntensity = n * 1.7; LMM.txt.emissiveIntensity = n * 1.5; LMM.ash.emissiveIntensity = n * 0.16; LMM.stone.emissiveIntensity = n * 0.13; LMM.globe.emissiveIntensity = n * 3.2; LMM.clk.emissiveIntensity = 0.9 + n * 1.3;
 }
 function lmTick() {
   if (!lmClk) return;
@@ -1742,12 +1744,13 @@ function buildLandmarks() {
   LMM.txt = lmStd({ vertexColors: true, map: sc, alphaTest: 0.5, roughness: 0.35, metalness: 0.45, emissive: new THREE.Color(1, 1, 1), emissiveMap: sglow, emissiveIntensity: 0 }, 'lm-txt', litPatch);
   LMM.globe = lmStd({ vertexColors: true, roughness: 0.3, metalness: 0, emissive: new THREE.Color(1, 0.82, 0.58), emissiveIntensity: 0 }, 'lm-globe');
   LMM.plain = lmStd({ vertexColors: true, roughness: 0.85, metalness: 0 }, 'lm-plain');
+  LMM.stone = lmStd({ vertexColors: true, roughness: 0.85, metalness: 0, emissive: new THREE.Color(1, 0.84, 0.64), emissiveIntensity: 0 }, 'lm-stone');
   const ccv = mkCanvas(256, 80); lmClk = { cv: ccv, g: ccv.getContext('2d'), m: -1, tex: toTex(ccv, true, false) };
   LMM.clk = hook(new THREE.MeshStandardMaterial({ map: lmClk.tex, emissive: new THREE.Color(1, 1, 1), emissiveMap: lmClk.tex, roughness: 0.5, metalness: 0 }), 'lm-clk', LM_SAFE); allMats.push(LMM.clk); lmTick();
-  const K = { ash: new LMB(), ren: new LMB(), det: new LMB(), txt: new LMB(), clk: new LMB(), plain: new GB(false), globe: new GB(false) };
+  const K = { ash: new LMB(), ren: new LMB(), det: new LMB(), txt: new LMB(), clk: new LMB(), plain: new GB(false), stone: new GB(false), globe: new GB(false) };
   lmUnityHouse(K); lmLatgola(K); lmGrounds(K);
   K.ash.mesh(LMM.ash); K.ren.mesh(LMM.ren); K.det.mesh(LMM.det); K.txt.mesh(LMM.txt, false); K.clk.mesh(LMM.clk, false);
-  const pm = K.plain.mesh(LMM.plain); if (pm) { pm.castShadow = pm.receiveShadow = true; scene.add(pm); }
+  for (const [b, m] of [[K.plain, LMM.plain], [K.stone, LMM.stone]]) { const pm = b.mesh(m); if (pm) { pm.castShadow = pm.receiveShadow = true; scene.add(pm); } }
   const gm = K.globe.mesh(LMM.globe); if (gm) { gm.receiveShadow = true; scene.add(gm); }
   lmNight(U.night.value);
 }
