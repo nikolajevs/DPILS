@@ -228,8 +228,10 @@ for (const e of B) {
   for (const p of polysOf(e)) { if (Math.abs(area(p.outer)) < 4) continue; (isPart ? parts : outlines).push({ e, t, p, isPart }); }
 }
 const skip = new Set();
-for (const pt of parts) { const c = centroid(pt.p.outer); for (const o of outlines) { if (!skip.has(o) && pip(c, o.p.outer)) { o.childParts = (o.childParts || 0) + 1; pt.parent = o; } } }
-for (const o of outlines) if (o.childParts) skip.add(o);
+for (const pt of parts) { const c = centroid(pt.p.outer); for (const o of outlines) { if (!skip.has(o) && pip(c, o.p.outer)) { o.childParts = (o.childParts || 0) + 1; o.partArea = (o.partArea || 0) + Math.abs(area(pt.p.outer)); pt.parent = o; } } }
+// the outline gives way to its parts only when they cover most of it: a canopy mapped as building:part=roof must not
+// stand in for the whole building (it did for the railway station)
+for (const o of outlines) if (o.childParts && o.partArea > 0.5 * Math.abs(area(o.p.outer))) skip.add(o);
 
 function osmGuess(it, A, sh, lg, seed) {
   const t = it.isPart && it.parent ? Object.assign({}, it.parent.t, it.t) : it.t;
@@ -282,6 +284,7 @@ for (const it of outlines.concat(parts)) {
   const worshipTag = t.amenity === 'place_of_worship' || WORSHIP.has(t.building);
   if (best && !worshipTag && !it.isPart) info = classifyCad(best.c, A, seed);
   if (info) matched++; else info = osmGuess(it, A, sh, lg, seed);
+  if (it.isPart && t['building:part'] === 'roof') info = { style: 12, floors: 1, h: parseFloat(t.height) || 3.5, roof: 0, flags: 4 };   // a canopy on posts
   // explicit OSM heights win over estimates
   const lv = parseFloat(t['building:levels']), th = parseFloat(t.height);
   if (th > 0) info.h = th; else if (lv > 0 && !(best && best.c.floors > 0)) info.h = lv * (info.h / Math.max(1, info.floors)), info.floors = Math.round(lv);
