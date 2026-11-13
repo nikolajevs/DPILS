@@ -3652,7 +3652,7 @@ function lmSquare(K) {
   const f = LMF.lat, G = K.plain, PED = SQ.ped, [cu, cv] = SQ.c;
   const inPed = (u, v) => lmPipL([u, v], PED) && Math.hypot(u - cu, v - cv) > 0.3;
   // paving lines and the rondel, a layer draped over the square's paving
-  const b = new GB(false), DARK = hb('#77736e'), RED = hb('#8e5c4c'), LIGHT = hb('#b9b5ae');
+  const b = new GB(false), DARK = hb('#8d8780'), RED = hb('#8e5c4c'), LIGHT = hb('#b9b5ae');
   const quad = (A, B, Cc, D, col) => { const k = [A, B, Cc, D].map(([u, v]) => { const [x, z] = lmW(f, u, v); return b.vert(x, 0, z, 0, 1, 0, col); }); b.triUp(k[0], k[1], k[2]); b.triUp(k[0], k[2], k[3]); };
   const strip = (u0, v0, u1, v1, w, col) => { const L = Math.hypot(u1 - u0, v1 - v0), nu = -(v1 - v0) / L * w / 2, nv = (u1 - u0) / L * w / 2;
     quad([u0 + nu, v0 + nv], [u1 + nu, v1 + nv], [u1 - nu, v1 - nv], [u0 - nu, v0 - nv], col); };
