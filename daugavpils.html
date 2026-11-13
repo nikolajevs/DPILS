@@ -1273,11 +1273,12 @@ function bedSpecies(b, du, dv, d) {
   if (d > -0.45) return 1;
   if (b.kind === 0) {
     for (const lv of b.lamps) { const m = Math.max(Math.abs(du), Math.abs(dv - (lv - b.cv))); if (m < 1.0) return -1; if (m < 1.45) return 1; }
-    if (d > -0.75) return 4;
+    if (d > -0.7) return 0;
     const p = dv, q = du, wc = 1.3 * Math.sin(2 * Math.PI * p / 6.0), k = Math.round((p - 1.5) / 3), pk = 1.5 + 3 * k, side = Math.sin(2 * Math.PI * pk / 6.0) > 0 ? -1 : 1;
+    // as photographed: silver cineraria ground, a red salvia ribbon with orange in its middle, yellow marigold rosettes
     const rr = Math.hypot(p - pk, q - side * 1.05);
-    if (rr < 0.3) return 5; if (rr < 0.62) return 1;
-    const dq = Math.abs(q - wc); if (dq < 0.2) return 3; if (dq < 0.5) return 2; return 0;
+    if (rr < 0.28) return 3; if (rr < 0.68) return 2;
+    const dq = Math.abs(q - wc); if (dq < 0.16) return 3; if (dq < 0.62) return 0; return 1;
   }
   const x = du / b.hu, y = dv / b.hv, rho = Math.hypot(x, y), th = Math.atan2(y, x);
   if (d > -0.8) return 4;
