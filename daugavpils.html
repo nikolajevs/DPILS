@@ -3530,11 +3530,11 @@ function lmKP(K) {
    light brick and two bricked-up arches in a recess of its front, the boiler hall behind it with three roof lanterns
    and solar panels, a seven-storey tower with framed windows at the hall's south-west corner, the old hall with tall
    round-arched windows under a hipped roof on the west side, lower wings to the east and south; the chimney just south
-   of the tower with two galleries, antennas and faded red and white bands. Frame sc: origin at the
+   of the tower with two galleries, antennas and red and white bands. Frame sc: origin at the
    north-west corner on 18. novembra iela, u east along the street, v south towards the river. */
 function lmSC(K) {
   const f = LMF.sc, G = K.plain, at = (u, v, y) => { const w = lmW(f, u, v); return [w[0], y, w[1]]; };
-  const BR = { tex: 3, col: [224, 212, 202] }, SIL = { tex: 1, col: hb('#c6c2b8'), plinth: 0.5, pcol: hb('#9c978e') };
+  const BR = { tex: 3, col: [224, 212, 202] }, CREAM = { tex: 1, col: hb('#dccfb2'), plinth: 0.5, pcol: hb('#a39a88') }, SIL = { tex: 1, col: hb('#c6c2b8'), plinth: 0.5, pcol: hb('#9c978e') };
   const WH = hb('#d8d2c4'), ROOF = hb('#55575a'), RUST = hb('#6e5446'), STEEL = hb('#55595d'), PIL = hb('#7a3b2b'), LANT = hb('#c9cccd');
   const OUT = [[21.3, 55.2], [33.6, 55.2], [33.6, 39.6], [20.5, 39.6], [20.4, 44.9], [9, 44.8], [8.9, 39], [-11, 39], [-11, 41], [-17.8, 41], [-17.8, 31.1], [-22.4, 32.3], [-26.3, 24.2], [-16.4, 20.5], [-13.9, 27.9], [-13.9, 9.9], [0, 9.9], [0, 0], [42.7, 0], [42.7, 33.6], [47.4, 33.5], [47.5, 69.2], [33.5, 69.2], [33.5, 65.6], [21.3, 65.6]];
   if (TERR.on) { let lo = 1e9, hi = -1e9; for (const [u, v] of OUT) { const [x, z] = lmW(f, u, v), t = terrainH(x, z); lo = Math.min(lo, t); hi = Math.max(hi, t); }
@@ -3582,11 +3582,11 @@ function lmSC(K) {
   // the narrow east block under a rusty roof, the south-east wing, the small block by the chimney, the low west annex
   { const o = []; for (let k = 0; k < 7; k++) { const v = 2.5 + k * 4.6; for (const y of [1.4, 5.4]) lmOp(o, 42.7, v, 2.2, y, y + 2.4, 'scWinB', win()); }
     lmOp(o, 39.3, 0, 2.4, 0, 3.0, 'scDoor', { d: 0.15 }); lmOp(o, 39.3, 0, 2.2, 5.4, 7.8, 'scWinB', win());
-    lmBlock(K, f, { poly: [[36, 0], [42.7, 0], [42.7, 33.6], [36, 33.6], [36, 5]], top: 9, st: BR, cornice: [[8.6, 9, 0.12, WH]], roof: RUST, roofY: 9, wy0: lmFoot([[[36, 33.6], [36, 5], 99]]) }, o); }
+    lmBlock(K, f, { poly: [[36, 0], [42.7, 0], [42.7, 33.6], [36, 33.6], [36, 5]], top: 9, st: CREAM, cornice: [[8.6, 9, 0.12, WH]], roof: RUST, roofY: 9, wy0: lmFoot([[[36, 33.6], [36, 5], 99]]) }, o); }
   { const o = []; for (let k = 0; k < 8; k++) { const v = 37 + k * 4.2; for (const y of [1.2, 4.8]) lmOp(o, 47.5, v, 2.0, y, y + 2.2, 'scSmall', win()); }
     for (let k = 0; k < 3; k++) for (const y of [1.2, 4.8]) lmOp(o, 37 + k * 3.8, 69.2, 2.0, y, y + 2.2, 'scSmall', win());
     for (let k = 0; k < 3; k++) lmOp(o, 33.6, 43 + k * 4, 2.0, 4.8, 7.0, 'scSmall', win()); lmOp(o, 33.6, 51.5, 2.4, 0, 3.0, 'scDoor', { d: 0.15 });
-    lmBlock(K, f, { poly: [[33.6, 33.6], [47.5, 33.6], [47.5, 69.2], [33.5, 69.2], [33.5, 65.6], [21.3, 65.6], [21.3, 55.2], [33.6, 55.2]], top: 8.5, st: BR, cornice: [[8.1, 8.5, 0.1, WH]], roof: ROOF, roofY: 8.5 }, o); }
+    lmBlock(K, f, { poly: [[33.6, 33.6], [47.5, 33.6], [47.5, 69.2], [33.5, 69.2], [33.5, 65.6], [21.3, 65.6], [21.3, 55.2], [33.6, 55.2]], top: 8.5, st: CREAM, cornice: [[8.1, 8.5, 0.1, WH]], roof: ROOF, roofY: 8.5 }, o); }
   { const o = []; for (const u of [11.5, 17.5]) lmOp(o, u, 44.9, 2.2, 4.4, 6.8, 'scWinB', win()); lmOp(o, 14.5, 44.9, 2.4, 0, 3.0, 'scDoor', { d: 0.15 });
     lmBlock(K, f, { poly: [[8.9, 39.6], [20.4, 39.6], [20.4, 44.9], [8.9, 44.9]], top: 8, st: BR, cornice: [[7.6, 8, 0.1, WH]], roof: ROOF, roofY: 8, wy0: lmFoot([[[8.9, 39.6], [20.4, 39.6], 99]]) }, o); }
   // the old hall on the west side: tall round-arched windows in white surrounds, a white frieze, a hipped roof
@@ -3597,12 +3597,12 @@ function lmSC(K) {
     lmBlock(K, f, { poly: [[0, 9.9], [0, 39], [-11, 39], [-11, 41], [-17.8, 41], [-17.8, 31.1], [-22.4, 32.3], [-26.3, 24.2], [-16.4, 20.5], [-13.9, 27.9], [-13.9, 9.9]], top: 7, st: BR, cornice: [[0, 0.55, 0.06, WH], [6.3, 7, 0.12, WH]], roof: ROOF, roofY: 7,
       wy0: lmFoot([[[0, 9.9], [0, 39], 99]]) }, o);
     lmHip(G, f, -13.9, 0, 9.9, 39, 7, 3.0, hb('#6f6b66'), 0.35); }
-  // the chimney, 100 m: weathered concrete, faded red and white bands over the upper half, two galleries with antennas,
+  // the chimney, 100 m: weathered concrete, red and white bands of 9 m above 46 m, two galleries with antennas,
   // a ladder up the side towards the street
   { const [cx, cz] = lmW(f, 8.7, 52), r = h => 4.3 - 0.018 * h, sec = (h0, h1, col) => lmLathe(G, cx, cz, h0, [[r(h0), 0], [r(h1), h1 - h0]], 24, col);
     const CON = [hb('#a59d90'), hb('#9b9386'), hb('#aaa294')];
-    for (let k = 0; k < 5; k++) sec(k * 11, (k + 1) * 11, CON[k % 3]);
-    for (let k = 0; k < 8; k++) sec(55 + k * 5.625, 55 + (k + 1) * 5.625, k % 2 ? hb('#b8b2a6') : hb('#7e5d50'));
+    for (let k = 0; k < 4; k++) sec(k * 11.5, (k + 1) * 11.5, CON[k % 3]);
+    for (let k = 0; k < 6; k++) sec(46 + k * 9, 46 + (k + 1) * 9, k % 2 ? hb('#8a5446') : hb('#c9c2b6'));
     lmLathe(G, cx, cz, 100, [[r(100), 0], [r(100) + 0.15, 0], [r(100) + 0.15, 0.6], [r(100) - 0.3, 0.6], [r(100) - 0.3, 0.1], [0, 0.1]], 24, STEEL);
     for (const h of [62, 87]) { const R0 = r(h);
       lmLathe(G, cx, cz, h, [[R0, 0], [R0 + 1.2, 0], [R0 + 1.2, 0.2], [R0, 0.2]], 24, STEEL);
