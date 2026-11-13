@@ -3529,7 +3529,7 @@ function lmKP(K) {
 function lmSC(K) {
   const f = LMF.sc, G = K.plain, at = (u, v, y) => { const w = lmW(f, u, v); return [w[0], y, w[1]]; };
   const BR = { tex: 3, col: [224, 212, 202] }, SIL = { tex: 1, col: hb('#c6c2b8'), plinth: 0.5, pcol: hb('#9c978e') };
-  const WH = hb('#d8d2c4'), ROOF = hb('#55575a'), RUST = hb('#6e5446'), STEEL = hb('#55595d'), PIL = hb('#8c4a37'), LANT = hb('#c9cccd');
+  const WH = hb('#d8d2c4'), ROOF = hb('#55575a'), RUST = hb('#6e5446'), STEEL = hb('#55595d'), PIL = hb('#7a3b2b'), LANT = hb('#c9cccd');
   const OUT = [[21.3, 55.2], [33.6, 55.2], [33.6, 39.6], [20.5, 39.6], [20.4, 44.9], [9, 44.8], [8.9, 39], [-11, 39], [-11, 41], [-17.8, 41], [-17.8, 31.1], [-22.4, 32.3], [-26.3, 24.2], [-16.4, 20.5], [-13.9, 27.9], [-13.9, 9.9], [0, 9.9], [0, 0], [42.7, 0], [42.7, 33.6], [47.4, 33.5], [47.5, 69.2], [33.5, 69.2], [33.5, 65.6], [21.3, 65.6]];
   if (TERR.on) { let lo = 1e9, hi = -1e9; for (const [u, v] of OUT) { const [x, z] = lmW(f, u, v), t = terrainH(x, z); lo = Math.min(lo, t); hi = Math.max(hi, t); }
     const base = Math.min(hi - 0.15, lo + 2.5); GBC = (x, y, z) => { const t = terrainH(x, z); return y <= 0.05 ? Math.min(base, t) - 0.25 - t - y : base - t; }; }
@@ -3543,7 +3543,8 @@ function lmSC(K) {
     for (let fl = 0; fl < 7; fl++) for (const v of [4, 10]) lmOp(o, 0, v, 2.2, 1.4 + fl * 3.75, 3.8 + fl * 3.75, 'scWinB', win());
     for (const fl of [5, 6]) { lmOp(o, 12, 2.5, 2.0, 1.4 + fl * 3.75, 3.8 + fl * 3.75, 'scWinB', win()); for (const u of [3, 9]) lmOp(o, u, 14, 2.0, 1.4 + fl * 3.75, 3.8 + fl * 3.75, 'scWinB', win()); }
     lmBlock(K, f, { poly: [[0, 0], [12, 0], [12, 14], [0, 14]], top: 26.5, st: BR, cornice: [[15.8, 16.2, 0.12, WH], [26.1, 26.5, 0.15, WH]], roof: ROOF, roofY: 26.5 }, o);
-    pil([0, 0], [12, 0], [6, 7], [4.15, 7.85], 0.6, 25.6, 0.5); lmEdgeBox(G, f, [0, 0], [12, 0], [6, 7], 4.4, 7.6, 22.75, 23.0, 0, 0.3, PIL); }
+    pil([0, 0], [12, 0], [6, 7], [4.15, 7.85], 0.6, 25.6, 0.5); lmEdgeBox(G, f, [0, 0], [12, 0], [6, 7], 4.4, 7.6, 22.75, 23.0, 0, 0.3, PIL);
+    lmEdgeBox(G, f, [0, 0], [12, 0], [6, 7], 4.4, 7.6, 23.0, 25.3, -0.3, -0.25, hb('#8a4634')); }
   // four-storey block on the street behind the annex: steel windows in bays between pilasters, a white band
   { const o = [], a = [12, 5], b = [36, 5];
     for (const u of [15, 21, 27, 33]) { lmOp(o, u, 5, 2.6, 8.2, 12.6, 'scWin', win()); lmOp(o, u, 5, 2.6, 13.6, 16.2, 'scWinB', win()); if (u > 31) lmOp(o, u, 5, 2.6, 1.6, 6.0, 'scWin', win()); }
@@ -5556,7 +5557,7 @@ const PLACES = [
   ['Грива', 'левый берег, костёл Девы Марии', -1515, 2570, 0],
   ['Спидвей «Локомотив»', 'стадион Lokomotīve, Jelgavas iela 54 · трек 373 м', 346.6, 376.5, -2.93],
   ['Дворец культуры', 'Kultūras pils, Smilšu iela 92 · остановка «Kultūras un sporta pils»', 877.5, -526.0, -1.9],
-  ['Теплоцентраль №1', 'первая электростанция города, 1911 · 18. novembra iela 2', -1147.9, 1878.9, -2.68],
+  ['Теплоцентраль №1', 'первая электростанция города, 1911 · 18. novembra iela 2', -1158.3, 1867.0, -2.59],
   ['Форштадт', 'костёл Сердца Иисуса', -1250, -2160, 0],
   ['Стропское озеро', 'сосны и пляж', 2600, -3000, -1.57]
 ];
