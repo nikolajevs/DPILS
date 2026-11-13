@@ -199,7 +199,7 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
   <div class="panel card">
     <div class="eyebrow">55.87° с. ш. · 26.52° в. д. · Латгалия</div>
     <h1>Даугавпилс в 3D</h1>
-    <p>Весь город по открытым данным: 48 600 зданий с этажностью, материалом стен и покрытием крыши из кадастра Латвии, улицы с настоящими названиями, Даугава в своём русле, мосты, крепость, Церковная горка, Стропские сосны. Дом Единства и гостиница «Латгола» построены отдельно по фотографиям, с колоннами, вывесками и клумбами. Трамваи и автобусы ходят по настоящему расписанию «Daugavpils satiksme», на остановках видно ближайшие отправления. Можно идти пешком или взлететь над крышами.</p>
+    <p>Весь город по открытым данным: 48 600 зданий с этажностью, материалом стен и покрытием крыши из кадастра Латвии, улицы с настоящими названиями, Даугава в своём русле, мосты, крепость, Церковная горка, Стропские сосны. Дом Единства и гостиница «Латгола» построены отдельно по фотографиям, с колоннами, вывесками и клумбами. В крепости — валы, рвы и ворота: Николаевские с деревянным мостом через ров, Михайловские, Александровские; по валам можно пройти пешком. Трамваи и автобусы ходят по настоящему расписанию «Daugavpils satiksme», на остановках видно ближайшие отправления. Можно идти пешком или взлететь над крышами.</p>
     <dl class="keys">
       <dt>W A S D / стрелки</dt><dd>идти, Shift — бегом</dd>
       <dt>Мышь</dt><dd>смотреть по сторонам (Esc — отпустить курсор)</dd>
@@ -220,6 +220,7 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="citydata.js"></script>
 <script src="transit.js"></script>
+<script src="fortress.js"></script>
 <script>
 (() => {
 'use strict';
@@ -937,6 +938,7 @@ function buildLines() {
   for (const l of sorted) {
     const { cls, pts } = l; const n = pts.length >> 1;
     if (cls === 12 || cls === 13 || cls === 14) {
+      if (fortSkipLine(cls, pts)) continue;   // the fortress draws its own walls and earthworks
       const h = cls === 13 ? 5.5 : cls === 12 ? 2 : 3, hw = cls === 13 ? 1.1 : cls === 12 ? 0.2 : 5, col = hb(cls === 13 ? '#8a6e5c' : cls === 12 ? '#a39d92' : '#6b8a4d');
       for (let i = 0; i < n - 1; i++) {
         const x1 = pts[2 * i], z1 = pts[2 * i + 1], x2 = pts[2 * i + 2], z2 = pts[2 * i + 3]; const L = Math.hypot(x2 - x1, z2 - z1); if (L < 0.2) continue;
@@ -967,7 +969,7 @@ function buildLines() {
     if (cls === 9) { TRAMLINES.push(pts); for (let i = 0; i < n - 1; i++) TRAMGRID.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], 0, 0); }
     if (cls <= 4) for (let i = 0; i < n - 1; i++) CARROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, cls);
     if (cls < 10 || cls === 15) for (let i = 0; i < n - 1; i++) ROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw + (cls <= 3 ? 2.6 : 0), cls <= 7 ? l.name : -1);
-    if (l.bridge && cls !== 10 && cls !== 11) bridge(extra, pts, hw + (cls <= 3 ? 2.7 : 0.3));
+    if (l.bridge && cls !== 10 && cls !== 11 && !fortBridgeLine(pts)) bridge(extra, pts, hw + (cls <= 3 ? 2.7 : 0.3));
     if (cls <= 3) { // street lamps every ~32 m on one side
       const side = rnd(lampSeq++, 5) < 0.5 ? 1 : -1; let acc = 14;
       for (let i = 0; i < n - 1; i++) {
@@ -2254,7 +2256,7 @@ function buildBuildings(from, to) {
     const rings = []; for (let k = 7; k < rec.length; k++) { let r = dec(rec[k]); if (r.length < 6) continue; const A = area2(r); if ((k === 7) !== (A > 0)) r = reversed(r); rings.push(r); }
     if (!rings.length) continue;
     const outer = rings[0], bb = bbox(outer), cx = (bb[0] + bb[2]) / 2, cz = (bb[1] + bb[3]) / 2;
-    if (lmDrops(outer, bb)) continue;   // drawn by buildLandmarks as part of another building
+    if (lmDrops(outer, bb) || fortDrops(outer, bb)) continue;   // drawn by buildLandmarks or buildFortress
     const name = rec[3] >= 0 ? NAMES[rec[3]] : '';
     BLD.push({ ring: outer, bb, kind: style }); const bid = BLD.length - 1;
     for (let i = Math.floor(bb[0] / 60); i <= Math.floor(bb[2] / 60); i++) for (let j = Math.floor(bb[1] / 60); j <= Math.floor(bb[3] / 60); j++) { const k = (i + 2000) * 4096 + j + 2000; let l = BGRID.get(k); if (!l) BGRID.set(k, l = []); l.push(bid); }
@@ -2385,6 +2387,613 @@ function finishBuildings() {
 
 /* ---------- street lamps ---------- */
 let lampHeads, lampPools, matHeadDay, matHeadNight;
+/* ---------- Daugavpils fortress: ramparts, moats and gates ----------
+   The earthworks come from OpenStreetMap through fortress.js (tools/fortress.js). Retaining walls and embankments
+   there have their high side on the left, so closed walls outline raised works (bastions, curtain lunettes,
+   counterguards) and the inner rampart is a band between two walls. The ground is raised on the high side of the
+   nearest wall or embankment and dug down to the moat bottom along the ditches that OSM draws at the bottom of the
+   moats. Heights follow the photographs of the Nicholas gate: the moat bottom 4 m below the town, a fieldstone
+   escarp to 1.6 m with a berm behind it, the parapet crest at 5.2 m. The gates are modelled from photographs. */
+const FT = window.FORTRESS || null;
+const FORT = { cx: -2790, cz: -390, R: 560, ok: !!(FT && FT.rings) };
+const FH = { moat: -4.0, cap: 1.6, crest: 5.2, terre: 4.2, bank: 3.6, berm: 2.5, floor: 0.15 };
+const fortIn = (x, z, m = 0) => FORT.ok && Math.hypot(x - FORT.cx, z - FORT.cz) < FORT.R + m;
+const fss = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+/* gates: the passage of each runs along u from the field (u < 0) into the town (u > 0); a = half its length,
+   b = half the width of the gate block across it. Recognised by the centre of the OSM tunnel outline. */
+const FORT_GATE_KEYS = [['nik', -2754.9, -115.2, 1], ['mih', -2552.7, -97.3, 0], ['ale', -2468.4, -484.5, 0], ['pst', -2505.7, -114.9, 0], ['pst', -2419.6, -180.4, 0], ['pst', -2401.0, -272.8, 0]];
+let FG = null;
+function fortGates() {
+  if (FG) return FG; FG = [];
+  if (!FORT.ok) return FG;
+  for (const [, ring] of FT.tunnels) {
+    const o = obb(ring); if (!o) continue;
+    const k = FORT_GATE_KEYS.find(q => Math.hypot(q[1] - o.cx, q[2] - o.cz) < 6); if (!k) continue;
+    let ux = o.ux, uz = o.uz, a = o.a, b = o.b;
+    if (k[3]) { ux = -o.uz; uz = o.ux; a = o.b; b = o.a; }          // the Nicholas gate is crossed along its short side
+    if ((FORT.cx - o.cx) * ux + (FORT.cz - o.cz) * uz < 0) { ux = -ux; uz = -uz; }
+    // a2: the town end of the passage. Behind the outer gate block of the Nicholas gate stands the gate house
+    // (Nikolaja iela 3A, a building with a passage in OSM); its façade to the town is 14.8 m from the tunnel's axis
+    const g = { kind: k[0], f: [o.cx, o.cz, ux, uz], a, a2: k[0] === 'nik' ? 14.8 : a, b, cuts: [], ways: [], W: k[0] === 'nik' ? 13 : k[0] === 'mih' ? 5.8 : k[0] === 'ale' ? 5.6 : Math.min(b + 0.7, 4.5) };
+    // flat ground cut through the rampart [u0, u1, half width at u0, at u1] and causeways across the moat
+    if (g.kind === 'nik') g.cuts.push([g.a2, g.a2 + 10, 7.8, 9]);
+    if (g.kind === 'mih') { g.cuts.push([a, a + 8, 19, 19]); g.ways.push([-a - 32, -a, 3.5]); }
+    if (g.kind === 'ale') { g.cuts.push([a, a + 10, 6, 8]); g.ways.push([-a - 34, -a, 4.5]); }
+    if (g.kind === 'pst') { g.cuts.push([a, a + 6, 3, 3]); g.ways.push([-a - 26, -a, 2.5]); }
+    FG.push(g);
+  }
+  return FG;
+}
+// cadastre or OSM buildings standing for a gate are replaced by the gate models
+function fortDrops(ring, bb) {
+  if (!FORT.ok) return false; const cx = (bb[0] + bb[2]) / 2, cz = (bb[1] + bb[3]) / 2; if (!fortIn(cx, cz)) return false;
+  for (const g of fortGates()) { const [u, v] = lmL(g.f, cx, cz); if (u > -g.a - 2 && u < g.a2 + 2 && Math.abs(v) < g.b + 2) return true; }
+  return false;
+}
+// walls, city walls and embankments of the fortress are drawn here instead of as generic lines
+function fortSkipLine(cls, pts) { if (!FORT.ok || cls < 12 || cls > 14) return false; for (let i = 0; i < pts.length; i += 2) if (fortIn(pts[i], pts[i + 1], 40)) return true; return false; }
+function fortBridgeLine(pts) {
+  if (!FORT.ok) return false; const n = pts.length >> 1, x = (pts[0] + pts[2 * n - 2]) / 2, z = (pts[1] + pts[2 * n - 1]) / 2;
+  for (const [m, p] of FT.bridges) if (m === 'wood' && pip(x, z, p)) return true; return false;
+}
+
+/* ---- the height of the ground at a point (used for the mesh, the walls, trees and walking) ---- */
+const FS = { segs: [], SEG: null, DSEG: null, RSEG: null, BSEG: null, rings: [], moats: [], bridge: null };
+function fortPrep() {
+  const SEG = new SegGrid(16), DSEG = new SegGrid(16), RSEG = new SegGrid(20), segs = FS.segs, lines = [];
+  // segs: [x1, z1, x2, z2, kind, line, start is a free end, end is a free end]
+  const addLine = (p, kind, open) => { const n = p.length >> 1, line = lines.length; lines.push(p); for (let i = 0; i < n - 1; i++) {
+    const x1 = p[2 * i], z1 = p[2 * i + 1], x2 = p[2 * i + 2], z2 = p[2 * i + 3]; if (Math.hypot(x2 - x1, z2 - z1) < 0.05 || !fortIn((x1 + x2) / 2, (z1 + z2) / 2)) continue;
+    SEG.add(x1, z1, x2, z2, kind, segs.length); segs.push([x1, z1, x2, z2, kind, line, open && i === 0, open && i === n - 2]); } };
+  // closed walls under 100 m² are plinths and casemate entrances, not raised works
+  for (const [, , p] of FT.rings) { if (Math.abs(area2(p)) < 100) continue; addLine(p, 0, false); const bb = bbox(p); if (fortIn((bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2)) FS.rings.push({ r: p, bb }); }
+  addLine(FT.main, 0, true); for (const p of FT.walls) addLine(p, 0, true);
+  for (const [, p] of FT.banks) { let ok = true; for (let i = 0; i < p.length; i += 2) if (!fortIn(p[i], p[i + 1], 60)) { ok = false; break; } if (ok) addLine(p, 1, true); }
+  // an open end is free unless another line has a vertex within 3 m of it
+  for (const s of segs) for (const e of [0, 1]) if (s[6 + e]) { const x = s[2 * e], z = s[2 * e + 1];
+    SEG.near(x, z, 3, id => { if (segs[SEG.s[id * 6 + 5]][5] !== s[5]) s[6 + e] = false; }); }
+  FS.main = FT.main; FS.mainBB = bbox(FT.main);
+  for (const p of FT.ditches) { const n = p.length >> 1; for (let i = 0; i < n - 1; i++) if (fortIn(p[2 * i], p[2 * i + 1], 30)) DSEG.add(p[2 * i], p[2 * i + 1], p[2 * i + 2], p[2 * i + 3], 0, 0); }
+  for (const [k, p] of FT.moats) { const bb = bbox(p); if (fortIn((bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2, 40)) FS.moats.push({ k, r: p, bb }); }
+  for (const l of LINES) { if (l.cls > 4) continue; const p = l.pts, n = p.length >> 1;
+    for (let i = 0; i < n - 1; i++) if (fortIn(p[2 * i], p[2 * i + 1], 40)) RSEG.add(p[2 * i], p[2 * i + 1], p[2 * i + 2], p[2 * i + 3], l.w / 2, 0); }
+  for (const [m, p] of FT.bridges) if (m === 'wood') FS.bridge = p;
+  // buildings keep the town level around them: houses, sheds and garages built into the ramparts or the moats stand in cuts
+  const BSEG = new SegGrid(16);
+  BLD.forEach((b, id) => { const bb = b.bb; if (!fortIn((bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2, 20)) return; const r = b.ring, n = r.length >> 1;
+    for (let i = 0; i < n; i++) { const j = (i + 1) % n; BSEG.add(r[2 * i], r[2 * i + 1], r[2 * j], r[2 * j + 1], id, 0); } });
+  Object.assign(FS, { SEG, DSEG, RSEG, BSEG });
+}
+const inBB = (bb, x, z) => x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3];
+// h: visible ground; w: where one walks; b: bits 1 raised, 2 moat, 4 wet moat, 8 gate block, 16 berm behind a wall, 32 cut or road
+function fortPoint(x, z) {
+  const o = { h: 0, w: 0, b: 0 }; if (!FORT.ok || !FS.SEG || !fortIn(x, z, 30)) return o;
+  let best = 1e9, bid = -1, bx = 0, bz = 0; FS.SEG.near(x, z, 32, (id, d, px, pz) => { if (d < best) { best = d; bid = id; bx = px; bz = pz; } });
+  let raised = false, kind = -1, d = best, endF = 1;
+  if (bid >= 0) {
+    const s = FS.segs[FS.SEG.s[bid * 6 + 5]]; kind = s[4]; raised = (s[2] - s[0]) * (z - s[1]) - (s[3] - s[1]) * (x - s[0]) < 0;
+    // beyond the free end of a wall or bank the raised ground rounds off instead of running on as a half disc
+    if (raised && ((s[6] && bx === s[0] && bz === s[1]) || (s[7] && bx === s[2] && bz === s[3]))) endF = 1 - fss((d - 1) / 9);
+    // far from any wall, outside the works, the raised ground falls away instead of ending in a cliff
+    if (raised && kind === 0 && d > 22 && !(inBB(FS.mainBB, x, z) && pip(x, z, FS.main)) && !FS.rings.some(r => inBB(r.bb, x, z) && pip(x, z, r.r))) endF = Math.min(endF, 1 - fss((d - 22) / 9));
+  }
+  else for (const r of FS.rings) if (inBB(r.bb, x, z) && pip(x, z, r.r)) { raised = true; kind = 0; d = 30; break; }
+  let mt = 0; for (const m of FS.moats) if (inBB(m.bb, x, z) && pip(x, z, m.r)) { mt = m.k; break; }
+  let dd = 1e9; FS.DSEG.near(x, z, 24, (id, dist) => { if (dist < dd) dd = dist; });
+  const moatF = mt ? 1 : 1 - fss((dd - 16) / 8), base = FH.moat * moatF;
+  let h, w;
+  if (raised) {
+    if (kind === 0) h = d < FH.berm ? FH.cap : d < 7.5 ? FH.cap + (FH.crest - FH.cap) * fss((d - FH.berm) / 5) : d < 8.5 ? FH.crest : d < 11.5 ? FH.crest - (FH.crest - FH.terre) * fss((d - 8.5) / 3) : FH.terre;
+    else h = d < 22 ? FH.bank : FH.bank + (base - FH.bank) * fss((d - 22) / 8);
+    h = base + (h - base) * endF; w = h; if (endF >= 0.5) o.b |= 1;
+    if (kind === 0 && d < FH.berm && endF === 1) { h = base; o.b |= 16; }       // the ground steps down behind the wall; the coping covers the gap
+  } else { h = kind === 1 && d < 8 ? FH.bank + (base - FH.bank) * fss(d / 8) : base; w = h; }
+  if (moatF > 0.5 && !(o.b & 1)) o.b |= 2; if (mt === 1 && !(o.b & 1)) o.b |= 4;
+  // roads keep their level, with earth slopes up the ramparts and down into the moats
+  let rd = 1e9; FS.RSEG.near(x, z, 14, (id, dist) => { const e = dist - FS.RSEG.s[id * 6 + 4]; if (e < rd) rd = e; });
+  let inB = false; FS.BSEG.near(x, z, 12, (id, dist) => { if (dist + 1 < rd) rd = dist + 1; if (!inB) { const b = BLD[FS.BSEG.s[id * 6 + 4]]; if (pip(x, z, b.ring)) inB = true; } });
+  if (inB) rd = 0;
+  // gates: the block over the passage, the flat cut on the town side, causeways across the moat
+  for (const g of fortGates()) {
+    const [u, v] = lmL(g.f, x, z); if (u < -80 || u > 60 || Math.abs(v) > 40) continue;
+    if (u > -g.a - 0.6 && u < g.a2 + 0.6 && Math.abs(v) < g.b + 0.6) { o.b |= 8; h = 0; w = FH.floor; }
+    for (const [u0, u1, w0, w1] of g.cuts) { const t = (u - u0) / (u1 - u0), hw = w0 + (w1 - w0) * Math.max(0, Math.min(1, t)) + 2; if (u > u0 - 0.6 && u < u1 && Math.abs(v) < hw) { h = 0; w = 0; o.b |= 32; o.b &= ~(1 | 2 | 16); } }
+    for (const [u0, u1, hw] of g.ways) { const du = u < u0 ? u0 - u : u > u1 ? u - u1 : 0, e = Math.hypot(du, Math.max(0, Math.abs(v) - hw)); if (e < rd) rd = e; }
+    // the earth behind the curved wing walls of the Michael gate falls with their tops
+    if (g.kind === 'mih' && u < g.a - 0.6 && u > g.a - 30 && Math.abs(v) > g.b + 0.6 && Math.abs(v) < 21) {
+      const t = Math.min(1, Math.max(0, (Math.abs(v) - 5) / 14)), top = fortWingTop(t) - 0.15 + (g.a - 0.6 - u) * 0.7; if (h > top) h = w = top;
+    }
+  }
+  if (rd < 2.5) { h = 0; w = 0; o.b |= 32; o.b &= ~(2 | 4 | 16); }
+  else if (rd < 10.5 && !(o.b & 8)) { const lim = (rd - 2.5) * 0.9; h = Math.max(-lim, Math.min(lim, h)); w = Math.max(-lim, Math.min(lim, w)); }
+  if (FS.bridge && pip(x, z, FS.bridge)) w = FH.floor;
+  o.h = h; o.w = w; return o;
+}
+const fortWingTop = t => 1.0 + 6.6 * Math.sqrt(Math.max(0, 1 - t * t));
+function fortGround(x, z) { return fortIn(x, z, 30) && FS.SEG ? fortPoint(x, z).w : 0; }
+// the height of the terrain mesh itself (its triangles), for trees and paths laid on it
+function fortGridH(x, z) {
+  const G = FORT.grid; if (!G) return 0; const fx0 = (x - G.X0) / G.c, fz0 = (z - G.Z0) / G.c, i = Math.floor(fx0), j = Math.floor(fz0);
+  if (i < 0 || j < 0 || i >= G.N - 1 || j >= G.N - 1) return 0;
+  const fx = fx0 - i, fz = fz0 - j, k = j * G.N + i, H = G.H, a = H[k], b = H[k + 1], d = H[k + G.N], e = H[k + G.N + 1];
+  return fx + fz <= 1 ? a + fx * (b - a) + fz * (d - a) : e + (1 - fx) * (d - e) + (1 - fz) * (b - e);
+}
+function fortNoTree(x, z) { if (!fortIn(x, z, 30) || !FS.SEG) return false; const p = fortPoint(x, z); return (p.b & (8 | 16 | 32)) !== 0 || Math.abs(p.h - p.w) > 0.5; }
+
+/* ---- textures of the fortress: fieldstone escarps, granite dressings, sandstone, planks ---- */
+function fortTex(kind) {
+  const S = 512, cv = mkCanvas(S, S), g = cv.getContext('2d');
+  let seed = 911 + kind * 77; const rr = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  if (kind === 0) {                                   // fieldstone: rounded granite boulders in grey mortar, 4 m per tile
+    g.fillStyle = '#a9a398'; g.fillRect(0, 0, S, S);
+    const PAL = ['#8e8a85', '#9c8578', '#7f776f', '#a49f97', '#6f6b66', '#b3a99c', '#8a7a6a', '#958f88', '#a08c7e', '#77736d'];
+    const rows = []; let tot = 0; while (tot < S) { const h = 28 + rr() * 34; rows.push(h); tot += h; } const kf = S / tot;
+    let y = 0;
+    for (const h0 of rows) {
+      const h = h0 * kf; let x = -rr() * 60;
+      while (x < S) {
+        const w = 36 + rr() * 70, col = PAL[Math.floor(rr() * PAL.length)];
+        for (const ox of [0, -S, S]) {
+          const x0 = x + ox + 2 + rr() * 2, y0 = y + 2 + rr() * 3, ww = w - 5, hh = h - 5 - rr() * 3, r = Math.min(ww, hh) * 0.4;
+          if (x0 > S || x0 + ww < 0) continue;
+          const gr = g.createLinearGradient(x0, y0, x0 + ww * 0.4, y0 + hh); gr.addColorStop(0, shadeHexF(col, 1.18)); gr.addColorStop(0.55, col); gr.addColorStop(1, shadeHexF(col, 0.72));
+          g.fillStyle = gr; g.beginPath(); g.moveTo(x0 + r, y0); g.arcTo(x0 + ww, y0, x0 + ww, y0 + hh, r); g.arcTo(x0 + ww, y0 + hh, x0, y0 + hh, r); g.arcTo(x0, y0 + hh, x0, y0, r); g.arcTo(x0, y0, x0 + ww, y0, r); g.fill();
+        }
+        x += w;
+      }
+      y += h;
+    }
+  } else if (kind === 1 || kind === 2) {              // dressed granite (1, grey, 2 m per tile) or sandstone (2, beige, 3 m)
+    const base = kind === 1 ? [184, 182, 176] : [206, 184, 140], bh = kind === 1 ? 64 : 85;
+    g.fillStyle = kind === 1 ? '#8f8d88' : '#9c8a68'; g.fillRect(0, 0, S, S);
+    for (let y = 0, row = 0; y < S; y += bh, row++) { let x = row % 2 ? -bh * 0.8 : 0;
+      while (x < S) { const w = bh * (1.3 + rr() * 1.1), f = 0.9 + rr() * 0.16;
+        for (const ox of [0, S]) { g.fillStyle = `rgb(${base[0] * f | 0},${base[1] * f | 0},${base[2] * f | 0})`; g.fillRect(x + 1.5 - ox, y + 1.5, w - 3, bh - 3); }
+        x += w; } }
+  } else {                                            // planks along u, 2 m per tile
+    for (let y = 0; y < S; y += 36) { const f = 0.88 + rr() * 0.2; g.fillStyle = `rgb(${170 * f | 0},${132 * f | 0},${88 * f | 0})`; g.fillRect(0, y, S, 34); g.fillStyle = 'rgba(60,40,20,0.55)'; g.fillRect(0, y + 34, S, 2);
+      for (let k = 0; k < 6; k++) { g.strokeStyle = `rgba(90,60,30,${0.15 + rr() * 0.2})`; g.lineWidth = 1; g.beginPath(); const yy = y + 4 + rr() * 26; g.moveTo(0, yy); g.bezierCurveTo(S * 0.3, yy + rr() * 6 - 3, S * 0.7, yy + rr() * 6 - 3, S, yy); g.stroke(); } }
+  }
+  const id = g.getImageData(0, 0, S, S), d = id.data;
+  for (let i = 0; i < d.length; i += 4) { const n = 1 + (Math.random() - 0.5) * (kind === 1 ? 0.22 : 0.12); d[i] = Math.min(255, d[i] * n); d[i + 1] = Math.min(255, d[i + 1] * n); d[i + 2] = Math.min(255, d[i + 2] * n); }
+  g.putImageData(id, 0, 0); const t = toTex(cv, true, true); t.minFilter = THREE.LinearMipmapLinearFilter; return t;
+}
+// the brick of the gates: the city's red facing brick, paler and more salmon, as on the restored Nicholas gate
+function fortBrickTex() {
+  const src = LMM.brick && LMM.brick.map && LMM.brick.map.image; if (!src) return null;
+  const cv = mkCanvas(src.width, src.height), g = cv.getContext('2d'); g.drawImage(src, 0, 0);
+  g.globalCompositeOperation = 'screen'; g.fillStyle = 'rgba(190,140,120,0.3)'; g.fillRect(0, 0, cv.width, cv.height);
+  FORT.brickCv = cv; const t = toTex(cv, true, true); t.minFilter = THREE.LinearMipmapLinearFilter; return t;
+}
+function shadeHexF(h, f) { const c = hb(h); return `rgb(${Math.min(255, c[0] * f) | 0},${Math.min(255, c[1] * f) | 0},${Math.min(255, c[2] * f) | 0})`; }
+const FTS = [4, 2, 3, 2];   // metres per tile: fieldstone, granite, sandstone, planks; brick uses LMWS[3]
+
+/* gate details: an opaque atlas (doors, grilles, the frieze of the Nicholas gate) and a cut-out one (eagles,
+   lettering) — drawn like the landmark atlas, in metres from the top-left of each tile */
+const FTT = {};
+function fortAtlas() {
+  const PX = 64, W = 1024, cv = mkCanvas(W, W), g = cv.getContext('2d'), cc = mkCanvas(W, 512), c = cc.getContext('2d');
+  g.fillStyle = '#777'; g.fillRect(0, 0, W, W);
+  let X = 2, Y = 2, rowH = 0;
+  const tile = (name, w, h, draw, ctx = g, AW = W, AH = W) => {
+    const pw = Math.ceil(w * PX), ph = Math.ceil(h * PX);
+    if (X + pw > AW - 2) { X = 2; Y += rowH + 4; rowH = 0; }
+    ctx.save(); ctx.translate(X, Y); ctx.scale(PX, PX); ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip(); draw(ctx); ctx.restore();
+    FTT[name] = { u0: (X + 0.5) / AW, u1: (X + pw - 0.5) / AW, v0: 1 - (Y + ph - 0.5) / AH, v1: 1 - (Y + 0.5) / AH };
+    X += pw + 4; rowH = Math.max(rowH, ph);
+  };
+  const lw = (ctx, w) => { ctx.lineWidth = w; };
+  // door of the Nicholas gate: oak leaves with planks laid in lozenges
+  tile('door', 2.6, 3.6, x => { x.fillStyle = '#8a6036'; x.fillRect(0, 0, 2.6, 3.6); x.strokeStyle = '#5a3c20'; lw(x, 0.07);
+    for (let k = -8; k < 12; k++) { x.beginPath(); x.moveTo(k * 0.5, 0); x.lineTo(k * 0.5 + 3.6, 3.6); x.stroke(); x.beginPath(); x.moveTo(k * 0.5, 3.6); x.lineTo(k * 0.5 + 3.6, 0); x.stroke(); }
+    x.strokeStyle = '#3a2814'; lw(x, 0.12); x.strokeRect(0.06, 0.06, 2.48, 3.48); x.fillStyle = '#2b2b2b'; x.fillRect(0.1, 2.0, 2.0, 0.08); });
+  tile('grille', 1.0, 1.0, x => { x.fillStyle = '#22272b'; x.fillRect(0, 0, 1, 1); x.strokeStyle = '#4a4440'; lw(x, 0.035); for (let k = 1; k < 5; k++) { x.beginPath(); x.moveTo(k / 5, 0); x.lineTo(k / 5, 1); x.stroke(); x.beginPath(); x.moveTo(0, k / 5); x.lineTo(1, k / 5); x.stroke(); } });
+  tile('arcade', 4.0, 0.7, x => { x.fillStyle = '#b8b6b0'; x.fillRect(0, 0, 4, 0.7); for (let k = 0; k < 8; k++) { const cx = k * 0.5 + 0.25; x.fillStyle = '#6e6c68'; x.beginPath(); x.moveTo(cx - 0.17, 0.62); x.lineTo(cx - 0.17, 0.32); x.arc(cx, 0.32, 0.17, Math.PI, 0); x.lineTo(cx + 0.17, 0.62); x.fill(); x.fillStyle = '#d2d0ca'; x.fillRect(cx + 0.19, 0.18, 0.08, 0.44); } x.fillStyle = '#9a9893'; x.fillRect(0, 0.62, 4, 0.08); });
+  // a side bay of the inner façade: a blind pointed arch over a door and two windows, on salmon render
+  const brickBg = (x, w, h) => { const im = FORT.brickCv; if (!im) { x.fillStyle = '#b4654e'; x.fillRect(0, 0, w, h); return; }
+    for (let yy = 0; yy < h; yy += LMWS[3]) for (let xx = 0; xx < w; xx += LMWS[3]) x.drawImage(im, xx, yy, LMWS[3], LMWS[3]); };
+  tile('bay', 5.6, 6.0, x => { brickBg(x, 5.6, 6); const arch = (cx, w, ys, ya, col, lwd) => { x.strokeStyle = col; lw(x, lwd); x.beginPath(); x.moveTo(cx - w, 6); x.lineTo(cx - w, ys); x.quadraticCurveTo(cx - w, ya + (ys - ya) * 0.2, cx, ya); x.quadraticCurveTo(cx + w, ya + (ys - ya) * 0.2, cx + w, ys); x.lineTo(cx + w, 6); x.stroke(); };
+    arch(2.8, 2.55, 2.4, 0.15, '#ece4d8', 0.22); x.fillStyle = '#e6ddd0'; x.fillRect(0.1, 2.3, 5.4, 0.12);
+    const win = (cx, y0, w, h) => { x.fillStyle = '#ece4d8'; x.fillRect(cx - w / 2 - 0.08, y0 - 0.08, w + 0.16, h + 0.16); x.fillStyle = '#4e5a63'; x.fillRect(cx - w / 2, y0, w, h); x.strokeStyle = '#d8d4cc'; lw(x, 0.04); x.beginPath(); x.moveTo(cx, y0); x.lineTo(cx, y0 + h); x.stroke(); };
+    win(1.3, 3.55, 0.5, 1.6); win(4.3, 3.55, 0.5, 1.6); x.fillStyle = '#7d8c99'; x.fillRect(2.45, 3.35, 0.7, 2.55); x.strokeStyle = '#5c6a76'; lw(x, 0.05); x.strokeRect(2.5, 3.4, 0.6, 2.45);
+    for (const [cx, ys] of [[1.3, 3.4], [2.8, 3.25], [4.3, 3.4]]) { x.fillStyle = '#4e5a63'; x.beginPath(); x.moveTo(cx - 0.25, ys); x.quadraticCurveTo(cx - 0.25, ys - 0.45, cx, ys - 0.75); x.quadraticCurveTo(cx + 0.25, ys - 0.45, cx + 0.25, ys); x.fill(); }
+    x.fillStyle = '#6c6a66'; x.fillRect(0, 5.75, 5.6, 0.25); });
+  tile('corbels', 4.0, 0.5, x => { brickBg(x, 4, 0.5); x.fillStyle = '#e9e2d6'; x.fillRect(0, 0, 4, 0.14); for (let k = 0; k < 8; k++) { x.fillRect(k * 0.5 + 0.17, 0.14, 0.16, 0.24); x.fillStyle = 'rgba(0,0,0,0.25)'; x.fillRect(k * 0.5 + 0.17, 0.38, 0.16, 0.05); x.fillStyle = '#e9e2d6'; } });
+  tile('meander', 4.0, 0.6, x => { x.fillStyle = '#c9c1b4'; x.fillRect(0, 0, 4, 0.6); x.strokeStyle = '#8a4e3a'; lw(x, 0.07); for (let k = 0; k < 8; k++) { const ox = k * 0.5; x.beginPath(); x.moveTo(ox, 0.48); x.lineTo(ox, 0.12); x.lineTo(ox + 0.38, 0.12); x.lineTo(ox + 0.38, 0.38); x.lineTo(ox + 0.16, 0.38); x.lineTo(ox + 0.16, 0.24); x.stroke(); } x.fillStyle = '#8a4e3a'; x.fillRect(0, 0.52, 4, 0.06); x.fillRect(0, 0.02, 4, 0.05); });
+  tile('winged', 4.4, 1.2, x => { x.fillStyle = '#bab8b2'; x.fillRect(0, 0, 4.4, 1.2); x.strokeStyle = '#7e7c77'; lw(x, 0.05); x.beginPath(); x.arc(2.2, 0.6, 0.28, 0, 6.3); x.stroke();
+    for (const s of [-1, 1]) { for (let k = 0; k < 7; k++) { x.beginPath(); x.moveTo(2.2 + s * 0.3, 0.45 + k * 0.05); x.quadraticCurveTo(2.2 + s * 1.2, 0.2 + k * 0.08, 2.2 + s * (1.95 - k * 0.12), 0.25 + k * 0.1); x.stroke(); }
+      x.beginPath(); x.moveTo(2.2 + s * 0.25, 0.85); x.bezierCurveTo(2.2 + s * 0.5, 1.1, 2.2 + s * 0.7, 0.75, 2.2 + s * 0.9, 1.0); x.stroke(); } });
+  // cut-outs: double-headed eagle, the name of the gate, an iron halberd
+  X = 2; Y = 2; rowH = 0;
+  tile('eagle', 5.0, 2.6, x => { x.fillStyle = '#2d2f30'; x.strokeStyle = '#2d2f30'; lw(x, 0.08);
+    x.beginPath(); x.ellipse(2.5, 1.45, 0.42, 0.7, 0, 0, 6.3); x.fill();
+    for (const s of [-1, 1]) { x.beginPath(); x.moveTo(2.5 + s * 0.3, 1.2); for (let k = 0; k <= 6; k++) { const t = k / 6; x.lineTo(2.5 + s * (0.4 + t * 2.0), 0.35 + t * 0.5 + Math.sin(t * Math.PI) * -0.2); } for (let k = 6; k >= 0; k--) { const t = k / 6; x.lineTo(2.5 + s * (0.45 + t * 1.85), 1.0 + t * 0.55 + (k % 2) * 0.12); } x.closePath(); x.fill();
+      x.beginPath(); x.moveTo(2.5 + s * 0.15, 0.95); x.quadraticCurveTo(2.5 + s * 0.35, 0.45, 2.5 + s * 0.42, 0.42); x.lineTo(2.5 + s * 0.62, 0.48); x.lineTo(2.5 + s * 0.45, 0.6); x.quadraticCurveTo(2.5 + s * 0.3, 0.8, 2.5 + s * 0.25, 1.0); x.fill();
+      x.beginPath(); x.ellipse(2.5 + s * 0.42, 0.33, 0.1, 0.1, 0, 0, 6.3); x.fill(); }
+    x.beginPath(); x.moveTo(2.2, 0.32); x.lineTo(2.3, 0.08); x.lineTo(2.5, 0.2); x.lineTo(2.7, 0.08); x.lineTo(2.8, 0.32); x.closePath(); x.fill();
+    x.beginPath(); x.moveTo(2.2, 2.05); x.lineTo(2.5, 2.55); x.lineTo(2.8, 2.05); x.closePath(); x.fill();
+    for (const s of [-1, 1]) { x.beginPath(); x.moveTo(2.5 + s * 0.2, 2.0); x.quadraticCurveTo(2.5 + s * 1.2, 2.5, 2.5 + s * 2.1, 2.2); x.stroke(); } }, c, W, 512);
+  tile('nikname', 6.0, 0.5, x => { x.fillStyle = '#2e2c29'; x.font = '700 0.4px "Times New Roman", Georgia, serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('НИКОЛАЕВСКІЯ', 3.0, 0.27); }, c, W, 512);
+  tile('halberd', 1.0, 2.6, x => { x.fillStyle = '#2b2d2f'; x.fillRect(0.45, 0.25, 0.1, 2.3); x.beginPath(); x.moveTo(0.5, 0); x.lineTo(0.58, 0.35); x.lineTo(0.42, 0.35); x.fill();
+    for (const s of [-1, 1]) { x.beginPath(); x.moveTo(0.5, 0.45); x.quadraticCurveTo(0.5 + s * 0.5, 0.35, 0.5 + s * 0.48, 0.75); x.quadraticCurveTo(0.5 + s * 0.3, 0.62, 0.5, 0.95); x.fill(); } }, c, W, 512);
+  const t1 = toTex(cv, true, false), t2 = toTex(cc, true, false); t1.minFilter = t2.minFilter = THREE.LinearMipmapLinearFilter; return [t1, t2];
+}
+
+/* ---- the ground: a 2 m height field over the fortress, walls in fieldstone, ditches, a depth mask around ---- */
+function fortTerrainMaterial(tex) {
+  return std({ vertexColors: true, roughness: 0.96, metalness: 0 }, 'fort-ground', s => {
+    LM_SAFE(s); s.uniforms.uDetail = { value: tex };
+    s.vertexShader = 'varying vec2 vWxz;\n' + s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvWxz = (modelMatrix * vec4(transformed, 1.0)).xz;');
+    s.fragmentShader = 'uniform sampler2D uDetail; varying vec2 vWxz;\n' + s.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+      float dt = texture2D(uDetail, vWxz * 0.1429).r * 2.0, dt2 = texture2D(uDetail, vWxz * 0.0196 + 0.37).r * 2.0;
+      diffuseColor.rgb *= mix(1.0, dt, 0.5) * mix(1.0, dt2, 0.3);`);
+  });
+}
+function fortField(K) {
+  const c = 2, R = FORT.R + 40, X0 = FORT.cx - R, Z0 = FORT.cz - R, N = Math.ceil(2 * R / c) + 1, NN = N * N;
+  const H = new Float32Array(NN), B = new Uint8Array(NN), WET = new Uint8Array(NN);
+  if (!WMASK) waterMask();
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const x = X0 + i * c, z = Z0 + j * c, k = j * N + i;
+    const wm = WMASK.m[Math.floor((z - WMASK.Z0) / WMASK.S) * WMASK.NX + Math.floor((x - WMASK.X0) / WMASK.S)];
+    if (wm === 1 || (wm === 2 && inWater(x, z))) { WET[k] = 1; continue; }
+    const p = fortPoint(x, z); H[k] = p.h; B[k] = p.b;
+  }
+  // terrain cells: anything that is not flat town or field; flat cells only write depth
+  const vid = new Int32Array(NN).fill(-1), pos = [], nrm = [], col = [], idx = [], occ = [];
+  const flat = k => Math.abs(H[k]) < 0.03 && !(B[k] & 3);
+  const GRASS = [94, 124, 60], LUSH = [74, 104, 46], DRY = [132, 134, 82], MARSH = [72, 86, 44], BERM = [104, 112, 72];
+  const vert = k => {
+    if (vid[k] >= 0) return vid[k];
+    const i = k % N, j = (k / N) | 0, x = X0 + i * c, z = Z0 + j * c, h = H[k];
+    const hx = (H[j * N + Math.min(N - 1, i + 1)] - H[j * N + Math.max(0, i - 1)]) / (2 * c), hz = (H[Math.min(N - 1, j + 1) * N + i] - H[Math.max(0, j - 1) * N + i]) / (2 * c);
+    const l = Math.hypot(hx, 1, hz); pos.push(x, h, z); nrm.push(-hx / l, 1 / l, -hz / l);
+    const slope = Math.hypot(hx, hz), n = hash(i * 7919 + j * 104729) * 0.16 - 0.08 + (valueNoiseAt(x, z) - 0.5) * 0.12;
+    let cc = h < -2.5 ? ((B[k] & 4) ? MARSH : LUSH) : GRASS; if (slope > 0.6) cc = cc.map((v, q) => v + (DRY[q] - v) * Math.min(1, (slope - 0.6) * 0.6)); if (B[k] & 16) cc = BERM;
+    col.push(cc[0] / 255 * (1 + n), cc[1] / 255 * (1 + n), cc[2] / 255 * (1 + n));
+    return (vid[k] = pos.length / 3 - 1);
+  };
+  for (let j = 0; j < N - 1; j++) {
+    let run = -1;
+    for (let i = 0; i < N; i++) {
+      let mode = 0;   // 0 nothing, 1 terrain, 2 depth only
+      if (i < N - 1) {
+        const k = j * N + i, ks = [k, k + 1, k + N, k + N + 1];
+        if (ks.some(q => WET[q])) mode = 0;
+        else if (ks.some(q => B[q] & 8)) mode = 0;
+        else if (ks.every(flat)) mode = 2; else mode = 1;
+        if (mode === 1) { const [a, b2, d, e] = ks.map(vert); idx.push(a, d, b2, b2, d, e); }
+      }
+      if (mode === 2 && run < 0) run = i;
+      if (mode !== 2 && run >= 0) { occ.push(X0 + run * c, Z0 + j * c, X0 + i * c, Z0 + (j + 1) * c); run = -1; }
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx);
+  const m = new THREE.Mesh(g, fortTerrainMaterial(detailTex(0))); m.castShadow = m.receiveShadow = true; m.frustumCulled = false; scene.add(m);
+  // depth mask: flat town and field around the earthworks write depth just below the ground, so nothing dug into
+  // the moats shows through the ground in front of them
+  const S = 8, R2 = R + 420, OX = FORT.cx - R2, OZ = FORT.cz - R2, M = Math.ceil(2 * R2 / S);
+  for (let j = 0; j < M; j++) { let run = -1; const z = OZ + (j + 0.5) * S;
+    for (let i = 0; i <= M; i++) { const x = OX + (i + 0.5) * S;
+      const inner = x > X0 && x < X0 + (N - 1) * c && z > Z0 && z < Z0 + (N - 1) * c, wm = i < M ? WMASK.m[Math.floor((z - WMASK.Z0) / WMASK.S) * WMASK.NX + Math.floor((x - WMASK.X0) / WMASK.S)] : 1;
+      const ok = i < M && !inner && wm === 0;
+      if (ok && run < 0) run = i; if (!ok && run >= 0) { occ.push(OX + run * S, OZ + j * S, OX + i * S, OZ + (j + 1) * S); run = -1; } } }
+  const op = [], oi = []; for (let q = 0; q < occ.length; q += 4) { const v = op.length / 3; op.push(occ[q], -0.05, occ[q + 1], occ[q + 2], -0.05, occ[q + 1], occ[q + 2], -0.05, occ[q + 3], occ[q], -0.05, occ[q + 3]); oi.push(v, v + 2, v + 1, v, v + 3, v + 2); }
+  const og = new THREE.BufferGeometry(); og.setAttribute('position', new THREE.Float32BufferAttribute(op, 3)); og.setIndex(oi);
+  const om = new THREE.Mesh(og, new THREE.MeshBasicMaterial({ colorWrite: false, side: THREE.DoubleSide })); om.renderOrder = -30; om.frustumCulled = false; scene.add(om);
+  FORT.grid = { H, B, N, X0, Z0, c };
+}
+function valueNoiseAt(x, z) { const i = Math.floor(x / 9), j = Math.floor(z / 9), fx = x / 9 - i, fz = z / 9 - j, h = (a, b) => hash(a * 73856093 ^ b * 19349663);
+  const sx = fx * fx * (3 - 2 * fx), sz = fz * fz * (3 - 2 * fz); return (h(i, j) * (1 - sx) + h(i + 1, j) * sx) * (1 - sz) + (h(i, j + 1) * (1 - sx) + h(i + 1, j + 1) * sx) * sz; }
+// fieldstone retaining walls with a coping that covers the berm behind them; they also stop the walker
+function fortWalls(K) {
+  // walls stop at the gate façades: near a gate the pieces are 1 m long and dropped inside the façade's width
+  const W = K.rub, G = K.cap, gates = fortGates(), near = (x, z) => { for (const g of gates) { const [u, v] = lmL(g.f, x, z); if (u > -g.a - 40 && u < g.a2 + (g.kind === 'nik' ? 0 : 30) && Math.abs(v) < Math.max(g.W, g.b + 0.6) - 0.3) return true; } return false; },
+    byGate = (x, z) => gates.some(g => Math.hypot(x - g.f[0], z - g.f[1]) < 70);
+  let s0 = 0;
+  for (const [x1, z1, x2, z2, kind] of FS.segs) {
+    if (kind !== 0) continue;
+    const L = Math.hypot(x2 - x1, z2 - z1), tx = (x2 - x1) / L, tz = (z2 - z1) / L, lx = tz, lz = -tx;   // (lx, lz) points to the high side
+    const pieces = Math.max(1, Math.ceil(L / (byGate(x1, z1) || byGate(x2, z2) ? 1 : 4)));
+    for (let k = 0; k < pieces; k++) {
+      const a = k * L / pieces, b = (k + 1) * L / pieces, mx = x1 + tx * (a + b) / 2, mz = z1 + tz * (a + b) / 2;
+      const lo = fortPoint(mx - lx * 1.3, mz - lz * 1.3), hi = fortPoint(mx + lx * 1.3, mz + lz * 1.3);
+      if (!(hi.b & 1) || (lo.b & 1) || (lo.b & 32) || (hi.b & 32) || near(mx, mz)) continue;
+      const y0 = Math.min(lo.h, lo.w) - 0.4, y1 = FH.cap + 0.25; if (y1 - y0 < 1.2) continue;
+      const P = [x1 + tx * a, z1 + tz * a], Q = [x1 + tx * b, z1 + tz * b], S = FTS[0];
+      // wall face towards the low side: n = (-lx, -lz)
+      W.q([P[0], y0, P[1]], [Q[0], y0, Q[1]], [Q[0], y1, Q[1]], [P[0], y1, P[1]], [-lx, 0, -lz], [(s0 + a) / S, y0 / S, (s0 + b) / S, y0 / S, (s0 + b) / S, y1 / S, (s0 + a) / S, y1 / S], [196, 192, 186]);
+      // coping slab and the berm under it
+      const dIn = FH.berm + 0.15, c0 = [P[0] + lx * dIn, P[1] + lz * dIn], c1 = [Q[0] + lx * dIn, Q[1] + lz * dIn];
+      polyA(G, [[P[0] - lx * 0.12, y1, P[1] - lz * 0.12], [Q[0] - lx * 0.12, y1, Q[1] - lz * 0.12], [c1[0], y1, c1[1]], [c0[0], y1, c0[1]]], hb('#7d8a5a'), 0, 1, 0);
+      polyA(G, [[P[0] - lx * 0.12, y1 - 0.3, P[1] - lz * 0.12], [Q[0] - lx * 0.12, y1 - 0.3, Q[1] - lz * 0.12], [Q[0] - lx * 0.12, y1, Q[1] - lz * 0.12], [P[0] - lx * 0.12, y1, P[1] - lz * 0.12]], hb('#9a958c'), -lx, 0, -lz);
+      if (y1 - lo.w > 1.4) COL.add(P[0] - lx * 0.1, P[1] - lz * 0.1, Q[0] - lx * 0.1, Q[1] - lz * 0.1, 0.25, 0);
+    }
+    s0 += L;
+  }
+}
+// water in the ditches at the bottom of the moats
+function fortDitches() {
+  const pos = [], uv = [], idx = [];
+  for (const p of FT.ditches) { const n = p.length >> 1;
+    for (let i = 0; i < n - 1; i++) {
+      const x1 = p[2 * i], z1 = p[2 * i + 1], x2 = p[2 * i + 2], z2 = p[2 * i + 3], L = Math.hypot(x2 - x1, z2 - z1); if (L < 0.5 || !fortIn(x1, z1)) continue;
+      const tx = (x2 - x1) / L, tz = (z2 - z1) / L, steps = Math.ceil(L / 3);
+      for (let s = 0; s < steps; s++) {
+        const a = s * L / steps, b = (s + 1) * L / steps, A = [x1 + tx * a, z1 + tz * a], Bq = [x1 + tx * b, z1 + tz * b], ha = fortPoint(A[0], A[1]).h, hb2 = fortPoint(Bq[0], Bq[1]).h;
+        if (ha > -2.5 || hb2 > -2.5) continue;
+        const v = pos.length / 3, w = 0.8;
+        for (const [Pp, hh] of [[A, ha], [Bq, hb2]]) { pos.push(Pp[0] - tz * w, hh + 0.05, Pp[1] + tx * w, Pp[0] + tz * w, hh + 0.05, Pp[1] - tx * w); uv.push((Pp[0] - tz * w) / 24, (Pp[1] + tx * w) / 24, (Pp[0] + tz * w) / 24, (Pp[1] - tx * w) / 24); }
+        idx.push(v, v + 2, v + 1, v + 1, v + 2, v + 3);
+      }
+    } }
+  if (!idx.length) return;
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(pos.length).fill(0).map((_, k) => k % 3 === 1 ? 1 : 0), 3)); g.setIndex(idx);
+  const m = new THREE.Mesh(g, matWater); m.receiveShadow = true; m.frustumCulled = false; scene.add(m);
+}
+
+/* ---- gates ---- */
+// top of an opening at v: rect, round (elliptic if its rise differs from its half width) or pointed (two arcs)
+function fortArchY(h, v) {
+  const dv = Math.abs(v - h.vc); if (dv >= h.w || h.sh === 'rect') return h.ys;
+  const H = h.ya - h.ys;
+  if (h.sh === 'round') return h.ys + H * Math.sqrt(Math.max(0, 1 - (dv / h.w) * (dv / h.w)));
+  const R = (h.w * h.w + H * H) / (2 * h.w); return h.ys + Math.sqrt(Math.max(0, R * R - (h.w - R - dv) * (h.w - R - dv)));
+}
+const fortP = (f, u, v, y) => { const w = lmW(f, u, v); return [w[0], y, w[1]]; };
+// a flat wall in the plane u = up (facing out = ±1 along u) from v0 to v1, y0 to y1, with openings cut out
+function fortWallPlane(B, f, up, out, v0, v1, y0, y1, holes, S, col) {
+  const N = [f[2] * out, 0, f[3] * out], q = (P, Q, R2, T) => B.q(fortP(f, up, P[0], P[1]), fortP(f, up, Q[0], Q[1]), fortP(f, up, R2[0], R2[1]), fortP(f, up, T[0], T[1]), N,
+    [P[0] / S, P[1] / S, Q[0] / S, Q[1] / S, R2[0] / S, R2[1] / S, T[0] / S, T[1] / S], col);
+  let v = v0;
+  for (const h of holes.slice().sort((a, b) => a.vc - b.vc)) {
+    const a = h.vc - h.w, b = h.vc + h.w;
+    if (a > v) q([v, y0], [a, y0], [a, y1], [v, y1]);
+    if (h.yb > y0) q([a, y0], [b, y0], [b, h.yb], [a, h.yb]);
+    const n = h.sh === 'rect' ? 1 : 14;
+    for (let k = 0; k < n; k++) { const va = a + (b - a) * k / n, vb = a + (b - a) * (k + 1) / n, ya = fortArchY(h, va), yb = fortArchY(h, vb); if (ya < y1 || yb < y1) q([va, Math.min(ya, y1)], [vb, Math.min(yb, y1)], [vb, y1], [va, y1]); }
+    v = b;
+  }
+  if (v1 > v) q([v, y0], [v1, y0], [v1, y1], [v, y1]);
+}
+// an arch ring between two curves, from the plane uf (front, out of the wall by out) back to ub
+function fortArchRing(B, f, uf, ub, out, hin, hout, S, col, n = 16) {
+  const at = (h, t) => { const v = h.vc - h.w + 2 * h.w * t; return [v, fortArchY(h, v)]; }, N = [f[2] * out, 0, f[3] * out];
+  for (let k = 0; k < n; k++) {
+    const t0 = k / n, t1 = (k + 1) / n, i0 = at(hin, t0), i1 = at(hin, t1), o0 = at(hout, t0), o1 = at(hout, t1);
+    B.q(fortP(f, uf, i0[0], i0[1]), fortP(f, uf, i1[0], i1[1]), fortP(f, uf, o1[0], o1[1]), fortP(f, uf, o0[0], o0[1]), N, [i0[0] / S, i0[1] / S, i1[0] / S, i1[1] / S, o1[0] / S, o1[1] / S, o0[0] / S, o0[1] / S], col);
+    // intrados, facing down and in
+    const mx = (i0[0] + i1[0]) / 2 - hin.vc, ny = -1, cn = [-mx, ny]; const l = Math.hypot(cn[0], cn[1]) || 1, w0 = lmW(f, 0, 0), wv = lmW(f, 0, 1), ev = [wv[0] - w0[0], wv[1] - w0[1]];
+    B.q(fortP(f, uf, i0[0], i0[1]), fortP(f, ub, i0[0], i0[1]), fortP(f, ub, i1[0], i1[1]), fortP(f, uf, i1[0], i1[1]), [ev[0] * cn[0] / l, cn[1] / l, ev[1] * cn[0] / l], [0, i0[1] / S, (ub - uf) / S, i0[1] / S, (ub - uf) / S, i1[1] / S, 0, i1[1] / S], sh(col, 0.85));
+    const ox = (o0[0] + o1[0]) / 2 - hout.vc, on = [ox, 1], ol = Math.hypot(on[0], on[1]);
+    B.q(fortP(f, uf, o0[0], o0[1]), fortP(f, uf, o1[0], o1[1]), fortP(f, ub, o1[0], o1[1]), fortP(f, ub, o0[0], o0[1]), [ev[0] * on[0] / ol, on[1] / ol, ev[1] * on[0] / ol], [0, o0[1] / S, (ub - uf) / S, o0[1] / S, (ub - uf) / S, o1[1] / S, 0, o1[1] / S], sh(col, 0.95));
+  }
+}
+// box in the gate frame with a texture on its faces
+function fortTBox(B, f, u0, u1, v0, v1, y0, y1, S, col, faces = 'nsewt') {
+  const P = (u, v, y) => fortP(f, u, v, y), ex = f[2], ez = f[3], uv = (a, b, c, d) => [a / S, b / S, c / S, b / S, c / S, d / S, a / S, d / S];
+  if (faces.includes('w')) B.q(P(u0, v0, y0), P(u0, v1, y0), P(u0, v1, y1), P(u0, v0, y1), [-ex, 0, -ez], uv(v0, y0, v1, y1), col);
+  if (faces.includes('e')) B.q(P(u1, v0, y0), P(u1, v1, y0), P(u1, v1, y1), P(u1, v0, y1), [ex, 0, ez], uv(v0, y0, v1, y1), col);
+  if (faces.includes('n')) B.q(P(u0, v0, y0), P(u1, v0, y0), P(u1, v0, y1), P(u0, v0, y1), [ez, 0, -ex], uv(u0, y0, u1, y1), sh(col, 0.92));
+  if (faces.includes('s')) B.q(P(u0, v1, y0), P(u1, v1, y0), P(u1, v1, y1), P(u0, v1, y1), [-ez, 0, ex], uv(u0, y0, u1, y1), sh(col, 0.92));
+  if (faces.includes('t')) B.q(P(u0, v0, y1), P(u1, v0, y1), P(u1, v1, y1), P(u0, v1, y1), [0, 1, 0], uv(u0, v0, u1, v1), sh(col, 1.05));
+  if (faces.includes('b')) B.q(P(u0, v0, y0), P(u1, v0, y0), P(u1, v1, y0), P(u0, v1, y0), [0, -1, 0], uv(u0, v0, u1, v1), sh(col, 0.7));
+}
+// a flat sprite or tile on the plane u = up facing out; left/right as seen by the viewer
+function fortTile(B, f, up, out, vA, vB, y0, y1, t, lit = 0, col = LMWHITE) {
+  const vl = out < 0 ? Math.min(vA, vB) : Math.max(vA, vB), vr = out < 0 ? Math.max(vA, vB) : Math.min(vA, vB), N = [f[2] * out, 0, f[3] * out];
+  B.q(fortP(f, up, vl, y0), fortP(f, up, vr, y0), fortP(f, up, vr, y1), fortP(f, up, vl, y1), N, [t.u0, t.v0, t.u1, t.v0, t.u1, t.v1, t.u0, t.v1], col, lit);
+}
+// the vaulted passage through a gate block
+function fortPassage(K, g, pw, ys, wallB, S, vaultB = K.brk, VS = LMWS[3]) {
+  const f = g.f, a = g.a, a2 = g.a2, P = (u, v, y) => fortP(f, u, v, y), ex = f[2], ez = f[3];
+  for (const s of [-1, 1]) wallB.q(P(-a, s * pw, FH.floor), P(a2, s * pw, FH.floor), P(a2, s * pw, ys), P(-a, s * pw, ys), [-s * -ez, 0, -s * ex], [-a / S, 0, a2 / S, 0, a2 / S, ys / S, -a / S, ys / S], [214, 208, 200]);
+  const n = 14, rise = pw;
+  for (let k = 0; k < n; k++) {
+    const t0 = Math.PI * k / n, t1 = Math.PI * (k + 1) / n, v0 = -pw * Math.cos(t0), v1 = -pw * Math.cos(t1), y0 = ys + rise * Math.sin(t0), y1 = ys + rise * Math.sin(t1), tm = (t0 + t1) / 2;
+    const nv = Math.cos(tm), ny = -Math.sin(tm);   // towards the axis of the vault
+    const L0 = k * Math.PI * pw / n, L1 = (k + 1) * Math.PI * pw / n;
+    vaultB.q(P(-a, v0, y0), P(a2, v0, y0), P(a2, v1, y1), P(-a, v1, y1), [-ez * nv, ny, ex * nv], [-a / VS, L0 / VS, a2 / VS, L0 / VS, a2 / VS, L1 / VS, -a / VS, L1 / VS], [200, 192, 186]);
+  }
+  polyA(K.cap, [P(-a, -pw, FH.floor), P(a2, -pw, FH.floor), P(a2, pw, FH.floor), P(-a, pw, FH.floor)], hb('#6f6a63'), 0, 1, 0);
+  for (const s of [-1, 1]) COL.add(...lmW(f, -a, s * (pw - 0.05)), ...lmW(f, a2, s * (pw - 0.05)), 0.1, 0);
+}
+// the block over a passage: earth on top, fieldstone sides, end walls set back behind the façades (ins: [outer, inner])
+function fortBlock(K, g, top, pw, ys, ins) {
+  const f = g.f, a = g.a, a2 = g.a2, b = g.b;
+  fortTBox(K.rub, f, -a, a2, -b - 0.6, b + 0.6, -0.5, top, FTS[0], [190, 186, 180], 'ns');
+  for (const s of [-1, 1]) fortWallPlane(K.rub, f, s < 0 ? -a + ins[0] : a2 - ins[1], s, -b - 0.6, b + 0.6, -0.5, top, [{ vc: 0, w: pw, ys, ya: ys + pw, sh: 'round', yb: -0.5 }], FTS[0], [190, 186, 180]);
+  const P = (u, v, y) => fortP(f, u, v, y); polyA(K.cap, [P(-a - 0.2, -b - 1.6, top), P(a2 + 0.2, -b - 1.6, top), P(a2 + 0.2, b + 1.6, top), P(-a - 0.2, b + 1.6, top)], hb('#6f8a48'), 0, 1, 0);
+}
+// a lictor's axe in steel: two crescent blades on a staff
+function fortAxe(G, f, u, v, y0, out) {
+  const STEEL = hb('#b9bcbe'), A = fortP(f, u + out * 0.12, v, y0), B2 = fortP(f, u + out * 0.12, v, y0 + 2.3); lmBar(G, A, B2, 0.11, STEEL); lmBar(G, B2, fortP(f, u + out * 0.12, v, y0 + 2.55), 0.06, STEEL);
+  for (const s of [-1, 1]) { const c = fortP(f, u + out * 0.12, v + s * 0.32, y0 + 2.0); lmBar(G, fortP(f, u + out * 0.12, v + s * 0.06, y0 + 2.0), c, 0.22, STEEL); lmBar(G, fortP(f, u + out * 0.12, v + s * 0.4, y0 + 1.72), fortP(f, u + out * 0.12, v + s * 0.4, y0 + 2.28), 0.1, STEEL); }
+}
+
+function fortNicholas(K, g) {
+  const f = g.f, a = g.a, pw = 2.25, G = K.cap, GR = [172, 171, 166], BR = [238, 210, 202], WH = hb('#ebe3d6');
+  fortPassage(K, g, pw, 3.6, K.brk, LMWS[3]); fortBlock(K, g, 6.4, pw, 3.6, [0.65, 0.45]);
+  // outer façade (towards the moat and the bridge), u = -a, facing -u
+  const uo = -a, O = -1;
+  fortWallPlane(K.rub, f, uo, O, -13, 13, -4.6, 0, [], FTS[0], [196, 192, 186]);
+  fortWallPlane(K.brk, f, uo, O, -11.3, 11.3, 0, 8.6, [{ vc: 0, w: 2.8, ys: 4.4, ya: 7.6, sh: 'pointed', yb: 0 }, { vc: -8.45, w: 1.05, ys: 5.0, ya: 6.3, sh: 'pointed', yb: 4.45 }, { vc: 8.45, w: 1.05, ys: 5.0, ya: 6.3, sh: 'pointed', yb: 4.45 }], LMWS[3], BR);
+  // recessed brick round the door, with the door opening and its pointed head
+  fortWallPlane(K.brk, f, uo + 0.35, O, -2.8, 2.8, 0, 7.7, [{ vc: 0, w: pw, ys: 3.6, ya: 5.9, sh: 'pointed', yb: 0 }], LMWS[3], [230, 226, 222]);
+  for (const s of [-1, 1]) fortTBox(K.brk, f, uo, uo + 0.35, s > 0 ? 2.8 : -2.8, s > 0 ? 2.8 : -2.8, 0, 4.4, LMWS[3], BR, s > 0 ? 's' : 'n');
+  fortArchRing(K.gra, f, uo - 0.1, uo + 0.35, O, { vc: 0, w: 2.8, ys: 4.4, ya: 7.6, sh: 'pointed' }, { vc: 0, w: 4.1, ys: 4.4, ya: 8.75, sh: 'pointed' }, FTS[1], GR);
+  fortArchRing(K.gra, f, uo + 0.35, uo + 0.6, O, { vc: 0, w: pw, ys: 3.6, ya: 5.9, sh: 'pointed' }, { vc: 0, w: 2.8, ys: 3.6, ya: 6.4, sh: 'pointed' }, FTS[1], [176, 120, 100]);
+  for (const s of [-1, 1]) {
+    fortTBox(K.gra, f, uo - 0.1, uo, s * 2.8, s * 5.6, 0, 4.4, FTS[1], GR, 'wt');                         // granite piers either side of the arch
+    fortTBox(K.gra, f, uo - 0.12, uo + 1.2, s > 0 ? 11.3 : -13, s > 0 ? 13 : -11.3, 0, 8.6, FTS[1], GR, s > 0 ? 'ws' : 'wn');   // corner piers
+    fortTBox(K.gra, f, uo - 0.18, uo, s > 0 ? 4.1 : -13, s > 0 ? 13 : -4.1, 4.4, 4.62, FTS[1], GR, 'wtb');                    // string course
+    const vc = s * 8.45;
+    fortArchRing(K.gra, f, uo - 0.08, uo + 0.3, O, { vc, w: 1.05, ys: 5.0, ya: 6.3, sh: 'pointed' }, { vc, w: 1.95, ys: 5.0, ya: 7.35, sh: 'pointed' }, FTS[1], GR);
+    fortTile(K.det, f, uo + 0.3, O, vc - 1.05, vc + 1.05, 4.45, 6.35, FTT.grille);
+    fortTBox(K.gra, f, uo - 0.1, uo, vc - 1.2, vc + 1.2, 2.1, 4.0, FTS[1], GR, 'wt');                      // embrasure frame
+    polyA(G, [fortP(f, uo - 0.11, vc - 0.6, 2.45), fortP(f, uo - 0.11, vc + 0.6, 2.45), fortP(f, uo - 0.11, vc + 0.6, 3.15), fortP(f, uo - 0.11, vc - 0.6, 3.15)], hb('#26292b'), -f[2], 0, -f[3]);
+    for (const dv of [-2.05, 2.05]) polyA(G, [fortP(f, uo - 0.02, vc + dv - 0.32, 2.15), fortP(f, uo - 0.02, vc + dv + 0.32, 2.15), fortP(f, uo - 0.02, vc + dv + 0.32, 3.45), fortP(f, uo - 0.02, vc + dv - 0.32, 3.45)], hb('#2b2c2c'), -f[2], 0, -f[3]);
+    fortTBox(K.gra, f, uo - 0.06, uo + 1.0, s > 0 ? 6.3 : -13, s > 0 ? 13 : -6.3, 8.6, 10.0, FTS[1], GR, 'wte');            // side parapets
+    for (let k = 0; k <= 4; k++) { const vv = s * (6.6 + k * 1.6); lmBar(G, fortP(f, uo + 0.4, vv, 10.0), fortP(f, uo + 0.4, vv, 10.95), 0.05, hb('#3a3d40')); }
+    lmBar(G, fortP(f, uo + 0.4, s * 6.6, 10.9), fortP(f, uo + 0.4, s * 13, 10.9), 0.05, hb('#3a3d40'));
+    fortTile(K.cut, f, uo - 0.06, O, s * 4.0, s * 5.0, 5.4, 7.9, FTT.halberd);
+  }
+  // frieze with the name, corbel arcade, cornice, attic, eagle
+  fortTBox(K.gra, f, uo - 0.15, uo + 1.0, -6.3, 6.3, 8.6, 9.3, FTS[1], GR, 'wnsb');
+  fortTile(K.cut, f, uo - 0.16, O, -3.0, 3.0, 8.72, 9.18, FTT.nikname);
+  fortTBox(K.gra, f, uo - 0.25, uo + 1.0, -6.3, 6.3, 9.3, 10.0, FTS[1], GR, 'nsb');
+  fortTile(K.det, f, uo - 0.26, O, -6.3, 6.3, 9.3, 10.0, FTT.arcade);
+  fortTBox(K.gra, f, uo - 0.45, uo + 1.3, -6.6, 6.6, 10.0, 10.3, FTS[1], GR);
+  fortTBox(K.gra, f, uo - 0.1, uo + 1.0, -5.9, 5.9, 10.3, 11.0, FTS[1], GR, 'wnset');
+  fortTBox(K.gra, f, uo - 0.05, uo + 0.9, -2.75, 2.75, 11.0, 11.7, FTS[1], GR, 'wnset');
+  fortTile(K.cut, f, uo + 0.3, O, -2.6, 2.6, 11.55, 12.9, FTT.eagle); fortTile(K.cut, f, uo + 0.32, 1, -2.6, 2.6, 11.55, 12.9, FTT.eagle);
+  fortTBox(K.brk, f, uo, uo + 1.2, -11.3, 11.3, 6.4, 8.6, LMWS[3], [220, 214, 210], 'e');                    // back of the façade above the block
+  COL.add(...lmW(f, uo - 0.2, -13), ...lmW(f, uo - 0.2, -pw), 0.2, 0); COL.add(...lmW(f, uo - 0.2, pw), ...lmW(f, uo - 0.2, 13), 0.2, 0);
+
+  // inner façade (towards the town), u = +a: salmon render, white stone, a Tudor arch with oak doors standing open
+  const ui = g.a2, I = 1;
+  fortWallPlane(K.brk, f, ui, I, -10, 10, 0, 6.5, [{ vc: 0, w: 2.75, ys: 3.2, ya: 5.2, sh: 'pointed', yb: 0 }], LMWS[3], BR);
+  fortArchRing(K.ren, f, ui + 0.06, ui - 0.4, I, { vc: 0, w: 2.75, ys: 3.2, ya: 5.2, sh: 'pointed' }, { vc: 0, w: 3.1, ys: 3.2, ya: 5.6, sh: 'pointed' }, 2, WH);
+  for (const s of [-1, 1]) {
+    fortTile(K.det, f, ui + 0.02, I, s * 3.4, s * 9.0, 0, 6.0, FTT.bay, 0, BR);
+    fortTile(K.det, f, ui + 0.02, I, s * 3.1, s * 7.1, 6.0, 6.5, FTT.corbels, 0, BR); fortTile(K.det, f, ui + 0.02, I, s * 7.1, s * 10, 6.0, 6.5, FTT.corbels, 0, BR);
+    polyA(K.cap2, [fortP(f, ui + 0.03, s * 3.1, 3.12), fortP(f, ui + 0.03, s * 3.4, 3.12), fortP(f, ui + 0.03, s * 3.4, 3.3), fortP(f, ui + 0.03, s * 3.1, 3.3)], WH, f[2], 0, f[3]);
+    // a door leaf folded back against the passage wall
+    const vd = s * (pw - 0.06);
+    const dl = (u0, u1) => { const A = fortP(f, u0, vd, FH.floor), B2 = fortP(f, u1, vd, FH.floor), C2 = fortP(f, u1, vd, 3.6), D2 = fortP(f, u0, vd, 3.6), t = FTT.door, nn = [-s * -f[3], 0, -s * f[2]];
+      K.det.q(A, B2, C2, D2, nn, [t.u0, t.v0, t.u1, t.v0, t.u1, t.v1, t.u0, t.v1], LMWHITE, 0); K.det.q(B2, A, D2, C2, [-nn[0], 0, -nn[2]], [t.u0, t.v0, t.u1, t.v0, t.u1, t.v1, t.u0, t.v1], LMWHITE, 0); };
+    dl(ui - 0.4, ui - 3.0);
+  }
+  fortTBox(K.ren, f, ui, ui + 0.05, -10, 10, 0, 0.35, 2, hb('#7a7873'), 'et');
+  fortTBox(K.ren, f, ui - 0.3, ui + 0.35, -10.3, 10.3, 6.5, 6.75, 2, WH);
+  fortTBox(K.gra, f, ui - 0.6, ui + 0.05, -10, 10, 6.75, 7.25, FTS[1], GR, 'enswt');
+  fortTBox(K.gra, f, ui - 0.6, ui + 0.05, -4.6, 4.6, 7.25, 7.75, FTS[1], GR, 'enswt');
+  fortTile(K.cut, f, ui - 0.3, I, -2.4, 2.4, 7.4, 8.65, FTT.eagle); fortTile(K.cut, f, ui - 0.32, -1, -2.4, 2.4, 7.4, 8.65, FTT.eagle);
+  fortTBox(K.brk, f, ui - 1.0, ui, -10, 10, 6.4, 6.5, LMWS[3], BR, 'w');
+  COL.add(...lmW(f, ui + 0.2, -10), ...lmW(f, ui + 0.2, -pw), 0.2, 0); COL.add(...lmW(f, ui + 0.2, pw), ...lmW(f, ui + 0.2, 10), 0.2, 0);
+  fortBridge(K, g);
+}
+// the wooden bridge across the moat, on trestles, with brick piers and eagles at the far end
+function fortBridge(K, g) {
+  const f = g.f; let uFar = -g.a - 50;
+  if (FS.bridge) { uFar = 0; for (let i = 0; i < FS.bridge.length; i += 2) uFar = Math.min(uFar, lmL(f, FS.bridge[i], FS.bridge[i + 1])[0]); }
+  const u0 = -g.a, u1 = uFar, G = K.cap, WOOD = [206, 196, 184], DARK = hb('#6e5640'), WOODC = hb('#9a805f'), hw = 3.7, rw = 2.25;
+  const deck = (v0, v1, y) => { fortTBox(K.wood, f, u1, u0, v0, v1, y - 0.3, y, FTS[3], WOOD, 'tnsw'); };
+  deck(-rw, rw, FH.floor); deck(-hw, -rw, FH.floor + 0.2); deck(rw, hw, FH.floor + 0.2);
+  for (const v of [-3.2, -1.2, 1.2, 3.2]) lmBar(G, fortP(f, u0, v, FH.floor - 0.45), fortP(f, u1, v, FH.floor - 0.45), 0.3, DARK);
+  for (let u = u0 - 2.5; u > u1 + 1.5; u -= 5.5) {
+    const w = lmW(f, u, 0), hg = fortPoint(w[0], w[1]).h; if (hg > -0.8) continue;
+    lmBar(G, fortP(f, u, -3.9, FH.floor - 0.75), fortP(f, u, 3.9, FH.floor - 0.75), 0.3, DARK);
+    const posts = [-3.2, -1.2, 1.2, 3.2];
+    for (const v of posts) { fortTBox(K.cnc, f, u - 0.5, u + 0.5, v - 0.5, v + 0.5, hg - 0.1, hg + 0.4, 2, [214, 212, 206], 'wensbt'); lmBar(G, fortP(f, u, v, hg + 0.4), fortP(f, u, v, FH.floor - 0.6), 0.28, WOODC); }
+    lmBar(G, fortP(f, u, -3.2, hg + 0.6), fortP(f, u, -1.2, FH.floor - 1.0), 0.14, WOODC); lmBar(G, fortP(f, u, 3.2, hg + 0.6), fortP(f, u, 1.2, FH.floor - 1.0), 0.14, WOODC);
+    lmBar(G, fortP(f, u, -1.2, hg + 0.6), fortP(f, u, 1.2, FH.floor - 1.0), 0.14, WOODC);
+  }
+  for (const s of [-1, 1]) {
+    const v = s * (hw - 0.08), y0 = FH.floor + 0.2;
+    for (let u = u0; u >= u1; u -= 2) { lmBar(G, fortP(f, u, v, y0), fortP(f, u, v, y0 + 1.15), 0.12, WOODC); if (u - 2 >= u1) lmBar(G, fortP(f, u, v, y0 + 0.1), fortP(f, u - 2, v, y0 + 0.95), 0.08, WOODC); }
+    lmBar(G, fortP(f, u0, v, y0 + 1.12), fortP(f, u1, v, y0 + 1.12), 0.12, WOODC); lmBar(G, fortP(f, u0, v, y0 + 0.62), fortP(f, u1, v, y0 + 0.62), 0.08, WOODC);
+    COL.add(...lmW(f, u0, s * hw), ...lmW(f, u1, s * hw), 0.15, 0);
+    // brick piers with granite caps and eagles at the counterscarp
+    const vp = s * (hw + 0.9), up = u1 - 0.2;
+    fortTBox(K.brk, f, up - 0.65, up + 0.65, vp - 0.65, vp + 0.65, -0.2, 3.3, LMWS[3], [255, 255, 255], 'wensb');
+    fortTBox(K.gra, f, up - 0.8, up + 0.8, vp - 0.8, vp + 0.8, 3.3, 3.6, FTS[1], [205, 204, 198]);
+    fortTile(K.cut, f, up, -1, vp - 0.75, vp + 0.75, 3.6, 4.4, FTT.eagle); fortTile(K.cut, f, up, 1, vp - 0.75, vp + 0.75, 3.6, 4.4, FTT.eagle);
+  }
+}
+// granite portal with an Egyptian cavetto cornice and lictors' axes (the Michael gate), facing out at u = up
+function fortEgyptPortal(K, g, up, out, wings) {
+  const f = g.f, pw = 2.3, GR = [206, 205, 200], G = K.cap, D = up - out * 1.0;
+  fortWallPlane(K.gra, f, up, out, -5, 5, 0, 7.8, [{ vc: 0, w: pw, ys: 6.1, ya: 6.1, sh: 'rect', yb: 0 }], FTS[1], GR);
+  fortTBox(K.gra, f, Math.min(up, D), Math.max(up, D), pw, pw, 0, 6.1, FTS[1], sh(GR, 0.9), 'n'); fortTBox(K.gra, f, Math.min(up, D), Math.max(up, D), -pw, -pw, 0, 6.1, FTS[1], sh(GR, 0.9), 's');
+  fortTBox(K.gra, f, Math.min(up, D), Math.max(up, D), -pw, pw, 6.1, 6.1, FTS[1], sh(GR, 0.8), 'b');
+  for (const s of [-1, 1]) fortTBox(K.gra, f, up + (out < 0 ? 0 : -1.0), up + (out < 0 ? 1.0 : 0), s > 0 ? 5 : -5.0, s > 0 ? 5.0 : -5, 0, 7.8, FTS[1], GR, s > 0 ? 's' : 'n');
+  const o = out, U = d => up + o * d;   // d: distance out of the wall plane
+  fortTBox(K.gra, f, Math.min(U(0), U(0.2)), Math.max(U(0), U(0.2)), -5.15, 5.15, 7.8, 8.1, FTS[1], GR, 'wenstb');
+  // cavetto: six slices flaring out and sideways
+  const prof = [[0.2, 8.1, 5.15], [0.24, 8.5, 5.2], [0.32, 8.9, 5.3], [0.45, 9.25, 5.42], [0.63, 9.55, 5.57], [0.85, 9.8, 5.72], [1.0, 9.9, 5.8]];
+  for (let k = 0; k < prof.length - 1; k++) {
+    const [d0, y0, w0] = prof[k], [d1, y1, w1] = prof[k + 1], nu = y1 - y0, ny = -(d1 - d0), l = Math.hypot(ny, nu);   // the gorge faces out and down
+    K.gra.q(fortP(f, U(d0), -w0, y0), fortP(f, U(d0), w0, y0), fortP(f, U(d1), w1, y1), fortP(f, U(d1), -w1, y1), [f[2] * o * nu / l, ny / l, f[3] * o * nu / l], [-w0 / 2, y0 / 2, w0 / 2, y0 / 2, w1 / 2, y1 / 2, -w1 / 2, y1 / 2], sh(GR, 0.9 + k * 0.03));
+    for (const s of [-1, 1]) K.gra.q(fortP(f, U(0), s * w0, y0), fortP(f, U(d0), s * w0, y0), fortP(f, U(d1), s * w1, y1), fortP(f, U(0), s * w1, y1), [-f[3] * s, 0, f[2] * s], [0, y0 / 2, d0 / 2, y0 / 2, d1 / 2, y1 / 2, 0, y1 / 2], sh(GR, 0.85));
+  }
+  fortTile(K.det, f, U(0.205), o, -2.2, 2.2, 8.15, 9.0, FTT.winged);
+  fortTBox(K.gra, f, Math.min(U(-1.2), U(1.05)), Math.max(U(-1.2), U(1.05)), -5.9, 5.9, 9.9, 10.3, FTS[1], GR);
+  fortTBox(K.gra, f, Math.min(U(-1.2), U(0)), Math.max(U(-1.2), U(0)), -5.0, 5.0, 7.8, 9.9, FTS[1], GR, o < 0 ? 'e' : 'w');
+  for (const s of [-1, 1]) fortAxe(G, f, up, s * 3.65, 3.1, o);
+  COL.add(...lmW(f, up, -5), ...lmW(f, up, -pw), 0.2, 0); COL.add(...lmW(f, up, pw), ...lmW(f, up, 5), 0.2, 0);
+  if (!wings) return;
+  // curved wing walls of dressed sandstone, their tops falling with the slope of the rampart
+  for (const s of [-1, 1]) {
+    const n = 14, SND = [222, 214, 196];
+    for (let k = 0; k < n; k++) {
+      const t0 = k / n, t1 = (k + 1) / n, v0 = s * (5 + 14 * t0), v1 = s * (5 + 14 * t1), h0 = fortWingTop(t0), h1 = fortWingTop(t1);
+      K.snd.q(fortP(f, up, v0, -0.2), fortP(f, up, v1, -0.2), fortP(f, up, v1, h1), fortP(f, up, v0, h0), [f[2] * o, 0, f[3] * o], [v0 / FTS[2], 0, v1 / FTS[2], 0, v1 / FTS[2], h1 / FTS[2], v0 / FTS[2], h0 / FTS[2]], SND);
+      polyA(G, [fortP(f, U(0.08), v0, h0), fortP(f, U(0.08), v1, h1), fortP(f, U(-0.7), v1, h1), fortP(f, U(-0.7), v0, h0)], hb('#a8a296'), 0, 1, 0);
+      COL.add(...lmW(f, U(0.15), v0), ...lmW(f, U(0.15), v1), 0.2, 0);
+    }
+  }
+}
+// brick portal with a round arch, granite dressings and a meander frieze (the Alexander gate, the posterns)
+function fortBrickPortal(K, g, up, out, W, pw, ys, top, frieze) {
+  const f = g.f, GR = [205, 204, 198], U = d => up + out * d;
+  fortWallPlane(K.brk, f, up, out, -W, W, 0, top, [{ vc: 0, w: pw, ys, ya: ys + pw, sh: 'round', yb: 0 }], LMWS[3], [236, 226, 220]);
+  fortArchRing(K.gra, f, U(0.08), U(-0.5), out, { vc: 0, w: pw, ys, ya: ys + pw, sh: 'round' }, { vc: 0, w: pw + 0.45, ys, ya: ys + pw + 0.45, sh: 'round' }, FTS[1], GR);
+  for (const s of [-1, 1]) { fortTBox(K.gra, f, Math.min(U(0), U(0.1)), Math.max(U(0), U(0.1)), s > 0 ? pw : -pw - 0.55, s > 0 ? pw + 0.55 : -pw, ys - 0.3, ys, FTS[1], GR, 'wenst'); fortTBox(K.gra, f, Math.min(U(0), U(0.08)), Math.max(U(0), U(0.08)), s > 0 ? W - 0.6 : -W, s > 0 ? W : -W + 0.6, 0, top, FTS[1], GR, 'wenst'); }
+  if (frieze) { fortTBox(K.ren, f, Math.min(U(0), U(0.05)), Math.max(U(0), U(0.05)), -W + 0.6, W - 0.6, top - 0.95, top - 0.35, LMWS[1], hb('#d9d2c6'), 'we'); fortTile(K.det, f, U(0.06), out, -W + 0.6, W - 0.6, top - 0.95, top - 0.35, FTT.meander); }
+  fortTBox(K.gra, f, Math.min(U(-1.0), U(0.3)), Math.max(U(-1.0), U(0.3)), -W - 0.2, W + 0.2, top - 0.3, top, FTS[1], GR);
+  COL.add(...lmW(f, up, -W), ...lmW(f, up, -pw), 0.2, 0); COL.add(...lmW(f, up, pw), ...lmW(f, up, W), 0.2, 0);
+}
+function fortGateModels(K) {
+  for (const g of fortGates()) {
+    if (g.kind === 'nik') fortNicholas(K, g);
+    else if (g.kind === 'mih') { fortPassage(K, g, 2.0, 2.9, K.gra, FTS[1], K.gra, FTS[1]); fortBlock(K, g, 6.0, 2.0, 2.9, [1.0, 1.0]); fortEgyptPortal(K, g, -g.a, -1, false); fortEgyptPortal(K, g, g.a, 1, true); }
+    else if (g.kind === 'ale') { fortPassage(K, g, 2.1, 3.0, K.brk, LMWS[3]); fortBlock(K, g, 6.5, 2.1, 3.0, [0.5, 0.5]); fortBrickPortal(K, g, -g.a, -1, g.W, 2.1, 3.0, 6.5, true); fortBrickPortal(K, g, g.a, 1, g.W, 2.1, 3.0, 6.5, true); }
+    else { fortPassage(K, g, 1.5, 2.4, K.brk, LMWS[3]); fortBlock(K, g, 4.8, 1.5, 2.4, [0.5, 0.5]); fortBrickPortal(K, g, -g.a, -1, g.W, 1.5, 2.4, 4.8, false); fortBrickPortal(K, g, g.a, 1, g.W, 1.5, 2.4, 4.8, false); }
+  }
+}
+function buildFortress() {
+  if (!FORT.ok) return;
+  fortPrep();
+  const bt = fortBrickTex(), [dt, ct] = fortAtlas(), TX4 = [0, 1, 2, 3].map(fortTex);
+  const M = {
+    rub: lmStd({ vertexColors: true, map: TX4[0], roughness: 0.95, metalness: 0 }, 'ft-rub'), gra: lmStd({ vertexColors: true, map: TX4[1], roughness: 0.8, metalness: 0 }, 'ft-gra'),
+    snd: lmStd({ vertexColors: true, map: TX4[2], roughness: 0.9, metalness: 0 }, 'ft-snd'), wood: lmStd({ vertexColors: true, map: TX4[3], roughness: 0.85, metalness: 0 }, 'ft-wood'),
+    det: lmStd({ vertexColors: true, map: dt, roughness: 0.8, metalness: 0 }, 'ft-det'), brk: bt ? lmStd({ vertexColors: true, map: bt, roughness: 0.88, metalness: 0 }, 'ft-brk') : LMM.brick, cut: lmStd({ vertexColors: true, map: ct, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.6, metalness: 0 }, 'ft-cut')
+  };
+  const K = { rub: new LMB(), gra: new LMB(), snd: new LMB(), wood: new LMB(), brk: new LMB(), ren: new LMB(), det: new LMB(), cut: new LMB(), cnc: new LMB(), cap: new GB(false), cap2: new GB(false) };
+  fortField(K); fortWalls(K); fortDitches(); fortGateModels(K); fortPaths();
+  K.rub.mesh(M.rub); K.gra.mesh(M.gra); K.snd.mesh(M.snd); K.wood.mesh(M.wood); K.det.mesh(M.det); K.cut.mesh(M.cut, false); K.cnc.mesh(M.gra);
+  K.brk.mesh(M.brk); K.ren.mesh(LMM.ren);
+  for (const b of [K.cap, K.cap2]) { const m = b.mesh(LMM.plain); if (m) { m.castShadow = m.receiveShadow = true; scene.add(m); } }
+}
+// footpaths over the ramparts and down into the moats, laid on the terrain mesh (the flat ones stay with the streets)
+function fortPaths() {
+  const G = FORT.grid, PB = new GB(false), cellFlat = (x, z) => {
+    const i = Math.floor((x - G.X0) / G.c), j = Math.floor((z - G.Z0) / G.c); if (i < 0 || j < 0 || i >= G.N - 1 || j >= G.N - 1) return true;
+    for (const k of [j * G.N + i, j * G.N + i + 1, (j + 1) * G.N + i, (j + 1) * G.N + i + 1]) if (Math.abs(G.H[k]) >= 0.03 || (G.B[k] & 3)) return false; return true; };
+  for (const l of LINES) {
+    if (l.cls !== 5 && l.cls !== 6 && l.cls !== 7 && l.cls !== 15) continue;
+    const p = l.pts, n = p.length >> 1, hw = l.w / 2, col = hb(LINE[l.cls][1]);
+    for (let i = 0; i < n - 1; i++) {
+      const x1 = p[2 * i], z1 = p[2 * i + 1], x2 = p[2 * i + 2], z2 = p[2 * i + 3], L = Math.hypot(x2 - x1, z2 - z1); if (L < 0.1 || !fortIn((x1 + x2) / 2, (z1 + z2) / 2)) continue;
+      const tx = (x2 - x1) / L, tz = (z2 - z1) / L, nx = -tz * hw, nz = tx * hw, steps = Math.ceil(L / 1.5);
+      for (let s = 0; s < steps; s++) {
+        const a = s * L / steps, b = (s + 1) * L / steps, A = [x1 + tx * a, z1 + tz * a], B = [x1 + tx * b, z1 + tz * b];
+        if (cellFlat(A[0], A[1]) && cellFlat(B[0], B[1])) continue;
+        if (FS.bridge && pip((A[0] + B[0]) / 2, (A[1] + B[1]) / 2, FS.bridge)) continue;
+        const P = (x, z) => [x, fortGridH(x, z) + 0.07, z];
+        polyA(PB, [P(A[0] + nx, A[1] + nz), P(B[0] + nx, B[1] + nz), P(B[0] - nx, B[1] - nz), P(A[0] - nx, A[1] - nz)], col, 0, 1, 0);
+      }
+    }
+  }
+  const m = PB.mesh(lmStd({ vertexColors: true, roughness: 0.95, metalness: 0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }, 'ft-path'));
+  if (m) { m.receiveShadow = true; scene.add(m); }
+}
+const fortTreeY = (x, z) => FORT.grid && fortIn(x, z, 30) ? fortGridH(x, z) : 0;
+
 function buildLamps() {
   const n = LAMPS.length / 3, ok = [];
   for (let i = 0; i < n; i++) { const x = LAMPS[3 * i], z = LAMPS[3 * i + 1]; if (!inBuilding(x, z) && !inWater(x, z)) ok.push(i); }
@@ -2618,7 +3227,7 @@ function buildTrees() {
   farGeo.setAttribute('aQ', new THREE.Float32BufferAttribute([0, 0, 0, 0, 1, 1, 1, 1], 1));
   farGeo.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
   const add = (x, z, type, sc, v) => {
-    if (Math.abs(x) > HX || Math.abs(z) > HY || lmClear(x, z) || wetTree(x, z)) return;
+    if (Math.abs(x) > HX || Math.abs(z) > HY || lmClear(x, z) || wetTree(x, z) || fortNoTree(x, z)) return;
     const i = Math.floor(x / TTILE), j = Math.floor(z / TTILE), k = (i + 100) * 1000 + j + 100;
     let t = treeTiles.get(k); if (!t) treeTiles.set(k, t = { x0: i * TTILE, z0: j * TTILE, list: [] }); t.list.push(x, z, type, sc, v);
   };
@@ -2652,7 +3261,7 @@ function buildTrees() {
     const L = new THREE.InstancedMesh(fg, matTreeFar, n);
     for (let i = 0; i < n; i++) {
       const type = l[5 * i + 2], sc = l[5 * i + 3], v = l[5 * i + 4], sy = sc * (0.88 + (v * 7 % 1) * 0.3), H = hi[type].userData.H; types[i] = type;
-      M.compose(new THREE.Vector3(l[5 * i] - cx, 0, l[5 * i + 1] - cz), q0, new THREE.Vector3(sc * H / 2, sy * H, 1)); L.setMatrixAt(i, M); L.setColorAt(i, tint(v));
+      M.compose(new THREE.Vector3(l[5 * i] - cx, fortTreeY(l[5 * i], l[5 * i + 1]), l[5 * i + 1] - cz), q0, new THREE.Vector3(sc * H / 2, sy * H, 1)); L.setMatrixAt(i, M); L.setColorAt(i, tint(v));
     }
     fg.setAttribute('aType', new THREE.InstancedBufferAttribute(types, 1));
     L.position.set(cx, 0, cz); L.instanceMatrix.needsUpdate = true; L.instanceColor.needsUpdate = true; L.onBeforeRender = a2cOn; L.onAfterRender = a2cOff; scene.add(L); t.lo.push(L);
@@ -2661,7 +3270,7 @@ function buildTrees() {
       const Hm = new THREE.InstancedMesh(hi[type], matTree, idx.length);
       idx.forEach((i, k) => {
         const sc = l[5 * i + 3], v = l[5 * i + 4], sy = sc * (0.88 + (v * 7 % 1) * 0.3); q.setFromAxisAngle(up, v * 6.283);
-        M.compose(new THREE.Vector3(l[5 * i] - cx, 0, l[5 * i + 1] - cz), q, new THREE.Vector3(sc, sy, sc)); Hm.setMatrixAt(k, M); Hm.setColorAt(k, tint(v));
+        M.compose(new THREE.Vector3(l[5 * i] - cx, fortTreeY(l[5 * i], l[5 * i + 1]), l[5 * i + 1] - cz), q, new THREE.Vector3(sc, sy, sc)); Hm.setMatrixAt(k, M); Hm.setColorAt(k, tint(v));
       });
       Hm.position.set(cx, 0, cz); Hm.instanceMatrix.needsUpdate = true; Hm.instanceColor.needsUpdate = true; Hm.customDepthMaterial = matTreeDepth;
       Hm.castShadow = true; Hm.receiveShadow = true; Hm.visible = false; Hm.onBeforeRender = a2cOn; Hm.onAfterRender = a2cOff; scene.add(Hm); t.hi.push(Hm);
@@ -2979,6 +3588,9 @@ const PLACES = [
   ['Дубровинский парк', 'Dubrovina parks', -1833, 1416, 0],
   ['Церковная горка', 'четыре храма разных конфессий', 40, 1275, 0],
   ['Крепость · Центр Ротко', 'Динабургская крепость, Арсенал', -2700, -100, -1.2],
+  ['Николаевские ворота', 'крепость: деревянный мост через ров', -2788.1, -65.4, -0.589],
+  ['Михайловские ворота', 'гранитный портал с секирами, вид из крепости', -2564.6, -133.2, -2.82],
+  ['Александровские ворота', 'кирпичный портал с меандром', -2411.7, -514.2, 2.052],
   ['Мост Единства', 'через Даугаву в Гриву', -2205, 1953, 0],
   ['Грива', 'левый берег, костёл Девы Марии', -1515, 2570, 0],
   ['Стадион «Локомотив»', 'спидвей', 372, 300, 3.1],
@@ -2999,7 +3611,7 @@ function freeSpot(x, z) {
 }
 function teleport(x, z, yaw) {
   x = Math.max(-HX + 5, Math.min(HX - 5, x)); z = Math.max(-HY + 5, Math.min(HY - 5, z));
-  if (P.fly) { P.x = x; P.z = z; } else { [P.x, P.z] = freeSpot(x, z); P.y = 1.7; }
+  if (P.fly) { P.x = x; P.z = z; } else { [P.x, P.z] = freeSpot(x, z); P.y = 1.7 + fortGround(P.x, P.z); }
   if (yaw != null) { P.yaw = yaw; P.pitch = P.fly ? -0.45 : 0; }
   hudTimer = 0; mapTimer = 0; lodTimer = 0;
 }
@@ -3032,6 +3644,7 @@ function step(dt) {
     P.walked += sp * dt * l;
   }
   P.x = Math.max(-HX, Math.min(HX, P.x)); P.z = Math.max(-HY, Math.min(HY, P.z));
+  if (!P.fly) P.y = 1.7 + fortGround(P.x, P.z);   // up the ramparts, down into the moats
 }
 function setFly(on) {
   P.fly = on; $('bFly').setAttribute('aria-pressed', on);
@@ -3392,13 +4005,14 @@ const tick = msg => { progress.textContent = msg; return new Promise(r => setTim
     for (let i = 0; i < N; i += 4000) { await tick('Строю дома: ' + Math.min(N, i + 4000).toLocaleString('ru') + ' из ' + N.toLocaleString('ru') + '…'); buildBuildings(i, Math.min(N, i + 4000)); }
     await tick('Собираю кварталы…'); finishBuildings();
     await tick('Строю Дом Единства, гостиницу «Латгола» и корпуса университета…'); buildLandmarks();
+    await tick('Насыпаю валы и копаю рвы крепости…'); buildFortress();
     const lamps = buildLamps(); setTime(timeI);
     await tick('Сажаю деревья…'); const trees = buildTrees();
     await tick('Выпускаю трамваи и автобусы на линии…'); const tripsN = buildTransit();
     requestAnimationFrame(frame);
     progress.textContent = 'Готово: ' + BLD.length.toLocaleString('ru') + ' зданий, ' + LINES.length.toLocaleString('ru') + ' улиц и дорожек, ' + trees.toLocaleString('ru') + ' деревьев, ' + lamps.toLocaleString('ru') + ' фонарей' + (tripsN ? ', ' + tripsN.toLocaleString('ru') + ' рейсов в расписании' : '') + '.';
     $('go').disabled = false; $('go').focus();
-    window.__city = { TX, setClock, updateBoard, P, teleport, setFly, setTime, setNight: on => setTime(on ? 2 : 0), setQuality, scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU };
+    window.__city = { TX, setClock, updateBoard, P, teleport, setFly, setTime, fortPoint, setNight: on => setTime(on ? 2 : 0), setQuality, scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU };
   } catch (e) { console.error(e); progress.textContent = 'Ошибка при сборке города: ' + e.message; }
 })();
 })();
