@@ -2914,6 +2914,9 @@ function fortAtlas() {
   tile('dent', 4.0, 0.6, x => { x.fillStyle = '#efebe2'; x.fillRect(0, 0, 4, 0.6); x.fillStyle = '#c9c3b6'; x.fillRect(0, 0.42, 4, 0.04); for (let k = 0; k < 16; k++) { x.fillStyle = '#d8d2c6'; x.fillRect(k * 0.25 + 0.05, 0.12, 0.15, 0.22); x.fillStyle = 'rgba(0,0,0,0.18)'; x.fillRect(k * 0.25 + 0.05, 0.34, 0.15, 0.04); } });
   tile('cwin', 1.2, 2.2, x => { x.fillStyle = '#f1eee7'; x.fillRect(0, 0, 1.2, 2.2); const gr = x.createLinearGradient(0, 0, 1.2, 2.2); gr.addColorStop(0, '#6c7c88'); gr.addColorStop(0.55, '#34414b'); gr.addColorStop(1, '#4e5c67'); x.fillStyle = gr;
     for (const [px, py, w, hh] of [[0.09, 0.09, 0.47, 0.5], [0.64, 0.09, 0.47, 0.5], [0.09, 0.67, 0.47, 0.68], [0.64, 0.67, 0.47, 0.68], [0.09, 1.43, 0.47, 0.68], [0.64, 1.43, 0.47, 0.68]]) x.fillRect(px, py, w, hh); });
+  tile('polplate', 0.6, 0.8, x => { x.fillStyle = '#1d3f7a'; x.fillRect(0, 0, 0.6, 0.8); x.strokeStyle = '#d9b44a'; lw(x, 0.015); x.strokeRect(0.03, 0.03, 0.54, 0.74);
+    x.fillStyle = '#d9b44a'; x.beginPath(); x.moveTo(0.22, 0.1); x.lineTo(0.38, 0.1); x.lineTo(0.38, 0.26); x.quadraticCurveTo(0.3, 0.34, 0.22, 0.26); x.closePath(); x.fill();
+    x.fillStyle = '#f4f4f0'; x.font = '700 0.07px Arial, sans-serif'; x.textAlign = 'center'; x.fillText('VALSTS', 0.3, 0.44); x.fillText('POLICIJA', 0.3, 0.53); x.font = '400 0.042px Arial, sans-serif'; x.fillText('Latgales reģiona', 0.3, 0.63); x.fillText('pārvalde', 0.3, 0.69); });
   tile('engsign', 2.8, 0.44, x => { x.fillStyle = '#f2efe8'; x.fillRect(0, 0, 2.8, 0.44); x.strokeStyle = '#c8c2b6'; lw(x, 0.03); x.strokeRect(0.03, 0.03, 2.74, 0.38); x.fillStyle = '#26231f'; x.font = '700 0.2px "Times New Roman", Georgia, serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('ИНЖЕНЕРНЫЙ АРСЕНАЛЪ', 1.4, 0.23); });
   tile('ramparch', 3.2, 2.2, x => { x.fillStyle = '#2b2a28'; x.fillRect(0, 0, 3.2, 2.2); const gr = x.createLinearGradient(0, 0, 0, 2.2); gr.addColorStop(0, '#1d1c1a'); gr.addColorStop(1, '#55524c'); x.fillStyle = gr; x.fillRect(0.2, 0.3, 2.8, 1.9); });
   // cut-outs: double-headed eagle, the name of the gate, an iron halberd
@@ -2932,6 +2935,7 @@ function fortAtlas() {
     x.fillStyle = '#2e2924'; x.fillRect(0, 0, 4.4, 2.2); const gr = x.createLinearGradient(0, 0, 4.4, 2.2); gr.addColorStop(0, '#6a7b87'); gr.addColorStop(0.6, '#36434d'); gr.addColorStop(1, '#4d5b66'); x.fillStyle = gr;
     x.beginPath(); x.moveTo(0.12, 2.2); x.arc(2.2, 2.2, 2.08, Math.PI, 0); x.closePath(); x.fill(); x.fillStyle = '#2e2924';
     for (let k = 1; k < 11; k++) x.fillRect(k * 0.4 - 0.03, 0, 0.06, 2.2); for (let k = 1; k < 5; k++) x.fillRect(0, 2.2 - k * 0.45 - 0.03, 4.4, 0.06); x.fillRect(0, 2.08, 4.4, 0.12); x.restore(); }, c, W, 512);
+  tile('policija', 10.9, 0.58, x => { x.fillStyle = '#2a2b2c'; x.font = '700 0.5px Arial, "Helvetica Neue", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('VALSTS POLICIJA', 5.45, 0.31); }, c, W, 512);
   tile('halberd', 1.0, 2.6, x => { x.fillStyle = '#2b2d2f'; x.fillRect(0.45, 0.25, 0.1, 2.3); x.beginPath(); x.moveTo(0.5, 0); x.lineTo(0.58, 0.35); x.lineTo(0.42, 0.35); x.fill();
     for (const s of [-1, 1]) { x.beginPath(); x.moveTo(0.5, 0.45); x.quadraticCurveTo(0.5 + s * 0.5, 0.35, 0.5 + s * 0.48, 0.75); x.quadraticCurveTo(0.5 + s * 0.3, 0.62, 0.5, 0.95); x.fill(); } }, c, W, 512);
   const t1 = toTex(cv, true, false), t2 = toTex(cc, true, false); t1.minFilter = t2.minFilter = THREE.LinearMipmapLinearFilter; return [t1, t2];
@@ -3570,7 +3574,50 @@ function fortClassic(K, B) {
   }
   if (B.steps) { const [u0, u1, v0, v1] = B.steps; for (let k = 0; k < 3; k++) fortTBox(K.gra, f, u0 - k * 0.3, u1 + k * 0.3, v0, v1 - k * 0.6, 0, 0.45 - k * 0.15, FTS[1], [160, 156, 150]); }
 }
-function fortBuildings(K) { for (const B of FORT_BLD) fortArsenal(K, B); for (const B of FORT_CLASSIC) fortClassic(K, B); }
+/* Since its restoration the Commandant's house is the Latgale regional administration of the State Police (OSM:
+   amenity=police at Komandanta iela 7): metal letters VALSTS POLICIJA over the arcade, a plate by the door, flags on
+   the lawn, the railing along the front with its gap at the path to the door, and the police car park behind the
+   house (OSM amenity=parking, 110 × 34 m) with service and private cars. Frame as FORT_CLASSIC 'kom'. */
+function fortCar(G, x, z, dx, dz, col, police, seed) {
+  const f = [x, z, dx, dz], GL = hb('#26303a'), TY = hb('#1c1c1c');
+  lmBoxL(G, f, -2.25, 2.25, -0.88, 0.88, 0.32, 0.92, col);
+  lmBoxL(G, f, -2.3, -1.9, -0.86, 0.86, 0.45, 0.8, sh(col, 0.9)); lmBoxL(G, f, 1.9, 2.3, -0.86, 0.86, 0.45, 0.8, sh(col, 0.9));
+  lmBoxL(G, f, -1.25, 0.95, -0.78, 0.78, 0.92, 1.4, GL);
+  lmBoxL(G, f, -1.2, 0.85, -0.8, 0.8, 1.4, 1.47, col);
+  for (const su of [-1.4, 1.45]) for (const sv of [-1, 1]) fortLatheAx(G, fortP(f, su, sv * 0.78, 0.32), [-dz * sv, 0, dx * sv], [[0, 0], [0.32, 0], [0.32, 0.2], [0, 0.2]], 10, TY);
+  if (police) {
+    lmBoxL(G, f, -2.27, 2.27, -0.9, 0.9, 0.55, 0.72, hb('#1f4ea0'));
+    lmBoxL(G, f, -0.35, 0.35, -0.6, 0.6, 1.47, 1.6, hb('#2a5bd0')); lmBoxL(G, f, -0.12, 0.12, -0.6, 0.6, 1.47, 1.61, hb('#c9cdd1'));
+  }
+}
+function fortPolice(K) {
+  const B = FORT_CLASSIC.find(b => b.key === 'kom'); if (!B) return; const f = B.f, P = (u, v, y) => fortP(f, u, v, y);
+  // letters and the plate on the front of the centre (the front of the risalit is the plane v = 0.9, facing +v)
+  const g = [...lmW(f, 0, 0.9), -f[3], f[2]];   // u' = v - 0.9 out of the wall, v' = -u along it
+  fortTile(K.cut, g, 0.06, 1, -61.6, -50.7, 4.74, 5.32, FTT.policija);
+  fortTile(K.det, g, 0.03, 1, -54.2, -53.6, 1.3, 2.1, FTT.polplate);   // on the pier left of the door
+  for (const u of [47.5, 64.8]) { const w = lmW(f, u, 10.5); lmFlag(K.cap, w[0], w[1], 0, 8.5, [f[2], f[3]], 1.9); }
+  // railing along the front, open opposite the door
+  const BLK = hb('#24272a');
+  for (const [u0, u1] of [[3.4, 51.7], [58.5, 108.6]]) {
+    const v = 18; lmBar(K.cap, P(u0, v, 1.15), P(u1, v, 1.15), 0.05, BLK); lmBar(K.cap, P(u0, v, 0.15), P(u1, v, 0.15), 0.05, BLK);
+    for (let u = u0; u <= u1 + 0.01; u += 0.18) { const post = Math.abs((u - u0) % 2.52) < 0.09; lmBar(K.cap, P(u, v, 0), P(u, v, post ? 1.3 : 1.15), post ? 0.09 : 0.025, BLK); }
+    COL.add(...lmW(f, u0, v), ...lmW(f, u1, v), 0.1, 0);
+  }
+  // the car park behind: asphalt with white bays, rows of cars nose to the kerb, every third a police car
+  const AS = hb('#55575a'), LN = hb('#d9d9d4');
+  polyA(K.cap, [P(-1.5, -32.2, 0.03), P(108.4, -32.2, 0.03), P(108.4, -66.7, 0.03), P(-1.5, -66.7, 0.03)], AS, 0, 1, 0);
+  for (const [v0, v1] of [[-32.6, -38.4], [-41.4, -47.2], [-52.5, -58.3], [-60.6, -66.4]]) for (let u = 1.125; u < 105; u += 2.75)
+    polyA(K.cap, [P(u - 0.06, v0, 0.04), P(u + 0.06, v0, 0.04), P(u + 0.06, v1, 0.04), P(u - 0.06, v1, 0.04)], LN, 0, 1, 0);
+  const COLS = ['#2f3338', '#8d9196', '#c9ccd0', '#5b1f22', '#203a5c', '#e9e9e6', '#3d4a3a', '#6b6f73'];
+  let n = 0;
+  for (const [vRow, face] of [[-35.5, 1], [-44.3, -1], [-55.4, 1], [-63.4, -1]]) for (let u = 2.5; u < 104; u += 2.75) {
+    const r = hash(Math.round(u * 10) * 31 + Math.round(-vRow * 10)); if (r < 0.5) continue;
+    const w = lmW(f, u, vRow), d = [-f[3] * face, f[2] * face], police = r > 0.8 || (n % 3 === 0 && r > 0.55);
+    fortCar(K.cap, w[0], w[1], d[0], d[1], police ? hb('#f2f2ef') : hb(COLS[Math.floor(r * 97) % COLS.length]), police); n++;
+  }
+}
+function fortBuildings(K) { for (const B of FORT_BLD) fortArsenal(K, B); for (const B of FORT_CLASSIC) fortClassic(K, B); fortPolice(K); }
 /* ---- monuments of the fortress ----
    The fountain in the fortress garden: four cast-iron barrels standing on their square breeches and leaning
    together, on a granite block with the name ДИНАБУРГЪ and lions' heads, on a stepped base in a round basin with a
@@ -4298,7 +4345,7 @@ const PLACES = [
   ['Церковная горка', 'четыре храма разных конфессий', 40, 1275, 0],
   ['Крепость · Центр Ротко', 'Артиллерийский арсенал, Центр Марка Ротко', -2683.9, -95.2, -0.513],
   ['Инженерный арсенал', 'крепость, Imperatora iela 8', -2529.0, -427.5, 2.827],
-  ['Комендантский дом', 'крепость, Komandanta iela 7, пушки у входа', -2844.8, -395.5, 2.63],
+  ['Комендантский дом · полиция', 'Государственная полиция, Latgales reģiona pārvalde', -2844.8, -395.5, 2.63],
   ['Сад крепости', 'фонтан из пушечных стволов', -2824, -452, -2.418],
   ['Николаевские ворота', 'крепость: деревянный мост через ров', -2788.1, -65.4, -0.589],
   ['Михайловские ворота', 'гранитный портал с секирами, вид из крепости', -2564.6, -133.2, -2.82],
