@@ -1854,6 +1854,11 @@ function lmTiles() {
     for (const [ctx, c] of [[g, '#ece9e2'], [o, ORM[0]], [e, '#000']]) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(a, b, 1.5 * PX, Math.PI, 0); ctx.lineTo(X + 3.0 * PX, Y + 3.8 * PX); ctx.lineTo(X, Y + 3.8 * PX); ctx.closePath(); ctx.fill(); }
     for (const [ctx, c] of [[g, '#8f4f3c'], [o, ORM[0]], [e, '#000']]) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(a, b, 1.32 * PX, Math.PI, 0); ctx.lineTo(X + 2.82 * PX, Y + 3.8 * PX); ctx.lineTo(X + 0.18 * PX, Y + 3.8 * PX); ctx.closePath(); ctx.fill(); }
     for (let y = 0.3; y < 3.8; y += 0.075) R(0.2, y, 2.6, 0.012, 'rgba(60,30,20,0.35)'); glass(1.1, 1.6, 0.8, 1.0, 0, '#ffd9a0'); });
+  T('scArchWin', 1.6, 4.0, () => { R(0, 0, 1.6, 4.0, '#8a4634'); const arch = (i, col, k) => { const [a, b] = pr(0.8, 0.8, 0, 0);
+      for (const [ctx, c] of [[g, col], [o, ORM[k]], [e, '#000']]) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(a, b, (0.8 - i) * PX, Math.PI, 0); ctx.lineTo(X + (1.6 - i) * PX, Y + (4.0 - i) * PX); ctx.lineTo(X + i * PX, Y + (4.0 - i) * PX); ctx.closePath(); ctx.fill(); } };
+    arch(0, '#e6e1d6', 0); arch(0.13, SCF, 1); arch(0.17, '#41505a', 2);
+    for (const x of [0.55, 1.05]) R(x, 0.2, 0.03, 3.65, SCF, 1); for (let y = 0.9; y < 3.8; y += 0.48) R(0.17, y, 1.26, 0.03, SCF, 1);
+    const [a, b, c, d] = pr(0.17, 0.25, 1.26, 3.6); e.fillStyle = '#e8b878'; e.globalAlpha = 0.85; e.fillRect(a, b, c, d); e.globalAlpha = 1; });
   T('scPV', 6.0, 1.7, () => { R(0, 0, 6.0, 1.7, '#9aa0a4', 1); for (let k = 0; k < 6; k++) { R(0.04 + k * 0.995, 0.04, 0.96, 1.62, '#1d2a44', 3); for (let j = 1; j < 6; j++) R(0.04 + k * 0.995, 0.04 + j * 0.27, 0.96, 0.012, '#3a4a68', 3); } });
   // shelf packing, tallest first
   defs.sort((a, b) => b.h - a.h);
@@ -3521,10 +3526,11 @@ function lmKP(K) {
    out in 1980, since 1992 heat plant No. 1 of Daugavpils siltumtīkli, whose office is next door at No. 4; an
    architectural monument. OpenStreetMap gives the outline (way 173318931) and the 100 m chimney (node 1435408094);
    massing and façades follow Google Street View and satellite views (2024) and LSM photographs: red brick with white
-   bands, steel multi-pane windows in bays between pilasters; a seven-storey tower at the west end of the block on the
-   street with framed windows, a four-storey block beside it behind a low annex of light brick with two bricked-up
-   arches, the boiler hall behind them with three roof lanterns and solar panels, lower wings to the east and south;
-   the chimney south of the tower with two galleries, antennas and faded red and white bands. Frame sc: origin at the
+   bands, steel multi-pane windows in bays between pilasters; a four-storey range on the street with a low annex of
+   light brick and two bricked-up arches in a recess of its front, the boiler hall behind it with three roof lanterns
+   and solar panels, a seven-storey tower with framed windows at the hall's south-west corner, the old hall with tall
+   round-arched windows under a hipped roof on the west side, lower wings to the east and south; the chimney just south
+   of the tower with two galleries, antennas and faded red and white bands. Frame sc: origin at the
    north-west corner on 18. novembra iela, u east along the street, v south towards the river. */
 function lmSC(K) {
   const f = LMF.sc, G = K.plain, at = (u, v, y) => { const w = lmW(f, u, v); return [w[0], y, w[1]]; };
@@ -3536,36 +3542,41 @@ function lmSC(K) {
   const win = (o) => Object.assign({ d: 0.3, sill: WH, lit: lmLit(0.3) }, o || {});
   // brick pilasters on a wall a→b (local), the inside point telling which way is out
   const pil = (a, b, inside, ss, y0, y1, w = 0.7) => { for (const s of ss) lmEdgeBox(G, f, a, b, inside, s - w / 2, s + w / 2, y0, y1, 0, 0.3, PIL); };
-  // tower: a tall window in a projecting frame on every floor of the street front, the top floor a blind panel
-  { const o = [];
-    for (let fl = 0; fl < 6; fl++) lmOp(o, 6, 0, 3.0, 1.2 + fl * 3.75, 4.1 + fl * 3.75, 'scTall', win());
-    lmOp(o, 6, 0, 3.2, 23.0, 25.3, null, { d: 0.25 });
-    for (let fl = 0; fl < 7; fl++) for (const v of [4, 10]) lmOp(o, 0, v, 2.2, 1.4 + fl * 3.75, 3.8 + fl * 3.75, 'scWinB', win());
-    for (const fl of [5, 6]) { lmOp(o, 12, 2.5, 2.0, 1.4 + fl * 3.75, 3.8 + fl * 3.75, 'scWinB', win()); for (const u of [3, 9]) lmOp(o, u, 14, 2.0, 1.4 + fl * 3.75, 3.8 + fl * 3.75, 'scWinB', win()); }
-    lmBlock(K, f, { poly: [[0, 0], [12, 0], [12, 14], [0, 14]], top: 26.5, st: BR, cornice: [[15.8, 16.2, 0.12, WH], [26.1, 26.5, 0.15, WH]], roof: ROOF, roofY: 26.5 }, o);
-    pil([0, 0], [12, 0], [6, 7], [4.15, 7.85], 0.6, 25.6, 0.5); lmEdgeBox(G, f, [0, 0], [12, 0], [6, 7], 4.4, 7.6, 22.75, 23.0, 0, 0.3, PIL);
-    lmEdgeBox(G, f, [0, 0], [12, 0], [6, 7], 4.4, 7.6, 23.0, 25.3, -0.3, -0.25, hb('#8a4634')); }
-  // four-storey block on the street behind the annex: steel windows in bays between pilasters, a white band
-  { const o = [], a = [12, 5], b = [36, 5];
-    for (const u of [15, 21, 27, 33]) { lmOp(o, u, 5, 2.6, 8.2, 12.6, 'scWin', win()); lmOp(o, u, 5, 2.6, 13.6, 16.2, 'scWinB', win()); if (u > 31) lmOp(o, u, 5, 2.6, 1.6, 6.0, 'scWin', win()); }
-    for (const v of [9.5]) { lmOp(o, 36, v, 2.6, 9.8, 14.2, 'scWin', win()); }
-    lmBlock(K, f, { poly: [[12, 5], [36, 5], [36, 14], [12, 14]], top: 17, st: BR, cornice: [[12.9, 13.3, 0.1, WH], [16.6, 17, 0.14, WH]], roof: ROOF, roofY: 17,
-      wy0: lmFoot([[[12, 5], [12, 14], 99], [[12, 14], [36, 14], 99]]) }, o);
-    pil(a, b, [24, 10], [0.35, 6, 12, 18, 23.65], 7.5, 16.6); }
+  // tower at the south-west corner of the boiler hall, in front of the chimney: a tall window in a projecting frame on
+  // every floor of its west front above the arched hall, the top floor a blind panel
+  { const o = [], a = [0, 27.6], b = [0, 39.6], Y = fl => 1.2 + fl * 3.75;
+    for (let fl = 2; fl < 6; fl++) lmOp(o, 0, 33.6, 3.0, Y(fl), Y(fl) + 2.9, 'scTall', win());
+    lmOp(o, 0, 33.6, 3.2, 23.0, 25.3, null, { d: 0.25 });
+    for (let fl = 1; fl < 7; fl++) lmOp(o, 4, 39.6, 2.2, Y(fl) + 0.2, Y(fl) + 2.6, 'scWinB', win()); lmOp(o, 4, 39.6, 2.4, 0, 3.0, 'scDoor', { d: 0.15 });
+    for (const fl of [5, 6]) { for (const u of [3, 9]) lmOp(o, u, 27.6, 2.0, Y(fl) + 0.2, Y(fl) + 2.6, 'scWinB', win()); for (const v of [30.5, 36.5]) lmOp(o, 12, v, 2.0, Y(fl) + 0.2, Y(fl) + 2.6, 'scWinB', win()); }
+    lmBlock(K, f, { poly: [[0, 27.6], [12, 27.6], [12, 39.6], [0, 39.6]], top: 26.5, st: BR, cornice: [[15.8, 16.2, 0.12, WH], [26.1, 26.5, 0.15, WH]], roof: ROOF, roofY: 26.5 }, o);
+    pil(a, b, [6, 33.6], [4.15, 7.85], 7.0, 25.6, 0.5); lmEdgeBox(G, f, a, b, [6, 33.6], 4.4, 7.6, 22.75, 23.0, 0, 0.3, PIL);
+    lmEdgeBox(G, f, a, b, [6, 33.6], 4.4, 7.6, 23.0, 25.3, -0.3, -0.25, hb('#8a4634')); }
+  // the four-storey range on the street: steel windows in bays between pilasters, a white band; the annex of light
+  // brick stands in a recess of its front
+  { const o = [], rows = [[1.6, 6.0, 'scWin'], [8.2, 12.6, 'scWin'], [13.6, 16.2, 'scWinB']];
+    for (const u of [3.5, 9.5, 33.5]) for (const [y0, y1, t] of rows) lmOp(o, u, 0, 2.6, y0, y1, t, win());
+    for (const u of [16, 22, 28]) for (const [y0, y1, t] of rows.slice(1)) lmOp(o, u, 5, 2.6, y0, y1, t, win());
+    for (const [y0, y1, t] of rows) lmOp(o, 0, 4.5, 2.6, y0, y1, t, win()); for (const [y0, y1, t] of rows.slice(1)) lmOp(o, 0, 11.8, 2.6, y0, y1, t, win());
+    lmOp(o, 36, 9.5, 2.6, 9.8, 14.2, 'scWin', win());
+    lmBlock(K, f, { poly: [[0, 0], [13, 0], [13, 5], [31, 5], [31, 0], [36, 0], [36, 14], [0, 14]], top: 17, st: BR, cornice: [[12.9, 13.3, 0.1, WH], [16.6, 17, 0.14, WH]], roof: ROOF, roofY: 17,
+      wy0: lmFoot([[[13, 0], [13, 5], 7.5], [[13, 5], [31, 5], 7.5], [[31, 5], [31, 0], 7.5], [[36, 14], [0, 14], 99]]) }, o);
+    pil([0, 0], [13, 0], [6, 7], [0.35, 6.5, 12.65], 0, 16.6); pil([13, 5], [31, 5], [20, 10], [0.35, 6, 12, 17.65], 7.5, 16.6); pil([31, 0], [36, 0], [33, 7], [0.35, 4.65], 0, 16.6); }
   // the annex of light brick in front: two arches bricked up in red, small windows, a door
   { const o = []; for (const u of [20.5, 24.5]) lmOp(o, u, 0, 3.0, 1.6, 5.4, 'scArch', { d: 0.15 });
     for (const u of [15.2, 17.4]) lmOp(o, u, 0, 1.4, 2.2, 4.0, 'scSmall', win({ d: 0.2 })); lmOp(o, 28.5, 0, 2.4, 0, 3.0, 'scDoor', { d: 0.15 });
     lmBlock(K, f, { poly: [[13, 0], [31, 0], [31, 5], [13, 5]], top: 7.5, st: SIL, cornice: [[7.1, 7.5, 0.1, hb('#b9b4a8')]], roof: ROOF, roofY: 7.5, wy0: lmFoot([[[13, 5], [31, 5], 99]]) }, o); }
   // the boiler hall: tall steel windows in bays on its free sides, three lanterns and solar panels on the roof
   { const o = [], bay = 5.6, rows = [[2.0, 6.4, 'scWin'], [8.6, 13.0, 'scWin'], [14.4, 17.0, 'scWinB']];
-    for (let k = 0; k < 6; k++) { const u = 2.8 + k * bay; for (const [y0, y1, t] of rows) if (y0 > 8 || u + 1.3 < 8.9 || u - 1.3 > 20.4) lmOp(o, u, 39.6, 2.6, y0, y1, t, win()); }
-    for (const v of [17, 22.6, 28.2, 33.8]) for (const [y0, y1, t] of rows.slice(1)) { lmOp(o, 0, v, 2.6, y0, y1, t, win()); if (v < 33.6) lmOp(o, 36, v, 2.6, y0, y1, t, win()); }
-    lmBlock(K, f, { poly: [[0, 14], [36, 14], [36, 33.6], [33.6, 33.6], [33.6, 39.6], [0, 39.6]], top: 18, st: BR, cornice: [[13.5, 13.9, 0.1, WH], [17.6, 18, 0.14, WH]], roof: ROOF, roofY: 18,
-      wy0: lmFoot([[[0, 14], [36, 14], 17]]) }, o);
-    pil([0, 39.6], [33.6, 39.6], [10, 30], [0.35, 5.6, 11.2, 16.8, 22.4, 28, 33.25], 0, 17.6);
+    for (const u of [14.8, 20.4, 26.0, 31.4]) for (const [y0, y1, t] of rows) if (y0 > 8 || u - 1.3 > 20.4) lmOp(o, u, 39.6, 2.6, y0, y1, t, win());
+    for (const v of [17.4, 23.2]) for (const [y0, y1, t] of rows.slice(1)) lmOp(o, 0, v, 2.6, y0, y1, t, win());
+    for (const v of [17, 22.6, 28.2]) for (const [y0, y1, t] of rows.slice(1)) lmOp(o, 36, v, 2.6, y0, y1, t, win());
+    lmBlock(K, f, { poly: [[0, 14], [36, 14], [36, 33.6], [33.6, 33.6], [33.6, 39.6], [12, 39.6], [12, 27.6], [0, 27.6]], top: 18, st: BR, cornice: [[13.5, 13.9, 0.1, WH], [17.6, 18, 0.14, WH]], roof: ROOF, roofY: 18,
+      wy0: lmFoot([[[0, 14], [36, 14], 17], [[12, 39.6], [12, 27.6], 99], [[12, 27.6], [0, 27.6], 99]]) }, o);
+    pil([12, 39.6], [33.6, 39.6], [20, 30], [0.35, 5.6, 11.2, 16.8, 21.25], 0, 17.6);
     for (const [u0, u1, v0, v1] of [[10.5, 13.5, 18, 26], [18.5, 21.5, 17, 25], [30.5, 33.5, 15.5, 23.5]]) { lmBoxL(G, f, u0, u1, v0, v1, 18, 18.8, LANT, false); lmHip(G, f, u0, u1, v0, v1, 18.8, 1.1, sh(LANT, 0.92), 0.15); }
     const t = LMT.scPV, ev = [-f[3], f[2]], k = Math.sin(0.36), n = [ev[0] * k, Math.cos(0.36), ev[1] * k], free = (u0, u1, v0, v1) => ![[10.5, 13.5, 18, 26], [18.5, 21.5, 17, 25], [30.5, 33.5, 15.5, 23.5]].some(([a, b, c, d]) => u0 < b + 0.5 && u1 > a - 0.5 && v0 < d + 0.5 && v1 > c - 0.5);
-    for (const v of [15.2, 18.4, 21.6, 24.8, 28.0, 31.2, 34.4, 37.0]) for (let u = 1; u + 6 <= (v > 33 ? 33.2 : 35.2); u += 6.3) { if (!free(u, u + 6, v, v + 1.6)) continue;
+    for (const v of [15.2, 18.4, 21.6, 24.8, 28.0, 31.2, 34.4, 37.0]) for (let u = v + 1.6 > 27.6 ? 12.5 : 1; u + 6 <= (v > 33 ? 33.2 : 35.2); u += 6.3) { if (!free(u, u + 6, v, v + 1.6)) continue;
       K.det.q(at(u, v + 1.6, 18.25), at(u + 6, v + 1.6, 18.25), at(u + 6, v, 18.85), at(u, v, 18.85), n, [t.u1, t.v0, t.u0, t.v0, t.u0, t.v1, t.u1, t.v1], LMWHITE, 0);
       lmBoxL(G, f, u, u + 6, v + 0.2, v + 1.4, 18, 18.25, STEEL, false); } }
   // the narrow east block under a rusty roof, the south-east wing, the small block by the chimney, the low west annex
@@ -3578,9 +3589,14 @@ function lmSC(K) {
     lmBlock(K, f, { poly: [[33.6, 33.6], [47.5, 33.6], [47.5, 69.2], [33.5, 69.2], [33.5, 65.6], [21.3, 65.6], [21.3, 55.2], [33.6, 55.2]], top: 8.5, st: BR, cornice: [[8.1, 8.5, 0.1, WH]], roof: ROOF, roofY: 8.5 }, o); }
   { const o = []; for (const u of [11.5, 17.5]) lmOp(o, u, 44.9, 2.2, 4.4, 6.8, 'scWinB', win()); lmOp(o, 14.5, 44.9, 2.4, 0, 3.0, 'scDoor', { d: 0.15 });
     lmBlock(K, f, { poly: [[8.9, 39.6], [20.4, 39.6], [20.4, 44.9], [8.9, 44.9]], top: 8, st: BR, cornice: [[7.6, 8, 0.1, WH]], roof: ROOF, roofY: 8, wy0: lmFoot([[[8.9, 39.6], [20.4, 39.6], 99]]) }, o); }
-  { const o = []; for (const v of [13, 17, 21]) lmOp(o, -13.9, v, 1.4, 2.4, 4.2, 'scSmall', win()); lmOp(o, -6, 39, 2.4, 0, 3.0, 'scDoor', { d: 0.15 }); lmOp(o, -21, 22.22, 2.4, 0, 3.0, 'scDoor', { d: 0.15 });
-    lmBlock(K, f, { poly: [[0, 9.9], [0, 39], [-11, 39], [-11, 41], [-17.8, 41], [-17.8, 31.1], [-22.4, 32.3], [-26.3, 24.2], [-16.4, 20.5], [-13.9, 27.9], [-13.9, 9.9]], top: 6.5, st: BR, cornice: [[6.1, 6.5, 0.1, WH]], roof: ROOF, roofY: 6.5,
-      wy0: lmFoot([[[0, 9.9], [0, 39], 99]]) }, o); }
+  // the old hall on the west side: tall round-arched windows in white surrounds, a white frieze, a hipped roof
+  { const o = [], arch = () => ({ d: 0.25, lit: lmLit(0.3) });
+    for (const v of [12.2, 15.2, 18.2, 21.2, 24.2]) lmOp(o, -13.9, v, 1.6, 1.4, 5.4, 'scArchWin', arch());
+    for (const u of [-11.2, -8.2, -5.2, -2.2]) lmOp(o, u, 9.9, 1.6, 1.4, 5.4, 'scArchWin', arch());
+    for (const u of [-9, -3]) lmOp(o, u, 39, 1.6, 1.4, 5.4, 'scArchWin', arch()); lmOp(o, -6, 39, 2.4, 0, 3.0, 'scDoor', { d: 0.15 }); lmOp(o, -21, 22.22, 2.4, 0, 3.0, 'scDoor', { d: 0.15 });
+    lmBlock(K, f, { poly: [[0, 9.9], [0, 39], [-11, 39], [-11, 41], [-17.8, 41], [-17.8, 31.1], [-22.4, 32.3], [-26.3, 24.2], [-16.4, 20.5], [-13.9, 27.9], [-13.9, 9.9]], top: 7, st: BR, cornice: [[0, 0.55, 0.06, WH], [6.3, 7, 0.12, WH]], roof: ROOF, roofY: 7,
+      wy0: lmFoot([[[0, 9.9], [0, 39], 99]]) }, o);
+    lmHip(G, f, -13.9, 0, 9.9, 39, 7, 3.0, hb('#6f6b66'), 0.35); }
   // the chimney, 100 m: weathered concrete, faded red and white bands over the upper half, two galleries with antennas,
   // a ladder up the side towards the street
   { const [cx, cz] = lmW(f, 8.7, 52), r = h => 4.3 - 0.018 * h, sec = (h0, h1, col) => lmLathe(G, cx, cz, h0, [[r(h0), 0], [r(h1), h1 - h0]], 24, col);
@@ -5557,7 +5573,7 @@ const PLACES = [
   ['Грива', 'левый берег, костёл Девы Марии', -1515, 2570, 0],
   ['Спидвей «Локомотив»', 'стадион Lokomotīve, Jelgavas iela 54 · трек 373 м', 346.6, 376.5, -2.93],
   ['Дворец культуры', 'Kultūras pils, Smilšu iela 92 · остановка «Kultūras un sporta pils»', 877.5, -526.0, -1.9],
-  ['Теплоцентраль №1', 'первая электростанция города, 1911 · 18. novembra iela 2', -1158.3, 1867.0, -2.59],
+  ['Теплоцентраль №1', 'первая электростанция города, 1911 · 18. novembra iela 2', -1195.5, 1920.5, -1.67],
   ['Форштадт', 'костёл Сердца Иисуса', -1250, -2160, 0],
   ['Стропское озеро', 'сосны и пляж', 2600, -3000, -1.57]
 ];
