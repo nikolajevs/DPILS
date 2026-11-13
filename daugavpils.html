@@ -2753,14 +2753,25 @@ const inBB = (bb, x, z) => x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3];
 // h: visible ground; w: where one walks; b: bits 1 raised, 2 moat, 4 wet moat, 8 gate block, 16 berm behind a wall, 32 cut or road
 function fortPoint(x, z) {
   const o = { h: 0, w: 0, b: 0 }; if (!FORT.ok || !FS.SEG || !fortIn(x, z, 30)) return o;
-  let best = 1e9, bid = -1, bx = 0, bz = 0; FS.SEG.near(x, z, 32, (id, d, px, pz) => { if (d < best) { best = d; bid = id; bx = px; bz = pz; } });
+  // the nearest wall or bank, and the nearest one that does not end in a free end right there: beyond the free end of
+  // a wall the side of its line says little, so the other one is taken when it raises the ground higher
+  let best = 1e9, bid = -1, bx = 0, bz = 0, bestI = 1e9, bidI = -1;
+  const atEnd = (s, px, pz) => (s[6] && px === s[0] && pz === s[1]) || (s[7] && px === s[2] && pz === s[3]);
+  FS.SEG.near(x, z, 32, (id, d, px, pz) => { if (d < best) { best = d; bid = id; bx = px; bz = pz; }
+    if (d < bestI && !atEnd(FS.segs[FS.SEG.s[id * 6 + 5]], px, pz)) { bestI = d; bidI = id; } });
   let raised = false, kind = -1, d = best, endF = 1;
-  if (bid >= 0) {
-    const s = FS.segs[FS.SEG.s[bid * 6 + 5]]; kind = s[4]; raised = (s[2] - s[0]) * (z - s[1]) - (s[3] - s[1]) * (x - s[0]) < 0;
+  const judge = (id, dd, end) => {
+    const s = FS.segs[FS.SEG.s[id * 6 + 5]], r = (s[2] - s[0]) * (z - s[1]) - (s[3] - s[1]) * (x - s[0]) < 0; let e = 1;
     // beyond the free end of a wall or bank the raised ground rounds off instead of running on as a half disc
-    if (raised && ((s[6] && bx === s[0] && bz === s[1]) || (s[7] && bx === s[2] && bz === s[3]))) endF = 1 - fss((d - 1) / 9);
+    if (r && end) e = 1 - fss((dd - 1) / 9);
     // far from any wall, outside the works, the raised ground falls away instead of ending in a cliff
-    if (raised && kind === 0 && d > 22 && !(inBB(FS.mainBB, x, z) && pip(x, z, FS.main)) && !FS.rings.some(r => inBB(r.bb, x, z) && pip(x, z, r.r))) endF = Math.min(endF, 1 - fss((d - 22) / 9));
+    if (r && s[4] === 0 && dd > 22 && !(inBB(FS.mainBB, x, z) && pip(x, z, FS.main)) && !FS.rings.some(q => inBB(q.bb, x, z) && pip(x, z, q.r))) e = Math.min(e, 1 - fss((dd - 22) / 9));
+    return { r, kind: s[4], d: dd, e: r ? e : 0 };
+  };
+  if (bid >= 0) {
+    let J = judge(bid, best, atEnd(FS.segs[FS.SEG.s[bid * 6 + 5]], bx, bz));
+    if (J.e < 1 && bidI >= 0 && bidI !== bid) { const J2 = judge(bidI, bestI, false); if (J2.e > J.e) J = J2; }
+    raised = J.r; kind = J.kind; d = J.d; endF = J.r ? J.e : 1;
   }
   else for (const r of FS.rings) if (inBB(r.bb, x, z) && pip(x, z, r.r)) { raised = true; kind = 0; d = 30; break; }
   let mt = 0; for (const m of FS.moats) if (inBB(m.bb, x, z) && pip(x, z, m.r)) { mt = m.k; break; }
@@ -2901,6 +2912,8 @@ function fortAtlas() {
   tile('adoor', 2.0, 3.0, x => { x.fillStyle = '#2f2c2a'; x.fillRect(0, 0, 2, 3); const gr = x.createLinearGradient(0, 0, 2, 3); gr.addColorStop(0, '#6f7f8a'); gr.addColorStop(1, '#2e3a44'); x.fillStyle = gr; x.fillRect(0.08, 0.08, 0.86, 2.84); x.fillRect(1.06, 0.08, 0.86, 2.84);
     x.fillStyle = '#2f2c2a'; x.fillRect(0.08, 0.7, 1.84, 0.06); x.fillStyle = '#c9c4ba'; x.fillRect(0.8, 1.5, 0.05, 0.5); x.fillRect(1.15, 1.5, 0.05, 0.5); });
   tile('dent', 4.0, 0.6, x => { x.fillStyle = '#efebe2'; x.fillRect(0, 0, 4, 0.6); x.fillStyle = '#c9c3b6'; x.fillRect(0, 0.42, 4, 0.04); for (let k = 0; k < 16; k++) { x.fillStyle = '#d8d2c6'; x.fillRect(k * 0.25 + 0.05, 0.12, 0.15, 0.22); x.fillStyle = 'rgba(0,0,0,0.18)'; x.fillRect(k * 0.25 + 0.05, 0.34, 0.15, 0.04); } });
+  tile('cwin', 1.2, 2.2, x => { x.fillStyle = '#f1eee7'; x.fillRect(0, 0, 1.2, 2.2); const gr = x.createLinearGradient(0, 0, 1.2, 2.2); gr.addColorStop(0, '#6c7c88'); gr.addColorStop(0.55, '#34414b'); gr.addColorStop(1, '#4e5c67'); x.fillStyle = gr;
+    for (const [px, py, w, hh] of [[0.09, 0.09, 0.47, 0.5], [0.64, 0.09, 0.47, 0.5], [0.09, 0.67, 0.47, 0.68], [0.64, 0.67, 0.47, 0.68], [0.09, 1.43, 0.47, 0.68], [0.64, 1.43, 0.47, 0.68]]) x.fillRect(px, py, w, hh); });
   tile('engsign', 2.8, 0.44, x => { x.fillStyle = '#f2efe8'; x.fillRect(0, 0, 2.8, 0.44); x.strokeStyle = '#c8c2b6'; lw(x, 0.03); x.strokeRect(0.03, 0.03, 2.74, 0.38); x.fillStyle = '#26231f'; x.font = '700 0.2px "Times New Roman", Georgia, serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('ИНЖЕНЕРНЫЙ АРСЕНАЛЪ', 1.4, 0.23); });
   tile('ramparch', 3.2, 2.2, x => { x.fillStyle = '#2b2a28'; x.fillRect(0, 0, 3.2, 2.2); const gr = x.createLinearGradient(0, 0, 0, 2.2); gr.addColorStop(0, '#1d1c1a'); gr.addColorStop(1, '#55524c'); x.fillStyle = gr; x.fillRect(0.2, 0.3, 2.8, 1.9); });
   // cut-outs: double-headed eagle, the name of the gate, an iron halberd
@@ -2944,9 +2957,16 @@ function fortField(K) {
     if (wm === 1 || (wm === 2 && inWater(x, z))) { WET[k] = 1; continue; }
     const p = fortPoint(x, z); H[k] = p.h; B[k] = p.b;
   }
+  // under a gate block a vertex takes the highest height of its neighbours outside, so that the cells on the edge
+  // of the block run on into it (where its walls hide them) instead of leaving notches along a diagonal edge
+  for (let j = 1; j < N - 1; j++) for (let i = 1; i < N - 1; i++) {
+    const k = j * N + i; if (!(B[k] & 8)) continue; let m = -1e9;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const q = k + dj * N + di; if (!(B[q] & 24) && !WET[q] && H[q] > m) m = H[q]; }
+    if (m > -1e9) { H[k] = m; B[k] |= 64; }
+  }
   // terrain cells: anything that is not flat town or field; flat cells only write depth
   const vid = new Int32Array(NN).fill(-1), pos = [], nrm = [], col = [], idx = [], occ = [];
-  const flat = k => Math.abs(H[k]) < 0.03 && !(B[k] & 3);
+  const flat = k => Math.abs(H[k]) < 0.03 && !(B[k] & 3) && !(B[k] & 8);
   const GRASS = [94, 124, 60], LUSH = [74, 104, 46], DRY = [132, 134, 82], MARSH = [72, 86, 44], BERM = [104, 112, 72];
   const vert = k => {
     if (vid[k] >= 0) return vid[k];
@@ -2965,7 +2985,7 @@ function fortField(K) {
       if (i < N - 1) {
         const k = j * N + i, ks = [k, k + 1, k + N, k + N + 1];
         if (ks.some(q => WET[q])) mode = 0;
-        else if (ks.some(q => B[q] & 8)) mode = 0;
+        else if (ks.every(q => B[q] & 8) || ks.some(q => (B[q] & 8) && !(B[q] & 64)) || (ks.some(q => B[q] & 64) && ks.some(q => (B[q] & 16) && !(B[q] & 8)))) mode = 0;
         else if (ks.every(flat)) mode = 2; else mode = 1;
         if (mode === 1) { const [a, b2, d, e] = ks.map(vert); idx.push(a, d, b2, b2, d, e); }
       }
@@ -2994,7 +3014,7 @@ function valueNoiseAt(x, z) { const i = Math.floor(x / 9), j = Math.floor(z / 9)
 // fieldstone retaining walls with a coping that covers the berm behind them; they also stop the walker
 function fortWalls(K) {
   // walls stop at the gate façades: near a gate the pieces are 1 m long and dropped inside the façade's width
-  const W = K.rub, G = K.cap, gates = fortGates(), near = (x, z) => { for (const g of gates) { const [u, v] = lmL(g.f, x, z); if (u > -g.a - 40 && u < g.a2 + (g.kind === 'nik' ? 0 : 30) && Math.abs(v) < Math.max(g.W, g.b + 0.6) - 0.3) return true; } return false; },
+  const W = K.rub, G = K.cap, gates = fortGates(), near = (x, z) => { for (const g of gates) { const [u, v] = lmL(g.f, x, z); if (u > -g.a - 40 && u < (g.kind === 'nik' ? -g.a + 3 : g.a2 + 2) && Math.abs(v) < Math.max(g.W, g.b + 0.6) - 0.3) return true; } return false; },
     byGate = (x, z) => gates.some(g => Math.hypot(x - g.f[0], z - g.f[1]) < 70);
   let s0 = 0;
   for (const [x1, z1, x2, z2, kind] of FS.segs) {
@@ -3003,9 +3023,9 @@ function fortWalls(K) {
     const pieces = Math.max(1, Math.ceil(L / (byGate(x1, z1) || byGate(x2, z2) ? 1 : 4)));
     for (let k = 0; k < pieces; k++) {
       const a = k * L / pieces, b = (k + 1) * L / pieces, mx = x1 + tx * (a + b) / 2, mz = z1 + tz * (a + b) / 2;
-      const lo = fortPoint(mx - lx * 1.3, mz - lz * 1.3), hi = fortPoint(mx + lx * 1.3, mz + lz * 1.3);
-      if (!(hi.b & 1) || (lo.b & 1) || (lo.b & 32) || (hi.b & 32) || near(mx, mz)) continue;
-      const y0 = Math.min(lo.h, lo.w) - 0.4, y1 = FH.cap + 0.25; if (y1 - y0 < 1.2) continue;
+      const lo = fortPoint(mx - lx * 1.3, mz - lz * 1.3), hi = fortPoint(mx + lx * 1.3, mz + lz * 1.3), tr = (hi.b & 16) !== 0;
+      if (near(mx, mz) || (!tr && (!(hi.b & 1) || (lo.b & 1) || (lo.b & 32) || (hi.b & 32)))) continue;
+      const y0 = Math.min(lo.h, lo.w, hi.h) - 0.4, y1 = FH.cap + 0.25; if (!tr && y1 - y0 < 1.2) continue;
       const P = [x1 + tx * a, z1 + tz * a], Q = [x1 + tx * b, z1 + tz * b], S = FTS[0];
       // wall face towards the low side: n = (-lx, -lz)
       W.q([P[0], y0, P[1]], [Q[0], y0, Q[1]], [Q[0], y1, Q[1]], [P[0], y1, P[1]], [-lx, 0, -lz], [(s0 + a) / S, y0 / S, (s0 + b) / S, y0 / S, (s0 + b) / S, y1 / S, (s0 + a) / S, y1 / S], [196, 192, 186]);
@@ -3292,7 +3312,7 @@ const FORT_BLD = [
 let FB_HULLS = null;   // world outlines of the wings and annexes, for dropping cadastre buildings, trees and terrain cuts
 function fortBldHulls() {
   if (FB_HULLS) return FB_HULLS; FB_HULLS = [];
-  for (const B of FORT_BLD) {
+  for (const B of [...FORT_BLD, ...FORT_CLASSIC]) {
     if (B.outline) { const r = []; for (const [u, v] of B.outline) r.push(...lmW(B.f, u, v)); FB_HULLS.push({ r, bb: bbox(r) }); continue; }
     for (const [u0, u1, v0, v1] of [...B.wings, ...(B.annex || []), ...(B.ramps || []).map(r => [Math.min(r[0], r[1]), Math.max(r[0], r[1]), r[2], r[3]])]) {
       const r = []; for (const [u, v] of [[u0, v0], [u1, v0], [u1, v1], [u0, v1]]) r.push(...lmW(B.f, u, v)); FB_HULLS.push({ r, bb: bbox(r) });
@@ -3475,7 +3495,82 @@ function fortArsenal(K, B) {
     for (let u = u0 + 0.8; u < u1 - 0.5; u += 1.4) lmLathe(K.cap, ...lmW(f, u, (v0 + v1) / 2), 0.6, [[0, 0], [0.45, 0.15], [0.4, 0.45], [0, 0.6]], 7, hb('#47662f')); }
   for (const [u, v] of B.flags || []) { const w = lmW(f, u, v); lmFlag(K.cap, w[0], w[1], 0, 9.5, [f[2], f[3]], 1.8); }
 }
-function fortBuildings(K) { for (const B of FORT_BLD) fortArsenal(K, B); }
+/* The Commandant's house (Komandanta iela 7): two storeys, 107 m long, with a three-storey centre that steps forward;
+   pale khaki render, the ground floor scored into rustication with white keystones over the windows, the upper
+   windows in white surrounds under small cornices, an arcade of five round arches in the centre with the door in the
+   middle one and a gun on each side of the steps (photographs: Wikimedia Commons, "Commandant's House (Daugavpils
+   Fortress)"). Frame: origin at the east front corner, u along the front to the west, v out of the front. */
+const FORT_CLASSIC = [
+  { key: 'kom', f: [-2804.8, -352.4, -0.8720, -0.4895], H: 9.2, col: [220, 204, 146],
+    wings: [[0, 106.7, -17.3, 0], [44.9, 67.4, -17.3, 0.9]],
+    sides: [[0, 0, 44.9, 0, 11], [67.4, 0, 106.7, 0, 10], [44.9, 0.9, 67.4, 0.9, 5, { H: 13.2, floors: 3, arcade: 2 }],
+      [44.9, 0, 44.9, 0.9, 0, { H: 13.2 }], [67.4, 0, 67.4, 0.9, 0, { H: 13.2 }],
+      [0, -17.3, 44.9, -17.3, 11], [67.4, -17.3, 106.7, -17.3, 10], [44.9, -17.3, 67.4, -17.3, 5, { H: 13.2, floors: 3 }],
+      [0, -17.3, 0, 0, 4], [106.7, -17.3, 106.7, 0, 4], [44.9, -17.3, 44.9, 0, 0, { H: 13.2, y0: 9.2 }], [67.4, -17.3, 67.4, 0, 0, { H: 13.2, y0: 9.2 }]],
+    roofs: [[0, 106.7, -17.3, 0, 9.2], [44.9, 67.4, -17.3, 0.9, 13.2]], steps: [53.1, 59.2, 0.9, 3.2] }
+];
+function fortClassicSide(K, B, side, inside) {
+  const [ua, va, ub, vb, n, opt = {}] = side, { g, L } = fortSideFrame(B.f, [ua, va], [ub, vb], inside), H = opt.H || B.H, y0 = opt.y0 || 0, fl = opt.floors || 2;
+  const Y = B.col, WH = [242, 238, 228], GZ = 4.4, P = (u, v, y) => fortP(g, u, v, y), bay = L / Math.max(1, n), hG = [], hU = [], wins = [];
+  const floorY = f => f === 0 ? 0 : GZ + 0.25 + (f - 1) * 4.0;
+  for (let k = 0; k < n; k++) {
+    const c = (k + 0.5) * bay;
+    if (y0 < GZ) {
+      if (opt.arcade != null) { const door = k === opt.arcade; hG.push({ vc: c, w: 1.3, ys: 2.7, ya: 4.0, sh: 'round', yb: door ? 0.35 : 0.9, door, arch: 1 }); }
+      else hG.push({ vc: c, w: 0.62, ys: 3.05, ya: 3.05, sh: 'rect', yb: 1.0 });
+    }
+    for (let f = 1; f < fl; f++) { const yb = floorY(f) + 0.95; if (yb > y0) hU.push({ vc: c, w: 0.6, ys: yb + (f === 2 ? 1.9 : 2.2), ya: yb + (f === 2 ? 1.9 : 2.2), sh: 'rect', yb, f }); }
+  }
+  if (y0 < GZ) fortWallPlane(K.rus, g, 0, 1, -0.02, L + 0.02, -0.3, GZ, hG, FTS[5], Y);
+  // one band of wall per storey: fortWallPlane cuts one row of openings at a time
+  const cuts = [Math.max(GZ, y0)]; for (let f = 2; f < fl; f++) if (floorY(f) > cuts[cuts.length - 1]) cuts.push(floorY(f)); cuts.push(H);
+  for (let i = 0; i < cuts.length - 1; i++) fortWallPlane(K.ren, g, 0, 1, -0.02, L + 0.02, cuts[i], cuts[i + 1], hU.filter(o => o.yb >= cuts[i] && o.ys <= cuts[i + 1]), LMWS[1], Y);
+  for (const o of [...hG, ...hU]) {
+    const a = o.vc - o.w, b = o.vc + o.w, top = o.ys;
+    if (o.arch) {
+      // arcade: reveals, the arch soffit, a white archivolt and impost blocks; glazing or the door set back
+      fortArchRing(K.ren, g, 0, -0.45, 1, o, o, LMWS[1], sh(Y, 0.85), 14);
+      for (const s of [-1, 1]) fortTBox(K.ren, g, -0.45, 0, o.vc + s * o.w, o.vc + s * o.w, o.yb, o.ys, LMWS[1], sh(Y, 0.85), s < 0 ? 's' : 'n');
+      fortTBox(K.ren, g, -0.45, 0, a, b, o.yb, o.yb, LMWS[1], sh(Y, 0.95), 't'); fortTBox(K.ren, g, -0.46, -0.45, a, b, o.yb, o.ya, LMWS[1], sh(Y, 0.92), 'e');   // sill, back of the recess
+      fortArchRing(K.ren, g, 0.1, 0, 1, o, { vc: o.vc, w: o.w + 0.3, ys: o.ys, ya: o.ya + 0.3, sh: 'round' }, LMWS[1], WH, 14);
+      for (const s of [-1, 1]) fortTBox(K.ren, g, 0, 0.14, o.vc + s * (o.w + 0.15) - 0.25, o.vc + s * (o.w + 0.15) + 0.25, o.ys - 0.25, o.ys, LMWS[1], WH, 'enst');
+      fortTile(K.det, g, -0.44, 1, a + 0.15, b - 0.15, o.yb, o.ys, o.door ? FTT.door : FTT.cwin);
+      continue;
+    }
+    fortTile(K.det, g, -0.2, 1, a, b, o.yb, top, FTT.cwin);
+    for (const s of [-1, 1]) fortTBox(K.ren, g, -0.2, 0, o.vc + s * o.w, o.vc + s * o.w, o.yb, top, LMWS[1], sh(Y, 0.85), s < 0 ? 's' : 'n');
+    fortTBox(K.ren, g, -0.2, 0, a, b, top, top, LMWS[1], sh(Y, 0.8), 'b');
+    fortTBox(K.ren, g, 0, 0.12, a - 0.08, b + 0.08, o.yb - 0.1, o.yb, LMWS[1], WH, 'etb');                     // sill
+    if (!o.f) fortTBox(K.ren, g, 0, 0.12, o.vc - 0.2, o.vc + 0.2, top, top + 0.55, LMWS[1], WH, 'enst');       // keystone in the rustication
+    else {                                                                                                   // white surround and a small cornice
+      for (const s of [-1, 1]) fortTBox(K.ren, g, 0, 0.08, o.vc + s * (o.w + 0.09) - 0.09, o.vc + s * (o.w + 0.09) + 0.09, o.yb, top + 0.15, LMWS[1], WH, 'ens');
+      fortTBox(K.ren, g, 0, 0.08, a - 0.18, b + 0.18, top, top + 0.15, LMWS[1], WH, 'ens');
+      if (o.f === 1) fortTBox(K.ren, g, 0, 0.2, a - 0.3, b + 0.3, top + 0.32, top + 0.48, LMWS[1], WH, 'enstb');
+    }
+  }
+  if (y0 < GZ) fortTBox(K.ren, g, 0, 0.12, -0.05, L + 0.05, GZ, GZ + 0.25, LMWS[1], WH, 'enstb');
+  if (fl === 3) fortTBox(K.ren, g, 0, 0.08, -0.05, L + 0.05, floorY(2) - 0.05, floorY(2) + 0.15, LMWS[1], WH, 'enstb');
+  fortTBox(K.ren, g, 0, 0.08, -0.05, L + 0.05, H - 0.75, H - 0.6, LMWS[1], WH, 'ensb');
+  fortTBox(K.ren, g, 0, 0.42, -0.4, L + 0.4, H - 0.6, H, LMWS[1], WH, 'enswb');
+  if (y0 === 0) { fortTBox(K.gra, g, 0, 0.1, -0.05, L + 0.05, -0.3, 0.35, FTS[1], [150, 146, 140], 'et'); COL.add(...lmW(g, 0.15, 0), ...lmW(g, 0.15, L), 0.2, 0); }
+}
+function fortClassic(K, B) {
+  const f = B.f, cu = B.wings[0];
+  for (const side of B.sides) {
+    const w = B.wings.slice().reverse().find(w => Math.min(side[0], side[2]) >= w[0] - 0.01 && Math.max(side[0], side[2]) <= w[1] + 0.01 && Math.min(side[1], side[3]) >= w[2] - 0.01 && Math.max(side[1], side[3]) <= w[3] + 0.01) || cu;
+    // the inside of the short return faces of the risalit is behind them, towards the main block
+    const ins = side[0] === side[2] && Math.abs(side[1] - side[3]) < 2 ? [side[0] + (side[0] < (w[0] + w[1]) / 2 ? 1 : -1), -2] : [(w[0] + w[1]) / 2, (w[2] + w[3]) / 2];
+    fortClassicSide(K, B, side, ins);
+  }
+  for (const [u0, u1, v0, v1, y] of B.roofs) {
+    const rise = fortHipRoof(K, f, u0, u1, v0, v1, y, 0.45, 0.45);
+    // white chimneys on the ridge
+    const vm = (v0 + v1) / 2, long = u1 - u0 > v1 - v0;
+    if (long) for (let u = u0 + 9; u < u1 - 8; u += 12.5) { lmBoxL(K.cap, f, u - 0.45, u + 0.45, vm - 0.4, vm + 0.4, y + rise - 0.6, y + rise + 1.1, hb('#ece8de')); lmBoxL(K.cap, f, u - 0.6, u + 0.6, vm - 0.55, vm + 0.55, y + rise + 1.1, y + rise + 1.25, hb('#cfcac0')); }
+  }
+  if (B.steps) { const [u0, u1, v0, v1] = B.steps; for (let k = 0; k < 3; k++) fortTBox(K.gra, f, u0 - k * 0.3, u1 + k * 0.3, v0, v1 - k * 0.6, 0, 0.45 - k * 0.15, FTS[1], [160, 156, 150]); }
+}
+function fortBuildings(K) { for (const B of FORT_BLD) fortArsenal(K, B); for (const B of FORT_CLASSIC) fortClassic(K, B); }
 /* ---- monuments of the fortress ----
    The fountain in the fortress garden: four cast-iron barrels standing on their square breeches and leaning
    together, on a granite block with the name ДИНАБУРГЪ and lions' heads, on a stepped base in a round basin with a
@@ -3594,12 +3689,14 @@ function fortPaths() {
         // no terrain under the gate blocks and the water: a path there would hang between the heights around
         if (!cellSolid(A[0], A[1]) || !cellSolid(B[0], B[1]) || Math.abs(fortGridH(A[0], A[1]) - fortGridH(B[0], B[1])) > (b - a) * 0.9) continue;
         if (FS.bridge && pip((A[0] + B[0]) / 2, (A[1] + B[1]) / 2, FS.bridge)) continue;
-        const P = (x, z) => [x, fortGridH(x, z) + 0.07, z];
+        // each corner at least as high as the terrain under the middle of the piece: on a sharp crest the 2 m
+        // triangles bulge above a strip laid only through its corners
+        const hm = fortGridH((A[0] + B[0]) / 2, (A[1] + B[1]) / 2), P = (x, z) => [x, Math.max(fortGridH(x, z), hm - 0.1) + 0.18, z];
         polyA(PB, [P(A[0] + nx, A[1] + nz), P(B[0] + nx, B[1] + nz), P(B[0] - nx, B[1] - nz), P(A[0] - nx, A[1] - nz)], col, 0, 1, 0);
       }
     }
   }
-  const m = PB.mesh(lmStd({ vertexColors: true, roughness: 0.95, metalness: 0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }, 'ft-path'));
+  const m = PB.mesh(lmStd({ vertexColors: true, roughness: 0.95, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -6 }, 'ft-path'));
   if (m) { m.receiveShadow = true; scene.add(m); }
 }
 const fortTreeY = (x, z) => FORT.grid && fortIn(x, z, 30) ? fortGridH(x, z) : 0;
@@ -4201,6 +4298,8 @@ const PLACES = [
   ['Церковная горка', 'четыре храма разных конфессий', 40, 1275, 0],
   ['Крепость · Центр Ротко', 'Артиллерийский арсенал, Центр Марка Ротко', -2683.9, -95.2, -0.513],
   ['Инженерный арсенал', 'крепость, Imperatora iela 8', -2529.0, -427.5, 2.827],
+  ['Комендантский дом', 'крепость, Komandanta iela 7, пушки у входа', -2844.8, -395.5, 2.63],
+  ['Сад крепости', 'фонтан из пушечных стволов', -2824, -452, -2.418],
   ['Николаевские ворота', 'крепость: деревянный мост через ров', -2788.1, -65.4, -0.589],
   ['Михайловские ворота', 'гранитный портал с секирами, вид из крепости', -2564.6, -133.2, -2.82],
   ['Александровские ворота', 'кирпичный портал с меандром', -2411.7, -514.2, 2.052],
