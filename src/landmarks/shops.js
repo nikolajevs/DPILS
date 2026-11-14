@@ -35,9 +35,9 @@ const SHOPS = [
   { id: 'w115788072', b: 'beta', n: 'Beta', a: 'Šaurā iela 31', k: 'box', p: [384, -1289.4], pk: [402.8, -1285] },
   { id: 'w628607721', b: 'beta', n: 'Beta', a: 'Puškina iela 14', k: 'box', p: [-93.6, 1068] },
   { id: 'n2455742945', b: 'beta', n: 'Beta', a: 'Ventspils iela 67', k: 'in', p: [-22.5, 537.3], e: [-16.4, 527.8] },
-  { id: 'n3712549204', b: 'beta', n: 'Beta', a: 'Inženieru iela 1', k: 'in', p: [1313.5, -1186.9], e: [1311.3, -1198] },
+  { id: 'n3712549204', b: 'beta', n: 'Beta', a: 'Inženieru iela 1', k: 'box', style: 'betaGlass', p: [1313.5, -1186.9], e: [1311.3, -1198] },
   { id: 'w989692937', b: 'lidl', n: 'Lidl', a: '18. novembra iela 146', k: 'osm', p: [800.4, 505.6], pk: [791.6, 539.9], o: [[825.4, 453.8], [847.7, 475.7], [811.7, 512.7], [811.7, 516.7], [796.6, 532.5], [795.5, 533.5], [770.7, 509.7], [771.7, 508.6], [772.9, 507.4]] },
-  { id: 'w1339342377', b: 'lidl', n: 'Lidl', a: 'Cietokšņa iela 74', k: 'box', p: [-1847.5, 430.6], pk: [-1849, 462.9] },
+  { id: 'w1339342377', b: 'lidl', n: 'Lidl', a: 'Cietokšņa iela 74', k: 'box', p: [-1847.5, 430.6], pk: [-1890, 440] },   // the long side on the car park
   { id: 'w132266129', b: 'maxima', n: 'Maxima X', a: 'Piekrastes iela 29', k: 'box', p: [-529, -1895], e: [-533.7, -1877.7], drop: [[-524.3, -1908.6]] },
   { id: 'w366850613', b: 'maxima', n: 'Maxima X', a: 'Smilšu iela 98A', k: 'box', p: [824.7, -760.3], pk: [811.9, -776.6] },
   { id: 'w817340088', b: 'maxima', n: 'Maxima X', a: 'Aveņu iela 35B', k: 'box', p: [-867.7, -2435.4], e: [-865.1, -2447.6] },
@@ -53,7 +53,7 @@ const SHOPS = [
   { id: 'n1707170884', b: 'mego', n: 'Mego', a: 'Viestura iela 60', k: 'in', p: [-992.5, 1158.7] },
   { id: 'n474748343', b: 'mego', n: 'Mego', a: 'Rīgas iela 9, Solo', k: 'solo', p: [-1382.5, 1183.3], e: [-1343.5, 1186.9] },
   { id: 'n2462543293', b: 'mego', n: 'Mego', a: 'Raipoles iela 11A, Aveņu centrs', k: 'in', p: [-864.6, -1984.2], e: [-857.4, -2003.2] },
-  { id: 'n11943175157', b: 'rimi', n: 'Rimi Hyper', a: 'Cietokšņa iela 72A', k: 'box', p: [-1687.9, 483.9], e: [-1673.6, 516.8] },
+  { id: 'n11943175157', b: 'rimi', n: 'Rimi Hyper', a: 'Cietokšņa iela 72A', k: 'box', p: [-1687.9, 483.9], pk: [-1630, 460] },   // the doors are in a recess; the front faces the car park
   { id: 'n9296108168', b: 'rimi', n: 'Rimi Super', a: '18. novembra iela 136', k: 'box', p: [691, 622.1], e: [698.3, 594.6] },
   { id: 'n1707161675', b: 'rimi', n: 'Rimi', a: 'Cietokšņa iela 60, Ditton nams', k: 'ditton', p: [-1335.5, 1006.1], e: [-1321.6, 1047.4] },
   { id: 'n1707171536', b: 'rimi', n: 'mini Rimi', a: 'Viestura iela 10, autoosta', k: 'in', p: [-936.3, 1262.4], pk: [-928.9, 1285.5] },
@@ -69,6 +69,9 @@ const STY = {
   mego: { h: 7.0, tex: 5, wall: '#b9bdc1', plinth: '#6c7074', glaze: 0.5, gTop: 3.6, canopy: 3.0, pylon: 'mego' },
   // Beta (Šaurā iela 31, photographs sent by the owner of the project): buff brick, big windows in dark frames, a sloping canopy of blue profiled
   // sheet along the front, a low hipped roof of grey metal, the name in big letters on the roof
+  // Beta on Inženieru iela 1 (photographs sent by the owner of the project): four storeys, the front a curtain wall of pale
+  // green glass with white spandrels between red brick ends, a brick stair tower over the roof, brick walls behind
+  betaGlass: { h: 12.6 },
   beta: { h: 4.2, tex: 6, wall: '#ffffff', plinth: '#7b6a5d', glaze: 0.85, gTop: 2.9, canopy: 1.9, pitched: '#6d7276' },
 };
 const signOf = S => S.b === 'rimi' ? (/Hyper/.test(S.n) ? 'rimiHyper' : /Super/.test(S.n) ? 'rimiSuper' : /mini/.test(S.n) ? 'miniRimi' : 'rimi') : S.b === 'maxima' ? (/XX/.test(S.n) ? 'maximaXX' : 'maximaX') : S.b;
@@ -77,7 +80,7 @@ const MALL = { ditton: [[-1210, 915], [-1290, 960], [-1400, 980], [-1268, 993.5]
 
 // ---- claiming the buildings while buildBuildings runs
 const SH = { own: new Map(), host: new Map(), mall: { ditton: [] } };
-const H_OF = S => STY[S.b].h;
+const H_OF = S => STY[S.style || S.b].h;
 function inner(r) {   // a point inside a ring (its centre, else the middle of the widest run through it)
   const n = r.length >> 1; let cx = 0, cz = 0; for (let i = 0; i < r.length; i += 2) { cx += r[i]; cz += r[i + 1]; } cx /= n; cz /= n;
   if (pip(cx, cz, r)) return [cx, cz];
@@ -103,7 +106,7 @@ function shopClaim(id, rec, rings, outer, bb) {
     if (S.k === 'in') { SH.host.set(S.id, part); return false; }
     part.H = Math.max(part.h, H_OF(S)); SH.own.set(S.id, part);
     const T = tileOf((bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2), seed = Math.floor(rnd(id, 9) * 255);
-    if (!(STY[S.b].pitched && hipRoof(T, outer, rings, part.H, hb(STY[S.b].pitched), seed))) flatRoof(T.m.roof, rings, part.H - 0.45, pick(ROOFPAL[5], id, 2), 5, seed);
+    if (!(STY[S.style || S.b].pitched && hipRoof(T, outer, rings, part.H, hb(STY[S.b].pitched), seed))) flatRoof(T.m.roof, rings, part.H - 0.45, pick(ROOFPAL[5], id, 2), 5, seed);
     return true;
   }
   return false;
@@ -141,10 +144,10 @@ function shAtlas() {
     const a = X + x * PX, b = Y + y * PX, gr = g.createLinearGradient(0, b, 0, b + h * PX); gr.addColorStop(0, c[0]); gr.addColorStop(0.45, c[1]); gr.addColorStop(0.55, c[2]); gr.addColorStop(1, c[0]);
     g.fillStyle = gr; g.fillRect(a, b, w * PX, h * PX); o.fillStyle = ORM.glass; o.fillRect(a, b, w * PX, h * PX); e.fillStyle = glow; e.fillRect(a, b, w * PX, h * PX);
   };
-  const betaName = (x, y, w, h) => {   // an orange b and a blue eta set together, in white outlines
+  const betaName = (x, y, w, h, bcol = '#f2a020') => {   // an orange (or cream) b and a blue eta set together, in white outlines
     let sz = h * PX * 1.25; const f = () => `900 ${sz}px Arial, "Golos Text", sans-serif`; g.font = f(); const W = g.measureText('beta').width; if (W > w * PX) { sz *= w * PX / W; g.font = f(); }
     const wb = g.measureText('b').width, W2 = g.measureText('beta').width, x0 = X + x * PX + (w * PX - W2) / 2, yb = Y + (y + h) * PX - sz * 0.05;
-    for (const [part, dx, col, glow] of [['b', 0, '#f2a020', '#ffb840'], ['eta', wb * 0.97, '#2445b8', '#4a6ae8']]) for (const [c, s2] of [[g, col], [e, glow], [o, ORM.gloss]]) {
+    for (const [part, dx, col, glow] of [['b', 0, bcol, '#ffd890'], ['eta', wb * 0.97, '#2445b8', '#4a6ae8']]) for (const [c, s2] of [[g, col], [e, glow], [o, ORM.gloss]]) {
       c.font = f(); c.textAlign = 'left'; c.textBaseline = 'alphabetic'; if (c === g) { c.lineWidth = sz * 0.09; c.strokeStyle = '#ffffff'; c.lineJoin = 'round'; c.strokeText(part, x0 + dx, yb); } c.fillStyle = s2; c.fillText(part, x0 + dx, yb); } };
   // text fitted into a box; glow: the colour it shines at night
   const text = (s, x, y, w, h, col, { font = '"Golos Text", Arial, sans-serif', wt = 800, italic = false, glow = col, align = 'center', outline = null } = {}) => {
@@ -176,6 +179,9 @@ function shAtlas() {
     ['h822', 1.8, 0.8, () => { text('8-22', 0, 0, 1.8, 0.8, '#f6d10f', { wt: 800, glow: '#ffe040' }); }],
     // the name of Beta: an orange b and a blue eta in white outlines (cut out for the roof, on a white board for the tenants)
     ['betaL', 5.2, 2.2, () => { betaName(0.15, 0.1, 4.9, 2.0); }],
+    ['betaL2', 5.2, 2.2, () => { betaName(0.15, 0.1, 4.9, 2.0, '#eee3c8'); }],
+    // a module of the curtain wall of Beta on Inženieru iela: pale green glass over a white spandrel, green-grey frames
+    ['cw', 1.6, 3.1, () => { glass(0, 0, 1.6, 2.15, ['#8fb2ad', '#c4dbd6', '#86a7a2'], '#fff0d0'); R(0, 2.15, 1.6, 0.95, '#ece9e0'); R(0, 0, 1.6, 0.07, '#7f9a96', 'metal'); R(0, 2.1, 1.6, 0.07, '#7f9a96', 'metal'); R(0, 0, 0.06, 3.1, '#7f9a96', 'metal'); R(1.54, 0, 0.06, 3.1, '#7f9a96', 'metal'); R(0, 1.05, 1.6, 0.05, '#9fb4b0', 'metal'); }],
     ['beta', 4.0, 1.5, () => { R(0, 0, 4.0, 1.5, '#ffffff', 'gloss', '#fff8ee'); betaName(0.3, 0.12, 3.4, 1.26); }],
     // a shop window in a dark frame, two by three panes (Beta)
     ['win2', 3.4, 2.6, () => { glass(0, 0, 3.4, 2.6); R(0.1, 0.1, 3.2, 0.1, '#f4efe2', 'glass', '#fff4dc'); for (let k = 0; k < 5; k++) R(0.3 + k * 0.6, 1.5, 0.45, 0.9, ['#6f6253', '#56656d', '#7d5a4c', '#5e6a52', '#7c7461'][k], 'glass', ['#a07a50', '#6a8090', '#b06a4f', '#7a8e60', '#b8a070'][k]);
@@ -306,6 +312,44 @@ function tenant(K, S, host) {
   const name = signOf(S), t = CT[name], bh = Math.min(t.h, floors >= 3 ? 0.95 : 1.3), y = floors >= 3 ? top - 0.25 : Math.max(top - 0.2, h - 0.5 - bh);
   lmBoxW(K.plain, Fw, sc - gw / 2 - 0.15, sc + gw / 2 + 0.15, top - 0.35, top - 0.25, -0.9, 0, hb('#cfd2d4'));
   board(K, Fw, name, sc, y, bh, 0.12, S.b === 'beta' ? '#c9252c' : null);
+}
+
+/* Beta on Inženieru iela 1: the glazed front (the edge facing the entrance) in curtain wall modules of 1.6 m a storey
+   high between red brick ends, the brick stair tower at one end of it over the roof, a glass canopy over the doors,
+   the name on the roof; brick walls with a few small windows elsewhere. */
+function betaGlass(K, S, part) {
+  const G = K.plain, r = part.outer, n = r.length >> 1, H = part.H, fi = frontEdge(r, S), BR = { tex: 3, col: LMWHITE, plinth: 0.4, pcol: hb('#6e6a66') }, MUL = hb('#7f9a96');
+  let sd = 77; const rr = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+  const fl = Math.max(1, Math.round((H - 0.6) / 3.1)), fh = (H - 0.9) / fl;
+  STATE.GBC = part.gbc;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n, P = [r[2 * i], r[2 * i + 1]], Q = [r[2 * j], r[2 * j + 1]], Fw = lmWF(P, Q), L = Fw.L; if (L < 0.05) continue;
+    const ops = [];
+    if (i === fi && L > 10) {
+      const s0 = 1.4, s1 = L - 6.4, m = Math.max(1, Math.round((s1 - s0) / 1.6)), mw = (s1 - s0) / m;
+      for (let k = 0; k < m; k++) for (let f = 0; f < fl; f++) ops.push({ s0: s0 + k * mw, s1: s0 + (k + 1) * mw, y0: 0.3 + f * fh, y1: 0.3 + (f + 1) * fh, d: 0.06, tile: CT.cw, det: KS.det, lit: f === 0 || rr() < 0.3 ? 1 : 0 });
+      lmWall(K, P, Q, 0, H, ops, BR);
+      for (let k = 0; k <= m; k++) lmBar(G, Fw.at(s0 + k * mw, 0.3, -0.07), Fw.at(s0 + k * mw, 0.3 + fl * fh, -0.07), 0.12, MUL);
+      const [x, , z] = Fw.at((s0 + s1) / 2, 0, 0); SHV.push({ n: S.n, a: S.a, x, z, nx: Fw.nx, nz: Fw.nz });
+      // the stair tower over the roof at the far end, its walls in brick
+      const c = [Fw.at(L - 6.2, 0, 0), Fw.at(L, 0, 0), Fw.at(L, 0, 6.2), Fw.at(L - 6.2, 0, 6.2)].map(p => [p[0], p[2]]);
+      for (let k = 0; k < 4; k++) lmWall(K, c[k], c[(k + 1) % 4], H - 0.2, H + 2.2, [], BR);
+      polyA(G, [[c[0][0], H + 2.2, c[0][1]], [c[1][0], H + 2.2, c[1][1]], [c[2][0], H + 2.2, c[2][1]], [c[3][0], H + 2.2, c[3][1]]], hb('#8d8a86'), 0, 1, 0);
+      // the glass canopy over the doors, on two posts
+      const se = Math.max(3, Math.min(s1 - 2.5, along(r, i, S.e || S.p))), GL = hb('#b7cfca');
+      polyA(G, [Fw.at(se - 2.6, 3.6, 0), Fw.at(se + 2.6, 3.6, 0), Fw.at(se + 2.6, 3.05, -2.7), Fw.at(se - 2.6, 3.05, -2.7)], GL, Fw.nx, 1, Fw.nz);
+      lmBar(G, Fw.at(se - 2.6, 3.05, -2.7), Fw.at(se + 2.6, 3.05, -2.7), 0.1, MUL);
+      for (const q of [se - 2.3, se + 2.3]) { const [x2, , z2] = Fw.at(q, 0, -2.5); lmLathe(G, x2, z2, 0, [[0.07, 0], [0.07, 3.1]], 8, MUL); }
+      // the name on the roof
+      const t = CT.betaL2, w = 5.6, hh = w * t.h / t.w, sn = Math.max(w / 2 + 1, L * 0.42);
+      for (const q of [sn - 1.6, sn + 1.6]) lmBar(G, Fw.at(q, H - 0.3, 0.5), Fw.at(q, H + hh * 0.6, 0.5), 0.1, hb('#55595d'));
+      flat(Fw, sn - w / 2, sn + w / 2, H + 0.1, H + 0.1 + hh, 0.3, t);
+    } else {
+      if (L > 6) for (let x = 2.5; x < L - 2; x += 4.2) for (let f = 0; f < fl; f++) if (rr() < 0.45) ops.push({ s0: x - 0.32, s1: x + 0.32, y0: 0.3 + f * fh + 1.1, y1: 0.3 + f * fh + 1.85, d: 0.15, tile: CT.dark, det: KS.det, lit: rr() < 0.25 ? 1 : 0 });
+      lmWall(K, P, Q, 0, H, ops, BR);
+    }
+    lmBoxW(G, Fw, -0.1, L + 0.1, H - 0.15, H, -0.1, 0.3, hb('#8d8a86'));
+  }
 }
 
 /* ---- Ditton nams (Cietokšņa iela 60), from the photograph of 2011 (Wikimedia Commons, "Ditton nams - panoramio"):
@@ -456,7 +500,7 @@ function lmShops(K, litPatch) {
   LMM.shDet = lmStd({ vertexColors: true, map: dc, alphaTest: 0.5, roughnessMap: dorm, metalnessMap: dorm, roughness: 1, metalness: 1, emissive: new THREE.Color(1, 1, 1), emissiveMap: dglow, emissiveIntensity: 0 }, 'lm-sh-det', litPatch);
   KS.det = new LMB();
   for (const S of SHOPS) {
-    if (S.k === 'box') { const p = SH.own.get(S.id); if (p) storeBox(K, S, p.outer, p.H, p.gbc); else console.warn('shops: no building for', S.n, S.a); }
+    if (S.k === 'box') { const p = SH.own.get(S.id); if (!p) console.warn('shops: no building for', S.n, S.a); else if (S.style === 'betaGlass') betaGlass(K, S, p); else storeBox(K, S, p.outer, p.H, p.gbc); }
     else if (S.k === 'osm') {
       let r = new Float32Array(S.o.flat()); if (area2(r) < 0) r = reversed(r);
       lmRegisterOutline([0, 0, 1, 0], S.o, 4);
