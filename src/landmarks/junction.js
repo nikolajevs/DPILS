@@ -2,6 +2,7 @@ import { STATE } from '../core/state.js';
 import { lmBar, lmLathe } from './helpers.js';
 import { matPlain } from '../world/data.js';
 import { terrainH } from '../world/terrain.js';
+import { JN, cutY, jnDeck } from '../world/cutting.js';
 import { scene } from '../render/renderer.js';
 import { GB, polyA } from '../core/geometry.js';
 import { hb, sh } from '../core/util.js';
@@ -12,17 +13,10 @@ import { hb, sh } from '../core/util.js';
    75.9 m single-span concrete frame whose soffit curves down into both slopes like an arch, with sidewalks behind red
    railings; two railway bridges of 52.7 and 54.4 m, concrete slabs with white parapets on rows of round columns; and a
    64 m footbridge on slender columns with red railings. Outlines from OpenStreetMap (man_made=bridge ways 884947046–
-   884947049). Every line on a bridge (road, sidewalks, tracks) takes its height from the bridge's axis: one straight
-   deck from the ground at one rim of the cutting to the other. */
-const JN = [
-  { key: 'pk', S: [-830.1, -1286.9], N: [-798.4, -1360.1], hw: 6.7, kind: 'arch' },
-  { key: 'r1', S: [-712.0, -1309.0], N: [-666.5, -1369.2], hw: 11.2, kind: 'rail' },
-  { key: 'r2', S: [-594.2, -1312.6], N: [-582.4, -1368.5], hw: 8.6, kind: 'rail' },
-  { key: 'fb', S: [-563.6, -1307.7], N: [-552.4, -1362.7], hw: 1.7, kind: 'foot' }
-];
-for (const J of JN) { const dx = J.N[0] - J.S[0], dz = J.N[1] - J.S[1]; J.L = Math.hypot(dx, dz); J.t = [dx / J.L, dz / J.L]; J.n = [-J.t[1], J.t[0]]; }
+   884947049, in src/world/cutting.js, which also digs the cutting to its depth). Every line on a bridge (road,
+   sidewalks, tracks) takes its height from the bridge's axis: one straight deck from the ground at one rim of the
+   cutting to the other (the ground as it was before the cutting was dug). */
 const jnLocal = (J, x, z) => [(x - J.S[0]) * J.t[0] + (z - J.S[1]) * J.t[1], (x - J.S[0]) * J.n[0] + (z - J.S[1]) * J.n[1]];
-const jnDeck = (J, s) => { const h0 = terrainH(J.S[0], J.S[1]), h1 = terrainH(J.N[0], J.N[1]); return h0 + (h1 - h0) * Math.max(0, Math.min(1, s / J.L)); };
 // the junction bridge a line lies on, if any
 function jnOf(pts) { for (const J of JN) { let ok = true; for (let i = 0; i < pts.length && ok; i += 2) { const [s, v] = jnLocal(J, pts[i], pts[i + 1]); ok = s > -12 && s < J.L + 12 && Math.abs(v) < J.hw + 2; } if (ok) return J; } return null; }
 // a bridge line of the city data on a junction bridge: its ends take the heights of that bridge's deck
@@ -31,7 +25,7 @@ function jnFix(B) { const J = jnOf(B.pts); if (!J) return false; const n = B.pts
 function lmJunction(K) {
   const G = K.plain, CON = hb('#c9c6bf'), WHITE = hb('#e6e4de'), RED = hb('#b3352f'), GREY = hb('#8f9295');
   const top = new GB(false);   // deck tops, drawn before the ground layers so the road and the tracks lie on them
-  STATE.GBC = (x, y, z) => y > 0.05 ? -terrainH(x, z) : 0;   // heights given absolute, feet at y = 0 on the ground
+  STATE.GBC = (x, y, z) => y > 0.05 ? -terrainH(x, z) : cutY(x, z);   // heights given absolute, feet at y = 0 on the ground (on the road of the cutting)
   const road = [[-1086.4, -1258.4], [-938.3, -1299.2], [-731.2, -1330.8], [-685.3, -1337.4], [-637.1, -1340.3], [-583.8, -1336.9], [-511.4, -1319.4], [-422.0, -1287.6]];
   // where a bridge axis crosses the middle of the road, and the road's direction there
   const cross = J => { for (let i = 0; i < road.length - 1; i++) { const [x1, z1] = road[i], [x2, z2] = road[i + 1], ex = x2 - x1, ez = z2 - z1, d = J.t[0] * ez - J.t[1] * ex; if (Math.abs(d) < 1e-6) continue;

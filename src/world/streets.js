@@ -7,6 +7,7 @@ import { spwTrackLine } from '../landmarks/speedway.js';
 import { ovComp, ovDensify, ovPrep, ovRoadHW, ovTouches } from './overpass.js';
 import { vbOnLine } from './bridge-vienibas.js';
 import { CROSSINGS, streetTags } from './street-tags.js';
+import { cutComp, cutTouches } from './cutting.js';
 import { buildSignals } from './signals.js';
 import { COL, LINES, M_ASPH, M_BALLAST, M_DIRT, M_LAND, M_MARK, M_PAVE, ROAD, STREAM, TRAMLINES, inWater, matPlain } from './data.js';
 import { LINE } from './palette.js';
@@ -139,11 +140,18 @@ function buildLines() {
     /* lanes of 3.25 m where OSM gives their number (where the two carriageways run closer than their width, up to the
        middle between them); otherwise guessed from the distance */
     const H = Ds.map(d => lanes ? Math.min(lanes * 1.625, Math.max(1.85, d / 2)) : Math.max(1.85, Math.min(3.4, 1.85 + (d - 8) * 0.5)));
-    /* a median narrower than 4.5 m is asphalt: painted, or, where tram tracks run in it (by the overpass bridge), too
-       narrow for a track bed of its own, so the rails lie flush in the asphalt between the lanes as on the bridge */
-    const paint = Ds.map((d, i) => d - 2 * H[i] < 4.5);
     const trm = Ds.map((d, i) => { const a = Math.max(0, i - 1), c = Math.min(m - 1, i + 1), tx = dp[2 * c] - dp[2 * a], tz = dp[2 * c + 1] - dp[2 * a + 1], l = Math.hypot(tx, tz) || 1;
       const cx = dp[2 * i] - tz / l * side * d / 2, cz = dp[2 * i + 1] + tx / l * side * d / 2; let t = false; TRK.near(cx, cz, Math.max(0.5, d / 2 - 0.6 * H[i]), () => { t = true; }); return t; });
+    /* A narrow median is asphalt: painted under 4 m, or under 4.5 m where tram tracks run in it (by the overpass bridge):
+       too narrow for a track bed of its own, the rails lie flush between the lanes as on the bridge. The width is taken
+       over ±30 m and runs shorter than 25 m join their neighbours: a median of 4–5 m (Latgales iela) went from painted to
+       grass and back every few metres, the two carriageways each deciding for themselves. */
+    const cumD = [0]; for (let i = 1; i < m; i++) cumD.push(cumD[i - 1] + Math.hypot(dp[2 * i] - dp[2 * i - 2], dp[2 * i + 1] - dp[2 * i - 1]));
+    const paint = Ds.map((d, i) => { let a = 0, k = 0; for (let j = i; j >= 0 && cumD[i] - cumD[j] <= 30; j--) { a += Ds[j] - 2 * H[j]; k++; } for (let j = i + 1; j < m && cumD[j] - cumD[i] <= 30; j++) { a += Ds[j] - 2 * H[j]; k++; }
+      return a / k < (trm[i] ? 4.5 : 4.0); });
+    for (let pass = 0; pass < 2; pass++) for (let i = 0; i < m;) { let j = i; while (j < m && paint[j] === paint[i]) j++;
+      if ((i > 0 || j < m) && (cumD[j - 1] - cumD[i]) < 25) for (let k = i; k < j; k++) paint[k] = !paint[k];
+      i = j; }
     // no sidewalk on the outer side where a tram bed runs alongside instead (the ramp west of the overpass)
     const bed = H.map((h, i) => { const a = Math.max(0, i - 1), c = Math.min(m - 1, i + 1), tx = dp[2 * c] - dp[2 * a], tz = dp[2 * c + 1] - dp[2 * a + 1], l = Math.hypot(tx, tz) || 1, o = -side * (h + 1.4);
       let t = false; TRK.near(dp[2 * i] - tz / l * o, dp[2 * i + 1] + tx / l * o, 2.5, () => { t = true; }); return t; });
@@ -301,7 +309,8 @@ function buildLines() {
     const onBridge = l.bridge && cls !== 10 && cls !== 11 && TERR.on && !onOv, dp = onOv ? ovDensify(densify(pts)) : TERR.on ? densify(pts) : pts;
     let jn = false;
     if (onOv) STATE.GBC = ovComp;
-    else if (onBridge) { const B = bridgeOf(pts, hw + (cls <= 3 ? 2.7 : 0.3)); jn = jnFix(B); STATE.GBC = bridgeDeck(B); } else STATE.GBC = null;
+    else if (onBridge) { const B = bridgeOf(pts, hw + (cls <= 3 ? 2.7 : 0.3)); jn = jnFix(B); STATE.GBC = bridgeDeck(B); }
+    else STATE.GBC = TERR.on && cls !== 10 && cls !== 11 && cutTouches(l.bb) ? cutComp : null;   // the road of the Latgales iela cutting keeps its profile
     if (cls === 10 || cls === 11) for (let i = 0; i < n - 1; i++) STREAM.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, 0);
     l.gbc = STATE.GBC;
     l.isDual = false;
