@@ -4,6 +4,7 @@ import { LMB, LMWHITE } from './core.js';
 import { lmBar, lmBoxW, lmLathe, lmWF, lmWall } from './helpers.js';
 import { LMM, lmStd } from './index.js';
 import { lmRegisterOutline } from './tv-tower.js';
+import { lmBench } from './heat-plant.js';
 import { band, flatPlain, flatRoof, roofFace, tileOf } from '../buildings/walls.js';
 import { ROOFPAL } from '../world/palette.js';
 import { BLD, M_ASPH, M_PAVE, ROAD, inBuilding, onRoad } from '../world/data.js';
@@ -209,6 +210,7 @@ function shAtlas() {
 // ---- pieces
 const KS = { det: null };
 const SHV = [];   // where each store's front is: its name, a point on the front, the outward normal (for views)
+const SHOP_TREES = [];   // trees planted by the stores [x, z, type, scale], added by buildTrees
 const N_ = Fw => [Fw.nx, 0, Fw.nz];
 const sh2 = (c, f) => c.map(v => Math.min(255, Math.round(v * f)));
 // a tile laid flat on the frame Fw from s0..s1, y0..y1 at depth d (negative: in front of the wall)
@@ -355,18 +357,26 @@ function betaGlass(K, S, part) {
   }
   // the front: the stair tower of brick at its right end (seen from outside), the curtain wall, a narrow brick end on the left
   const P = pt(a), Q = pt(b + 1), Fw = lmWF(P, Q), L = Fw.L, TW = 6.2, s0 = TW + 0.2, s1 = L - 1.4, m = Math.max(1, Math.round((s1 - s0) / 1.6)), mw = (s1 - s0) / m, ops = [];
-  for (let k = 0; k < m; k++) for (let f = 0; f < fl; f++) ops.push({ s0: s0 + k * mw, s1: s0 + (k + 1) * mw, y0: 0.3 + f * fh, y1: 0.3 + (f + 1) * fh, d: 0.06, tile: CT.cw, det: KS.det, lit: f === 0 || rr() < 0.3 ? 1 : 0 });
+  const pA = L - 5.4, cA = L - 11.6;   // the porch at the left end and the canopy from it over the doors in the glazing
+  for (let k = 0; k < m; k++) for (let f = 0; f < fl; f++) { const mid = s0 + (k + 0.5) * mw; ops.push({ s0: s0 + k * mw, s1: s0 + (k + 1) * mw, y0: 0.3 + f * fh, y1: 0.3 + (f + 1) * fh, d: 0.06, tile: !f && mid > cA + 1.5 && mid < pA - 0.5 ? CT.door : CT.cw, det: KS.det, lit: f === 0 || rr() < 0.3 ? 1 : 0 }); }
   lmWall(K, P, Q, 0, H, ops, BR); lmBoxW(G, Fw, -0.1, L + 0.1, H - 0.15, H, -0.1, 0.3, hb('#8d8a86'));
   for (let k = 0; k <= m; k++) lmBar(G, Fw.at(s0 + k * mw, 0.3, -0.07), Fw.at(s0 + k * mw, 0.3 + fl * fh, -0.07), 0.12, MUL);
   { const [x, , z] = Fw.at((s0 + s1) / 2, 0, 0); SHV.push({ n: S.n, a: S.a, x, z, nx: Fw.nx, nz: Fw.nz }); }
   const c = [Fw.at(0, 0, 0), Fw.at(TW, 0, 0), Fw.at(TW, 0, TW), Fw.at(0, 0, TW)].map(p => [p[0], p[2]]);
   for (let k = 0; k < 4; k++) lmWall(K, c[k], c[(k + 1) % 4], H - 0.2, H + 2.2, [], BR);
   polyA(G, c.map(p => [p[0], H + 2.2, p[1]]), hb('#8d8a86'), 0, 1, 0);
-  // the glass canopy over the doors on two posts, the name on the roof
-  const se = Math.max(s0 + 2.8, Math.min(s1 - 2.6, along(r, a, S.e || S.p))), GL = hb('#b7cfca');
-  polyA(G, [Fw.at(se - 2.6, 3.6, 0), Fw.at(se + 2.6, 3.6, 0), Fw.at(se + 2.6, 3.05, -2.7), Fw.at(se - 2.6, 3.05, -2.7)], GL, Fw.nx, 1, Fw.nz);
-  lmBar(G, Fw.at(se - 2.6, 3.05, -2.7), Fw.at(se + 2.6, 3.05, -2.7), 0.1, MUL);
-  for (const q of [se - 2.3, se + 2.3]) { const [x2, , z2] = Fw.at(q, 0, -2.5); lmLathe(G, x2, z2, 0, [[0.07, 0], [0.07, 3.1]], 8, MUL); }
+  // the entrance: a low porch of brick with glass doors at the left end, a vaulted glass canopy from it on two posts
+  { const pc = [Fw.at(pA, 0, -3.0), Fw.at(L + 0.3, 0, -3.0), Fw.at(L + 0.3, 0, 0), Fw.at(pA, 0, 0)].map(p => [p[0], p[2]]);
+    lmWall(K, pc[0], pc[1], 0, 3.3, [{ s0: 1.4, s1: 3.6, y0: 0.1, y1: 2.6, d: 0.12, tile: CT.door, det: KS.det, lit: 1 }], BR); lmWall(K, pc[1], pc[2], 0, 3.3, [], BR); lmWall(K, pc[3], pc[0], 0, 3.3, [], BR);
+    polyA(G, [pc[0], pc[1], pc[2], pc[3]].map(p => [p[0], 3.3, p[1]]), hb('#6d7174'), 0, 1, 0); lmBoxW(G, Fw, pA - 0.1, L + 0.4, 3.15, 3.35, -3.1, 0, hb('#8d8a86'));
+    const GL = hb('#b7cfca'), prof = []; for (let k = 0; k <= 8; k++) { const t = k / 8; prof.push([-2.9 * t, 3.05 + 0.6 * Math.sin(Math.PI * (0.25 + 0.6 * t))]); }
+    for (let k = 0; k < 8; k++) { const [d1, y1] = prof[k], [d2, y2] = prof[k + 1]; polyA(G, [Fw.at(cA, y1, d1), Fw.at(pA, y1, d1), Fw.at(pA, y2, d2), Fw.at(cA, y2, d2)], GL, Fw.nx, 1, Fw.nz); lmBar(G, Fw.at(cA, y1, d1), Fw.at(cA, y2, d2), 0.08, MUL); }
+    lmBar(G, Fw.at(cA, prof[8][1], -2.9), Fw.at(pA, prof[8][1], -2.9), 0.1, MUL);
+    for (const q of [cA + 0.3, pA - 0.3]) { const [x2, , z2] = Fw.at(q, 0, -2.8); lmLathe(G, x2, z2, 0, [[0.07, 0], [0.07, prof[8][1]]], 8, MUL); } }
+  // the lawn in front: young trees, bushes by the tower, benches
+  for (const [q, d, sc] of [[L * 0.36, -8.5, 0.55], [L * 0.5, -9.5, 0.6], [L * 0.63, -8.0, 0.5], [-3.5, -6, 0.75]]) { const [x2, , z2] = Fw.at(q, 0, d); SHOP_TREES.push([x2, z2, 1, sc]); }
+  for (const [q, d] of [[1.5, -4.5], [3.5, -5.2], [5.5, -4.6], [-1.5, -5.5]]) { const [x2, , z2] = Fw.at(q, 0, d); SHOP_TREES.push([x2, z2, 1, 0.3]); }
+  { const f = [P[0], P[1], Fw.nx, Fw.nz]; for (const q of [L * 0.3, L * 0.55]) lmBench(G, f, 11, q, -1); }
   const t = CT.betaL2, w = 5.6, hh = w * t.h / t.w, sn = Math.min(L - w / 2 - 1, Math.max(TW + w / 2 + 1, L * 0.55));
   for (const q of [sn - 1.6, sn + 1.6]) lmBar(G, Fw.at(q, H - 0.3, 0.5), Fw.at(q, H + hh * 0.6, 0.5), 0.1, hb('#55595d'));
   flat(Fw, sn - w / 2, sn + w / 2, H + 0.1, H + 0.1 + hh, 0.3, t);
@@ -498,7 +508,7 @@ function carParks(K) {
     for (let i = 0; i < fl.length; i += 2) ag.vert(fl[i], 0, fl[i + 1], 0, 1, 0, ASP); for (let i = 0; i < tris.length; i += 3) ag.triUp(v0 + tris[i], v0 + tris[i + 1], v0 + tris[i + 2]);
     const o = obb(r); if (!o || o.b < 2.6) continue;
     const at = (u, v) => [o.cx + o.ux * u - o.uz * v, o.cz + o.uz * u + o.ux * v];
-    const ok = (u, v) => { for (const [du, dv] of [[-1.25, -2.4], [1.25, -2.4], [1.25, 2.4], [-1.25, 2.4]]) { const [x, z] = at(u + du, v + dv); if (!pip(x, z, r)) return false; } const [x, z] = at(u, v); return !inBuilding(x, z) && !onRoad(x, z, 0.5); };
+    const ok = (u, v) => { for (const [du, dv] of [[-1.25, -2.4], [1.25, -2.4], [1.25, 2.4], [-1.25, 2.4]]) { const [x, z] = at(u + du, v + dv); if (!pip(x, z, r)) return false; } const [x, z] = at(u, v); if (onRoad(x, z, 0.5)) return false; for (const [du, dv] of [[0, 0], [0, -5], [0, 5], [-3.5, 0], [3.5, 0]]) { const [x2, z2] = at(u + du, v + dv); if (inBuilding(x2, z2)) return false; } return true; };   // no stall within a few metres of a building (canopies, doors)
     // the rows: one along an edge, an aisle, two back to back, an aisle, ...
     const rows = []; let v = -o.b + 2.5, back = false; while (v <= o.b - 2.5) { rows.push(v); v += back ? 5 : 11; back = !back; }
     for (const rv of rows) {
@@ -535,4 +545,4 @@ function lmShops(K, litPatch) {
   KS.det.mesh(LMM.shDet); KS.det = null;
 }
 
-export { SHV, lmShops, shopClaim };
+export { SHOP_TREES, SHV, lmShops, shopClaim };

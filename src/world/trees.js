@@ -3,6 +3,7 @@ import { PP } from '../render/post.js';
 import { fortTreeY } from '../fortress/build.js';
 import { fortNoTree } from '../fortress/ground-height.js';
 import { SQ_SPRUCES } from '../landmarks/unity-square.js';
+import { SHOP_TREES } from '../landmarks/shops.js';
 import { fuelNoTree } from '../landmarks/fuel.js';
 import { spwNoTree } from '../landmarks/speedway.js';
 import { lmClear } from '../landmarks/core.js';
@@ -229,6 +230,7 @@ function buildTrees() {
   };
   for (let i = 0; i < C.t.length; i += 2) { const v = rnd(i, 2); add(C.t[i] / 10, C.t[i + 1] / 10, v < 0.7 ? 1 : v < 0.85 ? 2 : 3, 0.8 + rnd(i, 1) * 0.5, v); }
   SQ_SPRUCES.forEach(([x, z, sc], k) => add(x, z, 3, sc, rnd(k, 5)));   // the spruces by Vienības laukums
+  SHOP_TREES.forEach(([x, z, type, sc], k) => add(x, z, type, sc, rnd(k, 11)));   // trees on the lawns of the stores
   // density per land class: spacing (m), keep probability, type picker
   const DENS = { 1: [17, 1, v => v < 0.58 ? 0 : v < 0.74 ? 3 : v < 0.9 ? 2 : 1], 2: [15, 0.8, v => 1], 4: [18, 0.9, v => v < 0.6 ? 1 : v < 0.8 ? 2 : v < 0.95 ? 3 : 0], 5: [16, 0.9, v => v < 0.55 ? 1 : v < 0.75 ? 2 : 3],
     8: [20, 0.38, v => v < 0.72 ? 1 : v < 0.86 ? 2 : 3], 11: [12, 0.5, v => v < 0.85 ? 1 : 2], 3: [30, 0.25, v => v < 0.6 ? 1 : 2] };
