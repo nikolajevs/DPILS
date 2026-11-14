@@ -10,9 +10,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as acorn from 'acorn';
+import * as walk from 'acorn-walk';
 import * as escope from 'eslint-scope';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..'), SRC = path.join(ROOT, 'src'), ENTRY = path.join(SRC, 'main.js');
+const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..'), SRC = path.join(ROOT, 'src'), ENTRY = path.join(SRC, 'boot.js');
 const BROWSER = new Set(['window', 'document', 'navigator', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame', 'matchMedia', 'localStorage',
   'getComputedStyle', 'HTMLElement', 'HTMLButtonElement', 'HTMLAnchorElement', 'HTMLCanvasElement', 'Image', 'ImageData', 'OffscreenCanvas', 'Path2D',
   'devicePixelRatio', 'location', 'innerWidth', 'innerHeight', 'ResizeObserver', 'screen', 'history', 'alert', 'Event', 'KeyboardEvent', 'PointerEvent']);
@@ -40,6 +41,7 @@ for (const file of files) {
       if (n.declaration) for (const d of n.declaration.declarations || [n.declaration]) mod.exports.set(d.id.name, d.id.name);
     }
   }
+  mod.dynamic = []; walk.simple(ast, { ImportExpression(n) { if (n.source.type === 'Literal') mod.dynamic.push(path.resolve(path.dirname(file), n.source.value)); } });
   M.set(file, mod);
 }
 function rel(f) { return path.relative(ROOT, f); }
@@ -95,9 +97,13 @@ function evalNeeds(mod) {
   while (stack.length) { const k = stack.pop(); if (seen.has(k)) continue; seen.add(k); stack.push(...fnRefs(k)); }
   return seen;
 }
-const state = new Map(), order = [];
-(function visit(f) { if (state.has(f) || !M.has(f)) return; state.set(f, 1); for (const to of M.get(f).order || []) visit(to); state.set(f, 2); order.push(f); })(ENTRY);
-for (const f of files) if (!state.has(f)) problems.push(`${rel(f)}: not reached from src/main.js`);
+const state = new Map(), order = [], entries = [ENTRY];
+function visit(f) { if (state.has(f) || !M.has(f)) return; state.set(f, 1); for (const to of M.get(f).order || []) visit(to); state.set(f, 2); order.push(f); }
+for (let k = 0; k < entries.length; k++) {   // the entry, then what it loads with import() once it has run
+  const before = order.length; visit(entries[k]);
+  for (const f of order.slice(before)) for (const d of M.get(f).dynamic) if (!entries.includes(d)) entries.push(d);
+}
+for (const f of files) if (!state.has(f)) problems.push(`${rel(f)}: not reached from src/boot.js`);
 const done = new Set();
 for (const f of order) {
   for (const k of evalNeeds(M.get(f))) {

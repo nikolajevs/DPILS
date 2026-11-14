@@ -58,7 +58,6 @@
   <div class="panel card">
     <div class="eyebrow">55.87° с. ш. · 26.52° в. д. · Латгалия</div>
     <h1>Даугавпилс в 3D</h1>
-    <p>Весь город по открытым данным: 48 600 зданий с этажностью, материалом стен и покрытием крыши из кадастра Латвии, улицы с настоящими названиями, Даугава в своём русле, мосты, крепость, Церковная горка, Стропские сосны. Дом Единства и гостиница «Латгола» построены отдельно по фотографиям, с колоннами, вывесками и клумбами. В крепости — валы, рвы и ворота: Николаевские с деревянным мостом через ров, Михайловские, Александровские; по валам можно пройти пешком. Артиллерийский арсенал (Центр Марка Ротко) и Инженерный арсенал — тоже по фотографиям. Трамваи и автобусы ходят по настоящему расписанию «Daugavpils satiksme», на остановках видно ближайшие отправления. Рельеф настоящий — по лидарной модели высот LGIA: долина Даугавы, Церковная горка, террасы Химии, насыпи железной дороги. Можно идти пешком или взлететь над крышами.</p>
     <dl class="keys">
       <dt>W A S D / стрелки</dt><dd>идти, Shift — бегом</dd>
       <dt>Мышь</dt><dd>смотреть по сторонам (Esc — отпустить курсор)</dd>
@@ -68,7 +67,10 @@
       <dt>T</dt><dd>ускорить часы транспорта: ×1, ×10, ×60</dd>
       <dt>На телефоне</dt><dd>левая половина экрана — идти, правая — смотреть</dd>
     </dl>
-    <div class="progress" id="progress">Загружаю город…</div>
+    <div class="load" id="load" role="status" aria-live="polite">
+      <div class="load-row"><span class="progress" id="progress">Загружаю город…</span><b class="load-pct" id="loadPct">0&#8239;%</b></div>
+      <div class="load-bar" aria-hidden="true"><i id="loadFill"></i></div>
+    </div>
     <button class="go" id="go" disabled>Начать прогулку</button>
     <div class="credit">Карта © участники <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>. Здания: кадастр Государственной земельной службы Латвии (<a href="https://data.gov.lv/dati/lv/dataset/kadastra-informacijas-sistemas-atvertie-dati">data.gov.lv</a>, CC BY 4.0). Расписание: GTFS <a href="https://satiksme.daugavpils.lv/">Daugavpils satiksme</a>. Фасады нарисованы по материалу стен и году постройки, это не фотографии; Дом Единства и «Латгола» смоделированы по снимкам с Wikimedia Commons, visitdaugavpils.lv, celotajs.lv и militaryheritagetourism.info.</div>
   </div>
@@ -78,10 +80,6 @@
 
 <!-- three.js for the unbundled page (GitHub Pages serves the repository as it is); Vite bundles it from npm instead -->
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js" } }</script>
-<script src="citydata.js"></script>
-<script src="transit.js"></script>
-<script src="fortress.js"></script>
-<script src="terrain.js"></script>
-<script type="module" src="./src/main.js"></script>
+<script type="module" src="./src/boot.js"></script>
 </body>
 </html>
