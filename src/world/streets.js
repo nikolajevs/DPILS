@@ -10,7 +10,7 @@ import { COL, LINES, M_ASPH, M_BALLAST, M_DIRT, M_LAND, M_MARK, M_PAVE, ROAD, ST
 import { LINE } from './palette.js';
 import { TERR, bridgeDeck, bridgeOf, densify } from './terrain.js';
 import { scene } from '../render/renderer.js';
-import { GB, box, polyA } from '../core/geometry.js';
+import { GB, SegGrid, box, polyA } from '../core/geometry.js';
 import { bbox, dec, hb, rnd, sh } from '../core/util.js';
 import { C, HX, HY, WL } from '../core/env.js';
 
@@ -28,6 +28,21 @@ function ribbon(b, p, off, hw, col, y = 0) {
   }
   for (let i = 0; i < n - 1; i++) { const k = v0 + 2 * i; b.triUp(k, k + 1, k + 3); b.triUp(k, k + 3, k + 2); }
 }
+// like ribbon, between offsets A[i] and B[i] that change along the line
+function ribbonV(b, p, A, B, col) {
+  const n = p.length >> 1; if (n < 2) return; const v0 = b.v; b.ensure(n * 2);
+  for (let i = 0; i < n; i++) {
+    const a = Math.max(0, i - 1), c = Math.min(n - 1, i + 1);
+    let tx = p[2 * c] - p[2 * a], tz = p[2 * c + 1] - p[2 * a + 1]; const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
+    let m = 1;
+    if (i > 0 && i < n - 1) { const sx = p[2 * i] - p[2 * a], sz = p[2 * i + 1] - p[2 * a + 1]; const sl = Math.hypot(sx, sz) || 1; m = 1 / Math.max(0.5, (sx * tx + sz * tz) / sl); }
+    const nx = -tz, nz = tx;
+    b.vert(p[2 * i] + nx * A[i] * m, 0, p[2 * i + 1] + nz * A[i] * m, 0, 1, 0, col);
+    b.vert(p[2 * i] + nx * B[i] * m, 0, p[2 * i + 1] + nz * B[i] * m, 0, 1, 0, col);
+  }
+  for (let i = 0; i < n - 1; i++) { const k = v0 + 2 * i; b.triUp(k, k + 1, k + 3); b.triUp(k, k + 3, k + 2); }
+}
+const lineV = (b, p, off, w, col) => ribbonV(b, p, off.map(o => o - w), off.map(o => o + w), col);
 function dashes(b, p, off, hw, on, period, col) {
   let acc = 0; const n = p.length >> 1;
   for (let i = 0; i < n - 1; i++) {
@@ -58,8 +73,60 @@ function buildLines() {
   const sorted = C.l.map(l => ({ cls: l[0], name: l[1], pts: dec(l[2]), bridge: !!l[3] }));
   sorted.sort((a, b) => (b.cls <= 4 && a.cls <= 4) ? b.cls - a.cls : 0);
   let lampSeq = 0; const lampGrid = new Set(), tramLater = [];
-  for (const l of sorted) {
-    const { cls, pts } = l; const n = pts.length >> 1;
+  /* Dual carriageways. OSM maps many main streets as two one-way ways side by side, and the data keep neither the
+     one-way flag nor the lanes, so each way was drawn as a whole two-way street 6–11 m wide. On 18. novembra iela west of
+     the overpass, where the two ways run 3–10 m apart, the carriageways overlapped with their centre lines, edge lines
+     and sidewalks. A road most of whose points have beside them (not ahead) another way of the same name and class
+     running parallel 3–26 m away is one carriageway of a pair: a lane wide where the two run 8 m apart or less, two
+     lanes from 11 m; a median under 4.5 m is painted asphalt with a double line, a wider one is left to the ground; the
+     sidewalk, the kerb and the lamps go on the outer side only. */
+  const PAIR = new SegGrid(40), TRK = new SegGrid(20), MED = new SegGrid(20);   // MED: the asphalt medians with tracks in them
+  sorted.forEach((l, li) => { if ((l.cls <= 3 && l.name >= 0) || l.cls === 9) for (let i = 0; i < l.pts.length - 2; i += 2) (l.cls === 9 ? TRK : PAIR).add(l.pts[i], l.pts[i + 1], l.pts[i + 2], l.pts[i + 3], li, 0); });
+  const partner = (li, x, z, tx, tz) => { const me = sorted[li]; let best = null;
+    PAIR.near(x, z, 26, (id, d, px, pz) => { const s = PAIR.s, lj = s[id * 6 + 4], o = sorted[lj]; if (lj === li || o.cls !== me.cls || o.name !== me.name || d < 3) return;
+      const dx = s[id * 6 + 2] - s[id * 6], dz = s[id * 6 + 3] - s[id * 6 + 1], l = Math.hypot(dx, dz) || 1; if (Math.abs((dx * tx + dz * tz) / l) < 0.9) return;
+      if (Math.abs((px - x) * tx + (pz - z) * tz) > 0.3 * d) return;
+      if (!best || d < best.d) best = { d, s: Math.sign((px - x) * -tz + (pz - z) * tx) || 1 }; });
+    return best; };
+  function dualOf(li, pts, dp) {   // per point of dp: the distance to the other carriageway and the half width; null if not a pair
+    let n = 0, hit = 0;
+    for (let i = 0; i < pts.length - 2; i += 2) { const dx = pts[i + 2] - pts[i], dz = pts[i + 3] - pts[i + 1], sl = Math.hypot(dx, dz); if (sl < 0.5) continue; const tx = dx / sl, tz = dz / sl;
+      for (let s = 0; s < sl; s += 6) { n++; if (partner(li, pts[i] + tx * s, pts[i + 1] + tz * s, tx, tz)) hit++; } }
+    if (!n || hit / n < 0.5) return null;
+    const m = dp.length >> 1, D = new Array(m).fill(null), S = new Array(m).fill(0);
+    for (let i = 0; i < m; i++) { const a = Math.max(0, i - 1), c = Math.min(m - 1, i + 1), tx = dp[2 * c] - dp[2 * a], tz = dp[2 * c + 1] - dp[2 * a + 1], l = Math.hypot(tx, tz) || 1;
+      const q = partner(li, dp[2 * i], dp[2 * i + 1], tx / l, tz / l); if (q) { D[i] = q.d; S[i] = q.s; } }
+    // the side most of it has; where the other way is missing (past its ends) the nearest known distance; smoothed
+    const side = Math.sign(S.reduce((a, b) => a + b, 0)) || 1; let last = null;
+    for (let i = 0; i < m; i++) { if (D[i] === null || S[i] !== side) D[i] = last; else last = D[i]; }
+    last = null; for (let i = m - 1; i >= 0; i--) { if (D[i] === null) D[i] = last; else last = D[i]; }
+    if (D[0] === null) return null;
+    const Ds = D.map((_, i) => { let a = 0, k = 0; for (let j = Math.max(0, i - 2); j <= Math.min(m - 1, i + 2); j++) { a += D[j]; k++; } return a / k; });
+    const H = Ds.map(d => Math.max(1.85, Math.min(3.4, 1.85 + (d - 8) * 0.5)));
+    /* a median narrower than 4.5 m is asphalt: painted, or, where tram tracks run in it (by the overpass bridge), too
+       narrow for a track bed of its own, so the rails lie flush in the asphalt between the lanes as on the bridge */
+    const paint = Ds.map((d, i) => d - 2 * H[i] < 4.5);
+    const trm = Ds.map((d, i) => { const a = Math.max(0, i - 1), c = Math.min(m - 1, i + 1), tx = dp[2 * c] - dp[2 * a], tz = dp[2 * c + 1] - dp[2 * a + 1], l = Math.hypot(tx, tz) || 1;
+      const cx = dp[2 * i] - tz / l * side * d / 2, cz = dp[2 * i + 1] + tx / l * side * d / 2; let t = false; TRK.near(cx, cz, Math.max(0.5, d / 2 - 0.6 * H[i]), () => { t = true; }); return t; });
+    // no sidewalk on the outer side where a tram bed runs alongside instead (the ramp west of the overpass)
+    const bed = H.map((h, i) => { const a = Math.max(0, i - 1), c = Math.min(m - 1, i + 1), tx = dp[2 * c] - dp[2 * a], tz = dp[2 * c + 1] - dp[2 * a + 1], l = Math.hypot(tx, tz) || 1, o = -side * (h + 1.4);
+      let t = false; TRK.near(dp[2 * i] - tz / l * o, dp[2 * i + 1] + tx / l * o, 2.5, () => { t = true; }); return t; });
+    return { side, D: Ds, H, paint, trm, bed };
+  }
+  // the diagonal hatching of a painted median from the edge of the lane (off a) to its middle (off b), s the side of it
+  function hatch(b, p, A, B, s, col) {
+    let acc = 0; const n = p.length >> 1;
+    for (let i = 0; i < n - 1; i++) {
+      const x1 = p[2 * i], z1 = p[2 * i + 1], L = Math.hypot(p[2 * i + 2] - x1, p[2 * i + 3] - z1); if (L < 0.01) continue;
+      const tx = (p[2 * i + 2] - x1) / L, tz = (p[2 * i + 3] - z1) / L, nx = -tz * s, nz = tx * s, a = A[i], w = B[i] - A[i];
+      for (let t = (6 - acc % 6) % 6; t < L; t += 6) { if (w < 1.1) continue;   /* no stubs where the median is only just wider than a double line */ const v = b.v, P = (u, o, e) => [x1 + tx * (u + e) + nx * o, z1 + tz * (u + e) + nz * o];
+        const q = [P(t, a, -0.2), P(t, a, 0.2), P(t + w, a + w, -0.2), P(t + w, a + w, 0.2)]; for (const [x, z] of q) b.vert(x, 0, z, 0, 1, 0, col);
+        b.triUp(v, v + 1, v + 3); b.triUp(v, v + 3, v + 2); }
+      acc += L;
+    }
+  }
+  for (let li = 0; li < sorted.length; li++) {
+    const l = sorted[li], { cls, pts } = l; const n = pts.length >> 1;
     if (cls === 12 || cls === 13 || cls === 14) {
       if (fortSkipLine(cls, pts)) continue;   // the fortress draws its own walls and earthworks
       const h = cls === 13 ? 5.5 : cls === 12 ? 2 : 3, hw = cls === 13 ? 1.1 : cls === 12 ? 0.2 : 5, col = hb(cls === 13 ? '#8a6e5c' : cls === 12 ? '#a39d92' : '#6b8a4d');
@@ -100,24 +167,47 @@ function buildLines() {
     if (onOv) STATE.GBC = ovComp;
     else if (onBridge) { const B = bridgeOf(pts, hw + (cls <= 3 ? 2.7 : 0.3)); jn = jnFix(B); STATE.GBC = bridgeDeck(B); } else STATE.GBC = null;
     if (cls === 10 || cls === 11) for (let i = 0; i < n - 1; i++) STREAM.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, 0);
-    if (cls <= 3) { ribbon(walk, dp, hw + 1.4, 1.3, PAVE); ribbon(walk, dp, -hw - 1.4, 1.3, PAVE); ribbon(marks, dp, hw + 0.08, 0.12, CURB); ribbon(marks, dp, -hw - 0.08, 0.12, CURB); }
-    if (cls !== 9) ribbon(groups[def[2]], dp, 0, hw, lineCol[cls]);
-    if (cls <= 2) dashes(marks, dp, 0, 0.07, 3, 9, WHITE);
-    if (cls === 0) { ribbon(marks, dp, hw - 0.45, 0.07, WHITE); ribbon(marks, dp, -hw + 0.45, 0.07, WHITE); }
+    const dual = cls <= 3 && l.name >= 0 && !jn ? dualOf(li, pts, dp) : null;
+    let hwC = hw;   // the half width that traffic, the tram tracks and the lamps go by
+    if (dual) {   // one carriageway of a pair: s is the side of the other one
+      const { side: s, D, H, paint, trm } = dual, m = dp.length >> 1, A = [], B = [];
+      for (let i = 0; i < m; i++) { const inner = paint[i] ? D[i] / 2 : H[i]; if (s > 0) { A.push(-H[i]); B.push(inner); } else { A.push(-inner); B.push(H[i]); } }
+      ribbonV(groups[def[2]], dp, A, B, lineCol[cls]);
+      for (let i = 0; i < m - 1; i++) if (paint[i] && paint[i + 1] && trm[i] && trm[i + 1]) {   // where the tracks in the median lie flush
+        const o = j => { const a = Math.max(0, j - 1), c = Math.min(m - 1, j + 1), tx = dp[2 * c] - dp[2 * a], tz = dp[2 * c + 1] - dp[2 * a + 1], l = Math.hypot(tx, tz) || 1; return [dp[2 * j] - tz / l * s * D[j] / 2, dp[2 * j + 1] + tx / l * s * D[j] / 2]; };
+        const p0 = o(i), p1 = o(i + 1); MED.add(p0[0], p0[1], p1[0], p1[1], (D[i] + D[i + 1]) / 4, 0); }
+      lineV(marks, dp, H.map(h => -s * (h - 0.3)), 0.07, WHITE);                                         // the outer edge line
+      /* the inner line: half of the double line on a narrow median, the lane's edge where it is wider (hatched up to the
+         middle) or not painted; none where tram tracks run in the median */
+      const narrow = D.map((d, i) => paint[i] && d - 2 * H[i] < 1.4), off = D.map((d, i) => s * (narrow[i] ? d / 2 - 0.13 : paint[i] ? H[i] - 0.05 : H[i] - 0.3));
+      ribbonV(marks, dp, off.map((o, i) => trm[i] ? o : o - 0.065), off.map((o, i) => trm[i] ? o : o + 0.065), WHITE);
+      hatch(marks, dp, H.map((h, i) => paint[i] && !narrow[i] && !trm[i] ? h + 0.1 : 0), D.map((d, i) => paint[i] && !narrow[i] && !trm[i] ? d / 2 : 0), s, WHITE);
+      hwC = H.slice().sort((a, b) => a - b)[H.length >> 1];
+      if (hwC >= 3) dashes(marks, dp, 0, 0.07, 3, 9, WHITE);                                              // the line between two lanes
+      const wk = H.map((h, i) => dual.bed[i] ? h + 0.1 : h + 2.7);   // a sidewalk of no width beside a tram bed
+      ribbonV(walk, dp, H.map((h, i) => s > 0 ? -wk[i] : h + 0.1), H.map((h, i) => s > 0 ? -(h + 0.1) : wk[i]), PAVE);
+      lineV(marks, dp, H.map(h => -s * (h + 0.08)), 0.06, CURB);
+    } else {
+      if (cls <= 3) { ribbon(walk, dp, hw + 1.4, 1.3, PAVE); ribbon(walk, dp, -hw - 1.4, 1.3, PAVE); ribbon(marks, dp, hw + 0.08, 0.12, CURB); ribbon(marks, dp, -hw - 0.08, 0.12, CURB); }
+      if (cls !== 9) ribbon(groups[def[2]], dp, 0, hw, lineCol[cls]);
+      if (cls <= 2) dashes(marks, dp, 0, 0.07, 3, 9, WHITE);
+      if (cls === 0) { ribbon(marks, dp, hw - 0.45, 0.07, WHITE); ribbon(marks, dp, -hw + 0.45, 0.07, WHITE); }
+    }
     if (cls === 8) { dashes(marks, dp, 0, 1.25, 0.25, 0.6, SLEEP); railBar(extra, dp, 0.76); railBar(extra, dp, -0.76); }   // steel rails on the sleepers
     if (cls === 9) { TRAMLINES.push(pts); for (let i = 0; i < n - 1; i++) TRAMGRID.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], 0, 0); tramLater.push({ dp, gbc: STATE.GBC }); }   // drawn once all the roads are known
-    if (cls <= 4) for (let i = 0; i < n - 1; i++) CARROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, cls);
-    if (cls < 10 || cls === 15) for (let i = 0; i < n - 1; i++) ROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw + (cls <= 3 ? 2.6 : 0), cls <= 7 ? l.name : -1);
+    if (cls <= 4) for (let i = 0; i < n - 1; i++) CARROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hwC, cls);
+    if (cls < 10 || cls === 15) for (let i = 0; i < n - 1; i++) ROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hwC + (cls <= 3 ? 2.6 : 0), cls <= 7 ? l.name : -1);
     if (l.bridge && cls !== 10 && cls !== 11 && !fortBridgeLine(pts) && !onOv && !jn) bridge(extra, dp, hw + (cls <= 3 ? 2.7 : 0.3));
     STATE.GBC = null;
-    if (cls <= 3) { // street lamps every ~32 m on one side
-      const side = rnd(lampSeq++, 5) < 0.5 ? 1 : -1; let acc = 14;
+    if (cls <= 3) { // street lamps every ~32 m on one side (the outer side of a carriageway of a pair)
+      const side = dual ? -dual.side : rnd(lampSeq++, 5) < 0.5 ? 1 : -1, hw = hwC; let acc = 14;
       for (let i = 0; i < n - 1; i++) {
         const x1 = pts[2 * i], z1 = pts[2 * i + 1], x2 = pts[2 * i + 2], z2 = pts[2 * i + 3], L = Math.hypot(x2 - x1, z2 - z1); if (L < 0.01) continue;
         const tx = (x2 - x1) / L, tz = (z2 - z1) / L;
         while (acc < L) {
           const off = (hw + 0.6) * side, x = x1 + tx * acc - tz * off, z = z1 + tz * acc + tx * off, k = Math.round(x / 14) + ',' + Math.round(z / 14);
-          if (!lampGrid.has(k) && Math.abs(x) < HX && Math.abs(z) < HY) { lampGrid.add(k); LAMPS.push(x, z, Math.atan2(tz * side, -tx * side) ); }
+          let trk = false; TRK.near(x, z, 2.2, () => { trk = true; });   // not on a tram bed
+          if (!trk && !lampGrid.has(k) && Math.abs(x) < HX && Math.abs(z) < HY) { lampGrid.add(k); LAMPS.push(x, z, Math.atan2(tz * side, -tx * side) ); }
           acc += 32;
         }
         acc -= L;
@@ -135,6 +225,7 @@ function buildLines() {
     for (let i = 0; i < m - 1; i++) {
       const mx = (p[2 * i] + p[2 * i + 2]) / 2, mz = (p[2 * i + 1] + p[2 * i + 3]) / 2; let e = false;
       CARROAD.near(mx, mz, 8, (id, d) => { if (CARROAD.s[id * 6 + 5] <= 3 && d < CARROAD.s[id * 6 + 4] - 0.3) e = true; });
+      if (!e) MED.near(mx, mz, 6, (id, d) => { if (d < MED.s[id * 6 + 4]) e = true; });
       if (emb === null) emb = e; if (e !== emb) { flush(); run = [p[2 * i], p[2 * i + 1]]; emb = e; }
       run.push(p[2 * i + 2], p[2 * i + 3]);
     }
