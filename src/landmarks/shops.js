@@ -508,7 +508,7 @@ function carParks(K) {
     for (let i = 0; i < fl.length; i += 2) ag.vert(fl[i], 0, fl[i + 1], 0, 1, 0, ASP); for (let i = 0; i < tris.length; i += 3) ag.triUp(v0 + tris[i], v0 + tris[i + 1], v0 + tris[i + 2]);
     const o = obb(r); if (!o || o.b < 2.6) continue;
     const at = (u, v) => [o.cx + o.ux * u - o.uz * v, o.cz + o.uz * u + o.ux * v];
-    const ok = (u, v) => { for (const [du, dv] of [[-1.25, -2.4], [1.25, -2.4], [1.25, 2.4], [-1.25, 2.4]]) { const [x, z] = at(u + du, v + dv); if (!pip(x, z, r)) return false; } const [x, z] = at(u, v); if (onRoad(x, z, 0.5)) return false; for (const [du, dv] of [[0, 0], [0, -5], [0, 5], [-3.5, 0], [3.5, 0]]) { const [x2, z2] = at(u + du, v + dv); if (inBuilding(x2, z2)) return false; } return true; };   // no stall within a few metres of a building (canopies, doors)
+    const ok = (u, v) => { for (const [du, dv] of [[-1.25, -2.4], [1.25, -2.4], [1.25, 2.4], [-1.25, 2.4]]) { const [x, z] = at(u + du, v + dv); if (!pip(x, z, r)) return false; } const [x, z] = at(u, v); if (onRoad(x, z, 0.5)) return false; for (const [du, dv] of [[0, 0], [0, -3.6], [0, 3.6], [-2.4, 0], [2.4, 0]]) { const [x2, z2] = at(u + du, v + dv); if (inBuilding(x2, z2)) return false; } return true; };   // no stall within a few metres of a building (canopies, doors)
     // the rows: one along an edge, an aisle, two back to back, an aisle, ...
     const rows = []; let v = -o.b + 2.5, back = false; while (v <= o.b - 2.5) { rows.push(v); v += back ? 5 : 11; back = !back; }
     for (const rv of rows) {
