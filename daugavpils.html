@@ -3684,7 +3684,11 @@ function lmJunction(K) {
     { const k = [P(-0.5, -hw, 0), P(J.L + 0.5, -hw, 0), P(J.L + 0.5, hw, 0), P(-0.5, hw, 0)].map(([x, , z], i) => { const s = i === 1 || i === 2 ? J.L + 0.5 : -0.5; return top.vert(x, jnDeck(J, s) - 0.04, z, 0, 1, 0, rail ? hb('#7d766c') : hb('#6d6e70')); });
       top.triUp(k[0], k[1], k[2]); top.triUp(k[0], k[2], k[3]); }
     // the body: sides from the deck down to the soffit, the soffit itself; the overpass's soffit curves down into the slopes
-    const sof = s => { const d = jnDeck(J, s) - thick; if (J.kind !== 'arch') return d; const q = (s - c.s) / (J.L / 2); return d - 13 * q * q; };
+    // past the middle the legs of the frame reach into the slopes: their foot never stands above the ground
+    const sof = s => { const d = jnDeck(J, s) - thick; if (J.kind !== 'arch') return d; const q = (s - c.s) / (J.L / 2); let b = d - 13 * q * q;
+      if (Math.abs(q) > 0.45) { const p0 = P(s, -hw, 0), p1 = P(s, hw, 0), g = Math.min(terrainH(p0[0], p0[2]), terrainH(p1[0], p1[2])) - 0.6; if (b > g) b = g; } return b; };
+    for (const e of [0, J.L]) { const d = jnDeck(J, e), b = Math.min(sof(e), d - thick), sg = e ? 1 : -1;   // close the ends
+      polyA(G, [P(e, -hw, d), P(e, hw, d), P(e, hw, b), P(e, -hw, b)], sh(CON, 0.9), J.t[0] * sg, 0, J.t[1] * sg); }
     for (let i = 0; i < N; i++) { const s0 = J.L * i / N, s1 = J.L * (i + 1) / N, d0 = jnDeck(J, s0), d1 = jnDeck(J, s1), b0 = sof(s0), b1 = sof(s1);
       for (const sg of [-1, 1]) polyA(G, [P(s0, sg * hw, d0), P(s1, sg * hw, d1), P(s1, sg * hw, b1), P(s0, sg * hw, b0)], sg < 0 ? CON : sh(CON, 0.96), J.n[0] * sg, 0, J.n[1] * sg);
       polyA(G, [P(s0, -hw, b0), P(s1, -hw, b1), P(s1, hw, b1), P(s0, hw, b0)], sh(CON, 0.8), 0, -1, 0);
