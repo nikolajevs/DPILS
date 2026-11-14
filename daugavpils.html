@@ -543,7 +543,8 @@ function bridgeOf(pts, hw) {
   for (let i = 0; i < n - 1; i++) BRSEG.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], id, i);
   return B;
 }
-const bridgeAt = (B, i, px, pz) => B.H0 + (B.H1 - B.H0) * (B.cum[i] + Math.hypot(px - B.pts[2 * i], pz - B.pts[2 * i + 1])) / B.L;
+// a bridge may carry its own profile of heights along it (B.prof) and a half width per segment (B.hws)
+const bridgeAt = (B, i, px, pz) => { const s = B.cum[i] + Math.hypot(px - B.pts[2 * i], pz - B.pts[2 * i + 1]); return B.prof ? B.prof(s) : B.H0 + (B.H1 - B.H0) * s / B.L; };
 function bridgeDeck(B) {   // GBC for the geometry of one bridge: everything above the underside of the deck goes with the deck
   return (x, y, z) => { if (y < -1.4) return 0; let best = 1e9, v = 0; const n = B.pts.length >> 1;
     for (let i = 0; i < n - 1; i++) { const x1 = B.pts[2 * i], z1 = B.pts[2 * i + 1], dx = B.pts[2 * i + 2] - x1, dz = B.pts[2 * i + 3] - z1, l2 = dx * dx + dz * dz || 1;
@@ -551,7 +552,7 @@ function bridgeDeck(B) {   // GBC for the geometry of one bridge: everything abo
     return v - terrainH(x, z); };
 }
 // how far a point on a bridge deck is above the ground under it (for walkers, vehicles and lamps)
-function bridgeY(x, z) { let r = 0, bd = 1e9; BRSEG.near(x, z, 12, (id, d, px, pz) => { const B = BRIDGES[BRSEG.s[id * 6 + 4]]; if (d < B.hw + 1 && d < bd) { bd = d; r = bridgeAt(B, BRSEG.s[id * 6 + 5], px, pz) - terrainH(x, z); } }); return Math.max(0, r); }
+function bridgeY(x, z) { let r = 0, bd = 1e9; BRSEG.near(x, z, 16, (id, d, px, pz) => { const B = BRIDGES[BRSEG.s[id * 6 + 4]], i = BRSEG.s[id * 6 + 5]; if (d < (B.hws ? B.hws[i] : B.hw) + 1 && d < bd) { bd = d; r = bridgeAt(B, i, px, pz) - terrainH(x, z); } }); return Math.max(0, r); }
 // Vienības tilts is drawn over a level city; on the relief its deck runs straight from the height of one bank to that of
 // the other: vbLift is how far that line is above the ground at a point on the bridge, vbComp shifts its geometry
 // (the piers below the water line and the feet of the embankments stay on the ground)
@@ -1112,14 +1113,27 @@ function dashes(b, p, off, hw, on, period, col) {
     acc += L;
   }
 }
+// a steel rail along p, off across from it: a dark web and a polished head 0.17 m high, mitred at the joints like a ribbon
+const RAIL_SIDE = [87, 80, 74], RAIL_HEAD = [167, 163, 156];
+function railBar(b, p, off, hw = 0.036, h = 0.17) {
+  const n = p.length >> 1; if (n < 2) return; const v0 = b.v; b.ensure(n * 6);
+  for (let i = 0; i < n; i++) {
+    const a = Math.max(0, i - 1), c = Math.min(n - 1, i + 1); let tx = p[2 * c] - p[2 * a], tz = p[2 * c + 1] - p[2 * a + 1]; const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
+    let m = 1; if (i > 0 && i < n - 1) { const sx = p[2 * i] - p[2 * a], sz = p[2 * i + 1] - p[2 * a + 1], sl = Math.hypot(sx, sz) || 1; m = 1 / Math.max(0.5, (sx * tx + sz * tz) / sl); }
+    const nx = -tz, nz = tx, x = p[2 * i], z = p[2 * i + 1], xl = x + nx * (off - hw) * m, zl = z + nz * (off - hw) * m, xr = x + nx * (off + hw) * m, zr = z + nz * (off + hw) * m;
+    b.vert(xl, 0, zl, -nx, 0, -nz, RAIL_SIDE); b.vert(xl, h, zl, -nx, 0, -nz, RAIL_SIDE); b.vert(xl, h, zl, 0, 1, 0, RAIL_HEAD); b.vert(xr, h, zr, 0, 1, 0, RAIL_HEAD); b.vert(xr, h, zr, nx, 0, nz, RAIL_SIDE); b.vert(xr, 0, zr, nx, 0, nz, RAIL_SIDE);
+  }
+  for (let i = 0; i < n - 1; i++) { const k = v0 + 6 * i, q = k + 6; b.tri(k, k + 1, q); b.tri(k + 1, q + 1, q); b.tri(k + 2, k + 3, q + 2); b.tri(k + 3, q + 3, q + 2); b.tri(k + 5, q + 5, k + 4); b.tri(k + 4, q + 5, q + 4); }
+}
 const LAMPS = [];
 function buildLines() {
+  if (TERR.on) ovPrep();
   const groups = [0, 1, 2, 3, 4, 5].map(() => new GB(false)), lineCol = {}; for (const k in LINE) lineCol[k] = hb(LINE[k][1]);
   const walk = groups[1], marks = groups[5], extra = new GB(false);
-  const PAVE = hb('#8f897e'), CURB = hb('#a9a69e'), WHITE = hb('#e8e6df'), RAIL = hb('#4a4440'), SLEEP = hb('#5a4c40');
+  const PAVE = hb('#8f897e'), CURB = hb('#a9a69e'), WHITE = hb('#e8e6df'), RAIL = hb('#4a4440'), SLEEP = hb('#635d56');
   const sorted = C.l.map(l => ({ cls: l[0], name: l[1], pts: dec(l[2]), bridge: !!l[3] }));
   sorted.sort((a, b) => (b.cls <= 4 && a.cls <= 4) ? b.cls - a.cls : 0);
-  let lampSeq = 0; const lampGrid = new Set();
+  let lampSeq = 0; const lampGrid = new Set(), tramLater = [];
   for (const l of sorted) {
     const { cls, pts } = l; const n = pts.length >> 1;
     if (cls === 12 || cls === 13 || cls === 14) {
@@ -1151,18 +1165,20 @@ function buildLines() {
       for (let i = 0; i < n - 1; i++) ROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw + (cls <= 3 ? 2.6 : 0), cls <= 7 ? l.name : -1);
       continue;
     }
-    const onBridge = l.bridge && cls !== 10 && cls !== 11 && TERR.on, dp = TERR.on ? densify(pts) : pts;
-    GBC = onBridge ? bridgeDeck(bridgeOf(pts, hw + (cls <= 3 ? 2.7 : 0.3))) : null;
+    // on the overpass of 18. novembra iela everything but the railway under it follows the corridor's own profile
+    const onOv = TERR.on && cls !== 8 && cls !== 10 && cls !== 11 && ovTouches(l.bb);
+    const onBridge = l.bridge && cls !== 10 && cls !== 11 && TERR.on && !onOv, dp = onOv ? ovDensify(densify(pts)) : TERR.on ? densify(pts) : pts;
+    GBC = onOv ? ovComp : onBridge ? bridgeDeck(bridgeOf(pts, hw + (cls <= 3 ? 2.7 : 0.3))) : null;
     if (cls === 10 || cls === 11) for (let i = 0; i < n - 1; i++) STREAM.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, 0);
     if (cls <= 3) { ribbon(walk, dp, hw + 1.4, 1.3, PAVE); ribbon(walk, dp, -hw - 1.4, 1.3, PAVE); ribbon(marks, dp, hw + 0.08, 0.12, CURB); ribbon(marks, dp, -hw - 0.08, 0.12, CURB); }
-    ribbon(groups[def[2]], dp, 0, hw, lineCol[cls]);
+    if (cls !== 9) ribbon(groups[def[2]], dp, 0, hw, lineCol[cls]);
     if (cls <= 2) dashes(marks, dp, 0, 0.07, 3, 9, WHITE);
     if (cls === 0) { ribbon(marks, dp, hw - 0.45, 0.07, WHITE); ribbon(marks, dp, -hw + 0.45, 0.07, WHITE); }
-    if (cls === 8 || cls === 9) { dashes(marks, dp, 0, 1.25, 0.25, 0.6, SLEEP); ribbon(marks, dp, 0.76, 0.05, RAIL); ribbon(marks, dp, -0.76, 0.05, RAIL); }
-    if (cls === 9) { TRAMLINES.push(pts); for (let i = 0; i < n - 1; i++) TRAMGRID.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], 0, 0); }
+    if (cls === 8) { dashes(marks, dp, 0, 1.25, 0.25, 0.6, SLEEP); railBar(extra, dp, 0.76); railBar(extra, dp, -0.76); }   // steel rails on the sleepers
+    if (cls === 9) { TRAMLINES.push(pts); for (let i = 0; i < n - 1; i++) TRAMGRID.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], 0, 0); tramLater.push({ dp, gbc: GBC }); }   // drawn once all the roads are known
     if (cls <= 4) for (let i = 0; i < n - 1; i++) CARROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, cls);
     if (cls < 10 || cls === 15) for (let i = 0; i < n - 1; i++) ROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw + (cls <= 3 ? 2.6 : 0), cls <= 7 ? l.name : -1);
-    if (l.bridge && cls !== 10 && cls !== 11 && !fortBridgeLine(pts)) bridge(extra, dp, hw + (cls <= 3 ? 2.7 : 0.3));
+    if (l.bridge && cls !== 10 && cls !== 11 && !fortBridgeLine(pts) && !onOv) bridge(extra, dp, hw + (cls <= 3 ? 2.7 : 0.3));
     GBC = null;
     if (cls <= 3) { // street lamps every ~32 m on one side
       const side = rnd(lampSeq++, 5) < 0.5 ? 1 : -1; let acc = 14;
@@ -1178,6 +1194,23 @@ function buildLines() {
       }
     }
   }
+  /* Tram tracks: where a track runs inside a carriageway its rails lie flush in a concrete strip, with no sleepers (on
+     the overpass and along most streets); on a track bed of its own, ballast with sleepers and steel rails on them. */
+  const TSLAB = hb('#57585a'), TSTEEL = hb('#a19d96');
+  for (const T of tramLater) {
+    GBC = T.gbc; const p = T.dp, m = p.length >> 1; let run = [p[0], p[1]], emb = null;
+    const flush = () => { if (run.length < 4) return;
+      if (emb) { ribbon(groups[4], run, 0, 1.25, TSLAB); for (const o of [0.76, -0.76]) { ribbon(marks, run, o, 0.04, TSTEEL); ribbon(marks, run, o - Math.sign(o) * 0.07, 0.015, RAIL); } }
+      else { ribbon(groups[3], run, 0, LINE[9][0] / 2, lineCol[9]); dashes(marks, run, 0, 1.25, 0.25, 0.6, SLEEP); railBar(extra, run, 0.76); railBar(extra, run, -0.76); } };
+    for (let i = 0; i < m - 1; i++) {
+      const mx = (p[2 * i] + p[2 * i + 2]) / 2, mz = (p[2 * i + 1] + p[2 * i + 3]) / 2; let e = false;
+      CARROAD.near(mx, mz, 8, (id, d) => { if (CARROAD.s[id * 6 + 5] <= 3 && d < CARROAD.s[id * 6 + 4] - 0.3) e = true; });
+      if (emb === null) emb = e; if (e !== emb) { flush(); run = [p[2 * i], p[2 * i + 1]]; emb = e; }
+      run.push(p[2 * i + 2], p[2 * i + 3]);
+    }
+    flush();
+  }
+  GBC = null;
   const orders = [-37, -37, -36, -35, -34, -33], mats = [M_LAND, M_PAVE, M_DIRT, M_BALLAST, M_ASPH, M_MARK];
   groups.forEach((g, k) => { const m = g.mesh(mats[k]); if (m) { m.renderOrder = orders[k] + (k === 0 ? -0.5 : 0); m.frustumCulled = false; m.receiveShadow = true; scene.add(m); } });
   const em = extra.mesh(matPlain); if (em) { em.castShadow = em.receiveShadow = true; scene.add(em); }
@@ -1220,6 +1253,163 @@ function vbGround(x, z) { const [s, d] = vbLocal(x, z); if (s < 0 || s > VB.L ||
 function vbOnLine(pts) { for (let i = 0; i < pts.length; i += 2) { const [s, d] = vbLocal(pts[i], pts[i + 1]); if (s < -1 || s > VB.L + 1 || Math.abs(d) > 8) return false; } return true; }
 const vbEmb = s => Math.max(0, vbY(s) - 0.8) * 1.5;   // how far an embankment slope reaches beyond the deck edge
 function vbNoTree(x, z) { const [s, d] = vbLocal(x, z); return s > -3 && s < VB.L + 3 && Math.abs(d) < VB.HW + vbEmb(Math.max(0, Math.min(VB.L, s))) + 3; }
+/* ---------- 18. novembra iela: the overpass over the railway by Daugavgrīva prison ----------
+   The street (A13) and both tram tracks cross the main line to Indra and the sidings east of the station on a 45 m bridge
+   (OSM way 127382597) between ramps on embankments: from the junction with 1. Preču iela in the west the street climbs
+   about 150 m to the bridge, in the east it runs out onto the plateau by x = -90; steps lead down from its sidewalks to the
+   side streets. Trains pass under it with room to spare. In the terrain model (20 m grid) the embankments are smoothed to
+   a few metres and the bridge to nothing, so the deck lay just over the rails. Here the corridor has its own profile: the
+   deck 8.2 m over the rails (6.6 m clear under the girders), a straight ramp of about 5 % from the west, level over the
+   bridge with a slight crest, a gentle rise onto the plateau, the corners rounded over 40 m and never under the ground.
+   Everything on it follows the profile: the carriageways, the tram tracks, the sidewalks, the steps, lamps, vehicles and
+   walkers (the corridor is a bridge with its own profile, B.prof). Grassed slopes run down from its edges, concrete
+   abutments face the tracks, two piers on columns stand between them. The look follows a street photograph (Google Street
+   View, April 2024): tram tracks in the asphalt in the middle, steel guard rails between the road and the sidewalks,
+   railings of vertical bars painted grey-blue on a low curb along both edges. The centre line runs from the west foot
+   midway between the sidewalks, along the bridge and the eastern road; with each point the half width out to the edge on
+   the left (north, going east) and on the right. */
+const OV = { C: [[-423.8, 1566.5, 13.8, 13.8], [-406.1, 1557.7, 11.9, 11.9], [-388.2, 1549.5, 10.7, 10.7], [-369.2, 1542.3, 10.6, 10.6], [-350.2, 1535.6, 10, 10], [-331.2, 1529.4, 9.9, 9.9],
+  [-312.4, 1522.5, 9.9, 9.9], [-293.6, 1514.5, 9.8, 9.8], [-275.1, 1506.5, 9.6, 9.6], [-234.2, 1488.8, 9.6, 9.6], [-176.6, 1462.7, 10.6, 11.1], [-149.7, 1447.5, 10.9, 10.3],
+  [-129.3, 1433.2, 10.7, 9.8], [-118.3, 1424.2, 10.6, 10.1], [-108.3, 1415.5, 10.8, 10.2], [-91.2, 1398.8, 11.3, 10.3]],
+  bw: 8, be: 9, piers: [9.9, 23.2], clear: 8.2, pr: null };
+function ovPrep() {
+  if (OV.pr) return;
+  const C = OV.C, n = C.length, cum = [0]; for (let i = 1; i < n; i++) cum.push(cum[i - 1] + Math.hypot(C[i][0] - C[i - 1][0], C[i][1] - C[i - 1][1]));
+  OV.cum = cum; OV.L = cum[n - 1]; OV.sW = cum[OV.bw]; OV.sE = cum[OV.be];
+  OV.at = s => { let i = 0; while (i < n - 2 && cum[i + 1] < s) i++; const t = Math.max(0, Math.min(1, (s - cum[i]) / (cum[i + 1] - cum[i]))); return [C[i][0] + (C[i + 1][0] - C[i][0]) * t, C[i][1] + (C[i + 1][1] - C[i][1]) * t, i, t]; };
+  const mid = OV.at((OV.sW + OV.sE) / 2), Hd = terrainH(mid[0], mid[1]) + OV.clear, h0 = terrainH(C[0][0], C[0][1]), h1 = terrainH(C[n - 1][0], C[n - 1][1]);
+  const N = Math.ceil(OV.L / 2), raw = [];
+  for (let k = 0; k <= N; k++) { const s = Math.min(OV.L, k * 2);
+    raw.push(s < OV.sW ? h0 + (Hd - h0) * s / OV.sW : s <= OV.sE ? Hd + 0.15 * (1 - ((2 * s - OV.sW - OV.sE) / (OV.sE - OV.sW)) ** 2) : Hd + (h1 - Hd) * (s - OV.sE) / (OV.L - OV.sE)); }
+  OV.pr = raw.map((_, k) => { const w = Math.min(10, k, N - k); let a = 0; for (let j = -w; j <= w; j++) a += raw[k + j]; const p = OV.at(Math.min(OV.L, k * 2)); return Math.max(a / (2 * w + 1), terrainH(p[0], p[1])); });
+  OV.Hd = Hd;
+  // the corridor is a bridge with its own profile: lamps, vehicles and walkers find their height with bridgeY
+  const pts = []; for (const c of C) pts.push(c[0], c[1]);
+  const B = { pts, cum, L: OV.L, H0: OV.pr[0], H1: OV.pr[N], hw: 15, hws: C.slice(0, -1).map((c, i) => Math.max(c[2], c[3], C[i + 1][2], C[i + 1][3]) + 0.3), prof: ovH }, id = BRIDGES.length; BRIDGES.push(B);
+  for (let i = 0; i < n - 1; i++) BRSEG.add(C[i][0], C[i][1], C[i + 1][0], C[i + 1][1], id, i);
+  let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9; for (const c of C) { x0 = Math.min(x0, c[0]); x1 = Math.max(x1, c[0]); z0 = Math.min(z0, c[1]); z1 = Math.max(z1, c[1]); } OV.bb = [x0 - 16, z0 - 16, x1 + 16, z1 + 16];
+}
+const ovH = s => { const k = Math.max(0, Math.min(OV.pr.length - 1.001, s / 2)), i = Math.floor(k), f = k - i; return OV.pr[i] + (OV.pr[Math.min(OV.pr.length - 1, i + 1)] - OV.pr[i]) * f; };
+// the nearest point of the centre line: s along it, d to the left (north); null outside the corridor (with a margin)
+function ovLocal(x, z, margin = 0.6) {
+  const C = OV.C, n = C.length; let best = null, bd = 1e9;
+  for (let i = 0; i < n - 1; i++) { const x1 = C[i][0], z1 = C[i][1], dx = C[i + 1][0] - x1, dz = C[i + 1][1] - z1, l2 = dx * dx + dz * dz, tr = ((x - x1) * dx + (z - z1) * dz) / l2, t = Math.max(0, Math.min(1, tr)), dd = Math.hypot(x - x1 - dx * t, z - z1 - dz * t);
+    if (dd < bd) { bd = dd; const l = Math.sqrt(l2); best = { i, t, s: OV.cum[i] + (i === 0 ? Math.min(tr, 1) : i === n - 2 ? Math.max(tr, 0) : t) * l, d: ((x - x1) * dz - (z - z1) * dx) / l, hl: C[i][2] + (C[i + 1][2] - C[i][2]) * t, hr: C[i][3] + (C[i + 1][3] - C[i][3]) * t }; } }
+  if (!best || best.s < 0 || best.s > OV.L || best.d > best.hl + margin || -best.d > best.hr + margin) return null;
+  return best;
+}
+function ovComp(x, y, z) { const q = ovLocal(x, z); return q ? ovH(q.s) - terrainH(x, z) : 0; }   // GBC for what lies on the corridor
+const ovTouches = bb => OV.pr && bb[2] >= OV.bb[0] && bb[0] <= OV.bb[2] && bb[3] >= OV.bb[1] && bb[1] <= OV.bb[3];
+function ovDensify(p, step = 4) { const o = [p[0], p[1]]; for (let i = 2; i < p.length; i += 2) { const x0 = p[i - 2], z0 = p[i - 1], m = Math.max(1, Math.ceil(Math.hypot(p[i] - x0, p[i + 1] - z0) / step)); for (let k = 1; k <= m; k++) o.push(x0 + (p[i] - x0) * k / m, z0 + (p[i + 1] - z0) * k / m); } return o; }
+// no tree on the embankment and its slopes; the cadastre sheds under the ramps give way to them
+function ovNoTree(x, z) { if (!OV.pr || x < OV.bb[0] || x > OV.bb[2] || z < OV.bb[1] || z > OV.bb[3]) return false; const q = ovLocal(x, z, 16); if (!q) return false; const H = Math.max(0, ovH(q.s) - terrainH(x, z)); return (q.d > 0 ? q.d - q.hl : -q.d - q.hr) < H * 1.5 + 2; }
+function ovDrops(ring, bb) { if (!OV.pr || !ovTouches(bb)) return false; const [cx, cz] = fuelCen(ring), q = ovLocal(cx, cz, -0.5); return !!q && (q.s < OV.sW - 2 || q.s > OV.sE + 2) && ovH(q.s) - terrainH(cx, cz) > 1.5; }
+function lmOverpass(K) {
+  if (!OV.pr) return;
+  const G = K.plain, L = OV.L, sW = OV.sW, sE = OV.sE;
+  const CON = hb('#b2afa7'), GRASS = hb('#5f7546'), STEEL = hb('#a5aaad'), RAILC = hb('#7a8892'), ASPH = hb('#4e4f51');
+  // a frame at s: the point, the tangent from the neighbouring points, the half widths, the height of the road
+  const fr = s => { const p = OV.at(s), a = OV.at(Math.max(0, s - 1)), b = OV.at(Math.min(L, s + 1)), l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, tu = [(b[0] - a[0]) / l, (b[1] - a[1]) / l], C = OV.C, i = p[2], t = p[3];
+    return { x: p[0], z: p[1], tu, nl: [tu[1], -tu[0]], hl: C[i][2] + (C[i + 1][2] - C[i][2]) * t, hr: C[i][3] + (C[i + 1][3] - C[i][3]) * t, h: ovH(s) }; };
+  const W3 = (f, d, dy) => { const x = f.x + f.nl[0] * d, z = f.z + f.nl[1] * d; return [x, f.h + dy - terrainH(x, z), z]; };   // dy over the road
+  const edge = (f, side) => side > 0 ? f.hl : -f.hr;
+  const steps = (a, b, st) => { const o = []; for (let s = a; s < b - 1e-6; s += st) o.push(s); o.push(b); return o; };
+  // ---- the asphalt over the whole corridor, under the lines of the carriageways, tracks and sidewalks. Unlike the ground
+  // layers it writes depth, and before them: the lines then lie on it and what passes under the bridge stays hidden
+  { const g = new GB(false), S = steps(0, L, 2), mat = groundMaterial(detailTex(1), 1 / 5, 0.45, 'ov-deck'); mat.depthWrite = true;
+    for (const s of S) { const f = fr(s); for (const d of [f.hl, 0, -f.hr]) { const P = W3(f, d, -0.06); g.vert(P[0], P[1], P[2], 0, 1, 0, ASPH); } }
+    for (let k = 0; k < S.length - 1; k++) for (let j = 0; j < 2; j++) { const a = k * 3 + j; g.triUp(a, a + 3, a + 1); g.triUp(a + 1, a + 3, a + 4); }
+    const m = g.mesh(mat); m.renderOrder = -70; m.frustumCulled = false; m.receiveShadow = m.castShadow = true; scene.add(m); }
+  // ---- the embankments: a concrete edge under the railing, grassed slopes down to the ground (1 : 1.5)
+  const ramp = [[0, sW], [sE, L]];
+  for (const [a, b] of ramp) { const S = steps(a, b, 3);
+    for (let k = 0; k < S.length - 1; k++) { const f0 = fr(S[k]), f1 = fr(S[k + 1]);
+      for (const sd of [1, -1]) { const e0 = edge(f0, sd), e1 = edge(f1, sd), A = W3(f0, e0, -0.3), B = W3(f1, e1, -0.3), H0 = Math.max(0, A[1] + 0.3), H1 = Math.max(0, B[1] + 0.3);
+        if (H0 < 0.05 && H1 < 0.05) continue;
+        const T0 = W3(f0, e0 + sd * 1.5 * H0, 0), T1 = W3(f1, e1 + sd * 1.5 * H1, 0); T0[1] = 0; T1[1] = 0;
+        polyA(G, [A, B, T1, T0], GRASS, f0.nl[0] * sd, 1.2, f0.nl[1] * sd);
+        polyA(G, [W3(f0, e0, -0.3), W3(f1, e1, -0.3), W3(f1, e1, 0.2), W3(f0, e0, 0.2)], CON, f0.nl[0] * sd, 0, f0.nl[1] * sd);
+        polyA(G, [W3(f0, e0, 0.2), W3(f1, e1, 0.2), W3(f1, e1 - sd * 0.4, 0.2), W3(f0, e0 - sd * 0.4, 0.2)], sh(CON, 1.06), 0, 1, 0); } } }
+  // ---- the abutments: concrete walls closing the embankments towards the tracks
+  for (const [s, dir] of [[sW, 1], [sE, -1]]) { const f = fr(s), Hl = W3(f, f.hl, 0)[1], Hr = W3(f, -f.hr, 0)[1];
+    const A = W3(f, f.hl + 1.5 * Hl, 0), B = W3(f, -f.hr - 1.5 * Hr, 0); A[1] = 0; B[1] = 0;
+    polyA(G, [A, W3(f, f.hl, 0.2), W3(f, -f.hr, 0.2), B], CON, f.tu[0] * dir, 0, f.tu[1] * dir);
+    polyA(G, [W3(f, f.hl + 0.6, -0.5), W3(f, -f.hr - 0.6, -0.5), W3(f, -f.hr - 0.6, -0.45), W3(f, f.hl + 0.6, -0.45)], sh(CON, 0.9), 0, 1, 0); }
+  // ---- the deck: the slab with its cornices, six girders under it, two piers on three columns each between the tracks
+  { const S = steps(sW, sE, 3);
+    for (let k = 0; k < S.length - 1; k++) { const f0 = fr(S[k]), f1 = fr(S[k + 1]);
+      polyA(G, [W3(f0, f0.hl, -0.45), W3(f1, f1.hl, -0.45), W3(f1, -f1.hr, -0.45), W3(f0, -f0.hr, -0.45)], sh(CON, 0.8), 0, -1, 0);
+      for (const sd of [1, -1]) { const e0 = edge(f0, sd) + sd * 0.05, e1 = edge(f1, sd) + sd * 0.05;
+        polyA(G, [W3(f0, e0, -0.95), W3(f1, e1, -0.95), W3(f1, e1, 0.25), W3(f0, e0, 0.25)], CON, f0.nl[0] * sd, 0, f0.nl[1] * sd);
+        polyA(G, [W3(f0, e0, -0.95), W3(f1, e1, -0.95), W3(f1, e1 - sd * 0.5, -0.95), W3(f0, e0 - sd * 0.5, -0.95)], sh(CON, 0.75), 0, -1, 0);
+        polyA(G, [W3(f0, e0, 0.25), W3(f1, e1, 0.25), W3(f1, e1 - sd * 0.45, 0.25), W3(f0, e0 - sd * 0.45, 0.25)], sh(CON, 1.06), 0, 1, 0); }
+      for (let g = 0; g < 6; g++) { const d0 = -f0.hr + 1.2 + (f0.hl + f0.hr - 2.4) * g / 5, d1 = -f1.hr + 1.2 + (f1.hl + f1.hr - 2.4) * g / 5;
+        for (const w of [-0.25, 0.25]) polyA(G, [W3(f0, d0 + w, -0.45), W3(f1, d1 + w, -0.45), W3(f1, d1 + w, -1.6), W3(f0, d0 + w, -1.6)], sh(CON, 0.88), f0.nl[0] * Math.sign(w), 0, f0.nl[1] * Math.sign(w));
+        polyA(G, [W3(f0, d0 - 0.25, -1.6), W3(f1, d1 - 0.25, -1.6), W3(f1, d1 + 0.25, -1.6), W3(f0, d0 + 0.25, -1.6)], sh(CON, 0.78), 0, -1, 0); } }
+    // the piers lie along the tracks: the direction of the nearest railway
+    for (const ds of OV.piers) { const f = fr(sW + ds); let dir = f.nl, bd = 1e9;
+      for (const l of C.l) { if (l[0] !== 8) continue; const p = dec(l[2]); for (let i = 0; i < p.length - 2; i += 2) { const dx = p[i + 2] - p[i], dz = p[i + 3] - p[i + 1], l2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((f.x - p[i]) * dx + (f.z - p[i + 1]) * dz) / l2)), dd = Math.hypot(f.x - p[i] - dx * t, f.z - p[i + 1] - dz * t); if (dd < bd) { bd = dd; const ll = Math.sqrt(l2); dir = [dx / ll, dz / ll]; } } }
+      const sin = Math.abs(dir[0] * f.tu[1] - dir[1] * f.tu[0]) || 1, half = Math.max(f.hl, f.hr) / Math.max(0.35, sin), top = f.h - 1.6, Ht = top - terrainH(f.x, f.z);
+      box(G, f.x, f.z, dir[0], dir[1], half, 0.7, Ht - 1.0, Ht, CON);
+      for (const a of [-half + 1.2, 0, half - 1.2]) { const x = f.x + dir[0] * a, z = f.z + dir[1] * a; lmLathe(G, x, z, 0, [[0.55, 0], [0.45, 0.4], [0.45, top - 1.0 - terrainH(x, z)]], 12, sh(CON, 0.95)); } } }
+  // ---- railings of vertical bars on the curbs along both edges, guard rails between the road and the sidewalks
+  const gaps = []; for (const l of C.l) { if (l[0] !== 15) continue; const p = dec(l[2]); for (let i = 0; i < p.length; i += 2) { const q = ovLocal(p[i], p[i + 1], 3); if (q) gaps.push(q.s); } }
+  const free = s => !gaps.some(g => Math.abs(g - s) < 2.2);
+  for (const sd of [1, -1]) {
+    const S = steps(0, L, 2.4);
+    for (let k = 0; k < S.length - 1; k++) { const f0 = fr(S[k]), f1 = fr(S[k + 1]), e0 = edge(f0, sd) - sd * 0.2, e1 = edge(f1, sd) - sd * 0.2, H0 = W3(f0, edge(f0, sd), 0)[1], H1 = W3(f1, edge(f1, sd), 0)[1], sm = (S[k] + S[k + 1]) / 2;
+      if (Math.max(H0, H1) < 0.8 || !free(sm)) continue;
+      lmBar(G, W3(f0, e0, 0.2), W3(f0, e0, 1.3), 0.07, RAILC); lmBar(G, W3(f0, e0, 1.25), W3(f1, e1, 1.25), 0.06, RAILC); lmBar(G, W3(f0, e0, 0.35), W3(f1, e1, 0.35), 0.045, RAILC);
+      for (let j = 1; j < 16; j++) { const u = j / 16, f = fr(S[k] + (S[k + 1] - S[k]) * u), e = edge(f, sd) - sd * 0.2; lmBar(G, W3(f, e, 0.35), W3(f, e, 1.25), 0.02, RAILC); }
+      const g0 = edge(f0, sd) - sd * 2.9, g1 = edge(f1, sd) - sd * 2.9;   // the W-beam on its posts
+      for (const w of [0.04, -0.04]) polyA(G, [W3(f0, g0 + w, 0.45), W3(f1, g1 + w, 0.45), W3(f1, g1 + w, 0.8), W3(f0, g0 + w, 0.8)], STEEL, f0.nl[0] * Math.sign(w), 0, f0.nl[1] * Math.sign(w));
+      lmBar(G, W3(f0, g0 + sd * 0.12, 0), W3(f0, g0 + sd * 0.12, 0.8), 0.12, sh(STEEL, 0.8));
+      if (S[k] < sW - 1 || S[k + 1] > sE + 1) { const A = W3(f0, edge(f0, sd), 0), B = W3(f1, edge(f1, sd), 0); COL.add(A[0], A[2], B[0], B[2], 0, 0); } }
+  }
+}
+
+/* ---------- the overhead line of the trams ----------
+   The tram lines are electrified (600 V): a contact wire 5.8 m over every track, and a support every 32 m. Where the
+   tracks run in a carriageway (on the overpass and along most streets) steel poles stand at both kerbs and a span wire
+   crosses the street, the contact wires hung from it; on a track bed of their own a centre pole between the two tracks
+   carries an arm over each (as on 18. novembra iela west of the overpass); a single track has a pole beside it, on the
+   side away from the street. A pair of tracks gets one support, put up by one of them. Heights follow bridges and the
+   overpass like the vehicles do. */
+function lmTramWires(K) {
+  const G = K.plain, POLE = hb('#7b8084'), WIRE = hb('#2b2d2f'), CW = 5.8, TL = TRAMLINES; if (!TL.length) return;
+  const lift = (x, z) => vbGround(x, z) + vbLift(x, z) + bridgeY(x, z), P3 = (x, z, y) => [x, y + lift(x, z), z];
+  const grid = new SegGrid(20); TL.forEach((p, li) => { for (let i = 0; i < p.length - 2; i += 2) grid.add(p[i], p[i + 1], p[i + 2], p[i + 3], li, 0); });
+  const inRoad = (x, z) => { let best = null, bd = 1e9; CARROAD.near(x, z, 10, (id, d) => { if (CARROAD.s[id * 6 + 5] <= 3 && d < CARROAD.s[id * 6 + 4] - 0.3 && d < bd) { bd = d; best = id; } }); return best; };
+  const pole = (x, z, h) => { lmLathe(G, x, z, lift(x, z), [[0.17, 0], [0.13, 0.4], [0.09, h]], 8, POLE); COL.add(x, z, x + 0.01, z, 0.15, 0); };
+  function support(li, x, z, tx, tz) {
+    const nx = -tz, nz = tx; let q = null, qd = 1e9, qli = -1;
+    grid.near(x, z, 5.5, (id, d, px, pz) => { const s = grid.s, lj = s[id * 6 + 4]; if (lj === li || d < 2.2) return; const dx = s[id * 6 + 2] - s[id * 6], dz = s[id * 6 + 3] - s[id * 6 + 1], l = Math.hypot(dx, dz) || 1;
+      if (Math.abs((dx * tx + dz * tz) / l) > 0.85 && d < qd) { qd = d; q = [px, pz]; qli = lj; } });
+    if (q && qli < li) return;   // the other track of the pair carries it
+    const road = inRoad(x, z), tracks = q ? [[x, z], q] : [[x, z]];
+    if (road !== null) {
+      const s = CARROAD.s, ax = s[road * 6], az = s[road * 6 + 1], dx = s[road * 6 + 2] - ax, dz = s[road * 6 + 3] - az, l2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)), l = Math.sqrt(l2);
+      const rx = ax + dx * t, rz = az + dz * t, rnx = -dz / l, rnz = dx / l, hw = s[road * 6 + 4] + 0.9, A = [rx + rnx * hw, rz + rnz * hw], B = [rx - rnx * hw, rz - rnz * hw];
+      if (inBuilding(A[0], A[1]) || inBuilding(B[0], B[1])) return;
+      pole(A[0], A[1], 8.6); pole(B[0], B[1], 8.6); lmBar(G, P3(A[0], A[1], 7.4), P3(B[0], B[1], 7.4), 0.025, WIRE);
+      for (const c of tracks) { const k = (c[0] - A[0]) * (B[0] - A[0]) + (c[1] - A[1]) * (B[1] - A[1]), L2 = (B[0] - A[0]) ** 2 + (B[1] - A[1]) ** 2, f = Math.max(0, Math.min(1, k / L2)), sx = A[0] + (B[0] - A[0]) * f, sz = A[1] + (B[1] - A[1]) * f;
+        lmBar(G, P3(sx, sz, 7.4), P3(c[0], c[1], CW + 0.05), 0.02, WIRE); }
+    } else if (q) {
+      const cx = (x + q[0]) / 2, cz = (z + q[1]) / 2; if (inBuilding(cx, cz)) return; pole(cx, cz, 7.2);
+      for (const c of tracks) { lmBar(G, P3(cx, cz, 6.6), P3(c[0], c[1], 6.6), 0.08, POLE); lmBar(G, P3(cx, cz, 7.15), P3(c[0], c[1], 6.64), 0.03, POLE); lmBar(G, P3(c[0], c[1], 6.6), P3(c[0], c[1], CW + 0.05), 0.02, WIRE); }
+    } else {
+      const sd = inRoad(x + nx * 3, z + nz * 3) !== null ? -1 : 1, px = x + nx * 2.6 * sd, pz = z + nz * 2.6 * sd; if (inBuilding(px, pz)) return; pole(px, pz, 7.2);
+      lmBar(G, P3(px, pz, 6.6), P3(x, z, 6.6), 0.08, POLE); lmBar(G, P3(px, pz, 7.15), P3(x, z, 6.64), 0.03, POLE); lmBar(G, P3(x, z, 6.6), P3(x, z, CW + 0.05), 0.02, WIRE);
+    }
+  }
+  TL.forEach((p, li) => {
+    const n = p.length >> 1; if (n < 2) return;
+    const w = ovDensify(Array.from(p), 8); for (let i = 0; i < w.length - 2; i += 2) lmBar(G, P3(w[i], w[i + 1], CW), P3(w[i + 2], w[i + 3], CW), 0.03, WIRE);   // the contact wire
+    let acc = 12;
+    for (let i = 0; i < n - 1; i++) { const x1 = p[2 * i], z1 = p[2 * i + 1], L = Math.hypot(p[2 * i + 2] - x1, p[2 * i + 3] - z1); if (L < 0.01) continue; const tx = (p[2 * i + 2] - x1) / L, tz = (p[2 * i + 3] - z1) / L;
+      while (acc < L) { support(li, x1 + tx * acc, z1 + tz * acc, tx, tz); acc += 32; } acc -= L; }
+  });
+}
 function lmVienibas(K) {
   const G = K.plain, { L, T, N, HW, SW, PIERS } = VB, y = vbY, P = vbP;
   const STEEL = hb('#bcc0c2'), STEEL2 = sh(STEEL, 0.86), CONC = hb('#cfccc4'), SLOPE = hb('#a9a79f'), RAILC = hb('#b4b8bb'), STONE = [236, 228, 218];
@@ -4048,7 +4238,7 @@ function buildLandmarks() {
   LMM.clk = hook(new THREE.MeshStandardMaterial({ map: lmClk.tex, emissive: new THREE.Color(1, 1, 1), emissiveMap: lmClk.tex, roughness: 0.5, metalness: 0 }), 'lm-clk', LM_SAFE); allMats.push(LMM.clk); lmTick();
   const K = { ash: new LMB(), ren: new LMB(), det: new LMB(), txt: new LMB(), clk: new LMB(), plain: new GB(false), stone: new GB(false), globe: new GB(false) };
   K.walls = [K.ash, K.ren, new LMB(), new LMB(), new LMB(), new LMB(), new LMB()];
-  lmUnityHouse(K); lmLatgola(K); lmSquare(K); lmGrounds(K); lmDUMain(K); lmDUParades(K); lmDULab(K); lmRenesanse(K); lmRigas(K); lmVesma(K); lmTVTower(K); lmStation(K); lmSpeedway(K); lmKP(K); lmSC(K); lmFuel(K, litPatch); GBC = TERR.on ? vbComp : null; lmVienibas(K); GBC = null;
+  lmUnityHouse(K); lmLatgola(K); lmSquare(K); lmGrounds(K); lmDUMain(K); lmDUParades(K); lmDULab(K); lmRenesanse(K); lmRigas(K); lmVesma(K); lmTVTower(K); lmStation(K); lmSpeedway(K); lmKP(K); lmSC(K); lmFuel(K, litPatch); lmOverpass(K); lmTramWires(K); GBC = TERR.on ? vbComp : null; lmVienibas(K); GBC = null;
   [LMM.ash, LMM.ren, LMM.duw, LMM.brick, LMM.tile, LMM.panel, LMM.buff].forEach((m, k) => K.walls[k].mesh(m)); K.det.mesh(LMM.det); K.txt.mesh(LMM.txt, false); K.clk.mesh(LMM.clk, false);
   for (const [b, m] of [[K.plain, LMM.plain], [K.stone, LMM.stone]]) { const pm = b.mesh(m); if (pm) { pm.castShadow = pm.receiveShadow = true; scene.add(pm); } }
   const gm = K.globe.mesh(LMM.globe); if (gm) { gm.receiveShadow = true; scene.add(gm); }
@@ -4062,7 +4252,7 @@ function buildBuildings(from, to) {
     const rings = []; for (let k = 7; k < rec.length; k++) { let r = dec(rec[k]); if (r.length < 6) continue; const A = area2(r); if ((k === 7) !== (A > 0)) r = reversed(r); rings.push(r); }
     if (!rings.length) continue;
     const outer = rings[0], bb = bbox(outer), cx = (bb[0] + bb[2]) / 2, cz = (bb[1] + bb[3]) / 2;
-    if (lmDrops(outer, bb) || fortDrops(outer, bb) || spwDrops(outer, bb) || fuelDrops(outer, bb, style)) continue;   // drawn by buildLandmarks or buildFortress
+    if (lmDrops(outer, bb) || fortDrops(outer, bb) || spwDrops(outer, bb) || fuelDrops(outer, bb, style) || ovDrops(outer, bb)) continue;   // drawn by buildLandmarks or buildFortress
     // on a slope a house stands level at the height of its upper side (no more than 2.5 m over its lowest point, the
     // rest goes into the ground), and the foot of its walls reaches down to the ground on the lower side: a plinth
     if (TERR.on) { let lo = 1e9, hi = -1e9; for (let i = 0; i < outer.length; i += 2) { const t = terrainH(outer[i], outer[i + 1]); lo = Math.min(lo, t); hi = Math.max(hi, t); }
@@ -5516,7 +5706,7 @@ function buildTrees() {
   farGeo.setAttribute('aQ', new THREE.Float32BufferAttribute([0, 0, 0, 0, 1, 1, 1, 1], 1));
   farGeo.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
   const add = (x, z, type, sc, v) => {
-    if (Math.abs(x) > HX || Math.abs(z) > HY || lmClear(x, z) || wetTree(x, z) || fortNoTree(x, z) || vbNoTree(x, z) || spwNoTree(x, z) || fuelNoTree(x, z)) return;
+    if (Math.abs(x) > HX || Math.abs(z) > HY || lmClear(x, z) || wetTree(x, z) || fortNoTree(x, z) || vbNoTree(x, z) || spwNoTree(x, z) || fuelNoTree(x, z) || ovNoTree(x, z)) return;
     const i = Math.floor(x / TTILE), j = Math.floor(z / TTILE), k = (i + 100) * 1000 + j + 100;
     let t = treeTiles.get(k); if (!t) treeTiles.set(k, t = { x0: i * TTILE, z0: j * TTILE, list: [] }); t.list.push(x, z, type, sc, v);
   };
