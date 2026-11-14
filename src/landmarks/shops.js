@@ -54,7 +54,7 @@ const SHOPS = [
   { id: 'n1707170884', b: 'mego', n: 'Mego', a: 'Viestura iela 60', k: 'in', p: [-992.5, 1158.7] },
   { id: 'n474748343', b: 'mego', n: 'Mego', a: 'Rīgas iela 9, Solo', k: 'solo', p: [-1382.5, 1183.3], e: [-1343.5, 1186.9] },
   { id: 'n2462543293', b: 'mego', n: 'Mego', a: 'Raipoles iela 11A, Aveņu centrs', k: 'in', p: [-864.6, -1984.2], e: [-857.4, -2003.2] },
-  { id: 'n11943175157', b: 'rimi', n: 'Rimi Hyper', a: 'Cietokšņa iela 72A', k: 'box', p: [-1687.9, 483.9], pk: [-1630, 460], slat: [[-1661.5, 530.3], [-1667.2, 532.7]] },   // several entrances: the glazed front on the car park, the main doors at the back of a recess (slat: its mouth)
+  { id: 'n11943175157', b: 'rimi', n: 'Rimi Hyper', a: 'Cietokšņa iela 72A', k: 'box', p: [-1687.9, 483.9], pk: [-1630, 460], slat: [[-1661.5, 530.3], [-1667.2, 532.7]], doors: [[-1671.0, 515.1], [-1676.4, 518.7]], drop: [[-1671.0, 520.9]] },   // several entrances: the glazed front on the car park, the main doors at the back of a recess (slat: its mouth)
   { id: 'n9296108168', b: 'rimi', n: 'Rimi Super', a: '18. novembra iela 136', k: 'box', p: [691, 622.1], e: [698.3, 594.6] },
   { id: 'n1707161675', b: 'rimi', n: 'Rimi', a: 'Cietokšņa iela 60, Ditton nams', k: 'ditton', p: [-1335.5, 1006.1], e: [-1321.6, 1047.4] },
   { id: 'n1707171536', b: 'rimi', n: 'mini Rimi', a: 'Viestura iela 10, autoosta', k: 'in', p: [-936.3, 1262.4], pk: [-928.9, 1285.5] },
@@ -178,7 +178,7 @@ function shAtlas() {
     ['mego', 4.2, 1.5, () => { R(0, 0, 4.2, 1.5, '#23408e', 'gloss', '#3050b0'); text('mego', 0.2, 0.05, 3.8, 1.3, '#f6d10f', { wt: 700, glow: '#ffe040' }); }],
     ['megoL', 4.4, 1.6, () => { text('mego', 0, 0, 4.4, 1.6, '#f6d10f', { wt: 700, glow: '#ffe040' }); }],
     ['h822', 1.8, 0.8, () => { text('8-22', 0, 0, 1.8, 0.8, '#f6d10f', { wt: 800, glow: '#ffe040' }); }],
-    ['h822w', 2.6, 1.0, () => { text('8-22', 0, 0, 2.6, 1.0, '#ffffff', { wt: 800, glow: '#ffffff' }); }],
+    ['h822w', 3.6, 1.4, () => { text('8-22', 0, 0, 3.6, 1.4, '#ffffff', { wt: 800, glow: '#ffffff' }); }],
     // the name of Beta: an orange b and a blue eta in white outlines (cut out for the roof, on a white board for the tenants)
     ['betaL', 5.2, 2.2, () => { betaName(0.15, 0.1, 4.9, 2.0); }],
     ['betaL2', 5.2, 2.2, () => { betaName(0.15, 0.1, 4.9, 2.0, '#eee3c8'); }],
@@ -318,7 +318,11 @@ function slatBlock(K, S) {
   lmBoxW(G, Fw, sc - w / 2 - 0.1, sc + w / 2 + 0.1, 9.9, 9.9 + h + 0.2, -1.25, -0.9, hb('#d8202c'));
   for (const q of [sc - w / 3, sc + w / 3]) lmBar(G, Fw.at(q, 9.9, -0.95), Fw.at(q, 9.9 + h, 1.0), 0.12, hb('#55595d'));
   flat(Fw, sc - w / 2, sc + w / 2, 10.0, 10.0 + h, -1.262, t);
-  flat(Fw, sc + 0.5, sc + 3.1, 6.6, 7.6, -0.92, CT.h822w);
+  flat(Fw, sc - 0.6, sc + 3.0, 6.4, 7.8, -0.92, CT.h822w);
+  if (S.doors) {   // the glazed doors at the back of the recess
+    const D = lmWF(...S.doors), m = Math.max(1, Math.round(D.L / 3)), w = D.L / m;
+    for (let k = 0; k < m; k++) flat(D, k * w, (k + 1) * w, 0.05, 3.6, -0.05, k === Math.floor(m / 2) ? CT.door : CT.glass);
+  }
 }
 // a store that is a tenant: glazing and a board on the wall of its host that faces its entrance
 function tenant(K, S, host) {
