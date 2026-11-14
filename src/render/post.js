@@ -100,8 +100,7 @@ function ppTargets(w, h, msaa) {
   for (const t of [PP.rt, PP.ao, ...PP.bl]) if (t) t.dispose();
   PP.w = w; PP.h = h; PP.msaa = msaa;
   const o = { type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, stencilBuffer: false };
-  PP.rt = msaa > 0 ? new THREE.WebGLMultisampleRenderTarget(w, h, o) : new THREE.WebGLRenderTarget(w, h, o);
-  if (msaa > 0) PP.rt.samples = msaa;
+  PP.rt = new THREE.WebGLRenderTarget(w, h, Object.assign({ samples: Math.max(0, msaa) }, o));
   PP.rt.depthTexture = new THREE.DepthTexture(w, h, THREE.UnsignedIntType);
   const small = k => new THREE.WebGLRenderTarget(Math.max(1, w >> k), Math.max(1, h >> k), Object.assign({ depthBuffer: false }, o));
   PP.ao = small(1); PP.bl = [1, 2, 3, 4].map(small);

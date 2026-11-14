@@ -368,7 +368,9 @@ node tools/terrain.js citydata.js terrain.js --tiles terrain-tiles
 
 ## Разработка
 
-Страница — [index.html](index.html), код — ES-модули в [src/](src/), сборка — [Vite](https://vite.dev), three.js r128 из npm.
+Страница — [index.html](index.html), код — ES-модули в [src/](src/), сборка — [Vite](https://vite.dev), three.js 0.187 из npm (без сборки — та же версия с jsDelivr через import map).
+
+Город был настроен под three.js r128, и при переходе на 0.187 картинка сохранена так: управление цветом выключено (`THREE.ColorManagement.enabled = false` — шестнадцатеричные цвета и цвета вершин берутся как есть, шейдеры сами переводят цвета вершин из sRGB, см. `SRGB_COLOR_VERTEX`), текстуры-холсты помечены `SRGBColorSpace`, вывод — sRGB; яркость солнца и небесного света умножена на π (three.js больше не делает этого сам); мягкие тени PCFSoft убраны из three.js — тени теперь PCF и заметнее. Подъём всех вершин на рельеф (переопределённый `project_vertex`) не трогает служебные материалы PMREM: с 0.18x они рисуют грани куба через этот кусок, и поднятые на рельеф оставляли карту окружения пустой. Если при следующем обновлении изменятся куски, которые подменяет город (`color_vertex`, `opaque_fragment`), страница предупредит об этом в консоли.
 
 ```bash
 npm install
