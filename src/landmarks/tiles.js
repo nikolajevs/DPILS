@@ -26,18 +26,20 @@ function lmWallTex(kind) {
 
 /* more wall surfaces, metres per tile in LMWS: 2 the university's ochre render scored into 1.5 × 0.75 m ashlar,
    3 red facing brick (colour baked in, laid in stretcher bond), 4 small beige ceramic tiles of the 1980s slabs with a
-   panel joint every 3 m, 5 white precast panels */
-const LMWS = [6, 8, 6, 3, 6, 6, 3];
+   panel joint every 3 m, 5 white precast panels, 6 buff brick, 7 the pale grey sand-lime (silicate) brick of the
+   Soviet schools and blocks */
+const LMWS = [6, 8, 6, 3, 6, 6, 3, 3];
 function lmWallTex2(kind) {
   const S = 512, cv = mkCanvas(S, S), g = cv.getContext('2d'), id = g.createImageData(S, S), d = id.data, n1 = fbm(S, [4, 16, 64], 41 + kind);
   const tone = []; for (let k = 0; k < 4096; k++) tone.push(lr());
   const BR = kind === 6   // 6: the buff brick of the 1970s cinema, pale yellow to ochre with a few pinkish bricks
     ? [[206, 172, 116], [196, 160, 104], [214, 184, 132], [186, 148, 96], [200, 164, 110], [192, 140, 100], [218, 190, 140], [180, 142, 92]]
+    : kind === 7 ? [[222, 218, 206], [214, 209, 196], [228, 224, 213], [206, 201, 189], [218, 213, 200], [200, 196, 186], [232, 228, 218], [210, 205, 194]]
     : [[178, 74, 46], [168, 66, 42], [188, 88, 54], [158, 60, 40], [182, 80, 50], [146, 56, 40], [194, 96, 60], [172, 72, 48]];
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
     const i = y * S + x, grain = (Math.random() - 0.5) * 0.06 + (n1[i] - 0.5) * 0.08;
     let r, gg, b;
-    if (kind === 3 || kind === 6) {
+    if (kind === 3 || kind === 6 || kind === 7) {
       const row = Math.floor(y * 40 / S), off = row % 2 ? S / 24 : 0, xx = (x + off) % S, col = Math.floor(xx * 12 / S) % 12, bx = xx - col * S / 12, by = y - row * S / 40;
       if (bx < 2.2 || by < 2.0) { const m = 0.72 + grain; r = 184 * m; gg = 176 * m; b = 166 * m; }
       else { const c = BR[Math.floor(tone[(row * 13 + col * 7) % 4096] * 8)], m = 0.9 + tone[(row * 31 + col * 17 + 5) % 4096] * 0.16 + grain * 1.3 - (by < 3.5 || bx < 4 ? 0.06 : 0); r = c[0] * m; gg = c[1] * m; b = c[2] * m; }

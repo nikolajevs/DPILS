@@ -79,9 +79,9 @@ function lmWall(K, Pw, Qw, y0, y1, ops, st) {
       if (yb < y1 - 1e-3) W.q(at(o.s0, yb, 0), at(o.s1, yb, 0), at(o.s1, yb, d), at(o.s0, yb, d), [0, -1, 0], uvR(o.s0, o.s1, 0, d), sh(rc, 0.85));
       if (ya > y0 + 1e-3 && !o.noFloor) W.q(at(o.s0, ya, d), at(o.s1, ya, d), at(o.s1, ya, 0), at(o.s0, ya, 0), [0, 1, 0], uvR(o.s0, o.s1, 0, d), rc);
     }
-    if (o.tile) {
-      const t = LMT[o.tile], f0 = (ya - o.y0) / (o.y1 - o.y0), f1 = (yb - o.y0) / (o.y1 - o.y0), va = t.v0 + (t.v1 - t.v0) * f0, vb = t.v0 + (t.v1 - t.v0) * f1;
-      K.det.q(at(o.s0, ya, d), at(o.s1, ya, d), at(o.s1, yb, d), at(o.s0, yb, d), N, [t.u1, va, t.u0, va, t.u0, vb, t.u1, vb], LMWHITE, o.lit ? 1 : 0);
+    if (o.tile) {   // a tile of the landmark atlas by name, or a tile of another atlas (o.tile an object) drawn into o.det
+      const t = typeof o.tile === 'string' ? LMT[o.tile] : o.tile, f0 = (ya - o.y0) / (o.y1 - o.y0), f1 = (yb - o.y0) / (o.y1 - o.y0), va = t.v0 + (t.v1 - t.v0) * f0, vb = t.v0 + (t.v1 - t.v0) * f1;
+      (o.det || K.det).q(at(o.s0, ya, d), at(o.s1, ya, d), at(o.s1, yb, d), at(o.s0, yb, d), N, [t.u1, va, t.u0, va, t.u0, vb, t.u1, vb], LMWHITE, o.lit ? 1 : 0);
     }
     if (o.sill && ya > y0 + 0.1) lmBoxW(K.plain, F, o.s0 - 0.06, o.s1 + 0.06, ya - 0.07, ya, -0.1, d, o.sill);
   }
