@@ -15,8 +15,9 @@ import { WL } from '../core/env.js';
 /* ---------- the overhead line of the trams ----------
    The tram lines are electrified (600 V): a contact wire 5.8 m over every track, and a support every 32 m. Where the
    tracks run in a carriageway (on the overpass and along most streets) steel poles stand at both kerbs and a span wire
-   crosses the street, the contact wires hung from it; on a track bed of their own a centre pole between the two tracks
-   carries an arm over each (as on 18. novembra iela west of the overpass); a single track has a pole beside it, on the
+   crosses the street, the contact wires hung from it; on a track bed beside the street (18. novembra iela west of the
+   overpass) a pole on the side away from the street carries a long bracket over both tracks; on a bed between two
+   carriageways or out on its own a centre pole carries an arm over each; a single track has a pole beside it, on the
    side away from the street. A pair of tracks gets one support, put up by one of them. Heights follow bridges and the
    overpass like the vehicles do. */
 function lmTramWires(K) {
@@ -24,23 +25,45 @@ function lmTramWires(K) {
   const lift = (x, z) => vbGround(x, z) + vbLift(x, z) + bridgeY(x, z), P3 = (x, z, y) => [x, y + lift(x, z), z];
   const grid = new SegGrid(20); TL.forEach((p, li) => { for (let i = 0; i < p.length - 2; i += 2) grid.add(p[i], p[i + 1], p[i + 2], p[i + 3], li, 0); });
   const inRoad = (x, z) => { let best = null, bd = 1e9; CARROAD.near(x, z, 10, (id, d) => { if (CARROAD.s[id * 6 + 5] <= 3 && d < CARROAD.s[id * 6 + 4] - 0.3 && d < bd) { bd = d; best = id; } }); return best; };
+  // the carriageways along a track near (x, z): each one's extent across it, as offsets along the track's left normal
+  const across = (x, z, tx, tz, r) => { const s = CARROAD.s, nx = -tz, nz = tx, iv = [];
+    CARROAD.near(x, z, r, (id, d, px, pz) => { const k = id * 6; if (s[k + 5] > 3) return; const dx = s[k + 2] - s[k], dz = s[k + 3] - s[k + 1], l = Math.hypot(dx, dz) || 1; if (Math.abs((dx * tx + dz * tz) / l) < 0.8) return;
+      const o = (px - x) * nx + (pz - z) * nz; iv.push([o - s[k + 4], o + s[k + 4]]); });
+    return iv; };
   const pole = (x, z, h) => { lmLathe(G, x, z, lift(x, z), [[0.17, 0], [0.13, 0.4], [0.09, h]], 8, POLE); COL.add(x, z, x + 0.01, z, 0.15, 0); };
   function support(li, x, z, tx, tz) {
     const nx = -tz, nz = tx; let q = null, qd = 1e9, qli = -1;
     grid.near(x, z, 5.5, (id, d, px, pz) => { const s = grid.s, lj = s[id * 6 + 4]; if (lj === li || d < 2.2) return; const dx = s[id * 6 + 2] - s[id * 6], dz = s[id * 6 + 3] - s[id * 6 + 1], l = Math.hypot(dx, dz) || 1;
       if (Math.abs((dx * tx + dz * tz) / l) > 0.85 && d < qd) { qd = d; q = [px, pz]; qli = lj; } });
     if (q && qli < li) return;   // the other track of the pair carries it
-    const road = inRoad(x, z), tracks = q ? [[x, z], q] : [[x, z]];
-    if (road !== null) {
-      const s = CARROAD.s, ax = s[road * 6], az = s[road * 6 + 1], dx = s[road * 6 + 2] - ax, dz = s[road * 6 + 3] - az, l2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)), l = Math.sqrt(l2);
-      const rx = ax + dx * t, rz = az + dz * t, rnx = -dz / l, rnz = dx / l, hw = s[road * 6 + 4] + 0.9, A = [rx + rnx * hw, rz + rnz * hw], B = [rx - rnx * hw, rz - rnz * hw];
+    const road = inRoad(x, z), tracks = q ? [[x, z], q] : [[x, z]], iv = across(x, z, tx, tz, 16);
+    /* in a carriageway, or in a median too narrow for a track bed (under 6.5 m between the carriageways, by the overpass
+       bridge), the span wire crosses the whole roadway kerb to kerb: both carriageways of a pair, not just the one the
+       track is in, or the far pole stood in the oncoming lane */
+    let lo = null, hi = null;
+    if (road !== null) { lo = -0.5; hi = 0.5; for (const [a, b] of iv) if (a < 0.3 && b > -0.3) { lo = Math.min(lo, a); hi = Math.max(hi, b); } }
+    else { const L = iv.filter(r => r[1] <= 0.3), R = iv.filter(r => r[0] >= -0.3);
+      if (L.length && R.length) { const le = Math.max(...L.map(r => r[1])), re = Math.min(...R.map(r => r[0])); if (re - le < 6.5) { lo = le; hi = re; } } }
+    if (lo !== null) {
+      for (let grew = true; grew;) { grew = false; for (const [a, b] of iv) { if (b > hi && a < hi + 6.5) { hi = b; grew = true; } if (a < lo && b > lo - 6.5) { lo = a; grew = true; } } }
+      const A = [x + nx * (hi + 0.9), z + nz * (hi + 0.9)], B = [x + nx * (lo - 0.9), z + nz * (lo - 0.9)];
       if (inBuilding(A[0], A[1]) || inBuilding(B[0], B[1])) return;
       pole(A[0], A[1], 8.6); pole(B[0], B[1], 8.6); lmBar(G, P3(A[0], A[1], 7.4), P3(B[0], B[1], 7.4), 0.025, WIRE);
       for (const c of tracks) { const k = (c[0] - A[0]) * (B[0] - A[0]) + (c[1] - A[1]) * (B[1] - A[1]), L2 = (B[0] - A[0]) ** 2 + (B[1] - A[1]) ** 2, f = Math.max(0, Math.min(1, k / L2)), sx = A[0] + (B[0] - A[0]) * f, sz = A[1] + (B[1] - A[1]) * f;
         lmBar(G, P3(sx, sz, 7.4), P3(c[0], c[1], CW + 0.05), 0.02, WIRE); }
     } else if (q) {
-      const cx = (x + q[0]) / 2, cz = (z + q[1]) / 2; if (inBuilding(cx, cz)) return; pole(cx, cz, 7.2);
-      for (const c of tracks) { lmBar(G, P3(cx, cz, 6.6), P3(c[0], c[1], 6.6), 0.08, POLE); lmBar(G, P3(cx, cz, 7.15), P3(c[0], c[1], 6.64), 0.03, POLE); lmBar(G, P3(c[0], c[1], 6.6), P3(c[0], c[1], CW + 0.05), 0.02, WIRE); }
+      const cx = (x + q[0]) / 2, cz = (z + q[1]) / 2, iv = across(cx, cz, tx, tz, 12);
+      const left = iv.some(([a, b]) => b < 0), right = iv.some(([a, b]) => a > 0);
+      if (left !== right) {   // a track bed beside the street (18. novembra iela west of the overpass): a pole on the far side, a long bracket over both tracks
+        const sd = right ? -1 : 1, far = Math.max(...tracks.map(c => ((c[0] - cx) * nx + (c[1] - cz) * nz) * sd)), near = Math.min(...tracks.map(c => ((c[0] - cx) * nx + (c[1] - cz) * nz) * sd));
+        const px = cx + nx * sd * (far + 2.1), pz = cz + nz * sd * (far + 2.1), ex = cx + nx * sd * (near - 0.6), ez = cz + nz * sd * (near - 0.6);
+        if (inBuilding(px, pz)) return; pole(px, pz, 7.6);
+        lmBar(G, P3(px, pz, 6.6), P3(ex, ez, 6.6), 0.08, POLE); lmBar(G, P3(px, pz, 7.55), P3(ex, ez, 6.66), 0.03, POLE);
+        for (const c of tracks) lmBar(G, P3(c[0], c[1], 6.6), P3(c[0], c[1], CW + 0.05), 0.02, WIRE);
+      } else {   // between two carriageways, or on its own: a centre pole with an arm over each track
+        if (inBuilding(cx, cz)) return; pole(cx, cz, 7.2);
+        for (const c of tracks) { lmBar(G, P3(cx, cz, 6.6), P3(c[0], c[1], 6.6), 0.08, POLE); lmBar(G, P3(cx, cz, 7.15), P3(c[0], c[1], 6.64), 0.03, POLE); lmBar(G, P3(c[0], c[1], 6.6), P3(c[0], c[1], CW + 0.05), 0.02, WIRE); }
+      }
     } else {
       const sd = inRoad(x + nx * 3, z + nz * 3) !== null ? -1 : 1, px = x + nx * 2.6 * sd, pz = z + nz * 2.6 * sd; if (inBuilding(px, pz)) return; pole(px, pz, 7.2);
       lmBar(G, P3(px, pz, 6.6), P3(x, z, 6.6), 0.08, POLE); lmBar(G, P3(px, pz, 7.15), P3(x, z, 6.64), 0.03, POLE); lmBar(G, P3(x, z, 6.6), P3(x, z, CW + 0.05), 0.02, WIRE);
