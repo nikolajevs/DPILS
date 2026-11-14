@@ -92,7 +92,8 @@ function lmOverpass(K) {
   // ---- the abutments: concrete walls closing the embankments towards the tracks
   for (const [s, dir] of [[sW, 1], [sE, -1]]) { const f = fr(s), Hl = W3(f, f.hl, 0)[1], Hr = W3(f, -f.hr, 0)[1];
     const A = W3(f, f.hl + 1.5 * Hl, 0), B = W3(f, -f.hr - 1.5 * Hr, 0); A[1] = 0; B[1] = 0;
-    polyA(G, [A, W3(f, f.hl, 0.2), W3(f, -f.hr, 0.2), B], CON, f.tu[0] * dir, 0, f.tu[1] * dir);
+    // its top under the deck: at 0.2 m over the road it stood up as a ledge across the street at each end of the bridge
+    polyA(G, [A, W3(f, f.hl, -0.45), W3(f, -f.hr, -0.45), B], CON, f.tu[0] * dir, 0, f.tu[1] * dir);
     polyA(G, [W3(f, f.hl + 0.6, -0.5), W3(f, -f.hr - 0.6, -0.5), W3(f, -f.hr - 0.6, -0.45), W3(f, f.hl + 0.6, -0.45)], sh(CON, 0.9), 0, 1, 0); }
   // ---- the deck: the slab with its cornices, six girders under it, two piers on three columns each between the tracks
   { const S = steps(sW, sE, 3);
