@@ -124,6 +124,28 @@ function renderFrame() {
   u.uAoPx.value.set(1 / PP.ao.width, 1 / PP.ao.height); u.uExposure.value = T.exp; u.uBloom.value = q.bloom ? T.bloom : 0; u.uAo.value = q.ao ? 0.85 : 0; u.uSeed.value = reduceMotion ? 0 : (clock * 60 % 64);
   fsPass(matFinal, null);
 }
+/* Compiles the shaders of everything in the scene before the first frame, an object at a time with a frame between
+   slices of about 40 ms, so the page stays responsive and the loading bar can follow. A shader program depends on the
+   material, on the kind of object (instanced or not, receiving shadows) and on the target drawn into, so one object
+   of each combination is compiled, into the target the scene is drawn into. renderer.compile compiles everything in
+   the scene it is given, so the scene is shown one object at a time (with its lights). */
+async function warmUp(report, nextFrame) {
+  const seen = new Set(), objs = [];
+  scene.traverse(o => {
+    const ms = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+    for (const m of ms) { const k = m.uuid + (o.isInstancedMesh ? 'i' : '') + (o.receiveShadow ? 'r' : '') + (o.isPoints ? 'p' : o.isLine ? 'l' : o.isSprite ? 's' : ''); if (!seen.has(k)) { seen.add(k); objs.push(o); } }
+  });
+  const all = scene.children, lights = all.filter(o => o.isLight);
+  const target = () => { if (!POST) return; renderer.getDrawingBufferSize(PXV); ppTargets(PXV.x, PXV.y, QUALITY[qi].msaa); renderer.setRenderTarget(PP.rt); };
+  for (let i = 0; i < objs.length;) {
+    const t0 = performance.now(); target();
+    try { while (i < objs.length && performance.now() - t0 < 40) { scene.children = lights.concat([objs[i++]]); renderer.compile(scene, camera); } }
+    finally { scene.children = all; renderer.setRenderTarget(null); }
+    report(i / objs.length); await nextFrame();
+  }
+  // the passes after the scene, each into the kind of target it draws into (the output encoding is part of a program)
+  if (POST) { target(); for (const [m, t] of [[matAO, PP.ao], [matBright, PP.bl[0]], [matDown, PP.bl[1]], [matFinal, null]]) { fsQuad.material = m; renderer.setRenderTarget(t); renderer.compile(fsScene, fsCam); } renderer.setRenderTarget(null); }
+}
 let shadowHalf = 0;
 const LX = new THREE.Vector3(), LY = new THREE.Vector3(), UPV = new THREE.Vector3(0, 1, 0), TGT = new THREE.Vector3();
 function updateSun() {
@@ -151,4 +173,4 @@ function updateLod() {
   for (const t of treeTiles.values()) { const v = dist(t.x0, t.z0, TTILE) < q.tree; if (t.hi.length && t.hi[0].visible !== v) STATE.shadowDirty = true; for (const m of t.hi) m.visible = v; for (const m of t.lo) m.visible = !v; }
 }
 
-export { PP, renderFrame, updateLod, updateSun };
+export { PP, renderFrame, updateLod, updateSun, warmUp };
