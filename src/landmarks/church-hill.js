@@ -308,7 +308,7 @@ function cathedralBG(K) {
 
 /* ---- Martin Luther Cathedral ---- */
 function cathedralLu(K) {
-  const f = F.lu, G = K.plain, a = ang(f), BR = { tex: 3, col: LMWHITE }, BRC = [138, 64, 48], STN = hb('#d9d2c4'), ROOF = hb('#848e94'), SP = hb('#7b858b');
+  const f = F.lu, G = K.plain, a = ang(f), BR = { tex: 3, col: LMWHITE }, BRC = [138, 64, 48], STN = hb('#d9d2c4'), ROOF = hb('#8e9396'), SP = hb('#7f8588');
   STATE.GBC = standOn(f, [[0, 3.5], [27.2, 3.5], [29.1, 0], [33.8, 1.6], [36.6, 11.3], [33.9, 20.6], [32.4, 22.5], [6.7, 22.8], [1.5, 16.5], [0, 16.5]]);
   const H = 11, west = e => e.nu < -0.9, gw = (s, y, w, h, o) => Object.assign({ s, w, y, h, head: 'pointed', tile: CT.goth, trim: STN }, o);
   const pinnacle = (x, z, y, h, r = 0.45) => lmLathe(G, x, z, y, [[r, 0], [r, h - 2.4], [0.02, h]], 6, BRC);
