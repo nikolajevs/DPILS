@@ -4,13 +4,15 @@ import { LMB, LMWHITE } from './core.js';
 import { lmBar, lmBoxW, lmLathe, lmWF, lmWall } from './helpers.js';
 import { LMM, lmStd } from './index.js';
 import { lmRegisterOutline } from './tv-tower.js';
-import { flatPlain, flatRoof, tileOf } from '../buildings/walls.js';
+import { band, flatPlain, flatRoof, roofFace, tileOf } from '../buildings/walls.js';
 import { ROOFPAL } from '../world/palette.js';
-import { BLD, ROAD, inBuilding, onRoad } from '../world/data.js';
-import { box, polyA } from '../core/geometry.js';
-import { area2, bbox, hb, pick, pip, reversed, rnd } from '../core/util.js';
-import { TERR, terrainH } from '../world/terrain.js';
+import { BLD, M_ASPH, M_PAVE, ROAD, inBuilding, onRoad } from '../world/data.js';
+import { GB, box, polyA } from '../core/geometry.js';
+import { fortCar } from '../fortress/arsenals.js';
+import { area2, bbox, edgeN, hb, insetOk, obb, offsetRing, pick, pip, reversed, rnd, triangulate } from '../core/util.js';
+import { TERR, subTris, terrainH } from '../world/terrain.js';
 import { mkCanvas, toTex } from '../render/textures.js';
+import { scene } from '../render/renderer.js';
 
 /* ---------- supermarkets: Rimi, Maxima, Mego, Lidl and Beta; the Ditton nams and Solo shopping centres ----------
    Every store of the five chains in Daugavpils that OpenStreetMap knows (shop=supermarket|convenience with their
@@ -31,7 +33,7 @@ import { mkCanvas, toTex } from '../render/textures.js';
    p: the store (its OSM node or the centre of its outline); e: its main entrance; pk: the car park it faces. */
 const SHOPS = [
   { id: 'w115788072', b: 'beta', n: 'Beta', a: 'Šaurā iela 31', k: 'box', p: [384, -1289.4], pk: [402.8, -1285] },
-  { id: 'w628607721', b: 'beta', n: 'Beta', a: 'Puškina iela 14', k: 'box', p: [-94.3, 1078.2] },
+  { id: 'w628607721', b: 'beta', n: 'Beta', a: 'Puškina iela 14', k: 'box', p: [-93.6, 1068] },
   { id: 'n2455742945', b: 'beta', n: 'Beta', a: 'Ventspils iela 67', k: 'in', p: [-22.5, 537.3], e: [-16.4, 527.8] },
   { id: 'n3712549204', b: 'beta', n: 'Beta', a: 'Inženieru iela 1', k: 'in', p: [1313.5, -1186.9], e: [1311.3, -1198] },
   { id: 'w989692937', b: 'lidl', n: 'Lidl', a: '18. novembra iela 146', k: 'osm', p: [800.4, 505.6], pk: [791.6, 539.9], o: [[825.4, 453.8], [847.7, 475.7], [811.7, 512.7], [811.7, 516.7], [796.6, 532.5], [795.5, 533.5], [770.7, 509.7], [771.7, 508.6], [772.9, 507.4]] },
@@ -59,18 +61,20 @@ const SHOPS = [
 ];
 // the walls of each chain: height to the top of the parapet, panels (wall texture 5) or render (1), bands [y from the top, height, colour]
 const STY = {
-  lidl: { h: 6.4, tex: 5, wall: '#dde0e3', plinth: '#62676b', glaze: 'all', gTop: 4.2, canopy: 4.2, pylon: 'lidl' },
-  rimi: { h: 5.8, tex: 5, wall: '#eef0f0', plinth: '#73777b', glaze: 0.5, gTop: 3.4, bands: [[1.5, 0.9, '#d8202c']], canopy: 1.6, pylon: 'rimi' },
-  maxima: { h: 5.4, tex: 5, wall: '#f1f2f0', plinth: '#73777b', glaze: 0.4, gTop: 3.2, bands: [[0.75, 0.45, '#1d3d8f']], gBand: '#1d3d8f', canopy: 1.3, pylon: 'maxima' },
-  mego: { h: 5.4, tex: 5, wall: '#45474b', plinth: '#2f3134', glaze: 0.45, gTop: 3.3, canopy: 1.5, pylon: 'mego' },
-  beta: { h: 4.6, tex: 1, wall: '#eee8dc', plinth: '#8c8174', glaze: 0.35, gTop: 3.0, bands: [[0.85, 0.3, '#c9252c']], canopy: 1.1 },
+  lidl: { h: 7.2, tex: 5, wall: '#dde0e3', plinth: '#62676b', glaze: 'all', gTop: 4.2, canopy: 4.2, pylon: 'lidl' },
+  rimi: { h: 6.2, tex: 5, wall: '#eef0f0', plinth: '#73777b', glaze: 0.5, gTop: 3.4, bands: [[1.5, 0.9, '#d8202c']], canopy: 1.6, pylon: 'rimi' },
+  maxima: { h: 5.8, tex: 5, wall: '#f1f2f0', plinth: '#73777b', glaze: 0.4, gTop: 3.2, bands: [[0.75, 0.45, '#1d3d8f']], gBand: '#1d3d8f', canopy: 1.3, pylon: 'maxima' },
+  mego: { h: 6.0, tex: 5, wall: '#45474b', plinth: '#2f3134', glaze: 0.45, gTop: 3.3, canopy: 1.5, pylon: 'mego' },
+  // Beta (Šaurā iela 31, photographs of the owner): buff brick, big windows in dark frames, a sloping canopy of blue profiled
+  // sheet along the front, a low hipped roof of grey metal, the name in big letters on the roof
+  beta: { h: 4.2, tex: 6, wall: '#ffe7c8', plinth: '#7b6a5d', glaze: 0.6, gTop: 2.9, canopy: 1.9, pitched: '#6d7276' },
 };
 const signOf = S => S.b === 'rimi' ? (/Hyper/.test(S.n) ? 'rimiHyper' : /Super/.test(S.n) ? 'rimiSuper' : /mini/.test(S.n) ? 'miniRimi' : 'rimi') : S.b === 'maxima' ? (/XX/.test(S.n) ? 'maximaXX' : 'maximaX') : S.b;
 // key points inside the cadastre parts of the two shopping centres
-const MALL = { ditton: [[-1210, 915], [-1290, 960], [-1400, 980], [-1268, 993.5]], solo: [[-1390, 1175]] };
+const MALL = { ditton: [[-1210, 915], [-1290, 960], [-1400, 980], [-1268, 993.5]] };
 
 // ---- claiming the buildings while buildBuildings runs
-const SH = { own: new Map(), host: new Map(), mall: { ditton: [], solo: [] } };
+const SH = { own: new Map(), host: new Map(), mall: { ditton: [] } };
 const H_OF = S => STY[S.b].h;
 function inner(r) {   // a point inside a ring (its centre, else the middle of the widest run through it)
   const n = r.length >> 1; let cx = 0, cz = 0; for (let i = 0; i < r.length; i += 2) { cx += r[i]; cz += r[i + 1]; } cx /= n; cz /= n;
@@ -96,10 +100,23 @@ function shopClaim(id, rec, rings, outer, bb) {
     const part = { id, rings, outer, bb, h: rec[1] / 10, floors: Math.max(1, rec[5]), gbc: STATE.GBC };
     if (S.k === 'in') { SH.host.set(S.id, part); return false; }
     part.H = Math.max(part.h, H_OF(S)); SH.own.set(S.id, part);
-    const T = tileOf((bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2); flatRoof(T.m.roof, rings, part.H - 0.45, pick(ROOFPAL[5], id, 2), 5, Math.floor(rnd(id, 9) * 255));
+    const T = tileOf((bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2), seed = Math.floor(rnd(id, 9) * 255);
+    if (!(STY[S.b].pitched && hipRoof(T, outer, rings, part.H, hb(STY[S.b].pitched), seed))) flatRoof(T.m.roof, rings, part.H - 0.45, pick(ROOFPAL[5], id, 2), 5, seed);
     return true;
   }
   return false;
+}
+
+// a low roof over the outline: slopes from the eaves (35 cm out) up to the outline drawn in, a flat top; false if it does not fit
+function hipRoof(T, outer, rings, H, tint, seed) {
+  if (rings.length !== 1) return false;
+  const o = obb(outer), tanp = Math.tan(0.3), ov = 0.35; let d = Math.min(6, o ? o.b * 0.9 : 4), inn = null;
+  for (let k = 0; k < 6 && d > 0.7; k++) { const q = offsetRing(outer, -d); if (insetOk(outer, q)) { inn = q; break; } d *= 0.7; }
+  if (!inn) return false;
+  const G = T.m, eave = offsetRing(outer, ov), yE = H - ov * tanp, yT = H + d * tanp, n = outer.length >> 1;
+  for (let i = 0; i < n; i++) { const j = (i + 1) % n, ed = edgeN(outer, i); if (ed[2] < 0.05) continue; roofFace(G.roof, [[eave[2 * i], yE, eave[2 * i + 1]], [eave[2 * j], yE, eave[2 * j + 1]], [inn[2 * j], yT, inn[2 * j + 1]], [inn[2 * i], yT, inn[2 * i + 1]]], ed[0], ed[1], tint, 2, seed); }
+  flatRoof(G.roof, [inn], yT, tint, 2, seed); band(G.plain, outer, eave, yE, hb('#5f6366'), true);
+  return true;
 }
 
 // ---- the atlas: glazing (colour, ORM, night light) and the boards of the chains (with alpha for cut-out letters)
@@ -115,6 +132,9 @@ function shAtlas() {
     const a = X + x * PX, b = Y + y * PX, gr = g.createLinearGradient(0, b, 0, b + h * PX); gr.addColorStop(0, c[0]); gr.addColorStop(0.45, c[1]); gr.addColorStop(0.55, c[2]); gr.addColorStop(1, c[0]);
     g.fillStyle = gr; g.fillRect(a, b, w * PX, h * PX); o.fillStyle = ORM.glass; o.fillRect(a, b, w * PX, h * PX); e.fillStyle = glow; e.fillRect(a, b, w * PX, h * PX);
   };
+  const betaName = (x, y, w, h) => { const bw = w * 0.27;
+    text('b', x, y, bw, h, '#f2a020', { font: 'Arial, sans-serif', wt: 900, glow: '#ffb840', outline: '#ffffff' });
+    text('eta', x + bw * 0.88, y + h * 0.12, w - bw * 0.88, h * 0.88, '#2445b8', { font: 'Arial, sans-serif', wt: 900, glow: '#4a6ae8', outline: '#ffffff' }); };
   // text fitted into a box; glow: the colour it shines at night
   const text = (s, x, y, w, h, col, { font = '"Golos Text", Arial, sans-serif', wt = 800, italic = false, glow = col, align = 'center', outline = null } = {}) => {
     let sz = h * PX; const f = () => `${italic ? 'italic ' : ''}${wt} ${sz}px ${font}`; g.font = f(); const mw = g.measureText(s).width; if (mw > w * PX) { sz *= w * PX / mw; g.font = f(); }
@@ -123,7 +143,7 @@ function shAtlas() {
   };
   const defs = [
     // a module of a shop's curtain wall: aluminium frame, a transom, the shop inside (lit ceiling, shelves)
-    ['glass', 3.0, 3.4, () => { glass(0, 0, 3, 3.4); R(0.06, 0.12, 2.88, 0.12, '#f4efe2', 'glass', '#fff4dc'); for (let k = 0; k < 5; k++) R(0.2 + k * 0.56, 2.0, 0.42, 1.2, ['#8a6b4f', '#5f7d8c', '#b0563f', '#6c8a52', '#a99a6a'][k], 'glass', ['#a07a50', '#5a7a88', '#c0603f', '#6e8e50', '#b8a46a'][k]);
+    ['glass', 3.0, 3.4, () => { glass(0, 0, 3, 3.4); R(0.06, 0.12, 2.88, 0.12, '#f4efe2', 'glass', '#fff4dc'); for (let k = 0; k < 5; k++) R(0.2 + k * 0.56, 2.0, 0.42, 1.2, ['#6f6253', '#56656d', '#7d5a4c', '#5e6a52', '#7c7461'][k], 'glass', ['#a07a50', '#6a8090', '#b06a4f', '#7a8e60', '#b8a070'][k]);
       for (const x of [0, 1.47, 2.94]) R(x, 0, 0.06, 3.4, '#b9bdc1', 'metal'); for (const y of [0, 0.62, 3.34]) R(0, y, 3, 0.06, '#b9bdc1', 'metal'); }],
     // sliding entrance doors under a fanlight
     ['door', 3.0, 3.4, () => { glass(0, 0, 3, 3.4, ['#2f383e', '#5d6c76', '#283035'], '#fff0d0'); R(0, 0, 3, 0.62, '#9aa0a5', 'metal'); glass(0.08, 0.08, 2.84, 0.46); for (const x of [0, 1.47, 2.94]) R(x, 0.6, 0.06, 2.8, '#b9bdc1', 'metal'); R(0, 0.58, 3, 0.06, '#b9bdc1', 'metal'); R(0, 3.34, 3, 0.06, '#8d9296', 'metal');
@@ -141,7 +161,12 @@ function shAtlas() {
       for (const [c, s] of [[g, '#e0101c'], [e, '#ff3030']]) { c.strokeStyle = s; c.lineWidth = 0.07 * PX; c.beginPath(); c.arc(X + 1.3 * PX, Y + 1.3 * PX, 1.0 * PX, 0, 7); c.stroke(); }
       text('LIDL', 0.4, 0.92, 1.8, 0.78, '#0a50a8', { wt: 900, glow: '#0a3a90' }); }],
     ['mego', 4.2, 1.5, () => { R(0, 0, 4.2, 1.5, '#3a3c40'); text('mego', 0.2, 0.1, 3.8, 1.2, '#f5b400', { wt: 800, glow: '#ffc830' }); }],
-    ['beta', 3.8, 1.3, () => { R(0, 0, 3.8, 1.3, '#ffffff', 'gloss', '#fff8ee'); R(0.06, 0.06, 3.68, 0.08, '#c9252c'); R(0.06, 1.16, 3.68, 0.08, '#c9252c'); text('BETA', 0.2, 0.22, 3.4, 0.9, '#c9252c', { wt: 900, glow: '#e03030' }); }],
+    // the name of Beta: an orange b and a blue eta in white outlines (cut out for the roof, on a white board for the tenants)
+    ['betaL', 5.2, 2.2, () => { betaName(0.15, 0.1, 4.9, 2.0); }],
+    ['beta', 4.0, 1.5, () => { R(0, 0, 4.0, 1.5, '#ffffff', 'gloss', '#fff8ee'); betaName(0.3, 0.12, 3.4, 1.26); }],
+    // a shop window in a dark frame, two by three panes (Beta)
+    ['win2', 3.4, 2.6, () => { glass(0, 0, 3.4, 2.6); R(0.1, 0.1, 3.2, 0.1, '#f4efe2', 'glass', '#fff4dc'); for (let k = 0; k < 5; k++) R(0.3 + k * 0.6, 1.5, 0.45, 0.9, ['#6f6253', '#56656d', '#7d5a4c', '#5e6a52', '#7c7461'][k], 'glass', ['#a07a50', '#6a8090', '#b06a4f', '#7a8e60', '#b8a070'][k]);
+      for (const x of [0, 1.66, 3.32]) R(x, 0, 0.08, 2.6, '#3a3d40', 'metal'); for (const y of [0, 0.9, 1.75, 2.52]) R(0, y, 3.4, 0.08, '#3a3d40', 'metal'); }],
     // the cut-out letters on the drum of Ditton nams (alpha), the board of the Solo trade park with its logo
     ['ditton', 13.0, 2.4, () => { text('DITTON NAMS', 0, 0.1, 13, 2.2, '#e9bb3a', { font: 'Georgia, "Times New Roman", serif', wt: 700, glow: '#ffd25a', outline: '#5a4410' }); }],
     ['solo', 5.0, 4.4, () => { R(0, 0, 5, 4.4, '#e7dfc6'); for (const [c, s] of [[g, '#1f4fa3'], [e, '#3070e0']]) { c.fillStyle = s; c.beginPath(); c.roundRect(X + 1.45 * PX, Y + 0.2 * PX, 2.1 * PX, 1.7 * PX, 0.7 * PX); c.fill(); }
@@ -165,6 +190,7 @@ function shAtlas() {
 const KS = { det: null };
 const SHV = [];   // where each store's front is: its name, a point on the front, the outward normal (for views)
 const N_ = Fw => [Fw.nx, 0, Fw.nz];
+const sh2 = (c, f) => c.map(v => Math.min(255, Math.round(v * f)));
 // a tile laid flat on the frame Fw from s0..s1, y0..y1 at depth d (negative: in front of the wall)
 function flat(Fw, s0, s1, y0, y1, d, t, lit = 1) { KS.det.q(Fw.at(s0, y0, d), Fw.at(s1, y0, d), Fw.at(s1, y1, d), Fw.at(s0, y1, d), N_(Fw), [t.u1, t.v0, t.u0, t.v0, t.u0, t.v1, t.u1, t.v1], LMWHITE, lit); }
 // a board centred at s with its lower edge at y, h high (its width by the tile), on a backing box d deep
@@ -177,7 +203,7 @@ const levelAt = (x, z) => { if (!TERR.on) return null; const b = terrainH(x, z);
 function frontEdge(r, S, from = S.p) {
   const n = r.length >> 1; let best = 0, bs = 1e9;
   for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n, ax = r[2 * i], az = r[2 * i + 1], bx = r[2 * j], bz = r[2 * j + 1], L = Math.hypot(bx - ax, bz - az); if (L < 3) continue;
+    const j = (i + 1) % n, ax = r[2 * i], az = r[2 * i + 1], bx = r[2 * j], bz = r[2 * j + 1], L = Math.hypot(bx - ax, bz - az); if (L < 6) continue;
     const tx = (bx - ax) / L, tz = (bz - az) / L, nx = tz, nz = -tx, mx = (ax + bx) / 2, mz = (az + bz) / 2;
     let s;
     if (S.e) { const t = Math.max(0, Math.min(1, ((S.e[0] - ax) * tx + (S.e[1] - az) * tz) / L)); s = Math.hypot(S.e[0] - ax - tx * L * t, S.e[1] - az - tz * L * t); }
@@ -214,12 +240,13 @@ function storeBox(K, S, r, H, gbc) {
     if (i === fi && L > 4) {
       const gw = st.glaze === 'all' ? L - 1.4 : Math.min(L - 2, Math.max(6, L * st.glaze)), q = S.e || S.pk || S.p;
       const sc = Math.max(gw / 2 + 0.7, Math.min(L - gw / 2 - 0.7, st.glaze === 'all' ? L / 2 : along(r, i, q))), m = Math.max(1, Math.round(gw / 3)), mw = gw / m, md = Math.floor(m / 2);
-      for (let k = 0; k < m; k++) ops.push({ s0: sc - gw / 2 + k * mw, s1: sc - gw / 2 + (k + 1) * mw, y0: 0.1, y1: st.gTop, d: 0.15, tile: k === md ? CT.door : CT.glass, det: KS.det, lit: 1 });
+      if (S.b === 'beta') { const m2 = Math.max(1, Math.round(gw / 4.2)), w2 = gw / m2; for (let k = 0; k < m2; k++) { const a = sc - gw / 2 + k * w2; ops.push(k === Math.floor(m2 / 2) ? { s0: a + w2 / 2 - 0.8, s1: a + w2 / 2 + 0.8, y0: 0.1, y1: st.gTop - 0.1, d: 0.25, tile: CT.door, det: KS.det, lit: 1 } : { s0: a + 0.45, s1: a + w2 - 0.45, y0: 0.35, y1: st.gTop - 0.1, d: 0.12, tile: CT.win2, det: KS.det, lit: 1 }); } }
+      else for (let k = 0; k < m; k++) ops.push({ s0: sc - gw / 2 + k * mw, s1: sc - gw / 2 + (k + 1) * mw, y0: 0.1, y1: st.gTop, d: 0.15, tile: k === md ? CT.door : CT.glass, det: KS.det, lit: 1 });
       front = { Fw, L, sc, gw, i };
     }
     lmWall(K, P, Q, 0, H, ops, wall);
     for (const [top, hh, col] of st.bands || []) lmBoxW(G, Fw, -0.06, L + 0.06, H - top - hh, H - top, -0.07, 0, hb(col));
-    lmBoxW(G, Fw, -0.12, L + 0.12, H - 0.18, H, -0.12, 0.35, hb(st.b === 'mego' ? '#2e3033' : '#9aa0a4'));   // the coping of the parapet
+    if (!st.pitched) lmBoxW(G, Fw, -0.12, L + 0.12, H - 0.18, H, -0.12, 0.35, hb(st.b === 'mego' ? '#2e3033' : '#9aa0a4'));   // the coping of the parapet
   }
   if (!front) return;
   const { Fw, L, sc, gw } = front; { const [x, , z] = Fw.at(sc, 0, 0); SHV.push({ n: S.n, a: S.a, x, z, nx: Fw.nx, nz: Fw.nz }); }
@@ -228,7 +255,16 @@ function storeBox(K, S, r, H, gbc) {
     lmBoxW(G, Fw, -0.1, L + 0.1, st.gTop + 0.6, H - 0.18, -0.1, 0, hb('#53595e'));
     lmBoxW(G, Fw, sc - gw / 2 - 0.4, sc + gw / 2 + 0.4, st.gTop + 0.25, st.gTop + 0.85, -st.canopy, 0, hb('#5d6368'));
     const nc = Math.max(2, Math.round(gw / 7)); for (let k = 0; k <= nc; k++) { const [x, , z] = Fw.at(sc - gw / 2 + k * gw / nc, 0, -st.canopy + 0.4); lmLathe(G, x, z, 0, [[0.11, 0], [0.11, st.gTop + 0.25]], 8, hb('#8b9095')); }
-    const s = Math.min(L - 1.8, sc + gw / 2 - 1.4); board(K, Fw, 'lidl', s, H - 0.18 - 2.5, 2.5, 0.14, null);
+    const s = Math.min(L - 1.6, sc + gw / 2 - 1.2); board(K, Fw, 'lidl', s, st.gTop + 1.0, Math.min(2.2, H - 0.3 - st.gTop - 1.0), 0.14, null);
+  } else if (S.b === 'beta') {   // the sloping blue canopy along the whole front, lights under it, the name on the roof
+    const y0 = st.gTop + 0.25, y1 = st.gTop + 1.3, dp = -st.canopy, BLU = hb('#2c58ac');
+    lmBoxW(G, Fw, -0.4, L + 0.4, y0 - 0.12, y0, dp, 0, hb('#d9dcde'));
+    polyA(G, [Fw.at(-0.4, y0, dp), Fw.at(L + 0.4, y0, dp), Fw.at(L + 0.4, y1, 0.05), Fw.at(-0.4, y1, 0.05)], BLU, Fw.nx, 1, Fw.nz);
+    for (const s of [-0.4, L + 0.4]) polyA(G, [Fw.at(s, y0, dp), Fw.at(s, y0, 0.05), Fw.at(s, y1, 0.05)], sh2(BLU, 0.85), s < 0 ? -Fw.tx : Fw.tx, 0, s < 0 ? -Fw.tz : Fw.tz);
+    for (let s = 1.5; s < L - 1; s += 3) lmBoxW(G, Fw, s - 0.6, s + 0.6, y0 - 0.17, y0 - 0.12, dp + 0.4, dp + 0.55, hb('#fff6e0'));
+    const t = CT.betaL, w = Math.min(7, L * 0.35), hh = w * t.h / t.w, s = Math.max(w / 2 + 0.5, Math.min(L - w / 2 - 0.5, sc - gw / 2 + w / 2)), yb = H + 0.15;
+    for (const q of [s - w * 0.3, s + w * 0.3]) lmBar(G, Fw.at(q, H - 0.4, 0.4), Fw.at(q, yb + hh * 0.6, 0.4), 0.1, hb('#55595d'));
+    flat(Fw, s - w / 2, s + w / 2, yb, yb + hh, 0.25, t);
   } else {
     lmBoxW(G, Fw, sc - gw / 2 - 0.3, sc + gw / 2 + 0.3, st.gTop + 0.05, st.gTop + 0.35, -st.canopy, 0, hb(S.b === 'mego' ? '#2e3033' : '#d6d9db'));
     const name = signOf(S), t = CT[name], room = H - 0.3 - (st.gTop + 0.55), h = Math.max(0.9, Math.min(t.h, room, (gw + 1) * t.h / t.w));
@@ -308,33 +344,13 @@ function ditton(K) {
   }
 }
 
-/* ---- the Solo trade park (Rīgas iela 9), from the photograph of 2011 (Wikimedia Commons, "Tirdzniecības parks
-   Solo"): the entrance block on the cut corner clad in horizontal wooden slats in a pale olive frame, with the Solo
-   logo, the glass canopy over the doors and a clock on the roof; glass curtain walls on each side of it; down one
-   side grey corrugated cladding with tall steel fins, the other side a second slatted block; cream panels round the
-   rest. The ground floor hall is a Mego (an iki in 2011). */
+/* ---- the Solo trade park (Rīgas iela 9). Its building is drawn by lmLatgola as the yellow shopping centre next to
+   the hotel; added here from the photograph of 2011 (Wikimedia Commons, "Tirdzniecības parks Solo") is its entrance
+   block on the cut corner: clad in horizontal wooden slats in a pale olive frame, with the Solo logo, the board of Mego
+   (the ground floor hall, an iki in 2011), the glass canopy over the doors and a clock on the roof. */
 function solo(K) {
-  const part = SH.mall.solo[0]; if (!part) return;
-  const G = K.plain, r = part.outer, n = r.length >> 1, H = 9.2, CREAM = { tex: 5, col: hb('#e9dfba'), plinth: 0.5, pcol: hb('#7b776c') }, GREY = { tex: 5, col: hb('#9fa5aa'), plinth: 0.5, pcol: hb('#6c7175') };
-  const SL = hb('#8a5a35'), FR = hb('#c9c39a'), A = [-1342.4, 1181.5], B = [-1344.5, 1192.1];
-  STATE.GBC = part.gbc;
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n, P = [r[2 * i], r[2 * i + 1]], Q = [r[2 * j], r[2 * j + 1]], Fw = lmWF(P, Q), L = Fw.L; if (L < 0.05) continue;
-    const m = [(P[0] + Q[0]) / 2, (P[1] + Q[1]) / 2], cut = Math.hypot(m[0] - (A[0] + B[0]) / 2, m[1] - (A[1] + B[1]) / 2) < 6;
-    if (cut) { lmWall(K, P, Q, 0, H, [], CREAM); continue; }
-    const nr = (U, V) => Math.hypot(U[0] - V[0], U[1] - V[1]) < 3, atB = nr(P, B) || nr(Q, B), atA = nr(P, A) || nr(Q, A), cutAtP = nr(P, A) || nr(P, B);
-    const ops = [], sAt = x => cutAtP ? x : L - x;   // a distance from the cut corner as a place along the edge
-    if (atA || atB) {   // the long sides from the entrance: glass first, then grey cladding with fins (by B) or a second slatted block (by A)
-      for (let k = 0; k < 3; k++) { const u = sAt(k * 3), v = sAt((k + 1) * 3); ops.push({ s0: Math.min(u, v), s1: Math.max(u, v), y0: 0.4, y1: H - 0.6, d: 0.1, tile: CT.dark, det: KS.det, lit: 1 }); }
-      lmWall(K, P, Q, 0, H, ops, atB ? GREY : CREAM);
-      if (atB) for (let x = 13; x < L - 4; x += 3.2) for (const ds of [0, 0.5, 1.0]) lmBar(G, Fw.at(sAt(x + ds), 1.5, -0.35), Fw.at(sAt(x + ds), H + 2.4, -0.35), 0.1, hb('#b9bec2'));
-      else { const u = sAt(9), v = sAt(20), s0 = Math.min(u, v), s1 = Math.max(u, v); lmBoxW(G, Fw, s0 - 0.4, s1 + 0.4, 0, H + 2.2, -0.9, 0, FR); for (let y = 0.6; y < H + 1.6; y += 0.32) lmBoxW(G, Fw, s0, s1, y, y + 0.2, -1.05, -0.9, SL, false); }
-    } else lmWall(K, P, Q, 0, H, [], CREAM);
-    lmBoxW(G, Fw, -0.1, L + 0.1, H - 0.25, H, -0.15, 0.3, hb('#c2bb95'));
-  }
-  flatPlain(G, part.rings, H - 0.3, hb('#8f9294'), false);
-  // the entrance block on the cut corner: frame, slats, the Solo board, the banner of Mego, the glass canopy, the doors, the clock
-  const Fw = lmWF(A, B), L = Fw.L, T = 14.2;
+  const G = K.plain, SL = hb('#8a5a35'), FR = hb('#c9c39a'), A = [-1342.45, 1181.5], B = [-1344.5, 1192.1], Fw = lmWF(A, B), L = Fw.L, T = 14.2;
+  STATE.GBC = null;   // as the building, which follows the ground
   lmBoxW(G, Fw, -0.6, L + 0.6, 0, T, -1.4, 0.5, FR);
   lmBoxW(G, Fw, 0.6, L - 0.6, T - 0.4, T + 1.6, -1.0, 3.0, hb('#d4d6d7'));
   for (let y = 4.6; y < T - 0.5; y += 0.34) for (const [s0, s1] of [[0.4, 2.6], [L - 2.6, L - 0.4]]) lmBoxW(G, Fw, s0, s1, y, y + 0.22, -1.55, -1.4, SL, false);
@@ -344,9 +360,75 @@ function solo(K) {
   for (let k = 0; k < 2; k++) flat(Fw, 1.5 + k * 3.9, 1.5 + (k + 1) * 3.9, 0.1, 3.9, -1.41, k ? CT.glass : CT.door);
   lmBoxW(G, Fw, -0.4, L + 0.4, 4.0, 4.2, -4.0, -1.4, hb('#b8c4c8'));
   for (const s of [0.6, L - 0.6]) { const [x, , z] = Fw.at(s, 0, -3.7); lmLathe(G, x, z, 0, [[0.09, 0], [0.09, 4.0]], 8, hb('#8b9095')); }
-  { const [x, , z] = Fw.at(L / 2, 0, 0.8); box(K.plain, x, z, Fw.tx, Fw.tz, 1.6, 0.25, T + 1.6, T + 2.6, hb('#2a2b2d'));
-    const c = lmWF([x - Fw.tx * 1.4, z - Fw.tz * 1.4], [x + Fw.tx * 1.4, z + Fw.tz * 1.4]);
-    K.clk.q(c.at(0, T + 1.7, -0.26), c.at(2.8, T + 1.7, -0.26), c.at(2.8, T + 2.5, -0.26), c.at(0, T + 2.5, -0.26), N_(c), [1, 0, 0, 0, 0, 1, 1, 1], LMWHITE, 1); }
+  const [x, , z] = Fw.at(L / 2, 0, 0.8); box(G, x, z, Fw.tx, Fw.tz, 1.6, 0.25, T + 1.6, T + 2.6, hb('#2a2b2d'));
+  const c = lmWF([x - Fw.tx * 1.4, z - Fw.tz * 1.4], [x + Fw.tx * 1.4, z + Fw.tz * 1.4]);
+  K.clk.q(c.at(0, T + 1.7, -0.26), c.at(2.8, T + 1.7, -0.26), c.at(2.8, T + 2.5, -0.26), c.at(0, T + 2.5, -0.26), N_(c), [1, 0, 0, 0, 0, 1, 1, 1], LMWHITE, 1);
+}
+
+/* ---- the car parks of the stores: the surface car parks of OSM within 90 m of them (the city data has none):
+   asphalt, rows of stalls 2.6 × 5 m along the longer side of each with 6 m aisles between them, white lines, cars in
+   about half of the stalls. */
+const PARKS = [
+  [[397.8, -1274], [407, -1274.7], [407.2, -1272.8], [412.5, -1273.3], [407.1, -1316.7], [398.7, -1303.5], [400.8, -1288.3], [396, -1287.6]],   // w838999586 428 m², Beta 31 Šaurā iela
+  [[359.4, -1308.4], [361, -1300], [396.2, -1307.7], [402.7, -1319.8]],   // w838999587 378 m², Beta 31 Šaurā iela
+  [[329.2, -1367.9], [335, -1344.5], [331.1, -1338.2], [323.9, -1366.6]],   // w1456236676 143 m², Beta 31 Šaurā iela
+  [[-3, 558], [-5.2, 529.4], [-10.1, 529.8], [-7.9, 558.4]],   // w996857198 140 m², Beta 67 Ventspils iela
+  [[-6.1, 523.9], [-7.7, 501.4], [-12.5, 498.5], [-10.7, 524.2]],   // w996857199 111 m², Beta 67 Ventspils iela
+  [[-17.5, 522.4], [-37, 523.8], [-37.4, 518.7], [-17.9, 517.3]],   // w996857202 100 m², Beta 67 Ventspils iela
+  [[1336.1, -1229.9], [1316.3, -1205.3], [1314, -1202.4], [1331.8, -1188.4], [1337.5, -1203.7], [1336.7, -1206.5], [1345.1, -1223]],   // w367307961 579 m², Beta 1 Inženieru iela
+  [[738.8, 553.7], [760.3, 573.9], [763.3, 570.9], [764.6, 571.2], [772.1, 578.2], [769, 581.7], [781.2, 593.3], [792.2, 581.7], [778.3, 568.8], [779.7, 567.3], [783.1, 570.5], [805.3, 547.1], [801.9, 543.7], [803.7, 541.8], [807.1, 545.1], [829.6, 521.3], [826.2, 517.9], [827.7, 516.6], [832.4, 521], [867.9, 483.6], [863.6, 479.1], [851.5, 491.8], [842.9, 483.8], [812.5, 515.3], [820.1, 522.9], [800.6, 542.9], [773.4, 517], [769.9, 520.8], [768.7, 521.1], [764.5, 517.1], [738.5, 544.6], [742.3, 548.2], [742.6, 549.7]],   // w1024849312 3641 m², Lidl 146 18. novembra iela
+  [[-1806.2, 461.7], [-1810.2, 457.1], [-1842.2, 477.6], [-1858.5, 453.8], [-1855.8, 451.4], [-1853, 449.4], [-1878, 411.1], [-1901.5, 426.9], [-1909.3, 431.8], [-1884.3, 469.3], [-1876.1, 464.1], [-1874.9, 465.3], [-1867.9, 470.2], [-1869.3, 476.7], [-1871.8, 485.6], [-1824.9, 506], [-1795.2, 485.5], [-1798.8, 477.2], [-1796.1, 476]],   // w1429727516 3998 m², Lidl 74 Cietokšņa iela
+  [[-543.1, -1797.3], [-530.2, -1804.8], [-520.1, -1824.1], [-520.3, -1834.1], [-520.4, -1840.3]],   // w409293294 277 m², Maxima X 29 Piekrastes iela
+  [[858, -751], [865.5, -743.2], [857.1, -735.2], [849.6, -743]],   // w366852836 126 m², Maxima X 98A Smilšu iela
+  [[805, -776], [812, -783.1], [814, -786.6], [823.5, -784], [825.3, -782.4], [805.7, -761.6], [804.3, -763.2]],   // w366852842 238 m², Maxima X 98A Smilšu iela
+  [[-868.1, -2462.6], [-852.9, -2460.2], [-854.6, -2449.4], [-869.8, -2451.9]],   // w1149765892 168 m², Maxima X 35B Aveņu iela
+  [[1227.1, 204.4], [1251.8, 190.4], [1244.8, 178], [1223.8, 189.9], [1224.8, 191.7], [1221.1, 193.8]],   // w804694053 393 m², Maxima X 103 Strādnieku iela
+  [[1184.1, 207.8], [1159.7, 236.7], [1171.2, 246.4], [1172.7, 244.7], [1178.5, 249.6], [1196, 228.9], [1200, 232.3], [1208.5, 222.2], [1200, 215.1], [1193.2, 215.6]],   // w942917921 950 m², Maxima X 103 Strādnieku iela
+  [[1255.1, -984.8], [1263.8, -1000], [1260.6, -1001.9], [1260.4, -1003], [1261.1, -1004.1], [1265.5, -1011.5], [1266.1, -1012.5], [1267, -1012.4], [1270.3, -1010.3], [1274.4, -1016.8], [1270.5, -1019.3], [1270.3, -1020.4], [1271.6, -1022.9], [1272.7, -1022.9], [1276.6, -1020.7], [1281.6, -1029], [1276.9, -1032.2], [1279.7, -1035.4], [1271.5, -1044.2], [1268.5, -1040.4], [1267.3, -1040.2], [1265.1, -1041.7], [1265.1, -1043], [1267.4, -1046.7], [1252.4, -1055.8], [1250.2, -1052.4], [1245.6, -1045.1], [1243.5, -1041.8], [1258.7, -1032.5], [1261, -1036.1], [1264.7, -1033.9], [1266, -1032.4], [1266.7, -1031], [1266.9, -1029.3], [1266.6, -1027.2], [1263.9, -1023.1], [1259.8, -1025.7], [1239.7, -994.2]],   // w367307968 1167 m², Maxima X 3 Arhitektu iela
+  [[-1668.1, 992.2], [-1692.3, 1002.7], [-1689.4, 1009.4], [-1665.2, 998.9]],   // w944742868 192 m², Maxima X 5 Kandavas iela
+  [[-1228, 802.5], [-1199.3, 784.5], [-1207.4, 771.6], [-1235.4, 789.8]],   // w161665538 505 m², Maxima XX 60 Cietokšņa iela
+  [[1270, 314.6], [1279.2, 322.4], [1294.8, 304], [1286.3, 296.7]],   // w1088936066 282 m², Mego 1A Valkas iela
+  [[-820.4, -2121.4], [-840.2, -2078.1], [-831.2, -2073.3], [-819.8, -2096.4], [-811.1, -2117.1]],   // w409127397 506 m², Mego 26 Aveņu iela
+  [[-787.9, -2050.2], [-778.1, -2044], [-794.5, -2020], [-819.2, -2036.6], [-816.7, -2040.7], [-798.8, -2039.5], [-792.1, -2050.3], [-789.2, -2048.4]],   // w409127401 560 m², Mego 26 Aveņu iela
+  [[-758.8, -2124], [-752.3, -2133.4], [-762, -2140.1], [-768.5, -2130.7], [-765.2, -2128.4]],   // w814250730 134 m², Mego 26 Aveņu iela
+  [[-2055.8, -474.8], [-2047, -488.4], [-2051.9, -491.6], [-2050.2, -494.2], [-2045.4, -491], [-2040.2, -499.1], [-2049.3, -505], [-2065.1, -480.8]],   // w1165041242 300 m², Mego 27A Vaļņu iela
+  [[-1327.6, 1188.6], [-1328.7, 1186.8], [-1404.3, 1232], [-1403, 1234.1]],   // w836844874 200 m², Mego 9 Rīgas iela
+  [[-1329.9, 1166.9], [-1365.4, 1109.1], [-1380.7, 1118.1], [-1377.1, 1124.2], [-1375.1, 1124], [-1373.4, 1125], [-1371.6, 1124.1], [-1369.9, 1124.3], [-1369, 1125.7], [-1370.7, 1130], [-1350.9, 1162.2], [-1347.6, 1160.2], [-1338.6, 1174.8], [-1342, 1176.8], [-1339.1, 1181.6], [-1336.3, 1182.1], [-1330.3, 1177.9], [-1334.6, 1171.7], [-1334.4, 1170]],   // w974761926 1073 m², Mego 9 Rīgas iela
+  [[-1449, 1193.2], [-1443.1, 1189.7], [-1451.4, 1175.8], [-1457.3, 1179.3]],   // w974761928 111 m², Mego 9 Rīgas iela
+  [[-858, -2015.5], [-903.3, -1947.6], [-914.7, -1956.1], [-875.8, -2011.9], [-872.4, -2015.2], [-859.9, -2032.1], [-855.8, -2035.5], [-850.7, -2036.5], [-844.2, -2034.8], [-809.7, -2011.9], [-822.7, -1992.1]],   // w38689291 2305 m², Mego 11A Raipoles iela
+  [[-1721, 541.3], [-1711, 556.8], [-1679.6, 570.1], [-1669.6, 569.7], [-1690, 537.3], [-1696.4, 531.7], [-1700.8, 529.5], [-1704.8, 528.4]],   // w39498653 1053 m², Rimi Hyper 72A Cietokšņa iela
+  [[-1610.9, 403.6], [-1638.1, 421.6], [-1620.6, 448], [-1644.9, 464.5], [-1658.7, 444.5], [-1667.7, 450.5], [-1628.3, 509.1], [-1627, 511.1], [-1623.1, 508.5], [-1617.3, 504.6], [-1609.5, 499.3], [-1604.2, 495.6], [-1605.4, 493.7], [-1597.1, 488.3], [-1597.4, 466.6], [-1609.1, 448.8], [-1602.8, 445], [-1597.8, 441.8], [-1597.7, 431.3], [-1601.6, 425.5], [-1597.3, 422.9], [-1609.5, 405.6]],   // w161652192 3641 m², Rimi Hyper 72A Cietokšņa iela
+  [[707.4, 587.1], [701.8, 582], [709.3, 573.7], [714.6, 573.6], [714.6, 567.7], [716.3, 565.7], [745.6, 593.3], [727.2, 613.3], [703.5, 591.7]],   // w127382479 1038 m², Rimi Super 136 18. novembra iela
+  [[643.5, 649.1], [654.9, 637.1], [676.4, 657.6], [665, 669.5]],   // w129150740 488 m², Rimi Super 136 18. novembra iela
+  [[692.7, 668], [722, 636.8], [717.4, 632.5], [688.1, 663.7]],   // w998468900 269 m², Rimi Super 136 18. novembra iela
+  [[-1326.1, 1063.8], [-1327, 1062.4], [-1330.6, 1064.9], [-1335.4, 1057.7], [-1305.5, 1038.5], [-1304, 1030.7], [-1300.6, 1028.4], [-1300.4, 1026.3], [-1297.7, 1024.6], [-1297.3, 1020.7], [-1273.8, 1001.6], [-1271.7, 1002.9], [-1268.6, 1003.7], [-1266.2, 1003.6], [-1261.2, 1011.1], [-1319.8, 1059.8]],   // w692805483 1050 m², Rimi 60 Cietokšņa iela
+  [[-940.1, 1280.3], [-932.8, 1272.9], [-924.3, 1275], [-915.1, 1294.1], [-920.8, 1310.4]],   // w75683776 458 m², mini Rimi 10 Viestura iela
+  [[-982, 1300.7], [-991.6, 1313.8], [-979.5, 1334.8], [-968.8, 1322]],   // w1240479437 378 m², mini Rimi 10 Viestura iela
+];
+function carParks(K) {
+  const ag = new GB(false), lines = new GB(false), ASP = hb('#5c5d5e'), WHT = hb('#d9d9d5'), COLS = ['#e8e8e6', '#1d1f22', '#8d9196', '#5b6067', '#7a1f22', '#1f3f6e', '#c9c6bd', '#2f4a35', '#b8bcc0', '#3a3d42'];
+  let seed = 4242; const rr = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  STATE.GBC = null;
+  for (const pts of PARKS) {
+    let r = new Float32Array(pts.flat()); if (area2(r) < 0) r = reversed(r);
+    const t0 = triangulate([r]), { flat: fl, tris } = TERR.on ? subTris(t0.flat, t0.tris, 0.25) : t0, v0 = ag.v; ag.ensure(fl.length / 2);
+    for (let i = 0; i < fl.length; i += 2) ag.vert(fl[i], 0, fl[i + 1], 0, 1, 0, ASP); for (let i = 0; i < tris.length; i += 3) ag.triUp(v0 + tris[i], v0 + tris[i + 1], v0 + tris[i + 2]);
+    const o = obb(r); if (!o || o.b < 2.6) continue;
+    const at = (u, v) => [o.cx + o.ux * u - o.uz * v, o.cz + o.uz * u + o.ux * v];
+    const ok = (u, v) => { for (const [du, dv] of [[-1.25, -2.4], [1.25, -2.4], [1.25, 2.4], [-1.25, 2.4]]) { const [x, z] = at(u + du, v + dv); if (!pip(x, z, r)) return false; } const [x, z] = at(u, v); return !inBuilding(x, z) && !onRoad(x, z, 0.5); };
+    // the rows: one along an edge, an aisle, two back to back, an aisle, ...
+    const rows = []; let v = -o.b + 2.5, back = false; while (v <= o.b - 2.5) { rows.push(v); v += back ? 5 : 11; back = !back; }
+    for (const rv of rows) {
+      const n = Math.floor((2 * o.a - 1) / 2.6), u0 = -n * 1.3;
+      for (let k = 0; k < n; k++) {
+        const u = u0 + (k + 0.5) * 2.6; if (!ok(u, rv)) continue;
+        for (const ue of [u - 1.3, u + 1.3]) { const A = at(ue, rv - 2.5), B = at(ue, rv + 2.5), nx = o.ux * 0.06, nz = o.uz * 0.06;
+          const q = [[A[0] - nx, A[1] - nz], [B[0] - nx, B[1] - nz], [B[0] + nx, B[1] + nz], [A[0] + nx, A[1] + nz]].map(([x, z]) => lines.vert(x, 0, z, 0, 1, 0, WHT)); lines.triUp(q[0], q[1], q[2]); lines.triUp(q[0], q[2], q[3]); }
+        if (rr() < 0.55) { const [x, z] = at(u, rv), sg = rr() < 0.5 ? 1 : -1; fortCar(K.plain, x, z, -o.uz * sg, o.ux * sg, hb(COLS[Math.floor(rr() * COLS.length)]), false); }
+      }
+    }
+  }
+  for (const [b, mat, order] of [[ag, M_ASPH, -34.4], [lines, M_PAVE, -33.9]]) { const m = b.mesh(mat); if (m) { m.renderOrder = order; m.frustumCulled = false; m.receiveShadow = true; scene.add(m); } }
 }
 
 /* Draws the stores: their own buildings, the tenants' fronts and boards, the two shopping centres. */
@@ -365,7 +447,7 @@ function lmShops(K, litPatch) {
       storeBox(K, S, r, H, gbc);
     } else if (S.k === 'in') tenant(K, S, SH.host.get(S.id));
   }
-  ditton(K); solo(K);
+  ditton(K); solo(K); carParks(K);
   STATE.GBC = null;
   KS.det.mesh(LMM.shDet); KS.det = null;
 }
