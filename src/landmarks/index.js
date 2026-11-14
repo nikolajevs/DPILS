@@ -3,6 +3,7 @@ import { STATE } from '../core/state.js';
 import { lmSchools } from './schools.js';
 import { lmChurchHill } from './church-hill.js';
 import { lmShops } from './shops.js';
+import { lmHospital } from './hospital.js';
 import { TX, rigaNow } from '../transit/transit.js';
 import { lmGrounds, lmSquare } from './unity-square.js';
 import { lmAirBridge } from './air-bridge.js';
@@ -76,6 +77,7 @@ function buildLandmarks() {
   const K = { ash: new LMB(), ren: new LMB(), det: new LMB(), txt: new LMB(), clk: new LMB(), plain: new GB(false), stone: new GB(false), globe: new GB(false) };
   K.walls = [K.ash, K.ren, new LMB(), new LMB(), new LMB(), new LMB(), new LMB(), new LMB()];
   lmUnityHouse(K); lmLatgola(K); lmSquare(K); lmGrounds(K); lmDUMain(K); lmDUParades(K); lmDULab(K); lmRenesanse(K); lmRigas(K); lmVesma(K); lmTVTower(K); lmStation(K); lmSpeedway(K); lmKP(K); lmSC(K); lmFuel(K, litPatch); lmOverpass(K); lmTramWires(K); lmAirBridge(K); lmJunction(K); lmSchools(K, litPatch); lmChurchHill(K, litPatch); lmShops(K, litPatch); STATE.GBC = TERR.on ? vbComp : null; lmVienibas(K); STATE.GBC = null;
+  lmHospital(K);
   [LMM.ash, LMM.ren, LMM.duw, LMM.brick, LMM.tile, LMM.panel, LMM.buff, LMM.sil].forEach((m, k) => K.walls[k].mesh(m)); K.det.mesh(LMM.det); K.txt.mesh(LMM.txt, false); K.clk.mesh(LMM.clk, false);
   for (const [b, m] of [[K.plain, LMM.plain], [K.stone, LMM.stone]]) { const pm = b.mesh(m); if (pm) { pm.castShadow = pm.receiveShadow = true; scene.add(pm); } }
   const gm = K.globe.mesh(LMM.globe); if (gm) { gm.receiveShadow = true; scene.add(gm); }

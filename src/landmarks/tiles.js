@@ -88,6 +88,33 @@ function lmTiles() {
   }
   const defs = [];
   const T = (name, w, h, draw) => defs.push({ name, w, h, draw });
+  // Daugavpils Regional Hospital: pale metal frames, blue-grey glazing, privacy blinds and the glazed entrance.
+  T('hsWin', 1.45, 1.7, () => {
+    R(0, 0, 1.45, 1.7, '#c9d0d0', 1); glass(0.08, 0.08, 0.61, 1.54, 1, '#ffe5bd'); glass(0.76, 0.08, 0.61, 1.54, 1, '#ffe5bd');
+    R(0.7, 0.07, 0.05, 1.56, '#b7c0c1', 1); R(0.08, 0.8, 1.29, 0.045, '#aeb9bb', 1);
+  });
+  T('hsWinB', 1.45, 1.7, () => {
+    R(0, 0, 1.45, 1.7, '#c9d0d0', 1); glass(0.08, 0.08, 0.61, 1.54, 1, '#ffe5bd'); glass(0.76, 0.08, 0.61, 1.54, 1, '#ffe5bd');
+    R(0.7, 0.07, 0.05, 1.56, '#b7c0c1', 1); R(0.08, 0.08, 1.29, 0.48, 'rgba(236,238,233,0.92)', 0, '#f3dfbd');
+  });
+  T('hsLoggia', 12.4, 1.77, () => {
+    R(0, 0, 12.4, 1.77, '#344247', 1); R(0.18, 0.16, 12.04, 1.38, '#26343a', 1);
+    R(0.2, 1.34, 12.0, 0.32, '#b9c2c1', 1); R(0.2, 1.02, 12.0, 0.075, '#7c898a', 1);
+    for (let x = 0.35; x < 12.2; x += 0.65) R(x, 1.02, 0.035, 0.33, '#6e7a7b', 1);
+    R(0.3, 0.18, 0.28, 0.82, '#c7cecc', 1); R(11.82, 0.18, 0.28, 0.82, '#c7cecc', 1);
+  });
+  T('hsEntry', 5.8, 3.4, () => {
+    R(0, 0, 5.8, 3.4, '#66757a', 1); glass(0.1, 0.1, 5.6, 3.2, 1, '#fff0d5');
+    R(2.83, 0.1, 0.12, 3.2, '#d4dcdb', 1); R(0.15, 0.1, 0.08, 3.2, '#cad3d2', 1); R(5.57, 0.1, 0.08, 3.2, '#cad3d2', 1);
+    R(2.62, 1.35, 0.08, 0.22, '#53636a', 1); R(3.06, 1.35, 0.08, 0.22, '#53636a', 1);
+  });
+  T('hsBay', 5.8, 4.43, () => {
+    R(0, 0, 5.8, 4.43, '#738085', 1); R(0.22, 0.2, 5.36, 4.02, '#28383e', 1); R(0.35, 0.3, 5.1, 3.8, '#1d292e', 1);
+    R(0.22, 0.18, 5.36, 0.16, '#b7c4c5', 1); R(0.22, 4.0, 5.36, 0.17, '#b7c4c5', 1);
+    for (let y = 0.5; y < 3.9; y += 0.65) R(0.36, y, 5.08, 0.035, 'rgba(163,179,181,0.5)', 1);
+  });
+  T('hsSlot', 1.7, 0.75, () => { R(0, 0, 1.7, 0.75, '#c7cecc', 1); glass(0.08, 0.08, 0.7, 0.59, 1, '#fff0d5'); glass(0.85, 0.08, 0.77, 0.59, 1, '#fff0d5'); R(0.8, 0.08, 0.05, 0.59, '#aebabb', 1); });
+  T('rtWin', 1.2, 0.75, () => { R(0, 0, 1.2, 0.75, '#46525a', 1); glass(0.07, 0.07, 1.06, 0.61, 1, '#fff0d5'); });
   const lattice = (x, y, w, h, col) => { const n = 4, cw = w / n; for (let i = 0; i < n; i++) { line(x + i * cw, y, x + (i + 1) * cw, y + h, 0.035, col); line(x + (i + 1) * cw, y, x + i * cw, y + h, 0.035, col); } line(x, y + h / 2, x + w, y + h / 2, 0.03, col); };
   const BRONZE = '#3a3027', WOOD = '#2e1d12';
   // ---- Vienības nams
@@ -356,6 +383,18 @@ function lmSigns() {
     [['DAUGAVPILS', 0.27], ['UNIVERSITĀTE', 0.76]].forEach(([s, fy]) => { const step = w / s.length; for (let k = 0; k < s.length; k++) { const cx = x0 + step * (k + 0.5), cy = y0 + h * fy;
       g.fillStyle = '#5a2a1a'; g.fillText(s[k], cx + 5, cy + 6); g.fillStyle = '#dfe2e2'; g.fillText(s[k], cx, cy); e.fillStyle = '#e8eef2'; e.fillText(s[k], cx, cy); } });
   });
+  add('hospital', 400, 60, (x0, y0, w, h) => {
+    g.fillStyle = '#e8ece9'; g.fillRect(x0, y0, w, h); g.strokeStyle = '#6b7f86'; g.lineWidth = 2; g.strokeRect(x0 + 1, y0 + 1, w - 2, h - 2);
+    g.fillStyle = '#607d87'; g.fillRect(x0 + 8, y0 + 9, 34, 42); g.fillStyle = '#f5f7f4'; g.fillRect(x0 + 22, y0 + 13, 7, 34); g.fillRect(x0 + 12, y0 + 27, 26, 7);
+    g.font = font(18, '700', '"Golos Text", "Trebuchet MS", sans-serif'); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#34474d';
+    g.fillText('DAUGAVPILS REĢIONĀLĀ SLIMNĪCA', x0 + 225, y0 + h / 2 + 1);
+    e.font = g.font; e.textAlign = 'center'; e.textBaseline = 'middle'; e.fillStyle = '#fff3d2'; e.fillText('DAUGAVPILS REĢIONĀLĀ SLIMNĪCA', x0 + 225, y0 + h / 2 + 1);
+  });
+  add('radiotherapy', 400, 60, (x0, y0, w, h) => {
+    g.fillStyle = '#e8ece9'; g.fillRect(x0, y0, w, h); g.strokeStyle = '#71838a'; g.lineWidth = 2; g.strokeRect(x0 + 1, y0 + 1, w - 2, h - 2); g.fillStyle = '#4d8a99'; g.fillRect(x0 + 10, y0 + 10, 6, h - 20);
+    g.font = font(23, '700', '"Golos Text", "Trebuchet MS", sans-serif'); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#34474d'; g.fillText('STARU TERAPIJA', x0 + w / 2 + 10, y0 + h / 2);
+    e.font = g.font; e.textAlign = 'center'; e.textBaseline = 'middle'; e.fillStyle = '#fff3d2'; e.fillText('STARU TERAPIJA', x0 + w / 2 + 10, y0 + h / 2);
+  });
   // the railway station: DAUGAVPILS in widely spaced bronze capitals on the platform side, the year in the lunette
   add('vkName', 1600, 120, (x0, y0, w, h) => {
     const s = 'DAUGAVPILS', step = w / s.length; g.font = font(92, '600', '"Golos Text", "Trebuchet MS", sans-serif'); g.textBaseline = 'middle'; g.textAlign = 'center';
@@ -372,16 +411,16 @@ function lmSigns() {
     g.lineWidth = 34; g.strokeStyle = '#123d2e'; g.strokeText('VēsmA', cx, cy); g.lineWidth = 16; g.strokeStyle = '#3cc3c4'; g.strokeText('VēsmA', cx, cy); g.fillStyle = '#f4fbfb'; g.fillText('VēsmA', cx, cy);
     e.lineWidth = 16; e.strokeStyle = '#38c8d0'; e.strokeText('VēsmA', cx, cy); e.fillStyle = '#ffffff'; e.fillText('VēsmA', cx, cy);
   });
+  add('vesmaLogo', 240, 300, (x0, y0, w, h) => {
+    const sw = (c, lw, pts) => { for (const ctx of [g, e]) { ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x0 + pts[0], y0 + pts[1]); ctx.bezierCurveTo(x0 + pts[2], y0 + pts[3], x0 + pts[4], y0 + pts[5], x0 + pts[6], y0 + pts[7]); ctx.stroke(); } };
+    sw('#eef6f4', 30, [60, 280, 110, 190, 150, 100, 200, 20]); sw('#3cc3c4', 18, [100, 270, 140, 200, 170, 130, 215, 60]); sw('#eef6f4', 10, [130, 260, 160, 210, 185, 160, 225, 110]);
+  });
   add('vesmaBB', 1000, 120, (x0, y0, w, h) => {
     const cy = y0 + h / 2; g.font = font(64, '700', '"Trebuchet MS", sans-serif'); g.textBaseline = 'middle'; g.fillStyle = '#eef6f4';
     g.textAlign = 'right'; g.fillText('BĀRS', x0 + w / 2 - 70, cy); g.textAlign = 'left'; g.fillText('BISTRO', x0 + w / 2 + 70, cy);
     g.beginPath(); g.arc(x0 + w / 2, cy, 50, 0, 6.3); g.fillStyle = '#eef6f4'; g.fill(); g.beginPath(); g.arc(x0 + w / 2, cy, 42, 0, 6.3); g.fillStyle = '#1f6a64'; g.fill();
     g.font = font(64, '800', '"Trebuchet MS", sans-serif'); g.textAlign = 'center'; g.fillStyle = '#eef6f4'; g.fillText('V', x0 + w / 2, cy + 3);
     e.font = g.font; e.textAlign = 'center'; e.textBaseline = 'middle'; e.fillStyle = '#b8f0ec'; e.fillText('BĀRS     BISTRO', x0 + w / 2, cy);
-  });
-  add('vesmaLogo', 240, 300, (x0, y0, w, h) => {
-    const sw = (c, lw, pts) => { for (const ctx of [g, e]) { ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x0 + pts[0], y0 + pts[1]); ctx.bezierCurveTo(x0 + pts[2], y0 + pts[3], x0 + pts[4], y0 + pts[5], x0 + pts[6], y0 + pts[7]); ctx.stroke(); } };
-    sw('#eef6f4', 30, [60, 280, 110, 190, 150, 100, 200, 20]); sw('#3cc3c4', 18, [100, 270, 140, 200, 170, 130, 215, 60]); sw('#eef6f4', 10, [130, 260, 160, 210, 185, 160, 225, 110]);
   });
   const t = toTex(cv, true, false), te = toTex(gm, true, false); t.minFilter = te.minFilter = THREE.LinearMipmapLinearFilter; return [t, te];
 }
