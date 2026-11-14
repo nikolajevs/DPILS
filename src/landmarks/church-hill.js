@@ -228,7 +228,7 @@ function oculus(K, Fw, s, cy, r, tile, trim, tw = 0.2, d = -0.03, lit = rr() < 0
 
 /* ---- Ss Boris and Gleb Orthodox Cathedral ---- */
 function cathedralBG(K) {
-  const f = F.bg, G = K.plain, a = ang(f), WH = [244, 246, 245], BL = hb('#6cacd9'), BLD = hb('#5a9dd0'), ROOF = hb('#7f8c94'), PL = hb('#c3c8cc'), ST = { tex: 1, col: WH };
+  const f = F.bg, G = K.plain, a = ang(f), WH = [244, 246, 245], BL = hb('#6cacd9'), BLD = hb('#5a9dd0'), ROOF = hb('#8a8f93'), PL = hb('#c3c8cc'), ST = { tex: 1, col: WH };
   STATE.GBC = standOn(f, [[6.9, 0], [52.2, 0], [57.9, 8.4], [51.3, 22], [6, 22], [0, 15.6], [0.9, 6.4]]);
   const HA = 8, HC = 14, HB = 16.5, bay = k => 7 + (k + 0.5) * 4.89, PORCH = [0, 4], win = (s, y, w, h, o) => Object.assign({ s, w, y, h, head: 'round', tile: CT.orth, trim: BL }, o);
   // the aisles: arched windows in blue surrounds between columns of blue squares, gabled porches with doors
@@ -308,7 +308,7 @@ function cathedralBG(K) {
 
 /* ---- Martin Luther Cathedral ---- */
 function cathedralLu(K) {
-  const f = F.lu, G = K.plain, a = ang(f), BR = { tex: 3, col: LMWHITE }, BRC = [138, 64, 48], STN = hb('#d9d2c4'), ROOF = hb('#8e9396'), SP = hb('#7f8588');
+  const f = F.lu, G = K.plain, a = ang(f), BR = { tex: 3, col: LMWHITE }, BRC = [138, 64, 48], STN = hb('#d9d2c4'), ROOF = hb('#9a9894'), SP = hb('#86888a');
   STATE.GBC = standOn(f, [[0, 3.5], [27.2, 3.5], [29.1, 0], [33.8, 1.6], [36.6, 11.3], [33.9, 20.6], [32.4, 22.5], [6.7, 22.8], [1.5, 16.5], [0, 16.5]]);
   const H = 11, west = e => e.nu < -0.9, gw = (s, y, w, h, o) => Object.assign({ s, w, y, h, head: 'pointed', tile: CT.goth, trim: STN }, o);
   const pinnacle = (x, z, y, h, r = 0.45) => lmLathe(G, x, z, y, [[r, 0], [r, h - 2.4], [0.02, h]], 6, BRC);
@@ -354,7 +354,7 @@ function cathedralLu(K) {
    Proportions from the front photograph: towers 9 m wide with cornices at 9.9, 17.4, 25.2 and 31.2 m, the front
    between them 9.5 m wide up to 17.4 m, its curved gable with the niche of the Virgin to 24 m, crosses at 43 m. */
 function churchCa(K) {
-  const f = F.ca, G = K.plain, a = ang(f), WH = [246, 245, 241], TR = [255, 255, 255], BASE = hb('#dcd8d0'), ROOF = hb('#8d959b'), DARK = hb('#3b4047'), ST = { tex: 1, col: WH };
+  const f = F.ca, G = K.plain, a = ang(f), WH = [246, 245, 241], TR = [255, 255, 255], BASE = hb('#dcd8d0'), ROOF = hb('#96989a'), DARK = hb('#3b4047'), ST = { tex: 1, col: WH };
   STATE.GBC = standOn(f, [[0.2, 27.5], [0, 0], [39, 0], [42.2, 3.4], [44.6, 13], [42.7, 22.9], [39.2, 25.9]]);
   const U = [11.2, 15.6, 20, 24.4, 28.8, 33.2], C1 = 9.9, C2 = 17.4, HS = 10.5;
   const pil = (e, s, y0, y1, w = 0.7) => pier(K, e, s, w, y0, y1, 0.15, TR), rw = (s, y, w, h, o) => Object.assign({ s, w, y, h, head: 'round', tile: CT.bar, trim: TR }, o);
