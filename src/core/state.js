@@ -1,0 +1,10 @@
+/* Mutable values that several modules assign. An imported binding is read-only in the importing module, so these live
+   as fields of one shared object instead of module variables:
+   - GBC: the vertex height compensation (x, y, z) => dy applied by the geometry builders to what is being built now
+     (null when none); set around each bridge, overpass, landmark or fortress part.
+   - facTex, facMask, roofTex, serTex, serMask, matSer, goldGB, envRT: textures, materials and builders made while the
+     city is being built.
+   - started, locked, night, introT: the state of the session (walk started, pointer locked, time of day, intro flight).
+   - lodTimer, hudTimer, mapTimer, shadowDirty: countdowns and flags of the frame loop; setting a timer to 0 makes the
+     next frame refresh that part. */
+export const STATE = {};
