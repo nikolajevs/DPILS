@@ -1,6 +1,7 @@
 import { fuelCen } from '../landmarks/fuel.js';
 import { lmBar, lmLathe } from '../landmarks/helpers.js';
 import { COL } from './data.js';
+import { CARROAD, TRAMGRID } from '../transit/transit.js';
 import { groundMaterial } from '../render/materials.js';
 import { detailTex } from '../render/textures.js';
 import { BRIDGES, BRSEG, terrainH } from './terrain.js';
@@ -117,10 +118,30 @@ function lmOverpass(K) {
       if (Math.max(H0, H1) < 0.8 || !free(sm)) continue;
       lmBar(G, W3(f0, e0, 0.2), W3(f0, e0, 1.3), 0.07, RAILC); lmBar(G, W3(f0, e0, 1.25), W3(f1, e1, 1.25), 0.06, RAILC); lmBar(G, W3(f0, e0, 0.35), W3(f1, e1, 0.35), 0.045, RAILC);
       for (let j = 1; j < 16; j++) { const u = j / 16, f = fr(S[k] + (S[k + 1] - S[k]) * u), e = edge(f, sd) - sd * 0.2; lmBar(G, W3(f, e, 0.35), W3(f, e, 1.25), 0.02, RAILC); }
-      const g0 = edge(f0, sd) - sd * 2.9, g1 = edge(f1, sd) - sd * 2.9;   // the W-beam on its posts
-      for (const w of [0.04, -0.04]) polyA(G, [W3(f0, g0 + w, 0.45), W3(f1, g1 + w, 0.45), W3(f1, g1 + w, 0.8), W3(f0, g0 + w, 0.8)], STEEL, f0.nl[0] * Math.sign(w), 0, f0.nl[1] * Math.sign(w));
-      lmBar(G, W3(f0, g0 + sd * 0.12, 0), W3(f0, g0 + sd * 0.12, 0.8), 0.12, sh(STEEL, 0.8));
+      if (S[k] >= sW - 1) wbeam(f0, f1, edge(f0, sd) - sd * 2.9, edge(f1, sd) - sd * 2.9, sd);   // on the bridge and the east ramp, by the sidewalks
       if (S[k] < sW - 1 || S[k + 1] > sE + 1) { const A = W3(f0, edge(f0, sd), 0), B = W3(f1, edge(f1, sd), 0); COL.add(A[0], A[2], B[0], B[2], 0, 0); } }
+  }
+  /* ---- on the west ramp the tracks leave the middle of the street for a grassed bed of their own on its north side
+     (Street View, April 2024): a W-beam between the carriageway and the bed wherever the tracks run beside the road, none
+     by the sidewalks; where the tracks still lie between the two carriageways (by the bridge) it stays open */
+  { const S = steps(2, sW - 1, 2.4), cs = CARROAD.s;
+    const g = S.map(s => { const f = fr(s), tr = [], rd = [], ofs = (px, pz) => (px - f.x) * f.nl[0] + (pz - f.z) * f.nl[1], along = (px, pz) => Math.abs((px - f.x) * f.tu[0] + (pz - f.z) * f.tu[1]);
+      TRAMGRID.near(f.x, f.z, 14, (id, d, px, pz) => { if (along(px, pz) < 1.5) tr.push(ofs(px, pz)); });
+      CARROAD.near(f.x, f.z, 14, (id, d, px, pz) => { const k = id * 6, dx = cs[k + 2] - cs[k], dz = cs[k + 3] - cs[k + 1], l = Math.hypot(dx, dz) || 1;
+        if (cs[k + 5] > 3 || along(px, pz) > 1.5 || Math.abs((dx * f.tu[0] + dz * f.tu[1]) / l) < 0.8) return; const o = ofs(px, pz); rd.push([o - cs[k + 4], o + cs[k + 4]]); });
+      if (!tr.length || !rd.length) return null;
+      const t0 = Math.min(...tr) - 1.3, t1 = Math.max(...tr) + 1.3, r0 = Math.min(...rd.map(r => r[0])), r1 = Math.max(...rd.map(r => r[1]));
+      if (t0 > r1 + 0.4) return [r1 + Math.min(0.6, (t0 - r1) / 2), 1];       // the bed north of the road (left going east)
+      if (t1 < r0 - 0.4) return [r0 - Math.min(0.6, (r0 - t1) / 2), -1];
+      return null; });
+    for (let k = 0; k < S.length - 1; k++) { const a = g[k], b = g[k + 1]; if (!a || !b || a[1] !== b[1] || Math.abs(a[0] - b[0]) > 1.2) continue;
+      const f0 = fr(S[k]), f1 = fr(S[k + 1]); wbeam(f0, f1, a[0], b[0], -a[1]);
+      const A = W3(f0, a[0], 0), B = W3(f1, b[0], 0); COL.add(A[0], A[2], B[0], B[2], 0.05, 0); }
+  }
+  // a W-beam from frame f0 to f1 at g0..g1 across, its posts on the side sd (away from the traffic)
+  function wbeam(f0, f1, g0, g1, sd) {
+    for (const w of [0.04, -0.04]) polyA(G, [W3(f0, g0 + w, 0.45), W3(f1, g1 + w, 0.45), W3(f1, g1 + w, 0.8), W3(f0, g0 + w, 0.8)], STEEL, f0.nl[0] * Math.sign(w), 0, f0.nl[1] * Math.sign(w));
+    lmBar(G, W3(f0, g0 + sd * 0.12, 0), W3(f0, g0 + sd * 0.12, 0.8), 0.12, sh(STEEL, 0.8));
   }
 }
 
