@@ -4,6 +4,7 @@ import { fortGround } from '../fortress/ground-height.js';
 import { FORT, fss } from '../fortress/index.js';
 import { spwCap, spwGround } from '../landmarks/speedway.js';
 import { VB, vbGround, vbLocal } from './bridge-vienibas.js';
+import { cutCarve, cutY } from './cutting.js';
 import { U, renderer, scene, terrUniforms } from '../render/renderer.js';
 import { SegGrid } from '../core/geometry.js';
 import { dec } from '../core/util.js';
@@ -105,6 +106,7 @@ function terrainInit() {
   { const at = k => spwCap(T.x0 + (k % T.nx) * T.step, T.z0 + Math.floor(k / T.nx) * T.step);
     let s = 0, m = 0; for (let k = 0; k < n; k++) if (at(k) < 50) { s += q[k]; m++; }
     if (m) { const c = s / m; for (let k = 0; k < n; k++) { const d = at(k); if (d < 140) q[k] = Math.round(c + (q[k] - c) * fss((d - 90) / 50)); } } }
+  cutCarve(T, q);   // Latgales iela in its cutting, deeper than the model shows it (src/world/cutting.js)
   TERR.on = true; TERR.ref = 0; TERR.ref = terrainH(-1487, 1263);
   const data = new Uint8Array(n * 4); for (let k = 0; k < n; k++) { const v = Math.max(0, q[k]); data[4 * k] = v >> 8; data[4 * k + 1] = v & 255; data[4 * k + 3] = 255; }
   const tex = new THREE.DataTexture(data, T.nx, T.nz, THREE.RGBAFormat, THREE.UnsignedByteType); tex.minFilter = tex.magFilter = THREE.NearestFilter; tex.generateMipmaps = false; tex.needsUpdate = true;
@@ -137,7 +139,7 @@ function bridgeY(x, z, dx = 0, dz = 0, prev = null) {
     if (dl > 0) { const sx = S[o + 2] - S[o], sz = S[o + 3] - S[o + 1], sl = Math.hypot(sx, sz) || 1; if (Math.abs(sx * dx + sz * dz) < 0.7 * sl * dl) return; }
     const h = bridgeAt(B, S[o + 5], px, pz); if (prev !== null && Math.abs(h - prev) > 1.6) return;
     bd = d; r = h - terrainH(x, z); });
-  return Math.max(0, r);
+  return bd < 1e9 ? Math.max(0, r) : cutY(x, z);   // off the decks, the road of the Latgales iela cutting has its own profile
 }
 // Vienības tilts is drawn over a level city; on the relief its deck runs straight from the height of one bank to that of
 // the other: vbLift is how far that line is above the ground at a point on the bridge, vbComp shifts its geometry
