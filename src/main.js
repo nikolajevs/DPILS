@@ -1,0 +1,83 @@
+import { STATE } from './core/state.js';
+// every module, latest first: a module is evaluated after the earlier ones it needs (see tools/check.js)
+import { frame } from './game/loop.js';
+import './game/input.js';
+import './ui/hud.js';
+import './ui/map.js';
+import { PP, renderFrame } from './render/post.js';
+import { QUALITY, TIMES, qi, setQuality, setTime, timeI } from './render/lighting.js';
+import { P, setFly, teleport } from './game/player.js';
+import './ui/places.js';
+import { TX, buildTransit, setClock, updateBoard } from './transit/transit.js';
+import { buildTrees } from './world/trees.js';
+import { buildFortress } from './fortress/build.js';
+import './fortress/monuments.js';
+import './fortress/arsenals.js';
+import './fortress/gates.js';
+import './fortress/ground.js';
+import './fortress/textures.js';
+import { fortPoint } from './fortress/ground-height.js';
+import './fortress/index.js';
+import { buildLamps } from './world/lamps.js';
+import { buildBuildings, finishBuildings } from './buildings/buildings.js';
+import { buildLandmarks } from './landmarks/index.js';
+import './landmarks/unity-square.js';
+import './landmarks/air-bridge.js';
+import './landmarks/junction.js';
+import './landmarks/heat-plant.js';
+import './landmarks/culture-palace.js';
+import './landmarks/fuel.js';
+import './landmarks/speedway.js';
+import './landmarks/station.js';
+import './landmarks/tv-tower.js';
+import './landmarks/vesma.js';
+import './landmarks/rigas.js';
+import './landmarks/renesanse.js';
+import './landmarks/university.js';
+import './landmarks/latgola.js';
+import './landmarks/unity-house.js';
+import './landmarks/helpers.js';
+import './landmarks/tiles.js';
+import './landmarks/core.js';
+import './buildings/walls.js';
+import './buildings/series.js';
+import './world/tram-wires.js';
+import './world/overpass.js';
+import './world/bridge-vienibas.js';
+import { buildLines } from './world/streets.js';
+import { buildGround } from './world/ground.js';
+import { BLD, LINES, makeMaterials } from './world/data.js';
+import './world/palette.js';
+import './render/materials.js';
+import './render/textures.js';
+import { TERR, terrainH, terrainInit, walkLift } from './world/terrain.js';
+import { GPU, U, camera, renderer, scene } from './render/renderer.js';
+import { GB } from './core/geometry.js';
+import './core/util.js';
+import { $, C, progress } from './core/env.js';
+
+/* ---------- build everything ---------- */
+const tick = msg => { progress.textContent = msg; return new Promise(r => setTimeout(r, 16)); };
+(async () => {
+  try {
+    await tick('Рисую фасады и крыши…'); makeMaterials(); STATE.goldGB = new GB(false);
+    setTime(matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark' ? 2 : 0);
+    setQuality(qi);
+    terrainInit();
+    await tick('Заливаю Даугаву и озёра…'); buildGround();
+    await tick('Прокладываю улицы, тротуары и рельсы…'); buildLines();
+    const N = C.b.length;
+    for (let i = 0; i < N; i += 4000) { await tick('Строю дома: ' + Math.min(N, i + 4000).toLocaleString('ru') + ' из ' + N.toLocaleString('ru') + '…'); buildBuildings(i, Math.min(N, i + 4000)); }
+    await tick('Собираю кварталы…'); finishBuildings();
+    await tick('Строю Дом Единства, гостиницу «Латгола» и корпуса университета…'); buildLandmarks();
+    await tick('Насыпаю валы и копаю рвы крепости…'); buildFortress();
+    const lamps = buildLamps(); setTime(timeI);
+    await tick('Сажаю деревья…'); const trees = buildTrees();
+    await tick('Выпускаю трамваи и автобусы на линии…'); const tripsN = buildTransit();
+    if (TERR.on) scene.traverse(o => { if (!o.isMesh || !o.frustumCulled || !o.geometry) return; const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere(); if (g.boundingSphere && !g.userData.terrGrown) { g.boundingSphere.radius += 70; g.userData.terrGrown = true; } });
+    requestAnimationFrame(frame);
+    progress.textContent = 'Готово: ' + BLD.length.toLocaleString('ru') + ' зданий, ' + LINES.length.toLocaleString('ru') + ' улиц и дорожек, ' + trees.toLocaleString('ru') + ' деревьев, ' + lamps.toLocaleString('ru') + ' фонарей' + (tripsN ? ', ' + tripsN.toLocaleString('ru') + ' рейсов в расписании' : '') + '.';
+    $('go').disabled = false; $('go').focus();
+    window.__city = { TX, setClock, updateBoard, P, teleport, setFly, setTime, fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU };
+  } catch (e) { console.error(e); progress.textContent = 'Ошибка при сборке города: ' + e.message; }
+})();

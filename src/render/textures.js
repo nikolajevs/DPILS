@@ -1,0 +1,210 @@
+import * as THREE from 'three';
+import { ANISO } from './renderer.js';
+import { hash, hb } from '../core/util.js';
+
+/* ---------- procedural textures ---------- */
+let seedR = 12345; const R = () => (seedR = (seedR * 16807) % 2147483647) / 2147483647;
+const mkCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+function valueNoise(size, period, seed) { // tileable smooth noise in [0,1]
+  const g = new Float32Array(period * period); for (let i = 0; i < g.length; i++) g[i] = hash(i * 131 + seed * 7919);
+  const out = new Float32Array(size * size), k = period / size;
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const fx = x * k, fy = y * k, ix = Math.floor(fx), iy = Math.floor(fy), tx = fx - ix, ty = fy - iy;
+    const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+    const a = g[(iy % period) * period + ix % period], b = g[(iy % period) * period + (ix + 1) % period], c = g[((iy + 1) % period) * period + ix % period], d = g[((iy + 1) % period) * period + (ix + 1) % period];
+    out[y * size + x] = (a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy;
+  }
+  return out;
+}
+function fbm(size, periods, seed) { const out = new Float32Array(size * size); let w = 0; periods.forEach((p, i) => { const n = valueNoise(size, p, seed + i), a = 1 / (i + 1); w += a; for (let k = 0; k < out.length; k++) out[k] += n[k] * a; }); for (let k = 0; k < out.length; k++) out[k] /= w; return out; }
+function toTex(cv, srgb, repeat) {
+  const t = new THREE.CanvasTexture(cv); t.anisotropy = ANISO;
+  if (srgb) t.encoding = THREE.sRGBEncoding;
+  if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+/* Facade atlas: 8 rows (style) × 4 columns (variant); each cell is one bay × one floor.
+   Colour atlas is near-neutral; the mask says what the building tint applies to (R), where glass is (G). */
+function facadeAtlas() {
+  const S = 256, cv = mkCanvas(S * 4, S * 8), mk = mkCanvas(S * 4, S * 8), g = cv.getContext('2d'), m = mk.getContext('2d');
+  const WALL = '#ff0000', TRIM = '#000000', GLASS = '#00ff00', HALF = '#5a0000';
+  let ox = 0, oy = 0;
+  const rect = (x, y, w, h, col, msk) => { g.fillStyle = col; g.fillRect(ox + x, oy + y, w, h); if (msk) { m.fillStyle = msk; m.fillRect(ox + x, oy + y, w, h); } };
+  const shade = (x, y, w, h, a) => { g.fillStyle = `rgba(0,0,0,${a})`; g.fillRect(ox + x, oy + y, w, h); };
+  const light = (x, y, w, h, a) => { g.fillStyle = `rgba(255,255,255,${a})`; g.fillRect(ox + x, oy + y, w, h); };
+  const path = (fn, col, msk) => { g.beginPath(); fn(g, ox, oy); g.fillStyle = col; g.fill(); if (msk) { m.beginPath(); fn(m, ox, oy); m.fillStyle = msk; m.fill(); } };
+  const scale = (hex, f) => { const c = hb(hex); return `rgb(${Math.min(255, c[0] * f) | 0},${Math.min(255, c[1] * f) | 0},${Math.min(255, c[2] * f) | 0})`; };
+  function glass(x, y, w, h) {
+    const gr = g.createLinearGradient(0, oy + y, 0, oy + y + h); gr.addColorStop(0, '#33414c'); gr.addColorStop(0.45, '#5b6d7b'); gr.addColorStop(0.5, '#3d4c58'); gr.addColorStop(1, '#2a343c');
+    g.fillStyle = gr; g.fillRect(ox + x, oy + y, w, h); m.fillStyle = GLASS; m.fillRect(ox + x, oy + y, w, h);
+    shade(x, y, w, Math.min(8, h * 0.1), 0.35); shade(x, y, 5, h, 0.25);
+  }
+  // window: frame colour, frame width, layout ('soviet' | 'cross' | 'two' | 'one' | 'grid'), sill colour
+  function win(x, y, w, h, o) {
+    shade(x - 3, y - 2, w + 6, h + 4, 0.22);
+    rect(x, y, w, h, o.frame, TRIM);
+    const f = o.ft || 6; glass(x + f, y + f, w - 2 * f, h - 2 * f);
+    const bar = (bx, by, bw, bh) => rect(bx, by, bw, bh, o.frame, TRIM);
+    const iw = w - 2 * f, ih = h - 2 * f, bw = Math.max(3, f - 1);
+    if (o.lay === 'soviet') { bar(x + f + iw * 0.42, y + f, bw, ih); bar(x + f, y + f + ih * 0.28, iw, bw); bar(x + f + iw * 0.71, y + f + ih * 0.28, bw, ih * 0.72); }
+    else if (o.lay === 'cross') { bar(x + w / 2 - bw / 2, y + f, bw, ih); bar(x + f, y + f + ih * 0.32, iw, bw); }
+    else if (o.lay === 'two') bar(x + w / 2 - bw / 2, y + f, bw, ih);
+    else if (o.lay === 'grid') { for (let k = 1; k < 3; k++) bar(x + f + iw * k / 3, y + f, bw, ih); bar(x + f, y + f + ih * 0.3, iw, bw); }
+    if (o.sill) { rect(x - 7, y + h, w + 14, 6, o.sill, TRIM); shade(x - 7, y + h + 6, w + 14, 5, 0.28); }
+  }
+  function bricks(x0, y0, w, h, bw, bh, base, mortar, vary, mortarMask) {
+    rect(x0, y0, w, h, mortar, mortarMask);
+    for (let r = 0, y = y0; y < y0 + h; r++, y += bh) for (let x = x0 - (r % 2 ? bw / 2 : 0); x < x0 + w; x += bw) {
+      const v = 1 + (R() - 0.5) * vary; const xx = Math.max(x0, x + 1), ww = Math.min(x0 + w, x + bw - 1) - xx; if (ww <= 0) continue;
+      rect(xx, y + 1, ww, Math.min(bh - 1.6, y0 + h - y - 1), scale(base, v), WALL);
+    }
+  }
+  const cell = (c, r, fn) => { ox = c * S; oy = r * S; g.save(); m.save(); g.beginPath(); g.rect(ox, oy, S, S); g.clip(); m.beginPath(); m.rect(ox, oy, S, S); m.clip(); fn(); g.restore(); m.restore(); };
+  const floorBand = (col) => { rect(0, S - 12, S, 12, col, TRIM); shade(0, S - 12, S, 2, 0.25); shade(0, S - 1, S, 1, 0.2); };
+  function shop(frame) {
+    rect(16, 18, S - 32, 34, '#2d3a33', TRIM); light(28, 30, 90, 8, 0.5); light(130, 30, 60, 8, 0.35);
+    rect(16, 60, S - 32, S - 60, frame, TRIM); glass(24, 68, S - 48, S - 76); rect(S / 2 - 2, 68, 4, S - 76, frame, TRIM);
+    rect(16, S - 10, S - 32, 10, '#55524c', TRIM);
+  }
+  const plaster = () => rect(0, 0, S, S, '#ece8e0', WALL);
+
+  // row 0 — plaster, 19th-century eclectic
+  for (let c = 0; c < 4; c++) cell(c, 0, () => {
+    plaster(); light(0, 0, 10, S, 0.12); light(S - 10, 0, 10, S, 0.12);
+    if (c === 3) { shop('#3a3a36'); return; }
+    floorBand('#f1eee8');
+    const x = 80, y = 46, w = 96, h = 152;
+    rect(x - 12, y - 10, w + 24, h + 14, '#f3f0ea', TRIM); shade(x - 12, y + h + 4, w + 24, 3, 0.2);
+    if (c === 1) path((q, X, Y) => { q.moveTo(X + x - 12, Y + y + 30); q.arc(X + x + w / 2, Y + y + 30, w / 2 + 12, Math.PI, 0); q.lineTo(X + x + w + 12, Y + y + 40); q.lineTo(X + x - 12, Y + y + 40); }, '#f3f0ea', TRIM);
+    if (c === 2) { path((q, X, Y) => { q.moveTo(X + x - 20, Y + y - 12); q.lineTo(X + x + w / 2, Y + y - 40); q.lineTo(X + x + w + 20, Y + y - 12); }, '#f3f0ea', TRIM); shade(x - 20, y - 12, w + 40, 4, 0.3); }
+    else { rect(x - 20, y - 24, w + 40, 12, '#f5f2ec', TRIM); shade(x - 20, y - 12, w + 40, 4, 0.3); }
+    if (c === 1) { path((q, X, Y) => { q.moveTo(X + x, Y + y + 30); q.arc(X + x + w / 2, Y + y + 30, w / 2, Math.PI, 0); q.lineTo(X + x + w, Y + y + h); q.lineTo(X + x, Y + y + h); }, '#efece5', TRIM); glass(x + 6, y + 30, w - 12, h - 36); rect(x + w / 2 - 2, y + 10, 4, h - 10, '#efece5', TRIM); rect(x + 6, y + 70, w - 12, 4, '#efece5', TRIM); rect(x - 8, y + h, w + 16, 6, '#f3f0ea', TRIM); shade(x - 8, y + h + 6, w + 16, 4, 0.25); }
+    else win(x, y, w, h, { frame: '#efece5', ft: 6, lay: 'cross', sill: '#f3f0ea' });
+  });
+  // row 1 — red brick (Daugavpils fortress and old town)
+  for (let c = 0; c < 4; c++) cell(c, 1, () => {
+    bricks(0, 0, S, S, 16, 6, '#e6dad2', '#d9d3cb', 0.22, HALF);
+    if (c === 3) { shop('#2f2c28'); return; }
+    rect(0, S - 10, S, 10, '#cfc6bc', HALF); shade(0, S - 10, S, 2, 0.3);
+    if (c === 1) { for (let x = 0; x < S; x += 16) { rect(x + 2, 6, 10, 10, '#cfc5bd', WALL); shade(x + 2, 16, 10, 2, 0.35); } rect(0, 0, 14, S, '#ddd1c8', WALL); rect(S - 14, 0, 14, S, '#ddd1c8', WALL); shade(14, 0, 3, S, 0.2); }
+    const x = c === 2 ? 70 : 82, w = c === 2 ? 116 : 92, y = 52, h = 150;
+    path((q, X, Y) => { q.moveTo(X + x - 12, Y + y + 26); q.quadraticCurveTo(X + x + w / 2, Y + y - 14, X + x + w + 12, Y + y + 26); q.lineTo(X + x + w + 12, Y + y + 34); q.lineTo(X + x - 12, Y + y + 34); }, '#b9aba2', WALL);
+    for (let k = 0; k <= 10; k++) { const t = k / 10, ax = x - 12 + (w + 24) * t; shade(ax, y + 2 + Math.abs(t - 0.5) * 34, 1.5, 22, 0.35); }
+    if (c === 2) { win(x, y + 26, w / 2 - 4, h - 26, { frame: '#e9e6df', ft: 6, lay: 'one' }); win(x + w / 2 + 4, y + 26, w / 2 - 4, h - 26, { frame: '#e9e6df', ft: 6, lay: 'one' }); rect(x - 6, y + h, w + 12, 6, '#a39890', HALF); }
+    else win(x, y + 26, w, h - 26, { frame: '#e9e6df', ft: 6, lay: 'cross', sill: '#a39890' });
+  });
+  // row 2 — silicate (white) brick, Soviet 1960–80s
+  for (let c = 0; c < 4; c++) cell(c, 2, () => {
+    bricks(0, 0, S, S, 16, 6, '#f0eee8', '#d6d3cc', 0.1, WALL);
+    rect(0, S - 6, S, 6, '#c9c6bf', WALL);
+    if (c === 3) { rect(92, 70, 72, S - 70, '#5c4a3c', TRIM); light(98, 76, 60, 2, 0.2); rect(84, 52, 88, 14, '#9a978f', TRIM); shade(84, 66, 88, 4, 0.4); glass(104, 24, 48, 22); return; }
+    if (c === 1) { rect(40, 36, 58, 214, '#ece9e2', TRIM); glass(48, 44, 42, 80); rect(48, 130, 42, 112, '#e2ded5', TRIM); shade(48, 130, 42, 3, 0.2); win(110, 66, 100, 134, { frame: '#ece9e2', ft: 7, lay: 'cross', sill: '#b9b6ae' }); return; }
+    win(56, 66, 144, 134, c === 2 ? { frame: '#f7f7f5', ft: 5, lay: 'two', sill: '#e3e3e0' } : { frame: '#e9e6dd', ft: 7, lay: 'soviet', sill: '#b9b6ae' });
+  });
+  // row 3 — concrete panel blocks
+  for (let c = 0; c < 4; c++) cell(c, 3, () => {
+    rect(0, 0, S, S, '#dedad2', WALL);
+    if (c === 1) { for (let y = 0; y < S; y += 9) for (let x = (y / 9 % 2) * 4; x < S; x += 9) rect(x + 1, y + 1, 7, 7, scale('#e6e2da', 0.94 + R() * 0.1), WALL); }
+    rect(0, 0, 3, S, '#8b8880', TRIM); rect(0, 0, S, 3, '#8b8880', TRIM); light(3, 3, S, 2, 0.25);
+    if (c === 3) { rect(96, 64, 64, S - 64, '#4a4038', TRIM); rect(84, 48, 88, 12, '#a7a49c', TRIM); shade(84, 60, 88, 5, 0.4); return; }
+    win(64, 76, 128, 120, c === 2 ? { frame: '#f7f7f5', ft: 5, lay: 'two', sill: '#e3e3e0' } : { frame: '#dcd8cc', ft: 7, lay: 'soviet', sill: '#a9a69e' });
+  });
+  // row 4 — renovated / modern plaster
+  for (let c = 0; c < 4; c++) cell(c, 4, () => {
+    rect(0, 0, S, S, '#efede8', WALL);
+    if (c === 3) { shop('#3b3e42'); return; }
+    if (c === 2) { rect(0, 0, S, S, '#4a4f55', TRIM); glass(6, 6, S - 12, S - 12); for (let x = 0; x <= S; x += 64) rect(x - 3, 0, 6, S, '#4a4f55', TRIM); rect(0, S - 26, S, 6, '#4a4f55', TRIM); return; }
+    if (c === 1) { rect(0, S - 40, S, 40, '#d9d5cc', HALF); win(50, 50, 156, 154, { frame: '#3f4348', ft: 6, lay: 'grid', sill: '#5a5e63' }); return; }
+    win(66, 60, 124, 140, { frame: '#f8f8f6', ft: 6, lay: 'two', sill: '#d8d8d4' });
+  });
+  // row 5 — wooden houses with carved window trims
+  for (let c = 0; c < 4; c++) cell(c, 5, () => {
+    for (let y = 0; y < S; y += 16) { rect(0, y, S, 16, scale('#e8e2d8', 0.92 + R() * 0.12), WALL); light(0, y, S, 2, 0.18); shade(0, y + 14, S, 2, 0.4); }
+    for (let k = 0; k < 40; k++) shade(R() * S, Math.floor(R() * 16) * 16 + 4, 30 + R() * 60, 1, 0.08);
+    if (c === 2) return;
+    if (c === 3) { rect(90, 40, 76, S - 40, '#efe9de', TRIM); rect(98, 50, 60, S - 50, '#8c6a4c', HALF); for (let x = 104; x < 156; x += 12) shade(x, 50, 2, S - 50, 0.3); return; }
+    const x = 92, y = 70, w = 72, h = 118;
+    if (c === 1) { for (const sx of [x - 44, x + w + 8]) { rect(sx, y, 36, h, '#c9c2b6', HALF); for (let yy = y + 6; yy < y + h; yy += 12) shade(sx + 3, yy, 30, 2, 0.35); } }
+    rect(x - 12, y - 10, w + 24, h + 22, '#f1ede5', TRIM);
+    path((q, X, Y) => { q.moveTo(X + x - 18, Y + y - 10); q.lineTo(X + x + w / 2, Y + y - 46); q.lineTo(X + x + w + 18, Y + y - 10); }, '#f1ede5', TRIM);
+    for (let k = 0; k < 5; k++) { g.fillStyle = 'rgba(0,0,0,0.25)'; g.beginPath(); g.arc(ox + x - 4 + k * (w + 8) / 4, oy + y - 6, 4, 0, Math.PI); g.fill(); }
+    shade(x - 18, y - 10, w + 36, 3, 0.3);
+    path((q, X, Y) => { q.moveTo(X + x - 10, Y + y + h + 12); q.lineTo(X + x + w + 10, Y + y + h + 12); q.lineTo(X + x + w / 2, Y + y + h + 34); }, '#f1ede5', TRIM);
+    win(x, y, w, h, { frame: '#f6f3ed', ft: 6, lay: 'cross' });
+  });
+  // row 6 — industrial
+  for (let c = 0; c < 4; c++) cell(c, 6, () => {
+    if (c === 2) { rect(0, 0, S, S, '#d4d1ca', HALF); for (let y = 0; y < S; y += 32) for (let x = (y / 32 % 2) * 32; x < S; x += 64) rect(x + 1, y + 1, 62, 30, scale('#e2dfd8', 0.95 + R() * 0.08), WALL); glass(40, 24, 176, 40); for (let x = 40; x <= 216; x += 44) rect(x - 2, 24, 4, 40, '#55595d', TRIM); return; }
+    for (let x = 0; x < S; x++) { const v = 0.86 + 0.14 * Math.sin(x / 16 * Math.PI * 2); g.fillStyle = scale('#e9e9e6', v); g.fillRect(ox + x, oy, 1, S); }
+    m.fillStyle = WALL; m.fillRect(ox, oy, S, S);
+    if (c === 0) { rect(0, 28, S, 46, '#4d5256', TRIM); glass(0, 32, S, 38); for (let x = 0; x < S; x += 32) rect(x, 28, 3, 46, '#4d5256', TRIM); }
+    if (c === 3) { rect(28, 40, 200, S - 40, '#9a9c9e', HALF); for (let y = 44; y < S; y += 8) shade(28, y, 200, 2, 0.25); }
+  });
+  // row 7 — plain outbuildings, garages
+  for (let c = 0; c < 4; c++) cell(c, 7, () => {
+    rect(0, 0, S, S, '#e4e0d8', WALL);
+    for (let y = 0; y < S; y += 24) shade(0, y, S, 1, 0.08);
+    if (c === 1) win(96, 70, 64, 56, { frame: '#d9d4ca', ft: 6, lay: 'two' });
+    if (c === 2) { rect(18, 50, 220, S - 50, '#a8aaa6', HALF); for (let x = 22; x < 236; x += 10) shade(x, 50, 3, S - 50, 0.18); rect(126, 50, 4, S - 50, '#6f716e', TRIM); shade(18, 50, 220, 5, 0.35); }
+    if (c === 3) { rect(100, 72, 58, S - 72, '#6a5a4a', HALF); shade(100, 72, 58, 4, 0.4); }
+  });
+  // plaster grain and soiling where the tint applies
+  const id = g.getImageData(0, 0, cv.width, cv.height), md = m.getImageData(0, 0, cv.width, cv.height).data, d = id.data;
+  const nz = fbm(256, [8, 32, 64], 4);
+  for (let y = 0; y < cv.height; y++) for (let x = 0; x < cv.width; x++) {
+    const k = (y * cv.width + x) * 4, w = md[k] / 255; if (w < 0.05) continue;
+    const n = (nz[(y & 255) * 256 + (x & 255)] - 0.5) * 0.18 + (Math.random() - 0.5) * 0.07, f = 1 + n * w;
+    d[k] = Math.min(255, d[k] * f); d[k + 1] = Math.min(255, d[k + 1] * f); d[k + 2] = Math.min(255, d[k + 2] * f);
+  }
+  g.putImageData(id, 0, 0);
+  const tc = toTex(cv, false, false), tm = toTex(mk, false, false);
+  tc.generateMipmaps = tm.generateMipmaps = true; tc.minFilter = tm.minFilter = THREE.LinearMipmapLinearFilter;
+  return [tc, tm];
+}
+/* Roof atlas, 4 × 2 tiles of 3 m: 0 concrete, 1 asbestos slate, 2 metal, 3 clay tiles, 4 shingles, 5 membrane, 6 glass, 7 wooden shingles */
+function roofAtlas() {
+  const S = 256, cv = mkCanvas(S * 4, S * 2), g = cv.getContext('2d');
+  const id = g.createImageData(cv.width, cv.height), d = id.data, nz = fbm(256, [4, 16, 64], 9), nz2 = valueNoise(256, 32, 21);
+  for (let y = 0; y < cv.height; y++) for (let x = 0; x < cv.width; x++) {
+    const t = (x >> 8) + 4 * (y >> 8), u = x & 255, v = y & 255, n = nz[v * 256 + u], fine = Math.random();
+    let r = 220, gg = 220, b = 216, f = 1;
+    if (t === 0) f = 0.85 + n * 0.25 + fine * 0.08;
+    else if (t === 1) { const w = Math.sin(u / 256 * Math.PI * 2 * 14); f = 0.86 + 0.12 * w + (v % 96 < 4 ? -0.25 : 0) + (n - 0.5) * 0.3; if (nz2[v * 256 + u] > 0.72) { r = 160; gg = 175; b = 120; } }
+    else if (t === 2) { const s = u % 43; f = 0.95 + (s < 2 ? 0.18 : s < 4 ? -0.15 : 0) + (n - 0.5) * 0.12; }
+    else if (t === 3) { const row = v % 32, col = (u + (Math.floor(v / 32) % 2) * 16) % 32; f = 0.8 + 0.25 * Math.sin(col / 32 * Math.PI) - (row > 27 ? 0.3 : 0) + (n - 0.5) * 0.15; }
+    else if (t === 4) { const row = v % 20, col = (u + (Math.floor(v / 20) % 2) * 16) % 32; f = 0.9 + (row > 16 ? -0.35 : 0) + (col < 2 ? -0.25 : 0) + (n - 0.5) * 0.25 + fine * 0.1; }
+    else if (t === 5) { f = 0.85 + (n - 0.5) * 0.35 + fine * 0.1 + (u % 85 < 2 ? 0.1 : 0); }
+    else if (t === 6) { const s = u % 64, q = v % 128; f = s < 4 || q < 4 ? 0.55 : 1.0; r = 205; gg = 225; b = 228; }
+    else { const row = v % 14, col = (u + (Math.floor(v / 14) % 3) * 7) % 21; f = 0.88 + (row > 11 ? -0.35 : 0) + (col < 1 ? -0.3 : 0) + (fine - 0.5) * 0.18; }
+    const k = (y * cv.width + x) * 4; d[k] = Math.max(0, Math.min(255, r * f)); d[k + 1] = Math.max(0, Math.min(255, gg * f)); d[k + 2] = Math.max(0, Math.min(255, b * f)); d[k + 3] = 255;
+  }
+  g.putImageData(id, 0, 0);
+  const t = toTex(cv, false, false); t.minFilter = THREE.LinearMipmapLinearFilter; return t;
+}
+function detailTex(kind) { // grey ≈ 128 means "no change"
+  const S = 256, cv = mkCanvas(S, S), g = cv.getContext('2d'), id = g.createImageData(S, S), d = id.data;
+  const n1 = fbm(S, [4, 8, 16, 32], kind * 17 + 3), n2 = valueNoise(S, 64, kind * 5 + 1);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const i = y * S + x, r = Math.random(); let v;
+    if (kind === 0) v = 128 + (n1[i] - 0.5) * 70 + (r - 0.5) * 34 + (n2[i] - 0.5) * 20;            // grass / soil
+    else if (kind === 1) v = 128 + (n1[i] - 0.5) * 30 + (r - 0.5) * 46 + (n2[i] > 0.8 ? -18 : 0);  // asphalt
+    else if (kind === 2) { const a = x % 32, b = (y + (Math.floor(x / 32) % 2) * 16) % 32; v = 136 + (n1[i] - 0.5) * 30 + (r - 0.5) * 20 - (a < 2 || b < 2 ? 46 : 0); } // paving
+    else v = 128 + (r - 0.5) * 90 + (n1[i] - 0.5) * 30;                                            // gravel ballast
+    v = Math.max(0, Math.min(255, v)); d[4 * i] = d[4 * i + 1] = d[4 * i + 2] = v; d[4 * i + 3] = 255;
+  }
+  g.putImageData(id, 0, 0); return toTex(cv, false, true);
+}
+function waterNormalTex() {
+  const S = 256, cv = mkCanvas(S, S), g = cv.getContext('2d'), id = g.createImageData(S, S), d = id.data;
+  const W = [[3, 1, 0.5], [-2, 4, 0.35], [7, -3, 0.18], [-9, -6, 0.12], [13, 11, 0.06], [5, 17, 0.05]];
+  const H = (x, y) => W.reduce((s, [a, b, amp], k) => s + amp * Math.sin(2 * Math.PI * (a * x + b * y) / S + k * 1.7), 0);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const dx = H(x + 1, y) - H(x - 1, y), dy = H(x, y + 1) - H(x, y - 1); const l = Math.hypot(dx * 2, dy * 2, 1);
+    const k = (y * S + x) * 4; d[k] = (dx * 2 / l * 0.5 + 0.5) * 255; d[k + 1] = (dy * 2 / l * 0.5 + 0.5) * 255; d[k + 2] = (1 / l * 0.5 + 0.5) * 255; d[k + 3] = 255;
+  }
+  g.putImageData(id, 0, 0); return toTex(cv, false, true);
+}
+function glowTex() { const cv = mkCanvas(128, 128), g = cv.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.4, 'rgba(255,255,255,0.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); return toTex(cv, false, false); }
+
+export { R, detailTex, facadeAtlas, fbm, glowTex, mkCanvas, roofAtlas, toTex, valueNoise, waterNormalTex };

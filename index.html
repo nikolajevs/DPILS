@@ -1,0 +1,87 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Даугавпилс 3D</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=Unbounded:wght@500;700&family=PT+Sans+Narrow:wght@700&display=swap">
+<link rel="stylesheet" href="./src/style.css">
+
+<canvas id="view" tabindex="0" aria-label="Трёхмерный вид Даугавпилса"></canvas>
+<div class="cross" id="cross" hidden></div>
+
+<div class="hud" id="hud" hidden>
+  <div class="where">
+    <div class="plate" id="street">Vienības laukums</div>
+    <div class="panel near" id="near" hidden></div>
+    <div class="panel clock" id="clock" hidden>
+      <div class="clk-row"><b id="clkTime">--:--</b><span class="clk-day" id="clkDay"></span>
+        <button class="mbtn" id="clkBack" title="На час назад">−1 ч</button>
+        <button class="mbtn" id="clkSpeed" title="Скорость времени, клавиша T">×1</button>
+        <button class="mbtn" id="clkFwd" title="На час вперёд">+1 ч</button>
+        <button class="mbtn" id="clkNow" hidden>сейчас</button>
+      </div>
+      <div class="clk-info"><span id="clkInfo"></span><button class="mbtn" id="clkFirst" hidden>к первому рейсу</button></div>
+    </div>
+    <div class="panel board" id="board" hidden aria-live="polite">
+      <div class="board-h">Остановка<b id="boardName"></b></div>
+      <ol id="boardList"></ol>
+    </div>
+  </div>
+  <div class="panel mini" id="mini" role="button" tabindex="0" aria-label="Открыть карту города">
+    <canvas id="minimap" width="190" height="190"></canvas><span class="n">С</span>
+  </div>
+  <nav class="panel places" id="places" hidden aria-label="Места">
+    <h2>Перенестись</h2>
+    <ul id="placeList"></ul>
+  </nav>
+  <div class="bottom">
+  <div class="panel status" id="status"><span id="stMode">пешком</span><span id="stHead">курс 000° С</span><span class="opt" id="stPos"></span></div>
+  <div class="panel bar">
+    <button class="btn" id="bPlaces" aria-pressed="false">Места<kbd>P</kbd></button>
+    <button class="btn" id="bMap">Карта<kbd>M</kbd></button>
+    <a class="btn" id="bSV" href="https://www.google.com/maps" target="_blank" rel="noopener" title="Открыть настоящую панораму Google Street View в этой точке и в этом направлении">Street View<kbd>V</kbd></a>
+    <button class="btn" id="bFly" aria-pressed="false">Полёт<kbd>F</kbd></button>
+    <button class="btn" id="bNight" aria-pressed="false" title="День → вечер → ночь">Время: день<kbd>N</kbd></button>
+    <button class="btn" id="bQuality" title="Качество графики">Графика: высокая</button>
+    <button class="btn" id="bHelp">?</button>
+  </div>
+  </div>
+</div>
+
+<div class="bigmap" id="bigmap" hidden>
+  <div class="panel sheet">
+    <header><span>Нажмите на карту, чтобы перенестись в это место</span><button class="btn" id="bMapClose">Закрыть</button></header>
+    <canvas id="mapCanvas"></canvas>
+  </div>
+</div>
+
+<div class="start" id="start">
+  <div class="panel card">
+    <div class="eyebrow">55.87° с. ш. · 26.52° в. д. · Латгалия</div>
+    <h1>Даугавпилс в 3D</h1>
+    <p>Весь город по открытым данным: 48 600 зданий с этажностью, материалом стен и покрытием крыши из кадастра Латвии, улицы с настоящими названиями, Даугава в своём русле, мосты, крепость, Церковная горка, Стропские сосны. Дом Единства и гостиница «Латгола» построены отдельно по фотографиям, с колоннами, вывесками и клумбами. В крепости — валы, рвы и ворота: Николаевские с деревянным мостом через ров, Михайловские, Александровские; по валам можно пройти пешком. Артиллерийский арсенал (Центр Марка Ротко) и Инженерный арсенал — тоже по фотографиям. Трамваи и автобусы ходят по настоящему расписанию «Daugavpils satiksme», на остановках видно ближайшие отправления. Рельеф настоящий — по лидарной модели высот LGIA: долина Даугавы, Церковная горка, террасы Химии, насыпи железной дороги. Можно идти пешком или взлететь над крышами.</p>
+    <dl class="keys">
+      <dt>W A S D / стрелки</dt><dd>идти, Shift — бегом</dd>
+      <dt>Мышь</dt><dd>смотреть по сторонам (Esc — отпустить курсор)</dd>
+      <dt>F</dt><dd>полёт: E / пробел — выше, Q — ниже</dd>
+      <dt>V</dt><dd>открыть настоящую панораму Street View в этой точке</dd>
+      <dt>M · P · N</dt><dd>карта · список мест · время суток (день, вечер, ночь)</dd>
+      <dt>T</dt><dd>ускорить часы транспорта: ×1, ×10, ×60</dd>
+      <dt>На телефоне</dt><dd>левая половина экрана — идти, правая — смотреть</dd>
+    </dl>
+    <div class="progress" id="progress">Загружаю город…</div>
+    <button class="go" id="go" disabled>Начать прогулку</button>
+    <div class="credit">Карта © участники <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>. Здания: кадастр Государственной земельной службы Латвии (<a href="https://data.gov.lv/dati/lv/dataset/kadastra-informacijas-sistemas-atvertie-dati">data.gov.lv</a>, CC BY 4.0). Расписание: GTFS <a href="https://satiksme.daugavpils.lv/">Daugavpils satiksme</a>. Фасады нарисованы по материалу стен и году постройки, это не фотографии; Дом Единства и «Латгола» смоделированы по снимкам с Wikimedia Commons, visitdaugavpils.lv, celotajs.lv и militaryheritagetourism.info.</div>
+  </div>
+</div>
+<div id="tags" aria-hidden="true"></div>
+<div class="joy" id="joy" hidden><i id="joyKnob"></i></div>
+
+<!-- three.js for the unbundled page (GitHub Pages serves the repository as it is); Vite bundles it from npm instead -->
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js" } }</script>
+<script src="citydata.js"></script>
+<script src="transit.js"></script>
+<script src="fortress.js"></script>
+<script src="terrain.js"></script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
