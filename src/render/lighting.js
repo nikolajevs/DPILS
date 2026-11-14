@@ -22,6 +22,7 @@ const TIMES = [
     lit: 0.5, cover: 0.38, cloudLit: [0.1, 0.115, 0.15], cloudDark: [0.02, 0.025, 0.035], stars: 1, haze: 1 / 5000, thresh: 1.1, bloom: 0.9, lamps: true }
 ];
 let timeI = 0;
+const ENV = [];   // PMREM environment per time of day
 function setTime(i) {
   timeI = i; const T = TIMES[i]; STATE.night = i === 2;
   const b = $('bNight'); b.firstChild.textContent = 'Время: ' + T.name; b.setAttribute('aria-pressed', i > 0);
@@ -34,11 +35,13 @@ function setTime(i) {
     u.uStars.value = env ? 0 : T.stars; u.uCover.value = T.cover; u.uSkyline.value = env ? 1 : 0;
   }
   scene.fog.color.copy(hor); scene.fog.near = T.haze; U.fogGlow.value.fromArray(T.glow);
-  sun.color.copy(sc); sun.intensity = T.sunI; U.sunCol.value.copy(sc).multiplyScalar(T.sunI);
-  hemi.intensity = T.hemi;
+  sun.color.copy(sc); sun.intensity = T.sunI * Math.PI; U.sunCol.value.copy(sc).multiplyScalar(T.sunI);   // ×π: the old scale of light
+  hemi.intensity = T.hemi * Math.PI;
   renderer.toneMappingExposure = T.exp;
   U.night.value = i === 2 ? 1 : i === 1 ? 0.8 : 0; U.lit.value = T.lit; lmNight(U.night.value);
-  if (STATE.envRT) STATE.envRT.dispose(); STATE.envRT = pmrem.fromScene(envScene, 0, 0.1, 100); scene.environment = STATE.envRT.texture;
+  // the environment of each time of day is filtered once (the GGX filter of three.js is costly on weak GPUs) and kept
+  if (!ENV[i]) ENV[i] = pmrem.fromScene(envScene, 0, 0.1, 100);
+  STATE.envRT = ENV[i]; scene.environment = STATE.envRT.texture;
   if (lampHeads) { lampHeads.material = T.lamps ? matHeadNight : matHeadDay; lampPools.visible = T.lamps; }
   for (const g of TX.glow) g.visible = T.lamps;
   STATE.shadowDirty = true; STATE.mapTimer = 0;

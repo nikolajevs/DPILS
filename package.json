@@ -9,7 +9,7 @@
     "check": "node tools/check.mjs"
   },
   "dependencies": {
-    "three": "0.128.0"
+    "three": "0.187.0"
   },
   "devDependencies": {
     "acorn": "8.12.1",

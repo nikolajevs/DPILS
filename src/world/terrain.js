@@ -27,21 +27,31 @@ float terrainH(vec2 p) {
   return mix(mix(terrTexel(i), terrTexel(i + vec2(1.0, 0.0)), f.x), mix(terrTexel(i + vec2(0.0, 1.0)), terrTexel(i + vec2(1.0)), f.x), f.y) - uTerrB.z;
 }`;
 THREE.ShaderChunk.project_vertex = `vec4 mvPosition = vec4( transformed, 1.0 );
+#ifdef USE_BATCHING
+  mvPosition = batchingMatrix * mvPosition;
+#endif
 #ifdef USE_INSTANCING
   mvPosition = instanceMatrix * mvPosition;
 #endif
 mvPosition = modelMatrix * mvPosition; mvPosition.y += terrainH(mvPosition.xz);
 mvPosition = viewMatrix * mvPosition;
 gl_Position = projectionMatrix * mvPosition;`;
-THREE.ShaderChunk.worldpos_vertex = `#if defined( USE_ENVMAP ) || defined( DISTANCE ) || defined ( USE_SHADOWMAP )
+THREE.ShaderChunk.worldpos_vertex = `#if defined( USE_ENVMAP ) || defined( DISTANCE ) || defined ( USE_SHADOWMAP ) || defined ( USE_TRANSMISSION ) || NUM_SPOT_LIGHT_COORDS > 0
   vec4 worldPosition = vec4( transformed, 1.0 );
+  #ifdef USE_BATCHING
+    worldPosition = batchingMatrix * worldPosition;
+  #endif
   #ifdef USE_INSTANCING
     worldPosition = instanceMatrix * worldPosition;
   #endif
   worldPosition = modelMatrix * worldPosition; worldPosition.y += terrainH(worldPosition.xz);
 #endif`;
 
-THREE.Material.prototype.onBeforeCompile = function (s) { terrUniforms(s); };   // three's own materials, the shadow depth ones too
+// three's own materials get the terrain too (the shadow depth ones must), except the cube faces the PMREM generator
+// draws to filter the environment (its materials draw through project_vertex since three.js r18x): lifted by the
+// terrain they would miss the camera and leave the environment black
+const TERR_OFF = { value: new THREE.Vector4(0, 0, 0, 0) };
+THREE.Material.prototype.onBeforeCompile = function (s) { terrUniforms(s); if (/^PMREM/.test(this.name)) s.uniforms.uTerrA = TERR_OFF; };
 // the same bilinear height as the shaders, from the same decimetres
 function terrainH(x, z) {
   if (!TERR.on) return 0;
@@ -204,7 +214,7 @@ void main() {
   col = mix(col, uSkyGnd, smoothstep(0.0, -0.05, d.y));
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
-  #include <encodings_fragment>
+  #include <colorspace_fragment>
 }`;
 function skyMaterial() {
   const c = () => ({ value: new THREE.Color() });

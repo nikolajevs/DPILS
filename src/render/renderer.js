@@ -2,6 +2,11 @@ import * as THREE from 'three';
 import { $, progress } from '../core/env.js';
 
 /* ---------- renderer & scene ---------- */
+// Colours stay as the city was tuned under three.js r128, before it managed colour spaces: hex values and vertex
+// colours are taken as they are (the shaders make vertex colours linear themselves, see SRGB_COLOR_VERTEX), canvas
+// textures are marked sRGB and the output is sRGB. Light intensities are multiplied by π where they are set (see
+// setTime): three.js no longer scales them by π itself.
+THREE.ColorManagement.enabled = false;
 const canvas = $('view');
 // The HDR pipeline (scene → float target → ambient occlusion, bloom, tone mapping) needs WebGL 2 with float render targets;
 // without them the scene is drawn straight to the screen as before.
@@ -10,22 +15,22 @@ try { const g = document.createElement('canvas').getContext('webgl2'); POST = !!
 let renderer;
 try { renderer = new THREE.WebGLRenderer({ canvas, antialias: !POST, powerPreference: 'high-performance' }); }
 catch (e) { progress.textContent = 'Браузер не смог запустить 3D-графику (WebGL).'; throw new Error('the city cannot be built'); }
-renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = POST ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;   // PCFSoftShadowMap was removed; PCF is soft enough now
 renderer.info.autoReset = false;
-const GL2 = renderer.capabilities.isWebGL2, MAXTEX = renderer.capabilities.maxTextureSize, ANISO = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+const GL2 = true, MAXTEX = renderer.capabilities.maxTextureSize, ANISO = Math.min(8, renderer.capabilities.getMaxAnisotropy());
 let GPU = ''; try { const gl = renderer.getContext(), e = gl.getExtension('WEBGL_debug_renderer_info'); if (e) GPU = String(gl.getParameter(e.UNMASKED_RENDERER_WEBGL) || ''); } catch (e) {}
 const WEAK_GPU = /Intel|Iris|Mali|Adreno|PowerVR|SwiftShader|llvmpipe|Basic Render/i.test(GPU) && !/\bArc\b/i.test(GPU);
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xffffff, 1e-4, 3000);     // .near carries the haze density, .far the distance where the world fades out
 const camera = new THREE.PerspectiveCamera(66, 1, 0.3, 3200);
 camera.rotation.order = 'YXZ';
-const sun = new THREE.DirectionalLight(0xffffff, 3); scene.add(sun); scene.add(sun.target);
+const sun = new THREE.DirectionalLight(0xffffff, 3 * Math.PI); scene.add(sun); scene.add(sun.target);
 sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.04;
-const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.15); scene.add(hemi);
+const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.15 * Math.PI); scene.add(hemi);
 const LIGHTDIR = new THREE.Vector3(-0.55, 0.62, 0.56).normalize();   // towards the sun (or the moon)
 // uniforms shared by many materials
 const U = { night: { value: 0 }, lit: { value: 0 }, time: { value: 0 }, sunDir: { value: LIGHTDIR }, fogGlow: { value: new THREE.Color(0, 0, 0) }, sunCol: { value: new THREE.Color(1, 1, 1) } };

@@ -3,7 +3,15 @@ import { STATE } from '../core/state.js';
 import { U, hook } from './renderer.js';
 
 /* ---------- materials ---------- */
-const SRGB_COLOR_VERTEX = THREE.ShaderChunk.color_vertex.replace('vColor *= color;', 'vColor *= pow( color, vec3( 2.2 ) );').replace('vColor.xyz *= color.xyz;', 'vColor.xyz *= pow( color.xyz, vec3( 2.2 ) );');
+// vertex colours are given in sRGB: they are made linear as they are read. Since three.js r15x vColor is a vec4 and
+// three-component colours take the 'vColor.rgb *= color' branch; a chunk that no longer matches is reported.
+const SRGB_COLOR_VERTEX = (() => {
+  const src = THREE.ShaderChunk.color_vertex, out = src
+    .replace('vColor.rgb *= color;', 'vColor.rgb *= pow( color, vec3( 2.2 ) );')
+    .replace('vColor *= color;', 'vColor *= vec4( pow( color.rgb, vec3( 2.2 ) ), color.a );');
+  if (!out.includes('vColor.rgb *= pow( color')) console.warn('color_vertex changed: vertex colours are not made linear');
+  return out;
+})();
 const SAMPLE_GLSL = `
 #if __VERSION__ >= 300
 #define ATLAS(t, uv, dx, dy) textureGrad(t, uv, dx, dy)

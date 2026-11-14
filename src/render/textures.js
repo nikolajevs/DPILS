@@ -19,7 +19,7 @@ function valueNoise(size, period, seed) { // tileable smooth noise in [0,1]
 function fbm(size, periods, seed) { const out = new Float32Array(size * size); let w = 0; periods.forEach((p, i) => { const n = valueNoise(size, p, seed + i), a = 1 / (i + 1); w += a; for (let k = 0; k < out.length; k++) out[k] += n[k] * a; }); for (let k = 0; k < out.length; k++) out[k] /= w; return out; }
 function toTex(cv, srgb, repeat) {
   const t = new THREE.CanvasTexture(cv); t.anisotropy = ANISO;
-  if (srgb) t.encoding = THREE.sRGBEncoding;
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
 }

@@ -44,8 +44,9 @@ function lmTick() {
   g.fillStyle = '#2a1210'; g.fillText('88:88', W / 2, H / 2 + 2); g.fillStyle = '#ff3a22'; g.fillText(Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0'), W / 2, H / 2 + 2);
   lmClk.tex.needsUpdate = true;
 }
-const LM_SAFE = s => { s.fragmentShader = s.fragmentShader.replace('gl_FragColor = vec4( outgoingLight, diffuseColor.a );',
-  '#if __VERSION__ >= 300\nif (any(isnan(outgoingLight)) || any(isinf(outgoingLight))) outgoingLight = diffuseColor.rgb * 0.3;\n#endif\ngl_FragColor = vec4( min( outgoingLight, vec3( 40.0 ) ), diffuseColor.a );'); };
+if (!THREE.ShaderLib.physical.fragmentShader.includes('#include <opaque_fragment>')) console.warn('three.js: the landmark materials lost their NaN guard (no opaque_fragment)');
+const LM_SAFE = s => { s.fragmentShader = s.fragmentShader.replace('#include <opaque_fragment>',
+  'if (any(isnan(outgoingLight)) || any(isinf(outgoingLight))) outgoingLight = diffuseColor.rgb * 0.3;\noutgoingLight = min( outgoingLight, vec3( 40.0 ) );\n#include <opaque_fragment>'); };
 const lmStd = (opts, key, patch) => std(opts, key, s => { LM_SAFE(s); if (patch) patch(s); });
 function buildLandmarks() {
   const [dc, dorm, dglow] = lmTiles(), [sc, sglow] = lmSigns(), WT = [0, 1, 2, 3, 4, 5, 6, 7].map(lmWallTex), ashT = WT[0], renT = WT[1];
