@@ -6,6 +6,7 @@ import { jnFix } from '../landmarks/junction.js';
 import { spwTrackLine } from '../landmarks/speedway.js';
 import { ovComp, ovDensify, ovPrep, ovRoadHW, ovTouches } from './overpass.js';
 import { vbOnLine } from './bridge-vienibas.js';
+import { streetTags } from './street-tags.js';
 import { COL, LINES, M_ASPH, M_BALLAST, M_DIRT, M_LAND, M_MARK, M_PAVE, ROAD, STREAM, TRAMLINES, inWater, matPlain } from './data.js';
 import { LINE } from './palette.js';
 import { TERR, bridgeDeck, bridgeOf, densify } from './terrain.js';
@@ -77,7 +78,7 @@ function buildLines() {
   if (TERR.on) ovPrep();
   const groups = [0, 1, 2, 3, 4, 5].map(() => new GB(false)), lineCol = {}; for (const k in LINE) lineCol[k] = hb(LINE[k][1]);
   const walk = groups[1], marks = groups[5], extra = new GB(false);
-  const PAVE = hb('#8f897e'), CURB = hb('#a9a69e'), WHITE = hb('#e8e6df'), RAIL = hb('#4a4440'), SLEEP = hb('#635d56');
+  const PAVE = hb('#8f897e'), CURB = hb('#a9a69e'), WHITE = hb('#e8e6df'), RAIL = hb('#4a4440'), SLEEP = hb('#635d56'), GRAVEL = hb('#8b8475');
   const sorted = C.l.map(l => ({ cls: l[0], name: l[1], pts: dec(l[2]), bridge: !!l[3] }));
   // the carriageways from the least to the main streets, so a main street is laid over the service roads that join it
   // (the comparator used to leave the other lines in between, which left that order to the sort and let some service roads lie over 18. novembra iela)
@@ -99,7 +100,7 @@ function buildLines() {
       if (Math.abs((px - x) * tx + (pz - z) * tz) > 0.3 * d) return;
       if (!best || d < best.d) best = { d, s: Math.sign((px - x) * -tz + (pz - z) * tx) || 1 }; });
     return best; };
-  function dualOf(li, pts, dp) {   // per point of dp: the distance to the other carriageway and the half width; null if not a pair
+  function dualOf(li, pts, dp, lanes) {   // per point of dp: the distance to the other carriageway and the half width; null if not a pair
     let n = 0, hit = 0;
     for (let i = 0; i < pts.length - 2; i += 2) { const dx = pts[i + 2] - pts[i], dz = pts[i + 3] - pts[i + 1], sl = Math.hypot(dx, dz); if (sl < 0.5) continue; const tx = dx / sl, tz = dz / sl;
       for (let s = 0; s < sl; s += 6) { n++; if (partner(li, pts[i] + tx * s, pts[i + 1] + tz * s, tx, tz)) hit++; } }
@@ -113,7 +114,9 @@ function buildLines() {
     last = null; for (let i = m - 1; i >= 0; i--) { if (D[i] === null) D[i] = last; else last = D[i]; }
     if (D[0] === null) return null;
     const Ds = D.map((_, i) => { let a = 0, k = 0; for (let j = Math.max(0, i - 2); j <= Math.min(m - 1, i + 2); j++) { a += D[j]; k++; } return a / k; });
-    const H = Ds.map(d => Math.max(1.85, Math.min(3.4, 1.85 + (d - 8) * 0.5)));
+    /* lanes of 3.25 m where OSM gives their number (where the two carriageways run closer than their width, up to the
+       middle between them); otherwise guessed from the distance */
+    const H = Ds.map(d => lanes ? Math.min(lanes * 1.625, Math.max(1.85, d / 2)) : Math.max(1.85, Math.min(3.4, 1.85 + (d - 8) * 0.5)));
     /* a median narrower than 4.5 m is asphalt: painted, or, where tram tracks run in it (by the overpass bridge), too
        narrow for a track bed of its own, so the rails lie flush in the asphalt between the lanes as on the bridge */
     const paint = Ds.map((d, i) => d - 2 * H[i] < 4.5);
@@ -271,12 +274,15 @@ function buildLines() {
     else if (onBridge) { const B = bridgeOf(pts, hw + (cls <= 3 ? 2.7 : 0.3)); jn = jnFix(B); STATE.GBC = bridgeDeck(B); } else STATE.GBC = null;
     if (cls === 10 || cls === 11) for (let i = 0; i < n - 1; i++) STREAM.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, 0);
     l.gbc = STATE.GBC;
-    const dual = cls <= 3 && l.name >= 0 && !jn ? dualOf(li, pts, dp) : null;
-    const ovW = onOv && cls === 0 && !dual ? ovWidths(dp, hw) : null;
+    const tags = cls <= 3 ? streetTags(pts) : null, lanes4 = !!tags && tags.lanes >= 4, rural = !!tags && !!tags.rural;
+    const dual = cls <= 3 && l.name >= 0 && !jn ? dualOf(li, pts, dp, tags && tags.lanes) : null;
+    // four lanes: across the overpass from guard rail to guard rail, elsewhere 13 m where OSM says so
+    const W = dual ? null : onOv && cls === 0 ? ovWidths(dp, lanes4 ? 6.5 : hw) : lanes4 ? new Array(dp.length >> 1).fill(6.5) : null;
     let hwC = hw;   // the half width that traffic, the tram tracks and the lamps go by
     if (dual) {   // one carriageway of a pair: s is the side of the other one
       const { side: s, D, H, paint, trm } = dual, m = dp.length >> 1, A = [], B = [];
-      for (let i = 0; i < m; i++) { const inner = paint[i] ? D[i] / 2 : H[i]; if (s > 0) { A.push(-H[i]); B.push(inner); } else { A.push(-inner); B.push(H[i]); } }
+      // a painted median: each carriageway's asphalt reaches 0.3 m past the middle, so the two always meet
+      for (let i = 0; i < m; i++) { const inner = paint[i] ? D[i] / 2 + 0.3 : H[i]; if (s > 0) { A.push(-H[i]); B.push(inner); } else { A.push(-inner); B.push(H[i]); } }
       ribbonV(groups[def[2]], dp, A, B, lineCol[cls]);
       for (let i = 0; i < m - 1; i++) if (paint[i] && paint[i + 1]) {   // a painted median cuts the markings of the streets crossing it; tracks in it lie flush
         const o = j => { const a = Math.max(0, j - 1), c = Math.min(m - 1, j + 1), tx = dp[2 * c] - dp[2 * a], tz = dp[2 * c + 1] - dp[2 * a + 1], l = Math.hypot(tx, tz) || 1; return [dp[2 * j] - tz / l * s * D[j] / 2, dp[2 * j + 1] + tx / l * s * D[j] / 2]; };
@@ -290,12 +296,12 @@ function buildLines() {
       mark(li, dp, off, 0.065, WHITE, 'c', null, trm.map(t => !t));
       HATCH.push({ li, p: dp, A: H.map((h, i) => paint[i] && !narrow[i] && !trm[i] ? h + 0.1 : 0), B: D.map((d, i) => paint[i] && !narrow[i] && !trm[i] ? d / 2 : 0), s, gbc: STATE.GBC });
       hwC = H.slice().sort((a, b) => a - b)[H.length >> 1];
-      if (hwC >= 3) mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9]);                                             // the line between two lanes
+      mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9], H.map(h => h >= 3));                                      // the line between two lanes, where there are two
       const wk = H.map((h, i) => dual.bed[i] ? h + 0.1 : h + 2.7);   // a sidewalk of no width beside a tram bed
       ribbonV(walk, dp, H.map((h, i) => s > 0 ? -wk[i] : h + 0.1), H.map((h, i) => s > 0 ? -(h + 0.1) : wk[i]), PAVE);
       mark(li, dp, H.map(h => -s * (h + 0.08)), 0.06, CURB, 'k');
-    } else if (ovW) {   // 18. novembra iela across the overpass: four lanes from guard rail to guard rail, the trams in the inner two
-      const H = ovW, four = H.map(h => h >= 6);
+    } else if (W) {   // 18. novembra iela with four lanes: a double centre line, broken lines between the lanes, the trams in the inner two
+      const H = W, four = H.map(h => h >= 6);
       ribbonV(groups[def[2]], dp, H.map(h => -h), H, lineCol[cls]);
       ribbonV(walk, dp, H.map(h => h + 0.1), H.map(h => h + 2.7), PAVE); ribbonV(walk, dp, H.map(h => -h - 2.7), H.map(h => -h - 0.1), PAVE);
       for (const sg of [1, -1]) {
@@ -305,7 +311,8 @@ function buildLines() {
       mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9], four.map(f => !f));                                         // past the overpass, two lanes again
       hwC = H.slice().sort((a, b) => a - b)[H.length >> 1];
     } else {
-      if (cls <= 3) { ribbon(walk, dp, hw + 1.4, 1.3, PAVE); ribbon(walk, dp, -hw - 1.4, 1.3, PAVE); mark(li, dp, hw + 0.08, 0.12, CURB, 'k'); mark(li, dp, -hw - 0.08, 0.12, CURB, 'k'); }
+      if (rural) { ribbon(groups[2], dp, hw + 0.6, 0.6, GRAVEL); ribbon(groups[2], dp, -hw - 0.6, 0.6, GRAVEL); }   // a country road: gravel shoulders, no kerb or sidewalk
+      else if (cls <= 3) { ribbon(walk, dp, hw + 1.4, 1.3, PAVE); ribbon(walk, dp, -hw - 1.4, 1.3, PAVE); mark(li, dp, hw + 0.08, 0.12, CURB, 'k'); mark(li, dp, -hw - 0.08, 0.12, CURB, 'k'); }
       if (cls !== 9) ribbon(groups[def[2]], dp, 0, hw, lineCol[cls]);
       if (cls <= 2) mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9]);
       if (cls === 0) { mark(li, dp, hw - 0.45, 0.07, WHITE, 'e'); mark(li, dp, -hw + 0.45, 0.07, WHITE, 'e'); }
@@ -317,7 +324,7 @@ function buildLines() {
     if (cls < 10 || cls === 15) for (let i = 0; i < n - 1; i++) ROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hwC + (cls <= 3 ? 2.6 : 0), cls <= 7 ? l.name : -1);
     if (l.bridge && cls !== 10 && cls !== 11 && !fortBridgeLine(pts) && !onOv && !jn) bridge(extra, dp, hw + (cls <= 3 ? 2.7 : 0.3));
     STATE.GBC = null;
-    if (cls <= 3) { // street lamps every ~32 m on one side (the outer side of a carriageway of a pair)
+    if (cls <= 3 && !rural) { // street lamps every ~32 m on one side (the outer side of a carriageway of a pair); none on a country road
       const side = dual ? -dual.side : rnd(lampSeq++, 5) < 0.5 ? 1 : -1, hw = hwC; let acc = 14;
       for (let i = 0; i < n - 1; i++) {
         const x1 = pts[2 * i], z1 = pts[2 * i + 1], x2 = pts[2 * i + 2], z2 = pts[2 * i + 3], L = Math.hypot(x2 - x1, z2 - z1); if (L < 0.01) continue;
