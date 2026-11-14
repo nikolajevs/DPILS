@@ -22,6 +22,14 @@
 
 Источники фото: Wikimedia Commons (категории *Latgola Hotel*, *Vienības laukums (Daugavpils)*, файл *Vienības nams.jpg* в латышской Википедии), [visitdaugavpils.lv](https://www.visitdaugavpils.lv/en/?p=3245) (в том числе снимки 1937 года), [celotajs.lv](https://www.celotajs.lv/en/e/vienibasnams), [militaryheritagetourism.info](https://militaryheritagetourism.info/lt/military/sites/view/891), [neighborhood.lv](https://neighborhood.lv/en/real-estate/daugavpils-architectural-guide/); проект реставрации фасада Дома Единства — Daugavpils pilsētas dome, 2010.
 
+## Даугавпилсская региональная больница в Стропах
+
+Кампус по адресу Vasarnīcu iela 20 (`lmHospital` в [src/landmarks/hospital.js](src/landmarks/hospital.js)) привязан к контурам зданий городской модели и сверён по фотографиям с земли и сверху. Широкая 12-этажная панельная башня, открытые торцевые галереи, длинное низкое крыло и фактический входной портал с двумя постами скорой собраны отдельными деталями, включая оконные рамы, ограждения, навес, пандус и разметку. На территории проложены подъездная дорога и пешеходные дорожки, добавлены парковка, озеленение, скамейки и светильники.
+
+Отдельно смоделирован существующий блок лучевой терапии и низкий новый корпус, соединённый с ним. Новый блок отражает расширение, строительство которого город описывал в 2025 году; публикация 2026 года указывала план завершить объединение корпусов к 30 июня. Детальный рабочий проект фасадов и благоустройства в открытых источниках не найден, поэтому объёмы и посадка нового корпуса показаны как приближённая 3D-реконструкция. Основной корпус открыт в Стропах в 1986 году; его высота и этажность сверены по городским данным и фотографиям больницы.
+
+Источники: [фото главного фасада больницы](https://slimnica.daugavpils.lv/drs-uzdevums-pasreizejos-apstaklos-nodrosinat-pakalpojumus-pilna-apjoma/), [фото комплекса от Министерства здравоохранения](https://www.vm.gov.lv/lv/jaunums/abu-meri-daugavpils-regionalas-slimnicas-darbiba-ir-stabila-attistibai-japarskata-parvaldibas-modelis), [история открытия 12-этажного корпуса в 1986 году](https://www.daugavpils.lv/pilseta/par-daugavpili/pilsetas-zinas/daugavpils-regionalajai-slimnicai-40-gadi), [ход строительства лучевого блока](https://www.daugavpils.lv/pilseta/par-daugavpili/pilsetas-zinas/sparu-svetki-toposaja-sia-daugavpils-regionala-slimnica-staru-terapijas-bloka), [изменения движения и срок объединения корпусов](https://www.daugavpils.lv/pilseta/par-daugavpili/pilsetas-zinas/pie-daugavpils-regionalas-slimnicas-staru-terapijas-bloka-mainisies-satiksmes-kustibas-organizacija). Размеры и невидимые на снимках стороны реконструированы приблизительно.
+
 ## Даугавпилсский университет
 
 Три корпуса университета тоже построены вручную (`lmDUMain`, `lmDUParades`, `lmDULab` в [src/landmarks/university.js](src/landmarks/university.js)). Контуры взяты из кадастра, детали сняты с фотографий.
