@@ -7,6 +7,7 @@ import { spwTrackLine } from '../landmarks/speedway.js';
 import { ovComp, ovDensify, ovPrep, ovRoadHW, ovTouches } from './overpass.js';
 import { vbOnLine } from './bridge-vienibas.js';
 import { CROSSINGS, streetTags } from './street-tags.js';
+import { cutComp, cutTouches } from './cutting.js';
 import { buildSignals } from './signals.js';
 import { COL, LINES, M_ASPH, M_BALLAST, M_DIRT, M_LAND, M_MARK, M_PAVE, ROAD, STREAM, TRAMLINES, inWater, matPlain } from './data.js';
 import { LINE } from './palette.js';
@@ -95,6 +96,11 @@ function buildLines() {
      sidewalk, the kerb and the lamps go on the outer side only. */
   const PAIR = new SegGrid(40), TRK = new SegGrid(20), MED = new SegGrid(20);   // MED: the asphalt medians with tracks in them
   sorted.forEach((l, li) => { if ((l.cls <= 3 && l.name >= 0) || l.cls === 9) for (let i = 0; i < l.pts.length - 2; i += 2) (l.cls === 9 ? TRK : PAIR).add(l.pts[i], l.pts[i + 1], l.pts[i + 2], l.pts[i + 3], li, 0); });
+  // the ends of the named streets: how many other lines of the same street end within 2.5 m of (x, z)
+  const ENDS = []; sorted.forEach((l, li) => { if (l.cls <= 3 && l.name >= 0) { const p = l.pts, n = p.length; ENDS.push([p[0], p[1], li], [p[n - 2], p[n - 1], li]); } });
+  const splitAt = (li, x, z) => { const me = sorted[li], seen = new Set();
+    for (const [ex, ez, lj] of ENDS) if (lj !== li && Math.abs(ex - x) < 2.5 && Math.abs(ez - z) < 2.5 && sorted[lj].name === me.name && sorted[lj].cls === me.cls) seen.add(lj);
+    return seen.size; };
   const partner = (li, x, z, tx, tz) => { const me = sorted[li]; let best = null;
     PAIR.near(x, z, 26, (id, d, px, pz) => { const s = PAIR.s, lj = s[id * 6 + 4], o = sorted[lj]; if (lj === li || o.cls !== me.cls || o.name !== me.name || d < 3) return;
       const dx = s[id * 6 + 2] - s[id * 6], dz = s[id * 6 + 3] - s[id * 6 + 1], l = Math.hypot(dx, dz) || 1; if (Math.abs((dx * tx + dz * tz) / l) < 0.9) return;
@@ -114,15 +120,38 @@ function buildLines() {
     for (let i = 0; i < m; i++) { if (D[i] === null || S[i] !== side) D[i] = last; else last = D[i]; }
     last = null; for (let i = m - 1; i >= 0; i--) { if (D[i] === null) D[i] = last; else last = D[i]; }
     if (D[0] === null) return null;
+    /* Where the pair splits off a single road, OSM joins both carriageways to the end node of that road, so over the last
+       10–20 m their centre lines run together into a point. At the west end of the overpass bridge they did, and the edge
+       lines, kerbs and sidewalks of the two carriageways cut in a V across the four lanes of the bridge. There the end of
+       each carriageway is laid straight on, the way it comes from 30–55 m out: the two stay apart at the distance they
+       settled at, and carry on the edges of the road they split from. */
+    if (dp !== pts) for (const end of [0, 1]) {
+      const np = pts.length; if (splitAt(li, end ? pts[np - 2] : pts[0], end ? pts[np - 1] : pts[1]) < 2) continue;
+      const idx = Array.from({ length: m }, (_, k) => end ? m - 1 - k : k), cum = [0]; let acc = 0;
+      for (let k = 1; k < m; k++) { const i = idx[k], j = idx[k - 1]; acc += Math.hypot(dp[2 * i] - dp[2 * j], dp[2 * i + 1] - dp[2 * j + 1]); cum.push(acc); }
+      if (acc < 45) continue;
+      const at = sv => { let k = 0; while (k < m - 2 && cum[k + 1] < sv) k++; const i = idx[k], j = idx[k + 1], t = Math.max(0, Math.min(1, (sv - cum[k]) / ((cum[k + 1] - cum[k]) || 1)));
+        return [dp[2 * i] + (dp[2 * j] - dp[2 * i]) * t, dp[2 * i + 1] + (dp[2 * j + 1] - dp[2 * i + 1]) * t]; };
+      const A = at(30), B = at(Math.min(55, acc)), tl = Math.hypot(A[0] - B[0], A[1] - B[1]) || 1, tx = (A[0] - B[0]) / tl, tz = (A[1] - B[1]) / tl;
+      const kA = cum.findIndex(c => c >= 30), dRef = D[idx[kA]];
+      for (let k = 0; k < kA; k++) { const i = idx[k], r = 30 - cum[k]; dp[2 * i] = A[0] + tx * r; dp[2 * i + 1] = A[1] + tz * r; if (D[i] < dRef) D[i] = dRef; }
+    }
     const Ds = D.map((_, i) => { let a = 0, k = 0; for (let j = Math.max(0, i - 2); j <= Math.min(m - 1, i + 2); j++) { a += D[j]; k++; } return a / k; });
     /* lanes of 3.25 m where OSM gives their number (where the two carriageways run closer than their width, up to the
        middle between them); otherwise guessed from the distance */
     const H = Ds.map(d => lanes ? Math.min(lanes * 1.625, Math.max(1.85, d / 2)) : Math.max(1.85, Math.min(3.4, 1.85 + (d - 8) * 0.5)));
-    /* a median narrower than 4.5 m is asphalt: painted, or, where tram tracks run in it (by the overpass bridge), too
-       narrow for a track bed of its own, so the rails lie flush in the asphalt between the lanes as on the bridge */
-    const paint = Ds.map((d, i) => d - 2 * H[i] < 4.5);
     const trm = Ds.map((d, i) => { const a = Math.max(0, i - 1), c = Math.min(m - 1, i + 1), tx = dp[2 * c] - dp[2 * a], tz = dp[2 * c + 1] - dp[2 * a + 1], l = Math.hypot(tx, tz) || 1;
       const cx = dp[2 * i] - tz / l * side * d / 2, cz = dp[2 * i + 1] + tx / l * side * d / 2; let t = false; TRK.near(cx, cz, Math.max(0.5, d / 2 - 0.6 * H[i]), () => { t = true; }); return t; });
+    /* A narrow median is asphalt: painted under 4 m, or under 4.5 m where tram tracks run in it (by the overpass bridge):
+       too narrow for a track bed of its own, the rails lie flush between the lanes as on the bridge. The width is taken
+       over ±30 m and runs shorter than 25 m join their neighbours: a median of 4–5 m (Latgales iela) went from painted to
+       grass and back every few metres, the two carriageways each deciding for themselves. */
+    const cumD = [0]; for (let i = 1; i < m; i++) cumD.push(cumD[i - 1] + Math.hypot(dp[2 * i] - dp[2 * i - 2], dp[2 * i + 1] - dp[2 * i - 1]));
+    const paint = Ds.map((d, i) => { let a = 0, k = 0; for (let j = i; j >= 0 && cumD[i] - cumD[j] <= 30; j--) { a += Ds[j] - 2 * H[j]; k++; } for (let j = i + 1; j < m && cumD[j] - cumD[i] <= 30; j++) { a += Ds[j] - 2 * H[j]; k++; }
+      return a / k < (trm[i] ? 4.5 : 4.0); });
+    for (let pass = 0; pass < 2; pass++) for (let i = 0; i < m;) { let j = i; while (j < m && paint[j] === paint[i]) j++;
+      if ((i > 0 || j < m) && (cumD[j - 1] - cumD[i]) < 25) for (let k = i; k < j; k++) paint[k] = !paint[k];
+      i = j; }
     // no sidewalk on the outer side where a tram bed runs alongside instead (the ramp west of the overpass)
     const bed = H.map((h, i) => { const a = Math.max(0, i - 1), c = Math.min(m - 1, i + 1), tx = dp[2 * c] - dp[2 * a], tz = dp[2 * c + 1] - dp[2 * a + 1], l = Math.hypot(tx, tz) || 1, o = -side * (h + 1.4);
       let t = false; TRK.near(dp[2 * i] - tz / l * o, dp[2 * i + 1] + tx / l * o, 2.5, () => { t = true; }); return t; });
@@ -280,7 +309,8 @@ function buildLines() {
     const onBridge = l.bridge && cls !== 10 && cls !== 11 && TERR.on && !onOv, dp = onOv ? ovDensify(densify(pts)) : TERR.on ? densify(pts) : pts;
     let jn = false;
     if (onOv) STATE.GBC = ovComp;
-    else if (onBridge) { const B = bridgeOf(pts, hw + (cls <= 3 ? 2.7 : 0.3)); jn = jnFix(B); STATE.GBC = bridgeDeck(B); } else STATE.GBC = null;
+    else if (onBridge) { const B = bridgeOf(pts, hw + (cls <= 3 ? 2.7 : 0.3)); jn = jnFix(B); STATE.GBC = bridgeDeck(B); }
+    else STATE.GBC = TERR.on && cls !== 10 && cls !== 11 && cutTouches(l.bb) ? cutComp : null;   // the road of the Latgales iela cutting keeps its profile
     if (cls === 10 || cls === 11) for (let i = 0; i < n - 1; i++) STREAM.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, 0);
     l.gbc = STATE.GBC;
     l.isDual = false;
