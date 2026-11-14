@@ -55,6 +55,8 @@ function ovLocal(x, z, margin = 0.6) {
   if (!best || best.s < 0 || best.s > OV.L || best.d > best.hl + margin || -best.d > best.hr + margin) return null;
   return best;
 }
+// the half width of the carriageway along the centre line of the corridor at (x, z): to 0.4 m short of the guard rails; null off it
+function ovRoadHW(x, z) { if (!OV.pr) return null; const q = ovLocal(x, z, -1); return q && Math.abs(q.d) < 1.5 ? Math.min(q.hl, q.hr) - 3.3 : null; }
 function ovComp(x, y, z) { const q = ovLocal(x, z); return q ? ovH(q.s) - terrainH(x, z) : 0; }   // GBC for what lies on the corridor
 const ovTouches = bb => OV.pr && bb[2] >= OV.bb[0] && bb[0] <= OV.bb[2] && bb[3] >= OV.bb[1] && bb[1] <= OV.bb[3];
 function ovDensify(p, step = 4) { const o = [p[0], p[1]]; for (let i = 2; i < p.length; i += 2) { const x0 = p[i - 2], z0 = p[i - 1], m = Math.max(1, Math.ceil(Math.hypot(p[i] - x0, p[i + 1] - z0) / step)); for (let k = 1; k <= m; k++) o.push(x0 + (p[i] - x0) * k / m, z0 + (p[i + 1] - z0) * k / m); } return o; }
@@ -145,4 +147,4 @@ function lmOverpass(K) {
   }
 }
 
-export { lmOverpass, ovComp, ovDensify, ovDrops, ovNoTree, ovPrep, ovTouches };
+export { lmOverpass, ovComp, ovDensify, ovDrops, ovNoTree, ovPrep, ovRoadHW, ovTouches };
