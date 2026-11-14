@@ -67,7 +67,7 @@ const STY = {
   maxima: { h: 5.8, tex: 5, wall: '#f1f2f0', plinth: '#73777b', glaze: 0.4, gTop: 3.2, bands: [[0.75, 0.45, '#1d3d8f']], gBand: '#1d3d8f', canopy: 1.3, pylon: 'maxima' },
   // Mego (Inženieru iela 3 in Ķīmiķu ciemats, photographs sent by the owner of the project): light grey panels, a deep dark blue canopy along the
   // front with the hours in yellow, the name in big yellow letters on the wall above it
-  mego: { h: 7.0, tex: 5, wall: '#b9bdc1', plinth: '#6c7074', glaze: 0.5, gTop: 3.6, canopy: 3.0, pylon: 'mego' },
+  mego: { h: 7.6, tex: 5, wall: '#b9bdc1', plinth: '#6c7074', glaze: 0.5, gTop: 3.6, canopy: 3.0, pylon: 'mego' },
   // Beta (Šaurā iela 31, photographs sent by the owner of the project): buff brick, big windows in dark frames, a sloping canopy of blue profiled
   // sheet along the front, a low hipped roof of grey metal, the name in big letters on the roof
   // Beta on Inženieru iela 1 (photographs sent by the owner of the project): four storeys, the front a curtain wall of pale
@@ -283,7 +283,7 @@ function storeBox(K, S, r, H, gbc) {
     lmBoxW(G, Fw, s0, s1, y0, y1, dp, 0, hb('#23408e'));
     for (let s = s0 + 1.2; s < s1 - 0.6; s += 2.4) lmBoxW(G, Fw, s - 0.2, s + 0.2, y0 - 0.04, y0, dp + 1.0, dp + 1.4, hb('#fff6e0'));
     flat(Fw, sc - 1.1, sc + 1.1, y0 + 0.15, y0 + 1.0, dp - 0.012, CT.h822);
-    const t = CT.megoL, hh = Math.min(1.8, H - y1 - 0.5), w = hh * t.w / t.h; flat(Fw, sc - w / 2, sc + w / 2, y1 + 0.35, y1 + 0.35 + hh, -0.03, t);
+    const t = CT.megoL, hh = Math.min(2.3, H - y1 - 0.45), w = hh * t.w / t.h; flat(Fw, sc - w / 2, sc + w / 2, y1 + 0.35, y1 + 0.35 + hh, -0.03, t);
   } else if (S.b === 'beta') {   // the sloping blue canopy along the whole front, lights under it, the name on the roof
     const y0 = st.gTop + 0.25, y1 = st.gTop + 1.3, dp = -st.canopy, BLU = hb('#2c58ac');
     lmBoxW(G, Fw, -0.4, L + 0.4, y0 - 0.12, y0, dp, 0, hb('#d9dcde'));
