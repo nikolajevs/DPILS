@@ -20,9 +20,9 @@ import { scene } from '../render/renderer.js';
    photographs of its stores in Latvia: Lidl's new stores (Ķīšezera iela and Bieriņi in Riga, Dobeles šoseja in
    Jelgava, 2021–25: a long box of light grey panels, the front glazed under a deep canopy on columns, the blue square
    sign on the corner and on a pylon by the car park), Rimi (the red board with the white name, Rimi Hyper in Jelgava),
-   Maxima (white walls with blue bands, the white name on blue and the red squares with the X of the format), Mego
-   (Tilta iela 1 in Riga, 2023: anthracite walls and yellow letters). No photograph of a Beta store was found: its
-   board is a plain red name on white.
+   Maxima (white walls with blue bands, the white name on blue and the red squares with the X of the format). Mego and
+   Beta follow photographs of their Daugavpils stores sent by the owner of the project (Mego on Inženieru iela 3, Beta
+   on Šaurā iela 31).
    - k 'box': the store is a building of its own; its cadastre part (the one holding p) is drawn here with the
      chain's walls, glazed front, canopy, board and, for the big ones, a pylon.
    - k 'osm': the same, but the building is missing from citydata (built after the cadastre extract), so its outline
@@ -64,10 +64,12 @@ const STY = {
   lidl: { h: 7.2, tex: 5, wall: '#dde0e3', plinth: '#62676b', glaze: 'all', gTop: 4.2, canopy: 4.2, pylon: 'lidl' },
   rimi: { h: 6.2, tex: 5, wall: '#eef0f0', plinth: '#73777b', glaze: 0.5, gTop: 3.4, bands: [[1.5, 0.9, '#d8202c']], canopy: 1.6, pylon: 'rimi' },
   maxima: { h: 5.8, tex: 5, wall: '#f1f2f0', plinth: '#73777b', glaze: 0.4, gTop: 3.2, bands: [[0.75, 0.45, '#1d3d8f']], gBand: '#1d3d8f', canopy: 1.3, pylon: 'maxima' },
-  mego: { h: 6.0, tex: 5, wall: '#45474b', plinth: '#2f3134', glaze: 0.45, gTop: 3.3, canopy: 1.5, pylon: 'mego' },
-  // Beta (Šaurā iela 31, photographs of the owner): buff brick, big windows in dark frames, a sloping canopy of blue profiled
+  // Mego (Inženieru iela 3 in Ķīmiķu ciemats, photographs sent by the owner of the project): light grey panels, a deep dark blue canopy along the
+  // front with the hours in yellow, the name in big yellow letters on the wall above it
+  mego: { h: 7.0, tex: 5, wall: '#b9bdc1', plinth: '#6c7074', glaze: 0.5, gTop: 3.6, canopy: 3.0, pylon: 'mego' },
+  // Beta (Šaurā iela 31, photographs sent by the owner of the project): buff brick, big windows in dark frames, a sloping canopy of blue profiled
   // sheet along the front, a low hipped roof of grey metal, the name in big letters on the roof
-  beta: { h: 4.2, tex: 6, wall: '#ffe7c8', plinth: '#7b6a5d', glaze: 0.6, gTop: 2.9, canopy: 1.9, pitched: '#6d7276' },
+  beta: { h: 4.2, tex: 6, wall: '#ffffff', plinth: '#7b6a5d', glaze: 0.85, gTop: 2.9, canopy: 1.9, pitched: '#6d7276' },
 };
 const signOf = S => S.b === 'rimi' ? (/Hyper/.test(S.n) ? 'rimiHyper' : /Super/.test(S.n) ? 'rimiSuper' : /mini/.test(S.n) ? 'miniRimi' : 'rimi') : S.b === 'maxima' ? (/XX/.test(S.n) ? 'maximaXX' : 'maximaX') : S.b;
 // key points inside the cadastre parts of the two shopping centres
@@ -112,7 +114,14 @@ function hipRoof(T, outer, rings, H, tint, seed) {
   if (rings.length !== 1) return false;
   const o = obb(outer), tanp = Math.tan(0.3), ov = 0.35; let d = Math.min(6, o ? o.b * 0.9 : 4), inn = null;
   for (let k = 0; k < 6 && d > 0.7; k++) { const q = offsetRing(outer, -d); if (insetOk(outer, q)) { inn = q; break; } d *= 0.7; }
-  if (!inn) return false;
+  if (!inn) {   // a hipped roof over the box round the outline, if the outline fills it
+    if (!o || o.fill < 0.82) return false;
+    const a = o.a + ov, b = o.b + ov, r = Math.min(b, a) * 0.9, P = (su, sv, y) => [o.cx + o.ux * su - o.uz * sv, y, o.cz + o.uz * su + o.ux * sv], yE = H - ov * tanp, yT = yE + r * tanp;
+    const c = [P(-a, -b, yE), P(a, -b, yE), P(a, b, yE), P(-a, b, yE)], t = [P(-a + r, -b + r * (b / Math.max(b, r)), yT), P(a - r, -b + r * (b / Math.max(b, r)), yT), P(a - r, b - r * (b / Math.max(b, r)), yT), P(-a + r, b - r * (b / Math.max(b, r)), yT)];
+    for (let i = 0; i < 4; i++) { const j = (i + 1) % 4, mx = (c[i][0] + c[j][0]) / 2 - o.cx, mz = (c[i][2] + c[j][2]) / 2 - o.cz, l = Math.hypot(mx, mz) || 1; roofFace(T.m.roof, [c[i], c[j], t[j], t[i]], mx / l, mz / l, tint, 2, seed); }
+    flatRoof(T.m.roof, [new Float32Array([t[0][0], t[0][2], t[1][0], t[1][2], t[2][0], t[2][2], t[3][0], t[3][2]])], yT, tint, 2, seed);
+    return true;
+  }
   const G = T.m, eave = offsetRing(outer, ov), yE = H - ov * tanp, yT = H + d * tanp, n = outer.length >> 1;
   for (let i = 0; i < n; i++) { const j = (i + 1) % n, ed = edgeN(outer, i); if (ed[2] < 0.05) continue; roofFace(G.roof, [[eave[2 * i], yE, eave[2 * i + 1]], [eave[2 * j], yE, eave[2 * j + 1]], [inn[2 * j], yT, inn[2 * j + 1]], [inn[2 * i], yT, inn[2 * i + 1]]], ed[0], ed[1], tint, 2, seed); }
   flatRoof(G.roof, [inn], yT, tint, 2, seed); band(G.plain, outer, eave, yE, hb('#5f6366'), true);
@@ -132,9 +141,11 @@ function shAtlas() {
     const a = X + x * PX, b = Y + y * PX, gr = g.createLinearGradient(0, b, 0, b + h * PX); gr.addColorStop(0, c[0]); gr.addColorStop(0.45, c[1]); gr.addColorStop(0.55, c[2]); gr.addColorStop(1, c[0]);
     g.fillStyle = gr; g.fillRect(a, b, w * PX, h * PX); o.fillStyle = ORM.glass; o.fillRect(a, b, w * PX, h * PX); e.fillStyle = glow; e.fillRect(a, b, w * PX, h * PX);
   };
-  const betaName = (x, y, w, h) => { const bw = w * 0.27;
-    text('b', x, y, bw, h, '#f2a020', { font: 'Arial, sans-serif', wt: 900, glow: '#ffb840', outline: '#ffffff' });
-    text('eta', x + bw * 0.88, y + h * 0.12, w - bw * 0.88, h * 0.88, '#2445b8', { font: 'Arial, sans-serif', wt: 900, glow: '#4a6ae8', outline: '#ffffff' }); };
+  const betaName = (x, y, w, h) => {   // an orange b and a blue eta set together, in white outlines
+    let sz = h * PX * 1.25; const f = () => `900 ${sz}px Arial, "Golos Text", sans-serif`; g.font = f(); const W = g.measureText('beta').width; if (W > w * PX) { sz *= w * PX / W; g.font = f(); }
+    const wb = g.measureText('b').width, W2 = g.measureText('beta').width, x0 = X + x * PX + (w * PX - W2) / 2, yb = Y + (y + h) * PX - sz * 0.05;
+    for (const [part, dx, col, glow] of [['b', 0, '#f2a020', '#ffb840'], ['eta', wb * 0.97, '#2445b8', '#4a6ae8']]) for (const [c, s2] of [[g, col], [e, glow], [o, ORM.gloss]]) {
+      c.font = f(); c.textAlign = 'left'; c.textBaseline = 'alphabetic'; if (c === g) { c.lineWidth = sz * 0.09; c.strokeStyle = '#ffffff'; c.lineJoin = 'round'; c.strokeText(part, x0 + dx, yb); } c.fillStyle = s2; c.fillText(part, x0 + dx, yb); } };
   // text fitted into a box; glow: the colour it shines at night
   const text = (s, x, y, w, h, col, { font = '"Golos Text", Arial, sans-serif', wt = 800, italic = false, glow = col, align = 'center', outline = null } = {}) => {
     let sz = h * PX; const f = () => `${italic ? 'italic ' : ''}${wt} ${sz}px ${font}`; g.font = f(); const mw = g.measureText(s).width; if (mw > w * PX) { sz *= w * PX / mw; g.font = f(); }
@@ -160,7 +171,9 @@ function shAtlas() {
     ['lidl', 2.6, 2.6, () => { R(0, 0, 2.6, 2.6, '#0a50a8', 'gloss', '#2a70d8'); for (const [c, s] of [[g, '#fff100'], [e, '#fff36a'], [o, ORM.gloss]]) { c.fillStyle = s; c.beginPath(); c.arc(X + 1.3 * PX, Y + 1.3 * PX, 1.08 * PX, 0, 7); c.fill(); }
       for (const [c, s] of [[g, '#e0101c'], [e, '#ff3030']]) { c.strokeStyle = s; c.lineWidth = 0.07 * PX; c.beginPath(); c.arc(X + 1.3 * PX, Y + 1.3 * PX, 1.0 * PX, 0, 7); c.stroke(); }
       text('LIDL', 0.4, 0.92, 1.8, 0.78, '#0a50a8', { wt: 900, glow: '#0a3a90' }); }],
-    ['mego', 4.2, 1.5, () => { R(0, 0, 4.2, 1.5, '#3a3c40'); text('mego', 0.2, 0.1, 3.8, 1.2, '#f5b400', { wt: 800, glow: '#ffc830' }); }],
+    ['mego', 4.2, 1.5, () => { R(0, 0, 4.2, 1.5, '#23408e', 'gloss', '#3050b0'); text('mego', 0.2, 0.05, 3.8, 1.3, '#f6d10f', { wt: 700, glow: '#ffe040' }); }],
+    ['megoL', 4.4, 1.6, () => { text('mego', 0, 0, 4.4, 1.6, '#f6d10f', { wt: 700, glow: '#ffe040' }); }],
+    ['h822', 1.8, 0.8, () => { text('8-22', 0, 0, 1.8, 0.8, '#f6d10f', { wt: 800, glow: '#ffe040' }); }],
     // the name of Beta: an orange b and a blue eta in white outlines (cut out for the roof, on a white board for the tenants)
     ['betaL', 5.2, 2.2, () => { betaName(0.15, 0.1, 4.9, 2.0); }],
     ['beta', 4.0, 1.5, () => { R(0, 0, 4.0, 1.5, '#ffffff', 'gloss', '#fff8ee'); betaName(0.3, 0.12, 3.4, 1.26); }],
@@ -256,6 +269,12 @@ function storeBox(K, S, r, H, gbc) {
     lmBoxW(G, Fw, sc - gw / 2 - 0.4, sc + gw / 2 + 0.4, st.gTop + 0.25, st.gTop + 0.85, -st.canopy, 0, hb('#5d6368'));
     const nc = Math.max(2, Math.round(gw / 7)); for (let k = 0; k <= nc; k++) { const [x, , z] = Fw.at(sc - gw / 2 + k * gw / nc, 0, -st.canopy + 0.4); lmLathe(G, x, z, 0, [[0.11, 0], [0.11, st.gTop + 0.25]], 8, hb('#8b9095')); }
     const s = Math.min(L - 1.6, sc + gw / 2 - 1.2); board(K, Fw, 'lidl', s, st.gTop + 1.0, Math.min(2.2, H - 0.3 - st.gTop - 1.0), 0.14, null);
+  } else if (S.b === 'mego') {   // the deep dark blue canopy with the hours on its fascia, the yellow letters on the wall above
+    const y0 = st.gTop + 0.2, y1 = st.gTop + 1.3, dp = -st.canopy, s0 = Math.max(-0.2, sc - gw / 2 - 1.5), s1 = Math.min(L + 0.2, sc + gw / 2 + 1.5);
+    lmBoxW(G, Fw, s0, s1, y0, y1, dp, 0, hb('#23408e'));
+    for (let s = s0 + 1.2; s < s1 - 0.6; s += 2.4) lmBoxW(G, Fw, s - 0.2, s + 0.2, y0 - 0.04, y0, dp + 1.0, dp + 1.4, hb('#fff6e0'));
+    flat(Fw, sc - 1.1, sc + 1.1, y0 + 0.15, y0 + 1.0, dp - 0.012, CT.h822);
+    const t = CT.megoL, hh = Math.min(1.8, H - y1 - 0.5), w = hh * t.w / t.h; flat(Fw, sc - w / 2, sc + w / 2, y1 + 0.35, y1 + 0.35 + hh, -0.03, t);
   } else if (S.b === 'beta') {   // the sloping blue canopy along the whole front, lights under it, the name on the roof
     const y0 = st.gTop + 0.25, y1 = st.gTop + 1.3, dp = -st.canopy, BLU = hb('#2c58ac');
     lmBoxW(G, Fw, -0.4, L + 0.4, y0 - 0.12, y0, dp, 0, hb('#d9dcde'));
@@ -272,7 +291,7 @@ function storeBox(K, S, r, H, gbc) {
   }
   // machines on the roof
   const [cx, cz] = inner(r); STATE.GBC = gbc;
-  for (const [a, b] of [[0, 0], [3.5, 1.5], [-3, -2]]) { const x = cx + Fw.tx * a - Fw.nx * b, z = cz + Fw.tz * a - Fw.nz * b; if (pip(x, z, r)) box(G, x, z, Fw.tx, Fw.tz, 1.1, 0.7, H - 0.45, H + 0.85, hb('#a7abae')); }
+  if (!st.pitched) for (const [a, b] of [[0, 0], [3.5, 1.5], [-3, -2]]) { const x = cx + Fw.tx * a - Fw.nx * b, z = cz + Fw.tz * a - Fw.nz * b; if (pip(x, z, r)) box(G, x, z, Fw.tx, Fw.tz, 1.1, 0.7, H - 0.45, H + 0.85, hb('#a7abae')); }
   if (st.pylon && (S.b !== 'maxima' || /XX/.test(S.n)) && (S.b !== 'rimi' || /Hyper|Super/.test(S.n) || L > 30)) pylon(K, S, r, fi, signOf(S), gbc);
 }
 // a store that is a tenant: glazing and a board on the wall of its host that faces its entrance
@@ -356,7 +375,7 @@ function solo(K) {
   for (let y = 4.6; y < T - 0.5; y += 0.34) for (const [s0, s1] of [[0.4, 2.6], [L - 2.6, L - 0.4]]) lmBoxW(G, Fw, s0, s1, y, y + 0.22, -1.55, -1.4, SL, false);
   for (let y = 9.0; y < T - 0.5; y += 0.34) lmBoxW(G, Fw, 2.6, L - 2.6, y, y + 0.22, -1.55, -1.4, SL, false);
   board(K, Fw, 'solo', L / 2, 9.4, 4.2, 1.6, null);
-  board(K, Fw, 'mego', L / 2, 6.0, 2.2, 1.5, '#3a3c40');
+  board(K, Fw, 'mego', L / 2, 6.0, 2.2, 1.5, '#23408e');
   for (let k = 0; k < 2; k++) flat(Fw, 1.5 + k * 3.9, 1.5 + (k + 1) * 3.9, 0.1, 3.9, -1.41, k ? CT.glass : CT.door);
   lmBoxW(G, Fw, -0.4, L + 0.4, 4.0, 4.2, -4.0, -1.4, hb('#b8c4c8'));
   for (const s of [0.6, L - 0.6]) { const [x, , z] = Fw.at(s, 0, -3.7); lmLathe(G, x, z, 0, [[0.09, 0], [0.09, 4.0]], 8, hb('#8b9095')); }
