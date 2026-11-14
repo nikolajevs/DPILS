@@ -4,6 +4,7 @@ import { fortTreeY } from '../fortress/build.js';
 import { fortNoTree } from '../fortress/ground-height.js';
 import { SQ_SPRUCES } from '../landmarks/unity-square.js';
 import { SHOP_TREES } from '../landmarks/shops.js';
+import { PARK_TREES, parkNoTree } from '../landmarks/parks.js';
 import { fuelNoTree } from '../landmarks/fuel.js';
 import { spwNoTree } from '../landmarks/speedway.js';
 import { lmClear } from '../landmarks/core.js';
@@ -224,17 +225,18 @@ function buildTrees() {
   farGeo.setAttribute('aQ', new THREE.Float32BufferAttribute([0, 0, 0, 0, 1, 1, 1, 1], 1));
   farGeo.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
   const add = (x, z, type, sc, v) => {
-    if (Math.abs(x) > HX || Math.abs(z) > HY || lmClear(x, z) || wetTree(x, z) || fortNoTree(x, z) || vbNoTree(x, z) || spwNoTree(x, z) || fuelNoTree(x, z) || ovNoTree(x, z)) return;
+    if (Math.abs(x) > HX || Math.abs(z) > HY || lmClear(x, z) || wetTree(x, z) || fortNoTree(x, z) || vbNoTree(x, z) || spwNoTree(x, z) || fuelNoTree(x, z) || ovNoTree(x, z) || parkNoTree(x, z)) return;
     const i = Math.floor(x / TTILE), j = Math.floor(z / TTILE), k = (i + 100) * 1000 + j + 100;
     let t = treeTiles.get(k); if (!t) treeTiles.set(k, t = { x0: i * TTILE, z0: j * TTILE, list: [] }); t.list.push(x, z, type, sc, v);
   };
   for (let i = 0; i < C.t.length; i += 2) { const v = rnd(i, 2); add(C.t[i] / 10, C.t[i + 1] / 10, v < 0.7 ? 1 : v < 0.85 ? 2 : 3, 0.8 + rnd(i, 1) * 0.5, v); }
   SQ_SPRUCES.forEach(([x, z, sc], k) => add(x, z, 3, sc, rnd(k, 5)));   // the spruces by Vienības laukums
   SHOP_TREES.forEach(([x, z, type, sc], k) => add(x, z, type, sc, rnd(k, 11)));   // trees on the lawns of the stores
+  PARK_TREES.forEach(([x, z, type, sc], k) => add(x, z, type, sc, rnd(k, 13)));   // the rows of trees in the parks
   // density per land class: spacing (m), keep probability, type picker
-  const DENS = { 1: [17, 1, v => v < 0.58 ? 0 : v < 0.74 ? 3 : v < 0.9 ? 2 : 1], 2: [15, 0.8, v => 1], 4: [18, 0.9, v => v < 0.6 ? 1 : v < 0.8 ? 2 : v < 0.95 ? 3 : 0], 5: [16, 0.9, v => v < 0.55 ? 1 : v < 0.75 ? 2 : 3],
+  const DENS = { 1: [17, 1, v => v < 0.58 ? 0 : v < 0.74 ? 3 : v < 0.9 ? 2 : 1], 2: [15, 0.8, v => 1], 4: [9.5, 0.82, v => v < 0.6 ? 1 : v < 0.8 ? 2 : v < 0.95 ? 3 : 0], 5: [16, 0.9, v => v < 0.55 ? 1 : v < 0.75 ? 2 : 3],
     8: [20, 0.38, v => v < 0.72 ? 1 : v < 0.86 ? 2 : 3], 11: [12, 0.5, v => v < 0.85 ? 1 : 2], 3: [30, 0.25, v => v < 0.6 ? 1 : 2] };
-  const SCALE = { 1: [0.85, 0.5], 2: [0.35, 0.3], 4: [0.8, 0.6], 5: [0.8, 0.5], 8: [0.55, 0.45], 11: [0.45, 0.3], 3: [0.7, 0.5] };
+  const SCALE = { 1: [0.85, 0.5], 2: [0.35, 0.3], 4: [0.85, 0.65], 5: [0.8, 0.5], 8: [0.55, 0.45], 11: [0.45, 0.3], 3: [0.7, 0.5] };
   AREAS.forEach((a, n) => {
     const d = DENS[a.cls]; if (!d) return; const [s, keep, typ] = d, bb = a.bb;
     for (let gx = Math.ceil(bb[0] / s); gx * s < bb[2]; gx++) for (let gz = Math.ceil(bb[1] / s); gz * s < bb[3]; gz++) {

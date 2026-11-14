@@ -1,12 +1,12 @@
-/* Entry point of the page. The data of the city are plain scripts that set window.CITY, TRANSIT, FORTRESS, TERRAIN
-   and SCHOOLS (written by the tools in tools/). They are downloaded first, with the megabytes shown on the loading
+/* Entry point of the page. The data of the city are plain scripts that set window.CITY, TRANSIT, FORTRESS, TERRAIN,
+   SCHOOLS and PARKS (written by the tools in tools/). They are downloaded first, with the megabytes shown on the loading
    bar, run in their old order, and only then are the modules that build the city loaded: they read the data while
    they are evaluated. */
 import { PHASE, loading } from './ui/loading.js';
 
 // the files and their sizes, used for the bar only until the server tells the real size (it does not when it
 // compresses them on the fly, as GitHub Pages does)
-const FILES = [['citydata.js', 4.33e6], ['transit.js', 2.7e5], ['fortress.js', 2.6e4], ['terrain.js', 1.07e6], ['schools.js', 3.4e4]];
+const FILES = [['citydata.js', 4.33e6], ['transit.js', 2.7e5], ['fortress.js', 2.6e4], ['terrain.js', 1.07e6], ['schools.js', 3.4e4], ['parks.js', 8.4e4]];
 const mb = n => (n / 1048576).toLocaleString('ru', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 async function download() {
