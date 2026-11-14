@@ -29,22 +29,26 @@ function lks92(lat, lon) {
 }
 const nx = Math.ceil(2 * hx / STEP) + 1, nz = Math.ceil(2 * hy / STEP) + 1, H = new Float64Array(nx * nz);
 const nodeLL = (i, j) => { const x = -hx + i * STEP, z = -hy + j * STEP; return [lat0 - z / ky, lon0 + x / kx]; };
-// the LGIA grid: read only the lines inside the city's box in LKS-92, then sample it bilinearly at the nodes
+// the LGIA grid: read only the lines inside the city's box in LKS-92, then sample it bilinearly at the nodes. The
+// listed coordinates are one cell off: fitted against OpenStreetMap (the fortress ditches, the streams, the water along
+// the river banks, the cutting of Latgales iela), the ground lines up when every node reads the grid 20 m east and
+// 20 m south of its own position (the three fits give 18–20 m east, 20–22 m south)
+const LGIA_SHIFT = [20, -20];
 async function fromLgia(file) {
   let e0 = 1e12, e1 = -1e12, n0 = 1e12, n1 = -1e12;
   for (const [la, lo] of [nodeLL(0, 0), nodeLL(nx - 1, 0), nodeLL(0, nz - 1), nodeLL(nx - 1, nz - 1)]) { const [e, n] = lks92(la, lo); e0 = Math.min(e0, e); e1 = Math.max(e1, e); n0 = Math.min(n0, n); n1 = Math.max(n1, n); }
-  e0 -= 100; n0 -= 100; e1 += 100; n1 += 100;
+  e0 += LGIA_SHIFT[0] - 100; n0 += LGIA_SHIFT[1] - 100; e1 += LGIA_SHIFT[0] + 100; n1 += LGIA_SHIFT[1] + 100;
   const G = new Map(); let ge = 1e12, gn = 1e12;
   const rl = readline.createInterface({ input: fs.createReadStream(file), crlfDelay: Infinity });
   for await (const line of rl) { const s = line.trim().split(/\s+/), e = +s[0]; if (!(e >= e0 && e <= e1)) continue; const n = +s[1]; if (!(n >= n0 && n <= n1)) continue; G.set(Math.round(e) + ',' + Math.round(n), +s[2]); ge = Math.min(ge, e); gn = Math.min(gn, n); }
   if (!G.size) throw new Error('no LGIA points inside the city');
   const R = 20, oe = ge % R, on = gn % R, z = (e, n) => G.get(Math.round(e) + ',' + Math.round(n));
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
-    const [e, n] = lks92(...nodeLL(i, j)), fe = (e - oe) / R, fn = (n - on) / R, ie = Math.floor(fe), jn = Math.floor(fn), u = fe - ie, v = fn - jn;
+    const [e0, n0] = lks92(...nodeLL(i, j)), e = e0 + LGIA_SHIFT[0], n = n0 + LGIA_SHIFT[1], fe = (e - oe) / R, fn = (n - on) / R, ie = Math.floor(fe), jn = Math.floor(fn), u = fe - ie, v = fn - jn;
     const a = z(ie * R + oe, jn * R + on), b = z((ie + 1) * R + oe, jn * R + on), c = z(ie * R + oe, (jn + 1) * R + on), d = z((ie + 1) * R + oe, (jn + 1) * R + on);
     H[j * nx + i] = (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
   }
-  return 'the LGIA digital terrain model (airborne laser scanning 2013–2019, 20 m)';
+  return 'the LGIA digital terrain model (airborne laser scanning 2013–2019, 20 m; read 20 m east and south of the listed coordinates)';
 }
 
 // minimal PNG reader: 8-bit RGB or RGBA, non-interlaced
