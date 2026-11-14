@@ -38,7 +38,7 @@ function lmNight(n) {
   if (LMM.spwLamp) LMM.spwLamp.emissiveIntensity = n * 3.4; if (LMM.spwSheet) LMM.spwSheet.emissiveIntensity = 0.32 * (1 - n); if (SPW.pools) SPW.pools.visible = n > 0.5;   // the speedway: lamps, roof sheets
   if (LMM.schDet) LMM.schDet.emissiveIntensity = n * 1.7;   // schools: the lit windows
   if (LMM.chDet) LMM.chDet.emissiveIntensity = n * 1.7;   // Church Hill: the lit windows
-  if (LMM.shDet) LMM.shDet.emissiveIntensity = n * 1.5;   // supermarkets: shop windows and boards
+  if (LMM.shDet) LMM.shDet.emissiveIntensity = n * 1.05;   // supermarkets: shop windows and boards
   if (LMM.fuLamp) { LMM.fuLamp.emissiveIntensity = n * 2.6; LMM.fuTxt.emissiveIntensity = n * 1.6; LMM.fuFascia.userData.glow.value = 0.28 + n * 0.45; } if (FUEL_POOLS) FUEL_POOLS.visible = n > 0.5;   // fuel stations
 }
 function lmTick() {
