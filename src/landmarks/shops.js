@@ -338,36 +338,38 @@ function tenant(K, S, host) {
 function betaGlass(K, S, part) {
   const G = K.plain, r = part.outer, n = r.length >> 1, H = part.H, fi = frontEdge(r, S), BR = { tex: 3, col: LMWHITE, plinth: 0.4, pcol: hb('#6e6a66') }, MUL = hb('#7f9a96');
   let sd = 77; const rr = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
-  const fl = Math.max(1, Math.round((H - 0.6) / 3.1)), fh = (H - 0.9) / fl;
+  const fl = Math.max(1, Math.round((H - 0.6) / 3.1)), fh = (H - 0.9) / fl, pt = k => [r[2 * (k % n)], r[2 * (k % n) + 1]];
+  // the front: the edge facing the entrance and the edges in line with it on both sides
+  const dir = k => { const a = pt(k), b = pt(k + 1), l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l]; }, d0 = dir(fi);
+  const inLine = k => { const d = dir(k), a = pt(k), o = pt(fi); return d[0] * d0[0] + d[1] * d0[1] > 0.995 && Math.abs((a[0] - o[0]) * d0[1] - (a[1] - o[1]) * d0[0]) < 0.4; };
+  let a = fi, b = fi; for (let k = 0; k < n && inLine((a - 1 + n) % n); k++) a = (a - 1 + n) % n; for (let k = 0; k < n && inLine((b + 1) % n); k++) b = (b + 1) % n;
+  const front = new Set(); for (let k = a; ; k = (k + 1) % n) { front.add(k); if (k === b) break; }
   STATE.GBC = part.gbc;
   for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n, P = [r[2 * i], r[2 * i + 1]], Q = [r[2 * j], r[2 * j + 1]], Fw = lmWF(P, Q), L = Fw.L; if (L < 0.05) continue;
+    if (front.has(i)) continue;
+    const P = pt(i), Q = pt(i + 1), Fw = lmWF(P, Q), L = Fw.L; if (L < 0.05) continue;
     const ops = [];
-    if (i === fi && L > 10) {
-      const s0 = 1.4, s1 = L - 6.4, m = Math.max(1, Math.round((s1 - s0) / 1.6)), mw = (s1 - s0) / m;
-      for (let k = 0; k < m; k++) for (let f = 0; f < fl; f++) ops.push({ s0: s0 + k * mw, s1: s0 + (k + 1) * mw, y0: 0.3 + f * fh, y1: 0.3 + (f + 1) * fh, d: 0.06, tile: CT.cw, det: KS.det, lit: f === 0 || rr() < 0.3 ? 1 : 0 });
-      lmWall(K, P, Q, 0, H, ops, BR);
-      for (let k = 0; k <= m; k++) lmBar(G, Fw.at(s0 + k * mw, 0.3, -0.07), Fw.at(s0 + k * mw, 0.3 + fl * fh, -0.07), 0.12, MUL);
-      const [x, , z] = Fw.at((s0 + s1) / 2, 0, 0); SHV.push({ n: S.n, a: S.a, x, z, nx: Fw.nx, nz: Fw.nz });
-      // the stair tower over the roof at the far end, its walls in brick
-      const c = [Fw.at(L - 6.2, 0, 0), Fw.at(L, 0, 0), Fw.at(L, 0, 6.2), Fw.at(L - 6.2, 0, 6.2)].map(p => [p[0], p[2]]);
-      for (let k = 0; k < 4; k++) lmWall(K, c[k], c[(k + 1) % 4], H - 0.2, H + 2.2, [], BR);
-      polyA(G, [[c[0][0], H + 2.2, c[0][1]], [c[1][0], H + 2.2, c[1][1]], [c[2][0], H + 2.2, c[2][1]], [c[3][0], H + 2.2, c[3][1]]], hb('#8d8a86'), 0, 1, 0);
-      // the glass canopy over the doors, on two posts
-      const se = Math.max(3, Math.min(s1 - 2.5, along(r, i, S.e || S.p))), GL = hb('#b7cfca');
-      polyA(G, [Fw.at(se - 2.6, 3.6, 0), Fw.at(se + 2.6, 3.6, 0), Fw.at(se + 2.6, 3.05, -2.7), Fw.at(se - 2.6, 3.05, -2.7)], GL, Fw.nx, 1, Fw.nz);
-      lmBar(G, Fw.at(se - 2.6, 3.05, -2.7), Fw.at(se + 2.6, 3.05, -2.7), 0.1, MUL);
-      for (const q of [se - 2.3, se + 2.3]) { const [x2, , z2] = Fw.at(q, 0, -2.5); lmLathe(G, x2, z2, 0, [[0.07, 0], [0.07, 3.1]], 8, MUL); }
-      // the name on the roof
-      const t = CT.betaL2, w = 5.6, hh = w * t.h / t.w, sn = Math.max(w / 2 + 1, L * 0.42);
-      for (const q of [sn - 1.6, sn + 1.6]) lmBar(G, Fw.at(q, H - 0.3, 0.5), Fw.at(q, H + hh * 0.6, 0.5), 0.1, hb('#55595d'));
-      flat(Fw, sn - w / 2, sn + w / 2, H + 0.1, H + 0.1 + hh, 0.3, t);
-    } else {
-      if (L > 6) for (let x = 2.5; x < L - 2; x += 4.2) for (let f = 0; f < fl; f++) if (rr() < 0.45) ops.push({ s0: x - 0.32, s1: x + 0.32, y0: 0.3 + f * fh + 1.1, y1: 0.3 + f * fh + 1.85, d: 0.15, tile: CT.dark, det: KS.det, lit: rr() < 0.25 ? 1 : 0 });
-      lmWall(K, P, Q, 0, H, ops, BR);
-    }
+    if (L > 6) for (let x = 2.5; x < L - 2; x += 4.2) for (let f = 0; f < fl; f++) if (rr() < 0.45) ops.push({ s0: x - 0.32, s1: x + 0.32, y0: 0.3 + f * fh + 1.1, y1: 0.3 + f * fh + 1.85, d: 0.15, tile: CT.dark, det: KS.det, lit: rr() < 0.25 ? 1 : 0 });
+    lmWall(K, P, Q, 0, H, ops, BR);
     lmBoxW(G, Fw, -0.1, L + 0.1, H - 0.15, H, -0.1, 0.3, hb('#8d8a86'));
   }
+  // the front: the stair tower of brick at its right end (seen from outside), the curtain wall, a narrow brick end on the left
+  const P = pt(a), Q = pt(b + 1), Fw = lmWF(P, Q), L = Fw.L, TW = 6.2, s0 = TW + 0.2, s1 = L - 1.4, m = Math.max(1, Math.round((s1 - s0) / 1.6)), mw = (s1 - s0) / m, ops = [];
+  for (let k = 0; k < m; k++) for (let f = 0; f < fl; f++) ops.push({ s0: s0 + k * mw, s1: s0 + (k + 1) * mw, y0: 0.3 + f * fh, y1: 0.3 + (f + 1) * fh, d: 0.06, tile: CT.cw, det: KS.det, lit: f === 0 || rr() < 0.3 ? 1 : 0 });
+  lmWall(K, P, Q, 0, H, ops, BR); lmBoxW(G, Fw, -0.1, L + 0.1, H - 0.15, H, -0.1, 0.3, hb('#8d8a86'));
+  for (let k = 0; k <= m; k++) lmBar(G, Fw.at(s0 + k * mw, 0.3, -0.07), Fw.at(s0 + k * mw, 0.3 + fl * fh, -0.07), 0.12, MUL);
+  { const [x, , z] = Fw.at((s0 + s1) / 2, 0, 0); SHV.push({ n: S.n, a: S.a, x, z, nx: Fw.nx, nz: Fw.nz }); }
+  const c = [Fw.at(0, 0, 0), Fw.at(TW, 0, 0), Fw.at(TW, 0, TW), Fw.at(0, 0, TW)].map(p => [p[0], p[2]]);
+  for (let k = 0; k < 4; k++) lmWall(K, c[k], c[(k + 1) % 4], H - 0.2, H + 2.2, [], BR);
+  polyA(G, c.map(p => [p[0], H + 2.2, p[1]]), hb('#8d8a86'), 0, 1, 0);
+  // the glass canopy over the doors on two posts, the name on the roof
+  const se = Math.max(s0 + 2.8, Math.min(s1 - 2.6, along(r, a, S.e || S.p))), GL = hb('#b7cfca');
+  polyA(G, [Fw.at(se - 2.6, 3.6, 0), Fw.at(se + 2.6, 3.6, 0), Fw.at(se + 2.6, 3.05, -2.7), Fw.at(se - 2.6, 3.05, -2.7)], GL, Fw.nx, 1, Fw.nz);
+  lmBar(G, Fw.at(se - 2.6, 3.05, -2.7), Fw.at(se + 2.6, 3.05, -2.7), 0.1, MUL);
+  for (const q of [se - 2.3, se + 2.3]) { const [x2, , z2] = Fw.at(q, 0, -2.5); lmLathe(G, x2, z2, 0, [[0.07, 0], [0.07, 3.1]], 8, MUL); }
+  const t = CT.betaL2, w = 5.6, hh = w * t.h / t.w, sn = Math.min(L - w / 2 - 1, Math.max(TW + w / 2 + 1, L * 0.55));
+  for (const q of [sn - 1.6, sn + 1.6]) lmBar(G, Fw.at(q, H - 0.3, 0.5), Fw.at(q, H + hh * 0.6, 0.5), 0.1, hb('#55595d'));
+  flat(Fw, sn - w / 2, sn + w / 2, H + 0.1, H + 0.1 + hh, 0.3, t);
 }
 
 /* ---- Ditton nams (Cietokšņa iela 60), from the photograph of 2011 (Wikimedia Commons, "Ditton nams - panoramio"):
