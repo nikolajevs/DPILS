@@ -5,6 +5,7 @@ import { spwDrops } from '../landmarks/speedway.js';
 import { LM_OWNED } from '../landmarks/rigas.js';
 import { lmDrops, lmOwns } from '../landmarks/core.js';
 import { schClaim } from '../landmarks/schools.js';
+import { shopClaim } from '../landmarks/shops.js';
 import { band, church, flatPlain, flatRoof, roofFace, tileOf, tiles, vband, wallQuad } from './walls.js';
 import { serBuild } from './series.js';
 import { ovDrops } from '../world/overpass.js';
@@ -33,6 +34,7 @@ function buildBuildings(from, to) {
     if (mh < 2.2 && style !== 12) for (const r of rings) { const n = r.length >> 1; for (let i = 0; i < n; i++) { const j = (i + 1) % n; COL.add(r[2 * i], r[2 * i + 1], r[2 * j], r[2 * j + 1], 0, 0); } }
     if (lmOwns(outer, bb)) { LM_OWNED.push({ ring: outer, bb }); continue; }   // drawn by buildLandmarks
     if (schClaim(id, rec, rings, outer, bb)) continue;   // a school: its roof is drawn now, its walls by lmSchools
+    if (shopClaim(id, rec, rings, outer, bb)) continue;   // a supermarket or a part of Ditton nams or Solo: drawn by lmShops
     const small = (flags & 4) !== 0, T = tileOf(cx, cz), G = small ? T.d : T.m, D = T.d, seed = Math.floor(rnd(id, 9) * 255);
     if (!small && serBuild(rec, rings, outer, T, id, seed)) continue;   // a standard Soviet block of 5–9 storeys
     // special structures
