@@ -9,11 +9,12 @@
       with `function` are ready before any code runs, so they never count. */
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as acorn from 'acorn';
 import * as walk from 'acorn-walk';
 import * as escope from 'eslint-scope';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..'), SRC = path.join(ROOT, 'src'), ENTRY = path.join(SRC, 'boot.js');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), SRC = path.join(ROOT, 'src'), ENTRY = path.join(SRC, 'boot.js');
 const BROWSER = new Set(['window', 'document', 'navigator', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame', 'matchMedia', 'localStorage',
   'getComputedStyle', 'HTMLElement', 'HTMLButtonElement', 'HTMLAnchorElement', 'HTMLCanvasElement', 'Image', 'ImageData', 'OffscreenCanvas', 'Path2D',
   'devicePixelRatio', 'location', 'innerWidth', 'innerHeight', 'ResizeObserver', 'screen', 'history', 'alert', 'Event', 'KeyboardEvent', 'PointerEvent']);
