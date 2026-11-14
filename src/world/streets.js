@@ -6,7 +6,8 @@ import { jnFix } from '../landmarks/junction.js';
 import { spwTrackLine } from '../landmarks/speedway.js';
 import { ovComp, ovDensify, ovPrep, ovRoadHW, ovTouches } from './overpass.js';
 import { vbOnLine } from './bridge-vienibas.js';
-import { streetTags } from './street-tags.js';
+import { CROSSINGS, streetTags } from './street-tags.js';
+import { buildSignals } from './signals.js';
 import { COL, LINES, M_ASPH, M_BALLAST, M_DIRT, M_LAND, M_MARK, M_PAVE, ROAD, STREAM, TRAMLINES, inWater, matPlain } from './data.js';
 import { LINE } from './palette.js';
 import { TERR, bridgeDeck, bridgeOf, densify } from './terrain.js';
@@ -230,7 +231,15 @@ function buildLines() {
           const t = ((cx - px) * ez - (cz - pz) * ex) / den, u = ((cx - px) * rz - (cz - pz) * rx) / den; if (t < 0 || t > 1 || u < 0 || u > 1) return;
           const x = px + rx * t, z = pz + rz * t, key = lj + ':' + Math.round(x / 5) + ',' + Math.round(z / 5); if (seen.has(key)) return; seen.add(key);
           out.push({ x, z, tx: rx / rl, tz: rz / rl, hw: o.zone, li: lj }); }); } }
+    // on 18. novembra iela the crossings OSM maps as nodes replace the guess: a zebra where marked, none where not
+    if (N18 >= 0) {
+      const kept = out.filter(Z => sorted[Z.li].name !== N18); out.length = 0; out.push(...kept);
+      for (const [x, z, marked] of CROSSINGS) { if (!marked) continue; let best = null;
+        ZR.near(x, z, 2, (id, d, px, pz) => { const k = id * 6, lj = s[k + 4], o = sorted[lj]; if (o.name !== N18 || s[k + 5] !== o.zone || (best && d >= best.d)) return;
+          const rx = s[k + 2] - s[k], rz = s[k + 3] - s[k + 1], rl = Math.hypot(rx, rz) || 1; best = { d, x: px, z: pz, tx: rx / rl, tz: rz / rl, hw: o.zone, li: lj }; });
+        if (best) out.push(best); } }
     return out; }
+  const N18 = C.names.indexOf('18. novembra iela');
   for (let li = 0; li < sorted.length; li++) {
     const l = sorted[li], { cls, pts } = l; const n = pts.length >> 1;
     if (cls === 12 || cls === 13 || cls === 14) {
@@ -274,8 +283,9 @@ function buildLines() {
     else if (onBridge) { const B = bridgeOf(pts, hw + (cls <= 3 ? 2.7 : 0.3)); jn = jnFix(B); STATE.GBC = bridgeDeck(B); } else STATE.GBC = null;
     if (cls === 10 || cls === 11) for (let i = 0; i < n - 1; i++) STREAM.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, 0);
     l.gbc = STATE.GBC;
+    l.isDual = false;
     const tags = cls <= 3 ? streetTags(pts) : null, lanes4 = !!tags && tags.lanes >= 4, rural = !!tags && !!tags.rural;
-    const dual = cls <= 3 && l.name >= 0 && !jn ? dualOf(li, pts, dp, tags && tags.lanes) : null;
+    const dual = cls <= 3 && l.name >= 0 && !jn ? dualOf(li, pts, dp, tags && tags.lanes) : null; l.isDual = !!dual;
     // four lanes: across the overpass from guard rail to guard rail, elsewhere 13 m where OSM says so
     const W = dual ? null : onOv && cls === 0 ? ovWidths(dp, lanes4 ? 6.5 : hw) : lanes4 ? new Array(dp.length >> 1).fill(6.5) : null;
     let hwC = hw;   // the half width that traffic, the tram tracks and the lamps go by
@@ -368,7 +378,9 @@ function buildLines() {
   }
   zSeen = new Int32Array(ZR.s.length / 6);
   for (const J of JOBS) { STATE.GBC = J.gbc; for (const run of clipRuns(J)) { if (J.dash) dashes(marks, run, 0, J.w, J.dash[0], J.dash[1], J.col); else ribbon(marks, run, 0, J.w, J.col); } }
-  for (const Hh of HATCH) { STATE.GBC = Hh.gbc; hatch(marks, Hh.p, Hh.A, Hh.B, Hh.s, WHITE, (x, z, tx, tz) => inZones(zonesNear(Hh.li, x, z, 0.2, tx, tz), 'c', x, z)); }  STATE.GBC = null;
+  for (const Hh of HATCH) { STATE.GBC = Hh.gbc; hatch(marks, Hh.p, Hh.A, Hh.B, Hh.s, WHITE, (x, z, tx, tz) => inZones(zonesNear(Hh.li, x, z, 0.2, tx, tz), 'c', x, z)); }
+  STATE.GBC = null;
+  buildSignals(sorted, ZR, ZB, marks, WHITE, N18);   // traffic lights and stop lines on 18. novembra iela
   const orders = [-37, -37, -36, -35, -34, -33], mats = [M_LAND, M_PAVE, M_DIRT, M_BALLAST, M_ASPH, M_MARK];
   groups.forEach((g, k) => { const m = g.mesh(mats[k]); if (m) { m.renderOrder = orders[k] + (k === 0 ? -0.5 : 0); m.frustumCulled = false; m.receiveShadow = true; scene.add(m); } });
   const em = extra.mesh(matPlain); if (em) { em.castShadow = em.receiveShadow = true; scene.add(em); }
