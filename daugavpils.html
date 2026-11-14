@@ -550,8 +550,17 @@ function bridgeDeck(B) {   // GBC for the geometry of one bridge: everything abo
       const t = Math.max(0, Math.min(1, ((x - x1) * dx + (z - z1) * dz) / l2)), px = x1 + dx * t, pz = z1 + dz * t, d = Math.hypot(x - px, z - pz); if (d < best) { best = d; v = bridgeAt(B, i, px, pz); } }
     return v - terrainH(x, z); };
 }
-// how far a point on a bridge deck is above the ground under it (for walkers, vehicles and lamps)
-function bridgeY(x, z) { let r = 0, bd = 1e9; BRSEG.near(x, z, 12, (id, d, px, pz) => { const B = BRIDGES[BRSEG.s[id * 6 + 4]]; if (d < B.hw + 1 && d < bd) { bd = d; r = bridgeAt(B, BRSEG.s[id * 6 + 5], px, pz) - terrainH(x, z); } }); return Math.max(0, r); }
+// how far a point on a bridge deck is above the ground under it (for walkers, vehicles and lamps). A road can run under
+// a bridge: given a heading (dx, dz), only a deck running the same way counts; given the height one stands at (prev),
+// only a deck within reach of it, so a walker under the bridge stays on the ground and one on it stays on the deck
+function bridgeY(x, z, dx = 0, dz = 0, prev = null) {
+  let r = 0, bd = 1e9; const dl = Math.hypot(dx, dz), S = BRSEG.s;
+  BRSEG.near(x, z, 12, (id, d, px, pz) => { const o = id * 6, B = BRIDGES[S[o + 4]]; if (d >= B.hw + 1 || d >= bd) return;
+    if (dl > 0) { const sx = S[o + 2] - S[o], sz = S[o + 3] - S[o + 1], sl = Math.hypot(sx, sz) || 1; if (Math.abs(sx * dx + sz * dz) < 0.7 * sl * dl) return; }
+    const h = bridgeAt(B, S[o + 5], px, pz); if (prev !== null && Math.abs(h - prev) > 1.6) return;
+    bd = d; r = h - terrainH(x, z); });
+  return Math.max(0, r);
+}
 // Vienības tilts is drawn over a level city; on the relief its deck runs straight from the height of one bank to that of
 // the other: vbLift is how far that line is above the ground at a point on the bridge, vbComp shifts its geometry
 // (the piers below the water line and the feet of the embankments stay on the ground)
@@ -559,7 +568,7 @@ function vbLine(s) { const B = [VB.A[0] + VB.T[0] * VB.L, VB.A[1] + VB.T[1] * VB
 function vbLift(x, z) { if (!TERR.on) return 0; const [s, d] = vbLocal(x, z); if (s < -2 || s > VB.L + 2 || Math.abs(d) > VB.HW + 1) return 0; return vbLine(s) - terrainH(x, z); }
 function vbComp(x, y, z) { if (y <= WL + 0.5) return 0; const [s, d] = vbLocal(x, z); if (y <= 0.05 && Math.abs(d) > VB.HW + 0.01) return 0; return vbLine(s) - terrainH(x, z); }
 // the height a walker stands at above the level city
-const walkLift = (x, z) => fortGround(x, z) + vbGround(x, z) + terrainH(x, z) + vbLift(x, z) + bridgeY(x, z) + spwGround(x, z);
+const walkLift = (x, z, prev = null) => fortGround(x, z) + vbGround(x, z) + terrainH(x, z) + vbLift(x, z) + bridgeY(x, z, 0, 0, prev) + spwGround(x, z);
 // the surface of a river or lake at a point: in the terrain model water is the lowest ground around, so the lowest
 // height within 50 m keeps the water level right up to its banks
 function waterLevel(x, z) { let m = terrainH(x, z); for (const r of [20, 50]) for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4; m = Math.min(m, terrainH(x + Math.cos(a) * r, z + Math.sin(a) * r)); } return m; }
@@ -1156,7 +1165,7 @@ function buildLines() {
       continue;
     }
     const onBridge = l.bridge && cls !== 10 && cls !== 11 && TERR.on, dp = TERR.on ? densify(pts) : pts;
-    GBC = onBridge ? bridgeDeck(bridgeOf(pts, hw + (cls <= 3 ? 2.7 : 0.3))) : null;
+    let jn = false; if (onBridge) { const B = bridgeOf(pts, hw + (cls <= 3 ? 2.7 : 0.3)); jn = jnFix(B); GBC = bridgeDeck(B); } else GBC = null;
     if (cls === 10 || cls === 11) for (let i = 0; i < n - 1; i++) STREAM.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, 0);
     if (cls <= 3) { ribbon(walk, dp, hw + 1.4, 1.3, PAVE); ribbon(walk, dp, -hw - 1.4, 1.3, PAVE); ribbon(marks, dp, hw + 0.08, 0.12, CURB); ribbon(marks, dp, -hw - 0.08, 0.12, CURB); }
     ribbon(groups[def[2]], dp, 0, hw, lineCol[cls]);
@@ -1166,7 +1175,7 @@ function buildLines() {
     if (cls === 9) { TRAMLINES.push(pts); for (let i = 0; i < n - 1; i++) TRAMGRID.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], 0, 0); }
     if (cls <= 4) for (let i = 0; i < n - 1; i++) CARROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, cls);
     if (cls < 10 || cls === 15) for (let i = 0; i < n - 1; i++) ROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw + (cls <= 3 ? 2.6 : 0), cls <= 7 ? l.name : -1);
-    if (l.bridge && cls !== 10 && cls !== 11 && !fortBridgeLine(pts)) bridge(extra, dp, hw + (cls <= 3 ? 2.7 : 0.3));
+    if (l.bridge && cls !== 10 && cls !== 11 && !fortBridgeLine(pts) && !jn) bridge(extra, dp, hw + (cls <= 3 ? 2.7 : 0.3));
     GBC = null;
     if (cls <= 3) { // street lamps every ~32 m on one side
       const side = rnd(lampSeq++, 5) < 0.5 ? 1 : -1; let acc = 14;
@@ -3638,6 +3647,77 @@ function lmBench(G, f, u, v, face) {
   for (let k = 0; k < 3; k++) { const uu = u - 0.16 + k * 0.16; lmBoxL(G, f, uu - 0.065, uu + 0.065, v - 0.9, v + 0.9, 0.43, 0.47, WOODC); }
   for (let k = 0; k < 2; k++) { const ub = u - face * 0.27; lmBoxL(G, f, ub - 0.025, ub + 0.025, v - 0.9, v + 0.9, 0.55 + k * 0.16, 0.66 + k * 0.16, WOODC); }
 }
+/* ---- The Latgales iela junction (2009–2011) ----
+   Latgales iela runs about 900 m in a cutting some 7 m deep, two lanes each way, and passes under four bridges (Latvian
+   Wikipedia; contractor Binders: "Daugavpils traffic node", with photographs): the overpass of Piekrastes iela, a
+   75.9 m single-span concrete frame whose soffit curves down into both slopes like an arch, with sidewalks behind red
+   railings; two railway bridges of 52.7 and 54.4 m, concrete slabs with white parapets on rows of round columns; and a
+   64 m footbridge on slender columns with red railings. Outlines from OpenStreetMap (man_made=bridge ways 884947046–
+   884947049). Every line on a bridge (road, sidewalks, tracks) takes its height from the bridge's axis: one straight
+   deck from the ground at one rim of the cutting to the other. */
+const JN = [
+  { key: 'pk', S: [-830.1, -1286.9], N: [-798.4, -1360.1], hw: 6.7, kind: 'arch' },
+  { key: 'r1', S: [-712.0, -1309.0], N: [-666.5, -1369.2], hw: 11.2, kind: 'rail' },
+  { key: 'r2', S: [-594.2, -1312.6], N: [-582.4, -1368.5], hw: 8.6, kind: 'rail' },
+  { key: 'fb', S: [-563.6, -1307.7], N: [-552.4, -1362.7], hw: 1.7, kind: 'foot' }
+];
+for (const J of JN) { const dx = J.N[0] - J.S[0], dz = J.N[1] - J.S[1]; J.L = Math.hypot(dx, dz); J.t = [dx / J.L, dz / J.L]; J.n = [-J.t[1], J.t[0]]; }
+const jnLocal = (J, x, z) => [(x - J.S[0]) * J.t[0] + (z - J.S[1]) * J.t[1], (x - J.S[0]) * J.n[0] + (z - J.S[1]) * J.n[1]];
+const jnDeck = (J, s) => { const h0 = terrainH(J.S[0], J.S[1]), h1 = terrainH(J.N[0], J.N[1]); return h0 + (h1 - h0) * Math.max(0, Math.min(1, s / J.L)); };
+// the junction bridge a line lies on, if any
+function jnOf(pts) { for (const J of JN) { let ok = true; for (let i = 0; i < pts.length && ok; i += 2) { const [s, v] = jnLocal(J, pts[i], pts[i + 1]); ok = s > -12 && s < J.L + 12 && Math.abs(v) < J.hw + 2; } if (ok) return J; } return null; }
+// a bridge line of the city data on a junction bridge: its ends take the heights of that bridge's deck
+function jnFix(B) { const J = jnOf(B.pts); if (!J) return false; const n = B.pts.length >> 1;
+  B.H0 = jnDeck(J, jnLocal(J, B.pts[0], B.pts[1])[0]); B.H1 = jnDeck(J, jnLocal(J, B.pts[2 * n - 2], B.pts[2 * n - 1])[0]); return true; }
+function lmJunction(K) {
+  const G = K.plain, CON = hb('#c9c6bf'), WHITE = hb('#e6e4de'), RED = hb('#b3352f'), GREY = hb('#8f9295');
+  const top = new GB(false);   // deck tops, drawn before the ground layers so the road and the tracks lie on them
+  GBC = (x, y, z) => y > 0.05 ? -terrainH(x, z) : 0;   // heights given absolute, feet at y = 0 on the ground
+  const road = [[-1086.4, -1258.4], [-938.3, -1299.2], [-731.2, -1330.8], [-685.3, -1337.4], [-637.1, -1340.3], [-583.8, -1336.9], [-511.4, -1319.4], [-422.0, -1287.6]];
+  // where a bridge axis crosses the middle of the road, and the road's direction there
+  const cross = J => { for (let i = 0; i < road.length - 1; i++) { const [x1, z1] = road[i], [x2, z2] = road[i + 1], ex = x2 - x1, ez = z2 - z1, d = J.t[0] * ez - J.t[1] * ex; if (Math.abs(d) < 1e-6) continue;
+      const u = ((x1 - J.S[0]) * ez - (z1 - J.S[1]) * ex) / d, w = ((x1 - J.S[0]) * J.t[1] - (z1 - J.S[1]) * J.t[0]) / d; if (w >= 0 && w <= 1) { const l = Math.hypot(ex, ez); return { s: u, rd: [ex / l, ez / l] }; } } return { s: J.L / 2, rd: J.n }; };
+  for (const J of JN) {
+    const P = (s, v, y) => [J.S[0] + J.t[0] * s + J.n[0] * v, y, J.S[1] + J.t[1] * s + J.n[1] * v], hw = J.hw, c = cross(J), N = 48;
+    const rail = J.kind === 'rail', thick = rail ? 1.25 : J.kind === 'foot' ? 0.8 : 0.95;
+    // deck top under the ribbons
+    { const k = [P(-0.5, -hw, 0), P(J.L + 0.5, -hw, 0), P(J.L + 0.5, hw, 0), P(-0.5, hw, 0)].map(([x, , z], i) => { const s = i === 1 || i === 2 ? J.L + 0.5 : -0.5; return top.vert(x, jnDeck(J, s) - 0.04, z, 0, 1, 0, rail ? hb('#7d766c') : hb('#6d6e70')); });
+      top.triUp(k[0], k[1], k[2]); top.triUp(k[0], k[2], k[3]); }
+    // the body: sides from the deck down to the soffit, the soffit itself; the overpass's soffit curves down into the slopes
+    const sof = s => { const d = jnDeck(J, s) - thick; if (J.kind !== 'arch') return d; const q = (s - c.s) / (J.L / 2); return d - 13 * q * q; };
+    for (let i = 0; i < N; i++) { const s0 = J.L * i / N, s1 = J.L * (i + 1) / N, d0 = jnDeck(J, s0), d1 = jnDeck(J, s1), b0 = sof(s0), b1 = sof(s1);
+      for (const sg of [-1, 1]) polyA(G, [P(s0, sg * hw, d0), P(s1, sg * hw, d1), P(s1, sg * hw, b1), P(s0, sg * hw, b0)], sg < 0 ? CON : sh(CON, 0.96), J.n[0] * sg, 0, J.n[1] * sg);
+      polyA(G, [P(s0, -hw, b0), P(s1, -hw, b1), P(s1, hw, b1), P(s0, hw, b0)], sh(CON, 0.8), 0, -1, 0);
+      // white fascia along both edges, red railings (solid white parapets on the railway bridges)
+      for (const sg of [-1, 1]) {
+        polyA(G, [P(s0, sg * (hw + 0.12), d0 + 0.15), P(s1, sg * (hw + 0.12), d1 + 0.15), P(s1, sg * (hw + 0.12), d0 - 0.65), P(s0, sg * (hw + 0.12), d0 - 0.65)], WHITE, J.n[0] * sg, 0, J.n[1] * sg);
+        if (rail) { polyA(G, [P(s0, sg * (hw - 0.15), d0), P(s1, sg * (hw - 0.15), d1), P(s1, sg * (hw - 0.15), d1 + 1.1), P(s0, sg * (hw - 0.15), d0 + 1.1)], WHITE, J.n[0] * sg, 0, J.n[1] * sg);
+          polyA(G, [P(s0, sg * (hw - 0.15), d0), P(s1, sg * (hw - 0.15), d1), P(s1, sg * (hw - 0.15), d1 + 1.1), P(s0, sg * (hw - 0.15), d0 + 1.1)], sh(WHITE, 0.9), -J.n[0] * sg, 0, -J.n[1] * sg); }
+        else { const v = sg * (hw - 0.1); lmBar(G, P(s0, v, d0 + 1.1), P(s1, v, d1 + 1.1), 0.08, RED); lmBar(G, P(s0, v, d0 + 0.15), P(s1, v, d1 + 0.15), 0.06, RED);
+          for (let k = 0; k < 3; k++) { const s = s0 + (s1 - s0) * k / 3, y = jnDeck(J, s); lmBar(G, P(s, v, y + 0.15), P(s, v, y + 1.1), 0.035, RED); } }
+      }
+      // the overpass: red railings also between the roadway and the sidewalks
+      if (J.kind === 'arch') for (const v of [-3.9, 3.9]) { lmBar(G, P(s0, v, d0 + 1.0), P(s1, v, d1 + 1.0), 0.07, RED); lmBar(G, P(s0, v, d0 + 0.5), P(s1, v, d1 + 0.5), 0.06, RED);
+        for (let k = 0; k < 2; k++) { const s = s0 + (s1 - s0) * k / 2, y = jnDeck(J, s); lmBar(G, P(s, v, y), P(s, v, y + 1.0), 0.06, RED); } }
+    }
+    // piers under the railway bridges and the footbridge: rows of round columns under cap beams along the road, at the
+    // middle of the road and at both kerbs
+    if (J.kind !== 'arch') for (const off of [-11, 0, 11]) {
+      const cosA = Math.abs(c.rd[0] * J.n[0] + c.rd[1] * J.n[1]) || 1, sp = c.s + off / cosA, cx = J.S[0] + J.t[0] * sp, cz = J.S[1] + J.t[1] * sp, top0 = jnDeck(J, sp) - thick;
+      const half = (hw - 0.4) / cosA, m = J.kind === 'foot' ? 1 : Math.max(2, Math.round(2 * half / 4.2));
+      const A = [cx - c.rd[0] * half, cz - c.rd[1] * half], B = [cx + c.rd[0] * half, cz + c.rd[1] * half];
+      if (J.kind !== 'foot') lmBar(G, [A[0], top0 - 0.45, A[1]], [B[0], top0 - 0.45, B[1]], 0.9, sh(CON, 0.9));
+      else lmBar(G, [cx - c.rd[0] * 1.6, top0 - 0.35, cz - c.rd[1] * 1.6], [cx + c.rd[0] * 1.6, top0 - 0.35, cz + c.rd[1] * 1.6], 0.7, sh(CON, 0.9));
+      for (let k = 0; k < m; k++) { const f = m === 1 ? 0.5 : k / (m - 1), x = A[0] + (B[0] - A[0]) * f, z = A[1] + (B[1] - A[1]) * f;
+        lmLathe(G, x, z, 0, [[J.kind === 'foot' ? 0.32 : 0.5, 0], [J.kind === 'foot' ? 0.32 : 0.5, top0 - 0.85], [0, top0 - 0.85]], 14, CON); }
+    }
+    if (J.kind === 'arch') for (const sg of [-1, 1]) for (let s = 6; s < J.L; s += 18) { const p = P(s, sg * (hw - 0.3), 0), y = jnDeck(J, s);   // lamps on the overpass
+      lmBar(G, [p[0], y, p[2]], [p[0], y + 9, p[2]], 0.14, GREY); lmBar(G, [p[0], y + 9, p[2]], [p[0] - J.n[0] * sg * 1.6, y + 9.1, p[2] - J.n[1] * sg * 1.6], 0.08, GREY); }
+  }
+  GBC = null;
+  const m = top.mesh(matPlain); if (m) { m.renderOrder = -56; m.receiveShadow = true; m.frustumCulled = false; scene.add(m); }
+}
+
 /* ---- The "air bridge" to Jaunā Forštadte (gaisa tilts) ----
    The footbridge over the railway yard between Minskas iela and Slāvu iela: the walk from the station side to Jaunā
    Forštadte, "Pervomaika" to the townspeople (OSM way 37794110, "gaisa tilts uz Jauno Forštadti"). After the
@@ -3860,7 +3940,7 @@ function buildLandmarks() {
   LMM.clk = hook(new THREE.MeshStandardMaterial({ map: lmClk.tex, emissive: new THREE.Color(1, 1, 1), emissiveMap: lmClk.tex, roughness: 0.5, metalness: 0 }), 'lm-clk', LM_SAFE); allMats.push(LMM.clk); lmTick();
   const K = { ash: new LMB(), ren: new LMB(), det: new LMB(), txt: new LMB(), clk: new LMB(), plain: new GB(false), stone: new GB(false), globe: new GB(false) };
   K.walls = [K.ash, K.ren, new LMB(), new LMB(), new LMB(), new LMB(), new LMB()];
-  lmUnityHouse(K); lmLatgola(K); lmSquare(K); lmGrounds(K); lmDUMain(K); lmDUParades(K); lmDULab(K); lmRenesanse(K); lmRigas(K); lmVesma(K); lmTVTower(K); lmStation(K); lmSpeedway(K); lmKP(K); lmSC(K); lmAirBridge(K); GBC = TERR.on ? vbComp : null; lmVienibas(K); GBC = null;
+  lmUnityHouse(K); lmLatgola(K); lmSquare(K); lmGrounds(K); lmDUMain(K); lmDUParades(K); lmDULab(K); lmRenesanse(K); lmRigas(K); lmVesma(K); lmTVTower(K); lmStation(K); lmSpeedway(K); lmKP(K); lmSC(K); lmAirBridge(K); lmJunction(K); GBC = TERR.on ? vbComp : null; lmVienibas(K); GBC = null;
   [LMM.ash, LMM.ren, LMM.duw, LMM.brick, LMM.tile, LMM.panel, LMM.buff].forEach((m, k) => K.walls[k].mesh(m)); K.det.mesh(LMM.det); K.txt.mesh(LMM.txt, false); K.clk.mesh(LMM.clk, false);
   for (const [b, m] of [[K.plain, LMM.plain], [K.stone, LMM.stone]]) { const pm = b.mesh(m); if (pm) { pm.castShadow = pm.receiveShadow = true; scene.add(pm); } }
   const gm = K.globe.mesh(LMM.globe); if (gm) { gm.receiveShadow = true; scene.add(gm); }
@@ -5111,9 +5191,9 @@ function buildLamps() {
   const M = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), S1 = new THREE.Vector3(1, 1, 1);
   ok.forEach((i, k) => {
     const x = LAMPS[3 * i], z = LAMPS[3 * i + 1], a = LAMPS[3 * i + 2]; q.setFromAxisAngle(up, a);
-    const by = bridgeY(x, z); M.compose(new THREE.Vector3(x, by, z), q, S1); poles.setMatrixAt(k, M); lampHeads.setMatrixAt(k, M);
+    const ld = [Math.cos(a), -Math.sin(a)], by = bridgeY(x, z, ld[0], ld[1]); M.compose(new THREE.Vector3(x, by, z), q, S1); poles.setMatrixAt(k, M); lampHeads.setMatrixAt(k, M);
     const hx = x + Math.cos(-a) * 1.35, hz = z + Math.sin(-a) * 1.35;
-    M.compose(new THREE.Vector3(hx, 0.06 + bridgeY(hx, hz), hz), q, new THREE.Vector3(22, 1, 22)); lampPools.setMatrixAt(k, M);
+    M.compose(new THREE.Vector3(hx, 0.06 + bridgeY(hx, hz, ld[0], ld[1]), hz), q, new THREE.Vector3(22, 1, 22)); lampPools.setMatrixAt(k, M);
     COL.add(x, z, x + 0.01, z, 0.15, 0);
   });
   poles.castShadow = true; scene.add(poles, lampHeads, lampPools); lampPools.visible = false; lampPools.renderOrder = 5;
@@ -5585,11 +5665,11 @@ function updateTransit(dt) {
       lanePoint(shapeAt(sh, front - 0.3, PA), kind); lanePoint(shapeAt(sh, front - L + 0.3, PB2), kind);
       const cx = (PA[0] + PB2[0]) / 2, cz = (PA[1] + PB2[1]) / 2, yaw = Math.atan2(PA[0] - PB2[0], PA[1] - PB2[1]);
       // over a bridge the deck stands above the ground under it: up Vienības tilts nose up or down
-      const lift = (x, z) => vbGround(x, z) + vbLift(x, z) + bridgeY(x, z), ya = lift(PA[0], PA[1]), yb = lift(PB2[0], PB2[1]), gy = (ya + yb) / 2;
+      const hdx = PA[0] - PB2[0], hdz = PA[1] - PB2[1], lift = (x, z) => vbGround(x, z) + vbLift(x, z) + bridgeY(x, z, hdx, hdz), ya = lift(PA[0], PA[1]), yb = lift(PB2[0], PB2[1]), gy = (ya + yb) / 2;
       if (vbGround(PA[0], PA[1]) || vbGround(PB2[0], PB2[1])) QY.setFromEuler(VE.set(-Math.atan2(ya - yb, L), yaw, 0, 'YXZ')); else QY.setFromAxisAngle(VUP, yaw);
       MX.compose(VP.set(cx, gy, cz), QY, VS.set(1, 1, L / MODEL_LEN[kind])); M.b.setMatrixAt(cnt[kind], MX); M.g.setMatrixAt(cnt[kind], MX);
       MX.compose(VP.set(cx, gy + 0.035, cz), QY, VS.set(3.6, 1, L + 1.6)); M.s.setMatrixAt(cnt[kind], MX);
-      if (first) placed.push({ x: cx, z: cz, kind, route: TR.routes[p.route][0], dest: TR.stops[p.stops[p.stops.length - 1]][0] });
+      if (first) placed.push({ x: cx, z: cz, kind, route: TR.routes[p.route][0], dest: TR.stops[p.stops[p.stops.length - 1]][0], dx: hdx, dz: hdz });
       cnt[kind]++; front -= L + 0.7; first = false;
     }
   }
@@ -5612,7 +5692,7 @@ function updateTags() {
       for (let i = 1; i <= n && !hidden; i++) { const f = i * 3 / d; hidden = inBuilding(cx + (v.x - cx) * f, cz + (v.z - cz) * f); }
       if (hidden) continue;
     }
-    TAGV.set(v.x, (v.kind === 0 ? 4.9 : 3.7) + terrainH(v.x, v.z) + bridgeY(v.x, v.z), v.z).project(camera);
+    TAGV.set(v.x, (v.kind === 0 ? 4.9 : 3.7) + terrainH(v.x, v.z) + bridgeY(v.x, v.z, v.dx || 0, v.dz || 0), v.z).project(camera);
     if (TAGV.z > 1 || TAGV.z < -1 || Math.abs(TAGV.x) > 1.05 || Math.abs(TAGV.y) > 1.05) continue;
     let e = tagEls[k];
     if (!e) { e = document.createElement('div'); e.className = 'vtag'; e.innerHTML = '<span class="rt"></span><span></span>'; host.append(e); tagEls[k] = e; }
@@ -5754,7 +5834,7 @@ function step(dt) {
     P.walked += sp * dt * l;
   }
   P.x = Math.max(-HX, Math.min(HX, P.x)); P.z = Math.max(-HY, Math.min(HY, P.z));
-  if (!P.fly) P.y = 1.7 + walkLift(P.x, P.z);   // up the hills and ramparts, down into the moats, over the bridges
+  if (!P.fly) P.y = 1.7 + walkLift(P.x, P.z, P.y - 1.7);   // up the hills and ramparts, down into the moats, over the bridges
 }
 function setFly(on) {
   P.fly = on; $('bFly').setAttribute('aria-pressed', on);
