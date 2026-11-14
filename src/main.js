@@ -1,5 +1,6 @@
 import { STATE } from './core/state.js';
 import { PHASE, loading } from './ui/loading.js';
+import { SB } from './landmarks/schools.js';
 // every module, latest first: a module is evaluated after the earlier ones it needs (see tools/check.js)
 import { frame } from './game/loop.js';
 import './game/input.js';
@@ -78,7 +79,7 @@ const step = (text, w, reported) => {
     const N = C.b.length;
     for (let i = 0; i < N; i += 4000) { const j = Math.min(N, i + 4000); await step('Строю дома: ' + j.toLocaleString('ru') + ' из ' + N.toLocaleString('ru') + '…', W.houses * (j - i) / N); buildBuildings(i, j); }
     await step('Собираю кварталы…', W.blocks); finishBuildings();
-    await step('Строю Дом Единства, гостиницу «Латгола» и корпуса университета…', W.landmarks); buildLandmarks();
+    await step('Строю Дом Единства, «Латголу», университет и школы…', W.landmarks); buildLandmarks();
     await step('Насыпаю валы и копаю рвы крепости…', W.fortress); buildFortress();
     const lamps = buildLamps(); setTime(timeI);
     await step('Сажаю деревья…', W.trees); const trees = buildTrees();
@@ -91,6 +92,6 @@ const step = (text, w, reported) => {
     loading.done('Готово: ' + BLD.length.toLocaleString('ru') + ' зданий, ' + LINES.length.toLocaleString('ru') + ' улиц и дорожек, ' + trees.toLocaleString('ru') + ' деревьев, ' + lamps.toLocaleString('ru') + ' фонарей' + (tripsN ? ', ' + tripsN.toLocaleString('ru') + ' рейсов в расписании' : '') + '.');
     $('view').classList.add('shown');
     $('go').disabled = false; $('go').focus();
-    window.__city = { TX, setClock, updateBoard, P, teleport, setFly, setTime, fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU };
+    window.__city = { SB, TX, setClock, updateBoard, P, teleport, setFly, setTime, fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU };
   } catch (e) { console.error(e); loading.fail('Ошибка при сборке города: ' + e.message); }
 })();
