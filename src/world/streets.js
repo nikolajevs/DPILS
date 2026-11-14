@@ -95,6 +95,11 @@ function buildLines() {
      sidewalk, the kerb and the lamps go on the outer side only. */
   const PAIR = new SegGrid(40), TRK = new SegGrid(20), MED = new SegGrid(20);   // MED: the asphalt medians with tracks in them
   sorted.forEach((l, li) => { if ((l.cls <= 3 && l.name >= 0) || l.cls === 9) for (let i = 0; i < l.pts.length - 2; i += 2) (l.cls === 9 ? TRK : PAIR).add(l.pts[i], l.pts[i + 1], l.pts[i + 2], l.pts[i + 3], li, 0); });
+  // the ends of the named streets: how many other lines of the same street end within 2.5 m of (x, z)
+  const ENDS = []; sorted.forEach((l, li) => { if (l.cls <= 3 && l.name >= 0) { const p = l.pts, n = p.length; ENDS.push([p[0], p[1], li], [p[n - 2], p[n - 1], li]); } });
+  const splitAt = (li, x, z) => { const me = sorted[li], seen = new Set();
+    for (const [ex, ez, lj] of ENDS) if (lj !== li && Math.abs(ex - x) < 2.5 && Math.abs(ez - z) < 2.5 && sorted[lj].name === me.name && sorted[lj].cls === me.cls) seen.add(lj);
+    return seen.size; };
   const partner = (li, x, z, tx, tz) => { const me = sorted[li]; let best = null;
     PAIR.near(x, z, 26, (id, d, px, pz) => { const s = PAIR.s, lj = s[id * 6 + 4], o = sorted[lj]; if (lj === li || o.cls !== me.cls || o.name !== me.name || d < 3) return;
       const dx = s[id * 6 + 2] - s[id * 6], dz = s[id * 6 + 3] - s[id * 6 + 1], l = Math.hypot(dx, dz) || 1; if (Math.abs((dx * tx + dz * tz) / l) < 0.9) return;
@@ -114,6 +119,22 @@ function buildLines() {
     for (let i = 0; i < m; i++) { if (D[i] === null || S[i] !== side) D[i] = last; else last = D[i]; }
     last = null; for (let i = m - 1; i >= 0; i--) { if (D[i] === null) D[i] = last; else last = D[i]; }
     if (D[0] === null) return null;
+    /* Where the pair splits off a single road, OSM joins both carriageways to the end node of that road, so over the last
+       10–20 m their centre lines run together into a point. At the west end of the overpass bridge they did, and the edge
+       lines, kerbs and sidewalks of the two carriageways cut in a V across the four lanes of the bridge. There the end of
+       each carriageway is laid straight on, the way it comes from 30–55 m out: the two stay apart at the distance they
+       settled at, and carry on the edges of the road they split from. */
+    if (dp !== pts) for (const end of [0, 1]) {
+      const np = pts.length; if (splitAt(li, end ? pts[np - 2] : pts[0], end ? pts[np - 1] : pts[1]) < 2) continue;
+      const idx = Array.from({ length: m }, (_, k) => end ? m - 1 - k : k), cum = [0]; let acc = 0;
+      for (let k = 1; k < m; k++) { const i = idx[k], j = idx[k - 1]; acc += Math.hypot(dp[2 * i] - dp[2 * j], dp[2 * i + 1] - dp[2 * j + 1]); cum.push(acc); }
+      if (acc < 45) continue;
+      const at = sv => { let k = 0; while (k < m - 2 && cum[k + 1] < sv) k++; const i = idx[k], j = idx[k + 1], t = Math.max(0, Math.min(1, (sv - cum[k]) / ((cum[k + 1] - cum[k]) || 1)));
+        return [dp[2 * i] + (dp[2 * j] - dp[2 * i]) * t, dp[2 * i + 1] + (dp[2 * j + 1] - dp[2 * i + 1]) * t]; };
+      const A = at(30), B = at(Math.min(55, acc)), tl = Math.hypot(A[0] - B[0], A[1] - B[1]) || 1, tx = (A[0] - B[0]) / tl, tz = (A[1] - B[1]) / tl;
+      const kA = cum.findIndex(c => c >= 30), dRef = D[idx[kA]];
+      for (let k = 0; k < kA; k++) { const i = idx[k], r = 30 - cum[k]; dp[2 * i] = A[0] + tx * r; dp[2 * i + 1] = A[1] + tz * r; if (D[i] < dRef) D[i] = dRef; }
+    }
     const Ds = D.map((_, i) => { let a = 0, k = 0; for (let j = Math.max(0, i - 2); j <= Math.min(m - 1, i + 2); j++) { a += D[j]; k++; } return a / k; });
     /* lanes of 3.25 m where OSM gives their number (where the two carriageways run closer than their width, up to the
        middle between them); otherwise guessed from the distance */
