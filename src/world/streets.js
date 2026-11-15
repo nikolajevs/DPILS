@@ -6,7 +6,7 @@ import { jnFix } from '../landmarks/junction.js';
 import { spwTrackLine } from '../landmarks/speedway.js';
 import { ovComp, ovDensify, ovPrep, ovRoadHW, ovTouches } from './overpass.js';
 import { vbOnLine } from './bridge-vienibas.js';
-import { CROSSINGS, streetTags } from './street-tags.js';
+import { CROSSINGS, CROSSINGS_LAT, streetTags } from './street-tags.js';
 import { cutComp, cutTouches } from './cutting.js';
 import { buildSignals } from './signals.js';
 import { COL, LINES, M_ASPH, M_BALLAST, M_DIRT, M_LAND, M_MARK, M_PAVE, ROAD, STREAM, TRAMLINES, inWater, matPlain } from './data.js';
@@ -287,6 +287,12 @@ function buildLines() {
         ZR.near(x, z, 2, (id, d, px, pz) => { const k = id * 6, lj = s[k + 4], o = sorted[lj]; if (o.name !== N18 || s[k + 5] !== o.zone || (best && d >= best.d)) return;
           const rx = s[k + 2] - s[k], rz = s[k + 3] - s[k + 1], rl = Math.hypot(rx, rz) || 1; best = { d, x: px, z: pz, tx: rx / rl, tz: rz / rl, hw: o.zone, li: lj }; });
         if (best) out.push(best); } }
+    // around Latgales iela and its roundabouts the same from the crossings OSM maps there, on any street drawn with a zone
+    { const kept = out.filter(Z => !CROSSINGS_LAT.some(([x, z]) => Math.hypot(Z.x - x, Z.z - z) < 6)); out.length = 0; out.push(...kept); }
+    for (const [x, z, marked] of CROSSINGS_LAT) { if (!marked) continue; let best = null;
+      ZR.near(x, z, 2.5, (id, d, px, pz) => { const k = id * 6, lj = s[k + 4], o = sorted[lj]; if (!o.zone || s[k + 5] !== o.zone || (best && d >= best.d)) return;
+        const rx = s[k + 2] - s[k], rz = s[k + 3] - s[k + 1], rl = Math.hypot(rx, rz) || 1; best = { d, x: px, z: pz, tx: rx / rl, tz: rz / rl, hw: o.zone, li: lj }; });
+      if (best) out.push(best); }
     return out; }
   const N18 = C.names.indexOf('18. novembra iela');
   for (let li = 0; li < sorted.length; li++) {
@@ -442,7 +448,7 @@ function buildLines() {
   for (const J of JOBS) { STATE.GBC = J.gbc; for (const run of clipRuns(J)) { if (J.dash) dashes(marks, run, 0, J.w, J.dash[0], J.dash[1], J.col); else ribbon(marks, run, 0, J.w, J.col); } }
   for (const Hh of HATCH) { STATE.GBC = Hh.gbc; hatch(marks, Hh.p, Hh.A, Hh.B, Hh.s, WHITE, (x, z, tx, tz) => inZones(zonesNear(Hh.li, x, z, 0.2, tx, tz), 'c', x, z)); }
   STATE.GBC = null;
-  buildSignals(sorted, ZR, ZB, marks, WHITE, N18);   // traffic lights and stop lines on 18. novembra iela
+  buildSignals(sorted, ZR, ZB, marks, WHITE, N18);   // traffic lights and stop lines on 18. novembra iela, give way at the roundabouts
   const orders = [-37, -37, -36, -35, -34, -33], mats = [M_LAND, M_PAVE, M_DIRT, M_BALLAST, M_ASPH, M_MARK];
   groups.forEach((g, k) => { const m = g.mesh(mats[k]); if (m) { m.renderOrder = orders[k] + (k === 0 ? -0.5 : 0); m.frustumCulled = false; m.receiveShadow = true; scene.add(m); } });
   const em = extra.mesh(matPlain); if (em) { em.castShadow = em.receiveShadow = true; scene.add(em); }

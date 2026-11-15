@@ -36,6 +36,9 @@ const TAGS = [
   [127382595, 3296, -1019, 3022, -891, { rural: true }],
   [128080447, 3590, -1156, 3296, -1019, { rural: true }],
   [127382450, 4784, -2611, 4405, -1857, { rural: true }],
+  // Latgales iela between its two roundabouts, the two one-way carriageways of the cutting (lanes=2)
+  [133296796, -309, -1184, -1109, -1269, { lanes: 2 }],
+  [133296797, -1098, -1236, -331, -1174, { lanes: 2 }],
   /* Daugavas iela at the north end of Vienības tilts (OSM API, November 2026): the way under the bridge is one-way, one
      lane between a hatched margin on its left (Street View) and maxheight=3.9; the ramps of the teardrop junction on the
      dam are one-way, one lane each (lanes=1 on one of them). */
@@ -72,6 +75,15 @@ const CROSSINGS = SIGNALS.filter(s => s[2] === 'p').map(s => [s[0], s[1], true])
   [2194.4, -469.9, true], [3601.7, -1161.9, true], [4011.8, -1353.9, true], [4342.3, -1732.7, true],
   [-507.1, 1572.7, false], [-347.1, 1502.8, false],
 ]);
+/* The pedestrian crossings around Latgales iela and its two roundabouts (OSM highway=crossing nodes in x −1250…−230,
+   z −1450…−1080, November 2026), the same way: true where marked. Within 6 m of one the zebras guessed from footways
+   are dropped, so the unmarked ones (false) leave none. */
+const CROSSINGS_LAT = [
+  [-758, -1444.2, true], [-1104.8, -1139.1, true], [-325.2, -1398.5, true], [-283.6, -1207.7, true], [-336.5, -1193.7, true], [-278.2, -1123, true],
+  [-265.6, -1162.3, true], [-295.9, -1260.8, true], [-780.2, -1442.9, true], [-1075.8, -1257, true], [-1081.5, -1269.1, true], [-1137.9, -1309.4, true],
+  [-1167.9, -1222, true], [-1055.2, -1130.3, true], [-359.1, -1152.9, true], [-326.5, -1199.1, true],
+  [-757.1, -1431, false], [-341.9, -1424.9, false], [-796.2, -1380, false], [-255.9, -1409.1, false], [-1151.9, -1328.8, false],
+];
 const near = (x, z, a, b) => Math.abs(x - a) < 1.5 && Math.abs(z - b) < 1.5;
 // the tags of the street line pts (flat x, z pairs), or null
 function streetTags(pts) {
@@ -80,4 +92,4 @@ function streetTags(pts) {
   return null;
 }
 
-export { CROSSINGS, SIGNALS, streetTags };
+export { CROSSINGS, CROSSINGS_LAT, SIGNALS, streetTags };
