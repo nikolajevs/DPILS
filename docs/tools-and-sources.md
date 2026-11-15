@@ -10,6 +10,7 @@
 |---|---|---|---|
 | Claude (сессия владельца) | `claude/adoring-goldberg-0qz2d2` | Лидар LGIA: настоящие высоты карнизов и коньков и формы крыш всех зданий | `tools/lidar.js` (новый), файл данных `lidar.js` (новый), `src/buildings/buildings.js`, `src/boot.js`, `vite.config.mjs` |
 | Claude (сессия владельца) | `claude/nifty-bell-byecnv` | Динабургская крепость: Константиновские ворота, недостающие здания и детали по фото (Mapillary, Commons) | `src/fortress/*`, `fortress.js`, `tools/fortress.js`, раздел крепости в README.md |
+| Claude (сессия владельца) | `claude/hopeful-heisenberg-vw0e8z` | Щель с землёй между кусками улицы на стыке путей OSM (крепость, у Константиновских ворот) | `src/world/streets.js` |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
 
