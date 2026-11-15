@@ -4,7 +4,9 @@ import { TIMES, timeI } from '../render/lighting.js';
 import { P } from '../game/player.js';
 import { vbGround } from '../world/bridge-vienibas.js';
 import { upUnder } from '../world/underpass.js';
-import { COL, inBuilding, matPlain } from '../world/data.js';
+import { COL, LINES, inBuilding, matPlain } from '../world/data.js';
+import { LINE } from '../world/palette.js';
+import { buildNet, dDir, matchShape } from './route-match.js';
 import { std } from '../render/materials.js';
 import { mkCanvas, toTex } from '../render/textures.js';
 import { bridgeY, terrainH, vbLift } from '../world/terrain.js';
@@ -15,9 +17,10 @@ import { $ } from '../core/env.js';
 
 /* ---------- public transport on the real timetable (GTFS of Daugavpils satiksme) ----------
    The clock runs in Riga time. Each trip is a pattern (shape, stops, times relative to the start) plus a start time
-   and a service calendar. A vehicle stands at a stop for part of each leg and moves with smooth acceleration between
-   stops, so it passes every stop exactly at the scheduled minute. Trams snap to the right-hand OSM track, buses to
-   the right-hand lane of the OSM road. */
+   and a service calendar. A vehicle stands at a stop for part of each leg, then speeds up, runs and slows down to the
+   next one (glide), so it passes every stop exactly at the scheduled minute. The shapes of the feed cut from stop to
+   stop; each is laid once on the tracks or the roads of the model (route-match.js), and every vehicle runs along that
+   route: a tram on its right-hand track, a bus in the right-hand lane, both bogies of a car on the same line. */
 const TR = window.TRANSIT || null;
 const DAY0 = Date.UTC(2026, 0, 1) / 864e5;
 const CARROAD = new SegGrid(30), TRAMGRID = new SegGrid(20);
@@ -60,40 +63,104 @@ function prepTransit() {
   TX.pats.forEach((p, pi) => p.stops.forEach((s, k) => { if (k < p.stops.length - 1) TX.stopRefs[s].push([pi, k]); }));
   const now = rigaNow(); TX.day = now.day; TX.sec = now.sec; TX.ok = true;
 }
+// where a trip is (metres along its route) rel seconds after its start: standing at a stop, then on to the next one
 function tripAlong(t, rel) {
-  const p = TX.pats[t.p], mt = p.mt, n = mt.length, a = p.along;
+  const p = TX.pats[t.p], mt = p.mt, n = mt.length, a = p.alongU;
   if (rel <= 0) return a[0]; if (rel >= mt[n - 1]) return a[n - 1];
   let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (mt[m] <= rel) lo = m; else hi = m; }
-  const T = mt[hi] - mt[lo], dwell = T > 40 ? Math.min(20, T * 0.3) : 0;
-  let f = (rel - mt[lo] - dwell) / Math.max(1e-3, T - dwell);
-  if (f <= 0) return a[lo]; if (f >= 1) return a[hi];
-  f -= Math.sin(6.2831853 * f) / 6.2831853;               // zero speed at both stops
-  return a[lo] + (a[hi] - a[lo]) * f;
+  const T = mt[hi] - mt[lo], dwell = T > 40 ? Math.min(20, T * 0.3) : 0, run = Math.max(1e-3, T - dwell), tt = rel - mt[lo] - dwell;
+  if (tt <= 0) return a[lo]; if (tt >= run) return a[hi];
+  return a[lo] + glide(a[hi] - a[lo], run, tt, p.kind ? 1.1 : 0.9);
 }
-function shapeAt(sh, s, o) {
-  const c = sh.cum, p = sh.pts, n = c.length; let lo, hi;
-  if (s <= 0) { lo = 0; hi = 1; } else if (s >= sh.len) { lo = n - 2; hi = n - 1; }
-  else { lo = 0; hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (c[m] <= s) lo = m; else hi = m; } }
-  const L = (c[hi] - c[lo]) || 1, f = (s - c[lo]) / L;      // extrapolates past both ends
+/* how far a vehicle has come t seconds into a run of D metres in T seconds: it speeds up and slows down at no more than
+   acc m/s² (smoothly: the speed rises as 3x² − 2x³) and runs at an even speed between; where the time is too short for
+   that, it speeds up for half of it and slows down for the other half */
+function glide(D, T, t, acc) {
+  if (D <= 0) return 0;
+  const disc = T * T - 6 * D / acc, v = disc > 0 ? acc * (T - Math.sqrt(disc)) / 3 : 2 * D / T, ta = disc > 0 ? 1.5 * v / acc : T / 2;
+  const rise = x => x * x * x - x * x * x * x / 2;   // ∫ (3x² − 2x³)
+  if (t < ta) return v * ta * rise(t / ta);
+  if (t > T - ta) return D - v * ta * rise((T - t) / ta);
+  return v * ta / 2 + v * (t - ta);
+}
+/* the routes: each shape laid on the network of its kind. A bus keeps to the right-hand lane: half way to the kerb on
+   a two-way road, the outer lane of one carriageway of a pair (driving it against its way is allowed but dear, in case
+   the pair is misread), and its turns are rounded over ±7 m; a tram stays on the track. Per route the points every
+   2–2.5 m with their distance along (cum), and per vertex of the shape its distance along the route (vu). */
+const ROUTE_OPT = [{ reach: 30, maxTurn: 75 * Math.PI / 180, keepRight: true, max: 8 }, { reach: 40, maxTurn: 150 * Math.PI / 180, side: true, uturn: 40, max: 6 }];
+function buildRoutes() {
+  const tw = [], bw = [], bInfo = [];
+  for (const l of LINES) {
+    if (l.cls === 9) tw.push({ pts: l.pts });
+    else if (l.cls <= 4) {
+      const hw = l.zone || LINE[l.cls][0] / 2, side = l.side || 0, pair = side !== 0 || l.one;
+      bw.push({ pts: l.pts, bridge: !!l.bridge, cf: side > 0 ? 4 : 1, cb: side < 0 || l.one ? 4 : 1 });
+      const off = pair ? Math.max(0.3, hw - 1.7) : Math.max(1.4, Math.min(3.0, hw / 2)); bInfo.push({ off, hw, dp: l.isDual && l.dp !== l.pts ? l.dp : null });
+    }
+  }
+  const nets = [buildNet(tw), buildNet(bw, { cross: true })];
+  TX.routes = TX.shapes.map(() => null); TX.stopAt = TX.shapes.map(() => null);
+  TX.pats.forEach(p => { const kind = p.kind ? 1 : 0, si = p.shape; if (TX.routes[si]) return;
+    const net = nets[kind], sh = TX.shapes[si], m = matchShape(net, sh.pts, ROUTE_OPT[kind]);
+    const wayOf = d => d >= 0 ? net.E[d >> 1].way : -1, offAt = d => kind && d >= 0 ? bInfo[wayOf(d)].off : 0;
+    /* a carriageway of a pair is drawn along its own line where the two split off a single road (laid straight on over
+       the last 30–55 m, see dualOf in streets.js): the route keeps to the drawn one */
+    const drawn = (d, x, z) => { const dp = kind && d >= 0 ? bInfo[wayOf(d)].dp : null; return dp ? nearOn(dp, x, z) : [x, z]; };
+    if (kind) for (let i = 0; i < m.de.length; i++) { const [x, z] = drawn(m.de[i], m.pts[2 * i], m.pts[2 * i + 1]); m.pts[2 * i] = x; m.pts[2 * i + 1] = z; }
+    TX.routes[si] = laneRoute(m, offAt, kind ? 2.5 : 2, kind ? 3 : 0);
+    // where each vertex (a stop, almost always) lies on the network: the point on the road's middle or the track, which
+    // way the vehicle goes there and the half width of the road
+    TX.stopAt[si] = m.place.map(q => { if (!q) return null; const [dx, dz] = dDir(net, q.d), [x, z] = drawn(q.d, q.x, q.z); return { x, z, dx, dz, hw: kind ? bInfo[wayOf(q.d)].hw : 0 }; });
+  });
+  TX.pats.forEach(p => { const sh = TX.shapes[p.shape], R = TX.routes[p.shape]; p.alongU = p.along.map(a => shapeToRoute(sh, R, a)); });
+}
+// the nearest point on a line (flat x, z)
+function nearOn(p, x, z) {
+  let bd = Infinity, bx = x, bz = z;
+  for (let i = 0; i + 3 < p.length; i += 2) { const ax = p[i], az = p[i + 1], dx = p[i + 2] - ax, dz = p[i + 3] - az, l2 = dx * dx + dz * dz || 1e-9, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)), px = ax + dx * t, pz = az + dz * t, d = (x - px) ** 2 + (z - pz) ** 2; if (d < bd) { bd = d; bx = px; bz = pz; } }
+  return [bx, bz];
+}
+// the route of a match: the points moved off the middle of the road into the lane, rounded, resampled
+function laneRoute(m, offAt, step, round) {
+  const P = m.pts, n = P.length >> 1, O = new Float32Array(n);
+  for (let i = 0; i < n; i++) O[i] = offAt(m.de[i]);
+  if (n > 1) O[0] = O[1];
+  const Q = new Float32Array(2 * n);
+  for (let i = 0; i < n; i++) {
+    const a = Math.max(0, i - 1), c = Math.min(n - 1, i + 1); let ix = P[2 * i] - P[2 * a], iz = P[2 * i + 1] - P[2 * a + 1], ox = P[2 * c] - P[2 * i], oz = P[2 * c + 1] - P[2 * i + 1];
+    const li = Math.hypot(ix, iz), lo = Math.hypot(ox, oz); if (li > 1e-6) { ix /= li; iz /= li; } if (lo > 1e-6) { ox /= lo; oz /= lo; }
+    if (li <= 1e-6) { ix = ox; iz = oz; } if (lo <= 1e-6) { ox = ix; oz = iz; }
+    let tx = ix + ox, tz = iz + oz, tl = Math.hypot(tx, tz); if (tl < 0.2) { tx = ix; tz = iz; tl = 1; } tx /= tl; tz /= tl;
+    const off = (O[i] + O[Math.min(n - 1, i + 1)]) / 2 / Math.max(0.6, tx * ix + tz * iz);   // a mitre at a corner
+    Q[2 * i] = P[2 * i] - tz * off; Q[2 * i + 1] = P[2 * i + 1] + tx * off;
+  }
+  const qc = new Float32Array(n); for (let i = 1; i < n; i++) qc[i] = qc[i - 1] + Math.hypot(Q[2 * i] - Q[2 * i - 2], Q[2 * i + 1] - Q[2 * i - 1]);
+  const L = n ? qc[n - 1] : 0, k = Math.max(2, Math.ceil(L / step) + 1), R = new Float32Array(2 * k);
+  for (let j = 0, i = 0; j < k; j++) { const u = L * j / (k - 1); while (i < n - 2 && qc[i + 1] < u) i++; const f = n > 1 ? Math.max(0, Math.min(1, (u - qc[i]) / ((qc[i + 1] - qc[i]) || 1))) : 0, i2 = Math.min(n - 1, i + 1);
+    R[2 * j] = Q[2 * i] + (Q[2 * i2] - Q[2 * i]) * f; R[2 * j + 1] = Q[2 * i + 1] + (Q[2 * i2 + 1] - Q[2 * i + 1]) * f; }
+  let pts = R;
+  if (round > 0) { pts = new Float32Array(2 * k);
+    for (let j = 0; j < k; j++) { let sx = 0, sz = 0, w = 0; for (let q = -round; q <= round; q++) { const jj = Math.max(0, Math.min(k - 1, j + q)), ww = round + 1 - Math.abs(q); sx += R[2 * jj] * ww; sz += R[2 * jj + 1] * ww; w += ww; } pts[2 * j] = sx / w; pts[2 * j + 1] = sz / w; } }
+  const cum = new Float32Array(k); for (let j = 1; j < k; j++) cum[j] = cum[j - 1] + Math.hypot(pts[2 * j] - pts[2 * j - 2], pts[2 * j + 1] - pts[2 * j - 1]);
+  // the vertices of the shape: their distance along the offset line, then along the resampled, rounded one
+  const vu = new Float32Array(m.at.length); m.at.forEach((idx, v) => { const f = L > 0 ? qc[idx] / L * (k - 1) : 0, j = Math.min(k - 2, Math.floor(f)); vu[v] = k > 1 ? cum[j] + (cum[j + 1] - cum[j]) * (f - j) : 0; });
+  return { pts, cum, len: cum[k - 1], vu };
+}
+// a distance along a shape of the feed → along its route (between the vertices in proportion)
+function shapeToRoute(sh, R, a) {
+  const c = sh.cum, n = c.length; if (a <= 0) return R.vu[0]; if (a >= c[n - 1]) return R.vu[n - 1];
+  let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (c[m] <= a) lo = m; else hi = m; }
+  return R.vu[lo] + (R.vu[hi] - R.vu[lo]) * (a - c[lo]) / ((c[hi] - c[lo]) || 1);
+}
+// the point and the direction at u along a route (past its ends straight on)
+function routeAt(R, u, o) {
+  const c = R.cum, p = R.pts, n = c.length; let lo, hi;
+  if (u <= 0) { lo = 0; hi = 1; } else if (u >= R.len) { lo = n - 2; hi = n - 1; }
+  else { lo = 0; hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (c[m] <= u) lo = m; else hi = m; } }
+  const L = (c[hi] - c[lo]) || 1, f = (u - c[lo]) / L;
   o[2] = (p[2 * hi] - p[2 * lo]) / L; o[3] = (p[2 * hi + 1] - p[2 * lo + 1]) / L;
   o[0] = p[2 * lo] + (p[2 * hi] - p[2 * lo]) * f; o[1] = p[2 * lo + 1] + (p[2 * hi + 1] - p[2 * lo + 1]) * f;
   return o;
-}
-function lanePoint(o, kind) {
-  const rx = -o[3], rz = o[2];                              // to the right of the direction of travel
-  if (kind === 0) {
-    const x = o[0] + rx * 1.6, z = o[1] + rz * 1.6; let best = 3.4, bx = x, bz = z;
-    TRAMGRID.near(x, z, 3.4, (id, d, qx, qz) => { if (d < best) { best = d; bx = qx; bz = qz; } });
-    o[0] = bx; o[1] = bz; return o;
-  }
-  let best = 8, bx = o[0], bz = o[1], bw = 0; const s = CARROAD.s;
-  CARROAD.near(o[0], o[1], 8, (id, d, qx, qz) => {
-    const k = id * 6, dx = s[k + 2] - s[k], dz = s[k + 3] - s[k + 1], L = Math.hypot(dx, dz) || 1;
-    if (Math.abs((dx * o[2] + dz * o[3]) / L) < 0.8) return;  // ignore cross streets at junctions
-    if (d < best) { best = d; bx = qx; bz = qz; bw = s[k + 4]; }
-  });
-  const off = bw ? Math.max(1.4, Math.min(3.0, bw * 0.5)) : 1.8;
-  o[0] = bx + rx * off; o[1] = bz + rz * off; return o;
 }
 
 // vehicle models: a tram section (14 m) and a 12 m city bus, front towards +z; "glow" holds lit windows and lamps
@@ -136,7 +203,7 @@ function shadowBlobTex() {
 const VCAP = [80, 140];
 function buildTransit() {
   if (!TR) return 0;
-  prepTransit();
+  prepTransit(); const t0 = performance.now(); buildRoutes(); TX.routeMs = performance.now() - t0;
   const bodyMat = std({ vertexColors: true, roughness: 0.4, metalness: 0.15 }, 'vehicle');
   const glowMat = new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(1.15, 1.15, 1.15), toneMapped: true });
   const blobMat = new THREE.MeshBasicMaterial({ map: shadowBlobTex(), color: 0x000000, transparent: true, depthWrite: false, opacity: 0.7 });
@@ -153,22 +220,35 @@ function buildTransit() {
   scanActive();
   return TR.trips.length;
 }
+/* the stops: by the kerb on the right of the way the vehicles go there, along it, open towards the road. For a bus the
+   kerb of the road it was laid on, the shelter 2.4 m beyond it on the sidewalk; for a tram the kerb of the road its
+   track runs in, or 2 m off a track on its own; moved along the kerb (up to 8 m) off a house or another carriageway,
+   else only the pole. One per stop of the feed, none within 6 m of another. */
 function buildStops() {
   const b = new GB(false), POSTC = hb('#4b5054'), ROOF = hb('#5c646a'), GLASSC = hb('#9fb3ba'), BENCH = hb('#7a5a40'), SIGNB = hb('#1d5ca6'), SIGNT = hb('#c0262d');
-  const o = [0, 0, 0, 0], seen = new Set();
+  const placed = [], s6 = CARROAD.s;
+  const onCarriage = (x, z) => { let on = false; CARROAD.near(x, z, 12, (id, d) => { if (d < s6[id * 6 + 4] + 0.4) on = true; }); return on; };
   TR.stops.forEach((st, si) => {
     let ref = TX.stopRefs[si][0];
     if (!ref) { for (let pi = 0; pi < TX.pats.length && !ref; pi++) { const k = TX.pats[pi].stops.indexOf(si); if (k >= 0) ref = [pi, k]; } }
     if (!ref) return;
-    const pat = TX.pats[ref[0]], key = Math.round(st[1] / 40) + ',' + Math.round(st[2] / 40);
-    if (seen.has(key)) return; seen.add(key);
-    shapeAt(TX.shapes[pat.shape], pat.along[ref[1]], o);
-    const tx = o[2], tz = o[3], rx = -tz, rz = tx;
-    let hw = 3.4, bx = st[1] / 10, bz = st[2] / 10;
-    if (pat.kind !== 0) { let best = 9; CARROAD.near(bx, bz, 9, (id, d, qx, qz) => { if (d < best) { best = d; hw = CARROAD.s[id * 6 + 4]; bx = qx; bz = qz; } }); }
-    const off = hw + (pat.kind === 0 ? 1.9 : 2.4), cx = bx + rx * off, cz = bz + rz * off, sign = pat.kind === 0 ? SIGNT : SIGNB;
+    const pat = TX.pats[ref[0]], sh = TX.shapes[pat.shape], sx = st[1] / 10, sz = st[2] / 10;
+    // the vertex of the shape at the stop, and where it lies on the network
+    let vi = -1, vd = 1e9; for (let i = 0; i < sh.pts.length; i += 2) { const d = Math.hypot(sh.pts[i] - sx, sh.pts[i + 1] - sz); if (d < vd) { vd = d; vi = i >> 1; } }
+    const q = vi >= 0 && vd < 5 ? TX.stopAt[pat.shape][vi] : null;
+    let cx, cz, tx, tz;
+    if (q) { tx = q.dx; tz = q.dz; let bx = q.x, bz = q.z, hw = q.hw, own = false;
+      if (pat.kind === 0) { own = true; let best = 1e9; CARROAD.near(q.x, q.z, 14, (id, d, px, pz) => { const k = id * 6, ex = s6[k + 2] - s6[k], ez = s6[k + 3] - s6[k + 1], l = Math.hypot(ex, ez) || 1;
+          if (d < s6[k + 4] && Math.abs((ex * tx + ez * tz) / l) > 0.9 && d < best) { best = d; bx = px; bz = pz; hw = s6[k + 4]; own = false; } }); }
+      const off = own ? 2.0 : hw + 2.4; cx = bx - tz * off; cz = bz + tx * off; }
+    else { const o = routeAt(TX.routes[pat.shape], pat.alongU[ref[1]], [0, 0, 0, 0]); tx = o[2]; tz = o[3]; cx = o[0] - tz * 3.2; cz = o[1] + tx * 3.2; }
+    const rx = -tz, rz = tx, sign = pat.kind === 0 ? SIGNT : SIGNB;
+    if (placed.some(([x, z]) => Math.hypot(x - cx, z - cz) < 6)) return;
+    // off a house or another carriageway: along the kerb
+    let ok = false; for (const sft of [0, 2, -2, 4, -4, 6, -6, 8, -8]) { const x = cx + tx * sft, z = cz + tz * sft; if (!inBuilding(x, z) && !inBuilding(x + rx * 0.8, z + rz * 0.8) && !onCarriage(x, z)) { cx = x; cz = z; ok = true; break; } }
+    placed.push([cx, cz]);
     const pole = (x, z) => { lathe(b, x, z, 0, [[0.045, 0], [0.045, 2.95]], 6, 0, POSTC); box(b, x, z, tx, tz, 0.02, 0.24, 2.45, 2.93, sign); COL.add(x, z, x + 0.01, z, 0.08, 0); };
-    if (inBuilding(cx, cz) || inBuilding(cx + rx * 0.8, cz + rz * 0.8)) { pole(bx + rx * (hw + 0.7), bz + rz * (hw + 0.7)); return; }
+    if (!ok) { pole(cx - rx * 1.2, cz - rz * 1.2); return; }
     box(b, cx + rx * 0.68, cz + rz * 0.68, tx, tz, 2.0, 0.035, 0.12, 2.28, GLASSC);
     box(b, cx, cz, tx, tz, 2.15, 0.88, 2.3, 2.42, ROOF);
     for (const [u, v] of [[-1.95, -0.72], [1.95, -0.72], [-1.95, 0.68], [1.95, 0.68]]) box(b, cx + tx * u + rx * v, cz + tz * u + rz * v, tx, tz, 0.05, 0.05, 0, 2.3, POSTC, false);
@@ -198,7 +278,7 @@ function nextDeparture() { // first trip start after now (today or tomorrow)
   }
   return null;
 }
-const PO = [0, 0, 0, 0], PA = [0, 0, 0, 0], PB2 = [0, 0, 0, 0], MX = new THREE.Matrix4(), QY = new THREE.Quaternion(), VUP = new THREE.Vector3(0, 1, 0), VP = new THREE.Vector3(), VS = new THREE.Vector3(), VE = new THREE.Euler();
+const PA = [0, 0, 0, 0], PB2 = [0, 0, 0, 0], MX = new THREE.Matrix4(), QY = new THREE.Quaternion(), VUP = new THREE.Vector3(0, 1, 0), VP = new THREE.Vector3(), VS = new THREE.Vector3(), VE = new THREE.Euler();
 function updateTransit(dt) {
   if (!TX.ok) return;
   const sp = SPEEDS[TX.si];
@@ -208,13 +288,13 @@ function updateTransit(dt) {
   if ((TX.scan -= dt * Math.max(1, sp / 10)) <= 0) { TX.scan = 0.5; scanActive(); }
   const cnt = [0, 0], placed = [];
   for (const a of TX.act) {
-    const t = a.t, p = TX.pats[t.p], kind = p.kind ? 1 : 0, sh = TX.shapes[p.shape], M = TX.mesh[kind];
+    const t = a.t, p = TX.pats[t.p], kind = p.kind ? 1 : 0, R = TX.routes[p.shape], M = TX.mesh[kind];
     const s = tripAlong(t, TX.sec + a.off - t.start);
     const secs = kind === 0 ? (t.id % 20 < 9 ? [12.6, 12.6] : [15]) : [12];
     let front = s, first = true;
     for (const L of secs) {
       if (cnt[kind] >= VCAP[kind]) break;
-      lanePoint(shapeAt(sh, front - 0.3, PA), kind); lanePoint(shapeAt(sh, front - L + 0.3, PB2), kind);
+      routeAt(R, front - 0.3, PA); routeAt(R, front - L + 0.3, PB2);   // the two bogies on the same line
       const cx = (PA[0] + PB2[0]) / 2, cz = (PA[1] + PB2[1]) / 2, yaw = Math.atan2(PA[0] - PB2[0], PA[1] - PB2[1]);
       // over a bridge the deck stands above the ground under it: up Vienības tilts nose up or down
       const hdx = PA[0] - PB2[0], hdz = PA[1] - PB2[1], lift = (x, z) => (upUnder(x, z, hdx, hdz) ? 0 : vbGround(x, z) + vbLift(x, z)) + bridgeY(x, z, hdx, hdz), ya = lift(PA[0], PA[1]), yb = lift(PB2[0], PB2[1]), gy = (ya + yb) / 2;

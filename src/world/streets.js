@@ -378,7 +378,7 @@ function buildLines() {
     l.gbc = STATE.GBC;
     l.isDual = false;
     const tags = cls <= 3 ? streetTags(pts) : null, lanes4 = !!tags && tags.lanes >= 4, rural = !!tags && !!tags.rural, one = !!tags && !!tags.oneway; l.one = one;
-    const dual = cls <= 3 && l.name >= 0 && !jn && !one ? dualOf(li, pts, dp, tags && tags.lanes) : null; l.isDual = !!dual;
+    const dual = cls <= 3 && l.name >= 0 && !jn && !one ? dualOf(li, pts, dp, tags && tags.lanes) : null; l.isDual = !!dual; l.side = dual ? dual.side : 0;   // side: where the other carriageway of a pair is (+1 right of the line, the way it runs)
     let je = jointEnds(li, dp); l.dp = dp; l.je = je;   // after dualOf, which may move the ends of dp
     // four lanes: across the overpass from guard rail to guard rail, elsewhere 13 m where OSM says so
     const W = dual ? null : onOv && cls === 0 ? ovWidths(dp, lanes4 ? 6.5 : hw) : lanes4 ? new Array(dp.length >> 1).fill(6.5) : null;
