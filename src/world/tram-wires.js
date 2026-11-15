@@ -3,6 +3,7 @@ import { LMM } from '../landmarks/index.js';
 import { lmBar, lmLathe } from '../landmarks/helpers.js';
 import { ovDensify } from './overpass.js';
 import { VB, vbEmb, vbGround, vbP, vbY } from './bridge-vienibas.js';
+import { UP, upGap } from './underpass.js';
 import { COL, TRAMLINES, inBuilding } from './data.js';
 import { groundMaterial } from '../render/materials.js';
 import { detailTex } from '../render/textures.js';
@@ -78,7 +79,9 @@ function lmTramWires(K) {
   });
 }
 function lmVienibas(K) {
-  const G = K.plain, { L, T, N, HW, SW, PIERS } = VB, y = vbY, P = vbP;
+  const G = K.plain, { L, T, N, HW, PIERS } = VB, y = vbY, P = vbP;
+  // the steel spans reach the box over Daugavas iela at the north end, as on the photographs (src/world/underpass.js)
+  const SW = UP.ok ? [VB.SW[0], UP.gap[0]] : VB.SW;
   const STEEL = hb('#bcc0c2'), STEEL2 = sh(STEEL, 0.86), CONC = hb('#cfccc4'), SLOPE = hb('#a9a79f'), RAILC = hb('#b4b8bb'), STONE = [236, 228, 218];
   const stations = (a, b, step = 2) => { const r = [a]; for (let s = Math.ceil(a / step) * step; s < b - 1e-3; s += step) if (s > a + 1e-3) r.push(s); r.push(b); return r; };
   // a box that follows the deck: d0..d1 across, dy0..dy1 relative to the deck, from s0 to s1
@@ -100,7 +103,7 @@ function lmVienibas(K) {
   for (const sg of [-1, 1]) { const a = sg > 0 ? 6.95 : -7.25, b = sg > 0 ? 7.25 : -6.95; deckBox(G, 0, L, a, b, -0.8, 0.3, CONC);
     for (let s = 3; s < L; s += 6) deckBox(G, s - 0.02, s + 0.02, sg > 0 ? 7.25 : -7.26, sg > 0 ? 7.26 : -7.25, -0.8, 0.3, sh(CONC, 0.8), sg > 0 ? 'o' : 'i'); }
   // ---- steel girders over the river: four lines, the outer webs with stiffeners and splice plates; the soffit
-  const [sA, sB] = [SW[0] - 1, SW[1] + 1];
+  const [sA, sB] = [SW[0] - 1, UP.ok ? SW[1] : SW[1] + 1];
   deckBox(G, sA, sB, -6.95, 6.95, -0.8, -0.79, sh(STEEL, 0.8), 'b');
   for (const d of [-6.6, -2.3, 2.3, 6.6]) { deckBox(G, sA, sB, d - 0.03, d + 0.03, -3.0, -0.8, STEEL, 'io'); deckBox(G, sA, sB, d - 0.35, d + 0.35, -3.06, -2.98, STEEL2); }
   for (const sg of [-1, 1]) { const dw = sg * 6.63;
@@ -126,8 +129,8 @@ function lmVienibas(K) {
   }
   // ---- the banks: paved embankments carry the deck down to the street, concrete abutments face the river
   for (const [s0, s1, sw, dir] of [[0, SW[0], SW[0], 1], [SW[1], L, SW[1], -1]]) {
-    for (const sg of [-1, 1]) { const st = stations(s0, s1, 2);
-      for (let k = 0; k < st.length - 1; k++) { const a = st[k], b = st[k + 1], ha = Math.max(0, y(a) - 0.8), hb_ = Math.max(0, y(b) - 0.8); if (ha + hb_ < 0.01) continue;
+    for (const sg of [-1, 1]) { const st = stations(s0, s1, 2); if (UP.ok) for (const g of UP.gap) if (g > s0 && g < s1 && !st.includes(g)) st.push(g); st.sort((p, q) => p - q);
+      for (let k = 0; k < st.length - 1; k++) { const a = st[k], b = st[k + 1], ha = Math.max(0, y(a) - 0.8), hb_ = Math.max(0, y(b) - 0.8); if (ha + hb_ < 0.01 || upGap((a + b) / 2)) continue;   // open over Daugavas iela
         polyA(G, [P(a, sg * HW, ha), P(b, sg * HW, hb_), P(b, sg * (HW + vbEmb(b)), 0.03), P(a, sg * (HW + vbEmb(a)), 0.03)], SLOPE, N[0] * sg, 1.5, N[1] * sg);
         COL.add(...(([x0, , z0]) => [x0, z0])(P(a, sg * (HW + vbEmb(a)), 0)), ...(([x1, , z1]) => [x1, z1])(P(b, sg * (HW + vbEmb(b)), 0)), 0, 0); } }
     const h = y(sw) - 0.8, e = vbEmb(sw), bot = WL - 0.6, nrm = [T[0] * dir, 0, T[1] * dir], AB = hb('#b3b0a8');

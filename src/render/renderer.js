@@ -57,6 +57,6 @@ function hook(m, key, patch) {
   return m;
 }
 
-function terrUniforms(s) { s.uniforms.tTerr = U.tTerr; s.uniforms.uTerrA = U.uTerrA; s.uniforms.uTerrB = U.uTerrB; }
+function terrUniforms(s) { s.uniforms.tTerr = U.tTerr; s.uniforms.uTerrA = U.uTerrA; s.uniforms.uTerrB = U.uTerrB; s.uniforms.tPatch = U.tPatch; s.uniforms.uPatchA = U.uPatchA; s.uniforms.uPatchB = U.uPatchB; }
 
 export { ANISO, GPU, LIGHTDIR, MAXTEX, POST, U, WEAK_GPU, camera, canvas, hemi, hook, renderer, scene, sun, terrUniforms };

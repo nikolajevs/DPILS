@@ -4,6 +4,7 @@ import { fortTreeY } from '../fortress/build.js';
 import { fortNoTree } from '../fortress/ground-height.js';
 import { SQ_SPRUCES } from '../landmarks/unity-square.js';
 import { SHOP_TREES } from '../landmarks/shops.js';
+import { upNoTree } from './underpass.js';
 import { PARK_RINGS, PARK_TREES, parkNoTree } from '../landmarks/parks.js';
 import { fuelNoTree } from '../landmarks/fuel.js';
 import { spwNoTree } from '../landmarks/speedway.js';
@@ -225,7 +226,7 @@ function buildTrees() {
   farGeo.setAttribute('aQ', new THREE.Float32BufferAttribute([0, 0, 0, 0, 1, 1, 1, 1], 1));
   farGeo.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
   const add = (x, z, type, sc, v) => {
-    if (Math.abs(x) > HX || Math.abs(z) > HY || lmClear(x, z) || wetTree(x, z) || fortNoTree(x, z) || vbNoTree(x, z) || spwNoTree(x, z) || fuelNoTree(x, z) || ovNoTree(x, z) || parkNoTree(x, z)) return;
+    if (Math.abs(x) > HX || Math.abs(z) > HY || lmClear(x, z) || wetTree(x, z) || fortNoTree(x, z) || vbNoTree(x, z) || spwNoTree(x, z) || fuelNoTree(x, z) || ovNoTree(x, z) || parkNoTree(x, z) || upNoTree(x, z)) return;
     const i = Math.floor(x / TTILE), j = Math.floor(z / TTILE), k = (i + 100) * 1000 + j + 100;
     let t = treeTiles.get(k); if (!t) treeTiles.set(k, t = { x0: i * TTILE, z0: j * TTILE, list: [] }); t.list.push(x, z, type, sc, v);
   };
