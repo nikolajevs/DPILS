@@ -6,6 +6,7 @@ import { AREA_HEX, AREA_ORDER } from './palette.js';
 import { groundMaterial } from '../render/materials.js';
 import { detailTex } from '../render/textures.js';
 import { TERR, densify, subTris, terrainH, waterLevel } from './terrain.js';
+import { cutFloor } from './cutting.js';
 import { scene } from '../render/renderer.js';
 import { GB, polyA } from '../core/geometry.js';
 import { bbox, dec, hb, rnd, sh, triangulate } from '../core/util.js';
@@ -23,6 +24,7 @@ function terrainDepth() {
   const g = new GB(false), nx = TERR.nx, nz = TERR.nz, s = TERR.s, q = TERR.q, C0 = [0, 0, 0]; g.ensure(nx * nz);
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
     let m = 1e9; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = Math.min(nx - 1, Math.max(0, i + di)), jj = Math.min(nz - 1, Math.max(0, j + dj)); m = Math.min(m, q[jj * nx + ii]); }
+    m = Math.min(m, cutFloor(TERR.x0 + i * s, TERR.z0 + j * s) * 10);   // beside the retaining walls of the Latgales cutting
     g.vert(TERR.x0 + i * s, (m - q[j * nx + i]) * 0.1 - 0.5, TERR.z0 + j * s, 0, 1, 0, C0);
   }
   const wet = (x, z) => { const W = WMASK, i = Math.floor((x - W.X0) / W.S), j = Math.floor((z - W.Z0) / W.S); return i >= 0 && j >= 0 && i < W.NX && j < W.NZ && W.m[j * W.NX + i] !== 0; };
