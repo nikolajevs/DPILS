@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { STATE } from '../core/state.js';
 import { seriesAtlas, seriesMaterial } from '../buildings/series.js';
 import { facadeMaterial, groundMaterial, roofMaterial, std } from '../render/materials.js';
-import { detailTex, facadeAtlas, roofAtlas, waterNormalTex } from '../render/textures.js';
+import { detailTex, facadeAtlas, roofAtlas } from '../render/textures.js';
 import { hook } from '../render/renderer.js';
 import { SegGrid } from '../core/geometry.js';
 import { lin, pip } from '../core/util.js';
@@ -50,19 +50,17 @@ function wetTree(x, z) {
 }
 function onRoad(x, z, margin) { let ok = false; ROAD.near(x, z, 14, (id, d) => { if (d < ROAD.s[id * 6 + 4] + margin) ok = true; }); return ok; }
 
-let matFac, matRoof, matPlain, matGold, matBank, matWater, M_LAND, M_PAVE, M_DIRT, M_BALLAST, M_ASPH, M_MARK, waterNormal;
+let matFac, matRoof, matPlain, matGold, matBank, M_LAND, M_PAVE, M_DIRT, M_BALLAST, M_ASPH, M_MARK;   // the water's material: src/world/water.js
 function makeMaterials() {
-  [STATE.facTex, STATE.facMask] = facadeAtlas(); STATE.roofTex = roofAtlas(); waterNormal = waterNormalTex();
+  [STATE.facTex, STATE.facMask] = facadeAtlas(); STATE.roofTex = roofAtlas();
   const dGrass = detailTex(0), dAsph = detailTex(1), dPave = detailTex(2), dGravel = detailTex(3);
   matFac = facadeMaterial(); matRoof = roofMaterial(); [STATE.serTex, STATE.serMask] = seriesAtlas(); STATE.matSer = seriesMaterial();
   matPlain = std({ vertexColors: true, roughness: 0.85, metalness: 0 }, 'plain');
   matGold = hook(new THREE.MeshStandardMaterial({ color: lin('#e0b048'), metalness: 1, roughness: 0.25 }));
   matBank = std({ vertexColors: true, roughness: 1, metalness: 0, side: THREE.DoubleSide }, 'bank');
-  waterNormal.repeat.set(1, 1);
-  matWater = hook(new THREE.MeshStandardMaterial({ color: lin('#30474e'), roughness: 0.05, metalness: 0, normalMap: waterNormal, normalScale: new THREE.Vector2(0.22, 0.22), envMapIntensity: 1.1 }));
   M_LAND = groundMaterial(dGrass, 1 / 7, 0.55, 'land'); M_PAVE = groundMaterial(dPave, 1 / 4, 0.5, 'pave'); M_DIRT = groundMaterial(dGrass, 1 / 3, 0.7, 'dirt');
   M_BALLAST = groundMaterial(dGravel, 1 / 2, 0.6, 'ballast'); M_ASPH = groundMaterial(dAsph, 1 / 5, 0.45, 'asph');
   M_MARK = std({ vertexColors: true, roughness: 0.8, metalness: 0, depthWrite: false }, 'mark');
 }
 
-export { AREAS, BGRID, BLD, COL, LINES, M_ASPH, M_BALLAST, M_DIRT, M_LAND, M_MARK, M_PAVE, ROAD, STREAM, TRAMLINES, WATER, WMASK, inBuilding, inWater, makeMaterials, matBank, matFac, matGold, matPlain, matRoof, matWater, onRoad, waterMask, waterNormal, wetTree };
+export { AREAS, BGRID, BLD, COL, LINES, M_ASPH, M_BALLAST, M_DIRT, M_LAND, M_MARK, M_PAVE, ROAD, STREAM, TRAMLINES, WATER, WMASK, inBuilding, inWater, makeMaterials, matBank, matFac, matGold, matPlain, matRoof, onRoad, waterMask, wetTree };

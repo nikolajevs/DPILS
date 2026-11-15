@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { FORT } from '../fortress/index.js';
-import { AREAS, M_LAND, WATER, WMASK, matBank, matWater, waterMask } from './data.js';
+import { AREAS, M_LAND, WATER, WMASK, matBank, waterMask } from './data.js';
+import { waterMat } from './water.js';
 import { AREA_HEX, AREA_ORDER } from './palette.js';
 import { groundMaterial } from '../render/materials.js';
 import { detailTex } from '../render/textures.js';
@@ -56,8 +57,12 @@ function buildGround() {
     if (a.cls === 0) {
       const v0 = wp.length / 3; for (let i = 0; i < flat.length; i += 2) wp.push(flat[i], TERR.on ? waterLevel(flat[i], flat[i + 1]) - 0.1 - terrainH(flat[i], flat[i + 1]) : WL, flat[i + 1]);
       for (let i = 0; i < tris.length; i += 3) { const A = v0 + tris[i], B = v0 + tris[i + 1], Cc = v0 + tris[i + 2]; const s = (wp[3 * B + 2] - wp[3 * A + 2]) * (wp[3 * Cc] - wp[3 * A]) - (wp[3 * B] - wp[3 * A]) * (wp[3 * Cc + 2] - wp[3 * A + 2]); if (s >= 0) wi.push(A, B, Cc); else wi.push(A, Cc, B); }
-      const bcol = hb('#6d6553');
-      for (const r0 of a.rings) { const r = TERR.on ? densify(Array.from(r0).concat([r0[0], r0[1]]), 0.3) : r0, m = r.length >> 1; for (let i = 0; i < m; i++) { const j = (i + 1) % m; const x1 = r[2 * i], z1 = r[2 * i + 1], x2 = r[2 * j], z2 = r[2 * j + 1]; if (Math.hypot(x2 - x1, z2 - z1) < 0.05) continue; polyA(bank, [[x1, 0, z1], [x2, 0, z2], [x2, TERR.on ? waterLevel(x2, z2) - 0.5 - terrainH(x2, z2) : WL - 0.4, z2], [x1, TERR.on ? waterLevel(x1, z1) - 0.5 - terrainH(x1, z1) : WL - 0.4, z1]], sh(bcol, 0.9 + rnd(n, i) * 0.2), 0, 0, 1); } }
+      /* the bank down to under the water where the ground stands more than 0.8 m over it; a lower bank is left out: the
+         water fades in from it (src/world/water.js), and its wall only drew the straight outline of OSM as a dark line */
+      const bcol = hb('#6d6553'), low = (x, z) => TERR.on ? waterLevel(x, z) - 0.5 - terrainH(x, z) : WL - 0.4;
+      for (const r0 of a.rings) { const r = TERR.on ? densify(Array.from(r0).concat([r0[0], r0[1]]), 0.3) : r0, m = r.length >> 1; for (let i = 0; i < m; i++) { const j = (i + 1) % m; const x1 = r[2 * i], z1 = r[2 * i + 1], x2 = r[2 * j], z2 = r[2 * j + 1]; if (Math.hypot(x2 - x1, z2 - z1) < 0.05) continue;
+        const b1 = low(x1, z1), b2 = low(x2, z2); if (TERR.on && Math.max(b1, b2) > -1.3) continue;
+        polyA(bank, [[x1, 0, z1], [x2, 0, z2], [x2, b2, z2], [x1, b1, z1]], sh(bcol, 0.9 + rnd(n, i) * 0.2), 0, 0, 1); } }
       return;
     }
     const v0 = land.v, col = sh(colors[a.cls], 0.94 + rnd(n, 3) * 0.12);
@@ -72,7 +77,7 @@ function buildGround() {
     const uv = []; for (let i = 0; i < wp.length; i += 3) uv.push(wp[i] / 24, wp[i + 2] / 24);
     const nrm = []; for (let i = 0; i < wp.length; i += 3) nrm.push(0, 1, 0);
     water.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3)); water.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); water.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    water.setIndex(wi); const wm = new THREE.Mesh(water, matWater); wm.renderOrder = -38; wm.frustumCulled = false; wm.receiveShadow = true; scene.add(wm);
+    water.setIndex(wi); const wm = new THREE.Mesh(water, waterMat()); wm.renderOrder = -38; wm.frustumCulled = false; scene.add(wm);
   }
 }
 
