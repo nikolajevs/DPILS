@@ -9,7 +9,7 @@ import { groundMaterial } from '../render/materials.js';
 import { detailTex, glowTex } from '../render/textures.js';
 import { scene } from '../render/renderer.js';
 import { TERR, subTris, terrainH } from '../world/terrain.js';
-import { inBuilding, inWater } from '../world/data.js';
+import { inBuilding, inWater, onRoad } from '../world/data.js';
 
 /* ---------- the parks and squares ----------
    From parks.js (OpenStreetMap, built by tools/parks.js): 21 parks and squares of the city with what is mapped in them.
@@ -240,7 +240,7 @@ function lmParks(K) {
     const n = pts.length >> 1; let acc = 8, side = 1;
     for (let k = 0; k < n - 1; k++) { const [ax, az] = P2(pts, k), [bx, bz] = P2(pts, k + 1), L = Math.hypot(bx - ax, bz - az); if (L < 0.01) continue;
       for (; acc < L; acc += 24) { const tx = (bx - ax) / L, tz = (bz - az) / L, off = (hw === 'pedestrian' ? 3.2 : 1.7) * side, x = ax + tx * acc - tz * off, z = az + tz * acc + tx * off; side = -side;
-        const key = Math.round(x / 10) + ':' + Math.round(z / 10); if (have.has(key) || inBuilding(x, z) || inWater(x, z) || parkNoTree(x, z)) continue; have.add(key); lamp(K, x, z, pools); }
+        const key = Math.round(x / 10) + ':' + Math.round(z / 10); if (have.has(key) || inBuilding(x, z) || inWater(x, z) || parkNoTree(x, z) || onRoad(x, z, 0.35)) continue; have.add(key); lamp(K, x, z, pools); }
       acc -= L; } }
   // the pools of light under the lamps at night
   const pool = new THREE.PlaneGeometry(1, 1); pool.rotateX(-Math.PI / 2); const np = pools.length >> 1;
