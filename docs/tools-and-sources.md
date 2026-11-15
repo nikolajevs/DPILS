@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude (сессия владельца) | `claude/adoring-goldberg-0qz2d2` | Лидар LGIA: настоящие высоты карнизов и коньков и формы крыш всех зданий | `tools/lidar.js` (новый), файл данных `lidar.js` (новый), `src/buildings/buildings.js`, `src/boot.js`, `vite.config.mjs` |
-| Claude (сессия владельца) | `claude/nifty-bell-byecnv` | Динабургская крепость: Константиновские ворота, недостающие здания и детали по фото (Mapillary, Commons) | `src/fortress/*`, `fortress.js`, `tools/fortress.js`, раздел крепости в README.md |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
 
