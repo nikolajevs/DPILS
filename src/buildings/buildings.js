@@ -7,6 +7,7 @@ import { lmDrops, lmOwns } from '../landmarks/core.js';
 import { schClaim } from '../landmarks/schools.js';
 import { shopClaim } from '../landmarks/shops.js';
 import { band, church, flatPlain, flatRoof, roofFace, tileOf, tiles, vband, wallQuad } from './walls.js';
+import { lidarOf } from './lidar.js';
 import { serBuild } from './series.js';
 import { ovDrops } from '../world/overpass.js';
 import { BGRID, BLD, COL, matFac, matGold, matPlain, matRoof } from '../world/data.js';
@@ -19,7 +20,7 @@ import { C, NAMES } from '../core/env.js';
 
 function buildBuildings(from, to) {
   for (let id = from; id < to; id++) {
-    const rec = C.b[id], style = rec[0], h = rec[1] / 10, mh = rec[2] / 10, floors = Math.max(1, rec[5]), flags = rec[6];
+    const rec = C.b[id], style = rec[0], mh = rec[2] / 10, flags = rec[6]; let h = rec[1] / 10, floors = Math.max(1, rec[5]);
     const rings = []; for (let k = 7; k < rec.length; k++) { let r = dec(rec[k]); if (r.length < 6) continue; const A = area2(r); if ((k === 7) !== (A > 0)) r = reversed(r); rings.push(r); }
     if (!rings.length) continue;
     const outer = rings[0], bb = bbox(outer), cx = (bb[0] + bb[2]) / 2, cz = (bb[1] + bb[3]) / 2;
@@ -53,9 +54,14 @@ function buildBuildings(from, to) {
       continue;
     }
     const worship = style >= 8 && style <= 11, row = worship ? 0 : style;
+    /* the heights and the roof the lidar measured (src/buildings/lidar.js): the walls up to the eaves, the floors scaled
+       with them where they differ by more than 2.5 m, the shape and the pitch of the roof up to its top. Not for churches
+       nor for parts standing on others; a small outbuilding the lidar takes as flat keeps its pitched roof. */
+    const lid = mh === 0 && !worship ? lidarOf(id) : null, useLid = !!lid && lid.eave >= 2 && lid.eave <= 120 && (lid.type !== 1 || !small || Math.abs(area2(outer)) >= 30);
+    if (useLid) { const h0 = h; h = lid.eave; if (Math.abs(h - h0) > 2.5) floors = Math.max(1, Math.round(floors * h / h0)); }
     const tint = worship ? (style === 8 ? (/Бориса/.test(name) ? hb('#a9c4e4') : hb('#f0ebe0')) : style === 9 ? hb('#f2eee6') : style === 10 ? hb('#a5503a') : hb('#e6dccb'))
       : row === 0 && floors <= 3 && fortIn(cx, cz, -60) ? pick(FORT_PAL, id, 1) : pick(WALLPAL[row], id, 1);   // the barracks and stores of the fortress
-    let mat = rec[4] & 15; const pitched = rec[4] >= 16 || worship;
+    let mat = rec[4] & 15; const pitched = useLid ? lid.type >= 2 : rec[4] >= 16 || worship;
     if (!mat) mat = pitched ? (row === 5 || row === 7 ? [1, 1, 2, 1, 4][Math.floor(rnd(id, 3) * 5)] : row <= 1 ? 2 : 1) : (row === 6 && rnd(id, 3) < 0.5 ? 0 : 5);
     if (worship) mat = 2;
     const roofTint = worship ? hb(style === 8 ? '#4f7a66' : '#843e30') : pick(ROOFPAL[mat], id, 2);
@@ -65,9 +71,14 @@ function buildBuildings(from, to) {
     let roof = pitched && rings.length === 1 && h - mh > 1.8 ? 'inset' : 'flat', o = null;
     if (roof === 'inset') { o = obb(outer); if (o && o.fill > 0.86 && o.b < 13) roof = (row <= 1 || row === 4) && o.b > 5 ? 'hip' : (rnd(id, 4) < (row === 5 ? 0.25 : 0.45) ? 'hip' : 'gable'); }
     if (worship) { o = o || obb(outer); roof = o && o.fill > 0.7 ? 'gable' : 'flat'; }
+    if (useLid && lid.type >= 2 && rings.length === 1) {   // the shape the lidar saw: a gable across the long side turns the box
+      o = obb(outer);
+      if (o && lid.type <= 4 && o.fill > 0.7) { if (lid.type === 3) o = { ...o, ux: -o.uz, uz: o.ux, a: o.b, b: o.a }; roof = lid.type === 4 ? 'hip' : 'gable'; }
+      else roof = 'inset';
+    }
     const parapet = roof === 'flat' && !small && floors >= 2;
     const pitch = (row === 5 || (row <= 2 && floors <= 2)) ? 0.62 : row === 7 ? 0.38 : 0.48;
-    const tanp = Math.tan(pitch);
+    const tanp = useLid && o && (roof === 'gable' || roof === 'hip') ? Math.max(0.12, Math.min(1.6, (lid.top - h) / o.b)) : Math.tan(pitch);   // the ridge at the measured top
     // plinth
     if (plinth > 0.05) { const pc = pick(PLINTH, id, 6); for (const r of rings) { const n = r.length >> 1; for (let i = 0; i < n; i++) { const j = (i + 1) % n, e = edgeN(r, i); if (e[2] < 0.05) continue; polyA(G.plain, [[r[2 * i], 0, r[2 * i + 1]], [r[2 * j], 0, r[2 * j + 1]], [r[2 * j], plinth, r[2 * j + 1]], [r[2 * i], plinth, r[2 * i + 1]]], pc, e[0], 0, e[1]); } } }
     if (mh > 0) flatPlain(G.plain, rings, mh, sh(tint, 0.6), true);
@@ -135,7 +146,8 @@ function buildBuildings(from, to) {
       const ov = 0.3; let d = Math.min(6, o ? o.b * 0.95 : 4), inner = null;
       for (let k = 0; k < 5 && d > 0.7; k++) { const q = offsetRing(outer, -d); if (insetOk(outer, q)) { inner = q; break; } d *= 0.6; }
       if (inner) {
-        const eave = offsetRing(outer, ov), yE = h - ov * tanp, yT = h + d * tanp, n = outer.length >> 1;
+        const tp = useLid && lid.top > h + 0.3 ? Math.max(0.1, Math.min(1.6, (lid.top - h) / d)) : tanp;   // its top at the measured one
+        const eave = offsetRing(outer, ov), yE = h - ov * tp, yT = h + d * tp, n = outer.length >> 1;
         for (let i = 0; i < n; i++) { const j = (i + 1) % n, e = edgeN(outer, i); if (e[2] < 0.05) continue; roofFace(G.roof, [[eave[2 * i], yE, eave[2 * i + 1]], [eave[2 * j], yE, eave[2 * j + 1]], [inner[2 * j], yT, inner[2 * j + 1]], [inner[2 * i], yT, inner[2 * i + 1]]], -e[1], e[0], roofTint, mat, seed); }
         flatRoof(G.roof, [inner], yT, roofTint, mat, seed);
         band(G.plain, outer, eave, yE, sh(tint, 0.55), true);
