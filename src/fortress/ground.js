@@ -4,7 +4,8 @@ import { FS, fortPoint } from './ground-height.js';
 import { FH, FORT, FT, fortGates, fortIn } from './index.js';
 import { LM_SAFE } from '../landmarks/index.js';
 import { lmL } from '../landmarks/core.js';
-import { COL, WMASK, inWater, matWater, waterMask } from '../world/data.js';
+import { COL, WMASK, inWater, waterMask } from '../world/data.js';
+import { waterMat } from '../world/water.js';
 import { std } from '../render/materials.js';
 import { detailTex } from '../render/textures.js';
 import { TERR } from '../world/terrain.js';
@@ -133,7 +134,7 @@ function fortDitches() {
   if (!idx.length) return;
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(pos.length).fill(0).map((_, k) => k % 3 === 1 ? 1 : 0), 3)); g.setIndex(idx);
-  const m = new THREE.Mesh(g, matWater); m.receiveShadow = true; m.frustumCulled = false; scene.add(m);
+  const m = new THREE.Mesh(g, waterMat(6)); m.frustumCulled = false; scene.add(m);   // the water of the city, 6 m from the bank (not in the water mask)
 }
 
 export { fortDitches, fortField, fortWalls };

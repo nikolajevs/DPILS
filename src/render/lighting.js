@@ -3,7 +3,7 @@ import { resize } from '../game/loop.js';
 import { TX } from '../transit/transit.js';
 import { lampHeads, lampPools, matHeadDay, matHeadNight } from '../world/lamps.js';
 import { lmNight } from '../landmarks/index.js';
-import { matGold, matWater } from '../world/data.js';
+import { matGold } from '../world/data.js';
 import { allMats } from './materials.js';
 import { envScene, envSky, pmrem, sky } from '../world/terrain.js';
 import { LIGHTDIR, MAXTEX, U, WEAK_GPU, hemi, renderer, scene, sun } from './renderer.js';
@@ -59,7 +59,7 @@ function setQuality(i) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.pr));
   const want = q.shadow > 0;
   if (want) { if (sun.shadow.map && sun.shadow.mapSize.x !== q.shadow) { sun.shadow.map.dispose(); sun.shadow.map = null; } sun.shadow.mapSize.set(q.shadow, q.shadow); }
-  if (renderer.shadowMap.enabled !== want || sun.castShadow !== want) { renderer.shadowMap.enabled = want; sun.castShadow = want; for (const m of allMats) m.needsUpdate = true; matGold && (matGold.needsUpdate = true); matWater && (matWater.needsUpdate = true); }
+  if (renderer.shadowMap.enabled !== want || sun.castShadow !== want) { renderer.shadowMap.enabled = want; sun.castShadow = want; for (const m of allMats) m.needsUpdate = true; matGold && (matGold.needsUpdate = true); }
   try { localStorage.setItem('dpils-quality2', String(i)); } catch (e) {}
   resize(); STATE.lodTimer = 0; STATE.shadowDirty = true;
 }

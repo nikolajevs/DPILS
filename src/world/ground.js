@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { FORT } from '../fortress/index.js';
-import { AREAS, M_LAND, WATER, WMASK, matBank, matWater, waterMask } from './data.js';
+import { AREAS, M_LAND, WATER, WMASK, matBank, waterMask } from './data.js';
+import { waterMat } from './water.js';
 import { AREA_HEX, AREA_ORDER } from './palette.js';
 import { groundMaterial } from '../render/materials.js';
 import { detailTex } from '../render/textures.js';
@@ -72,7 +73,7 @@ function buildGround() {
     const uv = []; for (let i = 0; i < wp.length; i += 3) uv.push(wp[i] / 24, wp[i + 2] / 24);
     const nrm = []; for (let i = 0; i < wp.length; i += 3) nrm.push(0, 1, 0);
     water.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3)); water.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); water.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    water.setIndex(wi); const wm = new THREE.Mesh(water, matWater); wm.renderOrder = -38; wm.frustumCulled = false; wm.receiveShadow = true; scene.add(wm);
+    water.setIndex(wi); const wm = new THREE.Mesh(water, waterMat()); wm.renderOrder = -38; wm.frustumCulled = false; scene.add(wm);
   }
 }
 
