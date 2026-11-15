@@ -1,4 +1,5 @@
 import { fortNearBld } from './arsenals.js';
+import { konCore } from './konstantin.js';
 import { lmL } from '../landmarks/core.js';
 import { PB, obb, pip } from '../core/util.js';
 
@@ -44,6 +45,7 @@ function fortGates() {
 // cadastre or OSM buildings standing for a gate are replaced by the gate models
 function fortDrops(ring, bb) {
   if (!FORT.ok) return false; const cx = (bb[0] + bb[2]) / 2, cz = (bb[1] + bb[3]) / 2; if (!fortIn(cx, cz)) return false;
+  if (konCore(cx, cz)) return true;   // the walls of the Konstantin gate (two buildings named Konstantīna vārti in OSM)
   // most of its corners on or by a modelled building (the outline of a U has its centre in the courtyard)
   const n = ring.length >> 1; let k = 0; for (let i = 0; i < n; i++) if (fortNearBld(ring[2 * i], ring[2 * i + 1], 2.5)) k++; if (k >= n * 0.6) return true;
   for (const g of fortGates()) { const [u, v] = lmL(g.f, cx, cz); if (u > -g.a - 2 && u < g.a2 + 2 && Math.abs(v) < g.b + 2) return true; }

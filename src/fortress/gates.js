@@ -1,12 +1,13 @@
 import { FTS, FTT } from './textures.js';
 import { FS, fortPoint, fortWingTop } from './ground-height.js';
 import { FH, fortGates } from './index.js';
+import { KON } from './konstantin.js';
 import { lmBar } from '../landmarks/helpers.js';
 import { LMWS } from '../landmarks/tiles.js';
 import { LMWHITE, lmL, lmW } from '../landmarks/core.js';
 import { COL } from '../world/data.js';
 import { polyA } from '../core/geometry.js';
-import { hb, sh } from '../core/util.js';
+import { hash, hb, sh } from '../core/util.js';
 
 /* ---- gates ---- */
 // top of an opening at v: rect, round (elliptic if its rise differs from its half width) or pointed (two arcs)
@@ -220,7 +221,59 @@ function fortBrickPortal(K, g, up, out, W, pw, ys, top, frieze) {
   fortTBox(K.gra, f, Math.min(U(-1.0), U(0.3)), Math.max(U(-1.0), U(0.3)), -W - 0.2, W + 0.2, top - 0.3, top, FTS[1], GR);
   COL.add(...lmW(f, up, -W), ...lmW(f, up, -pw), 0.2, 0); COL.add(...lmW(f, up, pw), ...lmW(f, up, W), 0.2, 0);
 }
+// what is left of the Konstantin gate (konstantin.js): the side walls of the cut, rendered rubble with brick above and a
+// ragged top, brick end blocks with pilasters at the faces of the rampart, curved wings of rendered rubble on the town side
+function fortKonstantin(K) {
+  const f = KON.f, pw = KON.pw, GREY = [206, 203, 197], BRK = [222, 188, 176], TURF = hb('#62803f'), S = LMWS[3], SP = FTS[6];
+  for (const P of KON.sides) {
+    const sg = P.sg, V = (a, b) => sg > 0 ? [a, b] : [-b, -a], face = sg > 0 ? 'n' : 's';
+    const W = (u, s2, y) => { const w = lmW(f, u, sg * s2); return [w[0], y, w[1]]; }, N = (du, ds) => [f[2] * du - f[3] * sg * ds, 0, f[3] * du + f[2] * sg * ds];
+    // the side wall between the end blocks: render below, brick above in pieces with a ragged top; behind the brick face
+    // the earth of the rampart comes up to its top under turf
+    const [a0, a1] = V(pw, P.back), [l0, l1] = V(pw, pw + 0.45);
+    fortTBox(K.pla, f, P.uo, P.ui, a0, a1, -0.6, 2.5, SP, GREY, face);
+    const n = Math.ceil((P.ui - P.uo) / 0.9);
+    for (let i = 0; i < n; i++) {
+      const ua = P.uo + (P.ui - P.uo) * i / n, ub = P.uo + (P.ui - P.uo) * (i + 1) / n, r = hash(i * 31 + (sg > 0 ? 7 : 13)), top = KON.top - 0.04 + (r - 0.5) * 0.14 - (r > 0.9 ? 0.25 : 0);
+      fortTBox(K.brk, f, ua, ub, l0, l1, 2.5, top, S, sh(BRK, 0.94 + 0.12 * hash(i * 17 + sg)), 'nstew');
+      polyA(K.cap, [W(ua, pw + 0.45, top + 0.02), W(ub, pw + 0.45, top + 0.02), W(ub, P.back + 0.15, KON.earth + 0.05), W(ua, P.back + 0.15, KON.earth + 0.05)], TURF, 0, 1, 0);
+    }
+    COL.add(...lmW(f, P.u0, sg * pw), ...lmW(f, P.u1, sg * pw), 0.2, 0);
+    // brick end blocks at the faces of the rampart, with a pilaster at each corner of their end faces
+    for (const [ua, ub, end, out] of [[P.u0, P.uo, P.endO, -1], [P.ui, P.u1, P.endI, 1]]) {
+      const [b0, b1] = V(pw, end), ue = out < 0 ? ua : ub;
+      fortTBox(K.brk, f, ua, ub, b0, b1, -0.6, KON.top + 0.25, S, BRK, 'wenst');
+      for (const [c0, c1] of [[pw, pw + 0.85], [end - 0.85, end]]) {
+        const [p0, p1] = V(c0, c1); fortTBox(K.brk, f, out < 0 ? ue - 0.14 : ue - 0.6, out < 0 ? ue + 0.6 : ue + 0.14, p0, p1, -0.6, KON.top + 0.65, S, sh(BRK, 0.96), 'wenst');
+      }
+      COL.add(...lmW(f, ue + out * 0.15, sg * pw), ...lmW(f, ue + out * 0.15, sg * end), 0.2, 0);
+    }
+    // the curved wing, 1 m thick, its top a little over the earth it holds (falling with the inner slope of the rampart
+    // where that slope is all there is behind it); a thin brick coping
+    const wp = []; for (let i = 0; i < P.wing.length - 1; i++) { const [ua, sa] = P.wing[i], [ub, sb] = P.wing[i + 1], m = Math.max(1, Math.ceil(Math.hypot(ub - ua, sb - sa) / 0.6)); for (let k = 0; k < m; k++) wp.push([ua + (ub - ua) * k / m, sa + (sb - sa) * k / m]); }
+    wp.push(P.wing[P.wing.length - 1]);
+    const tops = wp.map(([u, s2], i) => {
+      const [qa, qb] = i < wp.length - 1 ? [wp[i], wp[i + 1]] : [wp[i - 1], wp[i]], l = Math.hypot(qb[0] - qa[0], qb[1] - qa[1]), [bx, bz] = lmW(f, u - (qb[1] - qa[1]) / l * 1.3, sg * (s2 + (qb[0] - qa[0]) / l * 1.3));
+      return Math.max(0.8, Math.min(KON.top, fortPoint(bx, bz).h + 0.2));
+    });
+    const acc = [0]; for (let i = 1; i < wp.length; i++) acc.push(acc[i - 1] + Math.hypot(wp[i][0] - wp[i - 1][0], wp[i][1] - wp[i - 1][1]));   // arc length, for the texture
+    for (let i = 0; i < wp.length - 1; i++) {
+      const [ua, sa] = wp[i], [ub, sb] = wp[i + 1], l = Math.hypot(ub - ua, sb - sa), nu = -(sb - sa) / l, ns = (ub - ua) / l, ta = tops[i], tb = tops[i + 1];
+      for (const d of [-0.5, 0.5]) {
+        const A = W(ua + nu * d, sa + ns * d, -0.6), B2 = W(ub + nu * d, sb + ns * d, -0.6), C2 = W(ub + nu * d, sb + ns * d, tb - 0.2), D2 = W(ua + nu * d, sa + ns * d, ta - 0.2), nn = N(nu * Math.sign(d), ns * Math.sign(d));
+        K.pla.q(A, B2, C2, D2, nn, [acc[i] / SP, -0.6 / SP, acc[i + 1] / SP, -0.6 / SP, acc[i + 1] / SP, (tb - 0.2) / SP, acc[i] / SP, (ta - 0.2) / SP], GREY);
+        K.brk.q(D2, C2, W(ub + nu * d * 1.1, sb + ns * d * 1.1, tb), W(ua + nu * d * 1.1, sa + ns * d * 1.1, ta), nn, [0, (ta - 0.2) / S, l / S, (tb - 0.2) / S, l / S, tb / S, 0, ta / S], BRK);
+      }
+      K.brk.q(W(ua - nu * 0.55, sa - ns * 0.55, ta), W(ub - nu * 0.55, sb - ns * 0.55, tb), W(ub + nu * 0.55, sb + ns * 0.55, tb), W(ua + nu * 0.55, sa + ns * 0.55, ta), [0, 1, 0], [0, 0, l / S, 0, l / S, 1.1 / S, 0, 1.1 / S], sh(BRK, 0.9));
+      COL.add(...lmW(f, ua - nu * 0.6, sg * (sa - ns * 0.6)), ...lmW(f, ub - nu * 0.6, sg * (sb - ns * 0.6)), 0.2, 0);
+    }
+    // the far end of the wing
+    const [ue, se] = wp[wp.length - 1], [up, sp] = wp[wp.length - 2], le = Math.hypot(ue - up, se - sp), eu = (ue - up) / le, es = (se - sp) / le, te = tops[tops.length - 1];
+    K.pla.q(W(ue + es * 0.5, se - eu * 0.5, -0.6), W(ue - es * 0.5, se + eu * 0.5, -0.6), W(ue - es * 0.55, se + eu * 0.55, te), W(ue + es * 0.55, se - eu * 0.55, te), N(eu, es), [0, -0.6 / SP, 1 / SP, -0.6 / SP, 1 / SP, te / SP, 0, te / SP], GREY);
+  }
+}
 function fortGateModels(K) {
+  fortKonstantin(K);
   for (const g of fortGates()) {
     if (g.kind === 'nik') fortNicholas(K, g);
     else if (g.kind === 'mih') { fortPassage(K, g, 2.0, 2.9, K.gra, FTS[1], K.gra, FTS[1]); fortBlock(K, g, 6.0, 2.0, 2.9, [1.0, 1.0]); fortEgyptPortal(K, g, -g.a, -1, false); fortEgyptPortal(K, g, g.a, 1, true); }
