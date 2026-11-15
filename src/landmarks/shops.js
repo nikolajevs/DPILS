@@ -190,6 +190,11 @@ function shAtlas() {
       for (const x of [0, 1.66, 3.32]) R(x, 0, 0.08, 2.6, '#3a3d40', 'metal'); for (const y of [0, 0.9, 1.75, 2.52]) R(0, y, 3.4, 0.08, '#3a3d40', 'metal'); }],
     // the cut-out letters on the drum of Ditton nams (alpha), the board of the Solo trade park with its logo
     ['ditton', 13.0, 2.4, () => { text('DITTON NAMS', 0, 0.1, 13, 2.2, '#e9bb3a', { font: 'Georgia, "Times New Roman", serif', wt: 700, glow: '#ffd25a', outline: '#5a4410' }); }],
+    ['dittonGallery', 5.4, 1.0, () => { R(0, 0, 5.4, 1.0, '#eceeed'); text('GALERIJA', 0.12, 0.05, 5.16, 0.9, '#303a40', { wt: 900, glow: '#303a40' }); }],
+    ['dittonGallery2', 7.2, 1.0, () => { R(0, 0, 7.2, 1.0, '#eceeed'); text('GALERIJA · 2. STĀVS', 0.12, 0.05, 6.96, 0.9, '#303a40', { wt: 800, glow: '#303a40' }); }],
+    ['dittonPassaza', 5.2, 1.0, () => { R(0, 0, 5.2, 1.0, '#eceeed'); text('PASĀŽA', 0.12, 0.05, 4.96, 0.9, '#303a40', { wt: 900, glow: '#303a40' }); }],
+    ['dittonHanza', 4.8, 1.0, () => { R(0, 0, 4.8, 1.0, '#eceeed'); text('HANZA', 0.12, 0.05, 4.56, 0.9, '#303a40', { wt: 900, glow: '#303a40' }); }],
+    ['dittonMarket', 6.4, 1.0, () => { R(0, 0, 6.4, 1.0, '#eceeed'); text('ZAĻAIS TIRGUS', 0.12, 0.05, 6.16, 0.9, '#303a40', { wt: 900, glow: '#303a40' }); }],
     ['solo', 5.0, 4.4, () => { R(0, 0, 5, 4.4, '#e7dfc6'); for (const [c, s] of [[g, '#1f4fa3'], [e, '#3070e0']]) { c.fillStyle = s; c.beginPath(); c.roundRect(X + 1.45 * PX, Y + 0.2 * PX, 2.1 * PX, 1.7 * PX, 0.7 * PX); c.fill(); }
       g.fillStyle = '#e7dfc6'; g.beginPath(); g.roundRect(X + 1.85 * PX, Y + 0.55 * PX, 1.3 * PX, 1.0 * PX, 0.4 * PX); g.fill();
       for (const [c, s] of [[g, '#3a9a3a'], [e, '#50c050']]) { c.fillStyle = s; c.beginPath(); c.ellipse(X + 2.9 * PX, Y + 0.95 * PX, 1.0 * PX, 0.22 * PX, -0.25, 0, 7); c.fill(); }
@@ -439,6 +444,61 @@ function ditton(K) {
     lmBoxW(G, Fw, 0.5, Fw.L - 0.5, 3.9, 4.3, -3.6, 0, hb('#b3b7bb'));
     board(K, Fw, 'rimi', Math.max(3, Math.min(Fw.L - 3, along(r, i, S.p))), 5.4, 1.8, 0.12, null);
   }
+  // The entrance list and placement follow the centre's 2021 visitor notice and OSM's mapped Hanza/Passāža doors.
+  // Each sign sits on the wall, with a glazed door, a shallow canopy, a paved apron and (at the Kandavas upper door) stairs.
+  const part = key => SH.mall.ditton.find(p => p.key[0] === key);
+  const wallAt = (r, q, minL) => {
+    const n = r.length >> 1; let best = null;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n, ax = r[2 * i], az = r[2 * i + 1], bx = r[2 * j], bz = r[2 * j + 1], dx = bx - ax, dz = bz - az, L = Math.hypot(dx, dz);
+      if (L < minL) continue;
+      const s = Math.max(0, Math.min(L, ((q[0] - ax) * dx + (q[1] - az) * dz) / L)), d = Math.hypot(q[0] - ax - dx / L * s, q[1] - az - dz / L * s);
+      if (!best || d < best.d) best = { Fw: lmWF([ax, az], [bx, bz]), s, d };
+    }
+    return best;
+  };
+  const portal = (Fw, s, label, { width = 4.2, floor = 0, height = 3.15, signHeight = 0.9, stairs = false, beige = true } = {}) => {
+    s = Math.max(width / 2 + 0.15, Math.min(Fw.L - width / 2 - 0.15, s));
+    const s0 = s - width / 2, s1 = s + width / 2, frameCol = beige ? BEIGE : hb('#aeb4b7');
+    flat(Fw, s0 + 0.12, s1 - 0.12, floor + 0.05, floor + height, -0.17, CT.door, 1);
+    frame(G, Fw, s0, s1, floor, floor + height + 0.1, 0.2, 0.3, frameCol);
+    lmBoxW(G, Fw, s0, s1, floor + height, floor + height + 0.18, -0.35, 0.15, hb('#b7bdc0'));
+    const canopyY = floor + height + 0.2;
+    lmBoxW(G, Fw, s0 - 0.9, s1 + 0.9, canopyY, canopyY + 0.24, -2.15, 0.2, hb('#c6c9ca'));
+    for (const q of [s0 - 0.48, s1 + 0.48]) { const [x, , z] = Fw.at(q, 0, -1.7); lmLathe(G, x, z, 0, [[0.12, 0], [0.12, canopyY]], 8, frameCol); }
+    board(K, Fw, label, s, canopyY + 0.32, signHeight, 0.32, '#e9ebea');
+    const apron = [Fw.at(s0 - 0.7, 0, -0.5), Fw.at(s1 + 0.7, 0, -0.5), Fw.at(s1 + 0.7, 0, -3.8), Fw.at(s0 - 0.7, 0, -3.8)].map(p => [p[0], p[2]]);
+    flatPlain(G, [new Float32Array(apron.flat())], 0.035, hb('#b5b4ae'), false);
+    if (stairs) {
+      const n = Math.ceil(floor / 0.19), tread = 0.31, stepW = width + 0.8, stairCol = hb('#aaa9a3');
+      for (let k = 0; k < n; k++) { const y = k * floor / n, d = -(n - k) * tread, [x, , z] = Fw.at(s, 0, d); box(G, x, z, Fw.tx, Fw.tz, stepW / 2, tread * 0.58, y, y + 0.16, stairCol); }
+      for (const edge of [-stepW / 2, stepW / 2]) {
+        const A = Fw.at(s + edge, 0.85, -n * tread), B = Fw.at(s + edge, floor + 0.9, -0.55);
+        lmBar(G, A, B, 0.09, hb('#73797c'));
+        for (let k = 1; k < 6; k++) { const t = k / 6, x = A[0] + (B[0] - A[0]) * t, y = A[1] + (B[1] - A[1]) * t, z = A[2] + (B[2] - A[2]) * t; lmBar(G, [x, y - 0.75, z], [x, y, z], 0.065, hb('#73797c')); }
+      }
+    }
+  };
+  // Main Galerija entrance on the rounded Cietokšņa face, centred with the DITTON NAMS drum and sign.
+  {
+    STATE.GBC = hall?.gbc || null;
+    const d = [Math.cos(a0), Math.sin(a0)], t = [-d[1], d[0]], rr = RC + 0.1, P = [cx + d[0] * rr - t[0] * 6.2, cz + d[1] * rr - t[1] * 6.2], Q = [cx + d[0] * rr + t[0] * 6.2, cz + d[1] * rr + t[1] * 6.2], Fw = lmWF(P, Q);
+    portal(Fw, Fw.L / 2, 'dittonGallery', { width: 5.4 });
+  }
+  // Upper Galerija access from Kandavas; a short exterior stair and rail make the second-floor door legible from the street.
+  {
+    const p = part(-1400), w = p && wallAt(p.outer, [-1428, 900], 8); if (p && w) { STATE.GBC = p.gbc; portal(w.Fw, w.s, 'dittonGallery2', { width: 4.6, floor: 4.35, height: 2.8, stairs: true }); }
+  }
+  // Separate public entrances into Pasāža and Hanza, plus the outdoor Green Market entrance facing Cietokšņa.
+  for (const [key, q, label, width] of [
+    [-1268, [-1265.3, 996.5], 'dittonPassaza', 3.5],
+    [-1210, [-1187.1, 897.4], 'dittonHanza', 3.7],
+    [-1400, [-1428.8, 966.0], 'dittonMarket', 4.1],
+  ]) {
+    const p = part(key), w = p && wallAt(p.outer, q, width + 0.5); if (p && w) { STATE.GBC = p.gbc; portal(w.Fw, w.s, label, { width, height: 2.9, signHeight: key === -1268 ? 0.68 : 0.9, beige: key !== -1268 }); }
+  }
+  // Keep the existing tenant entrance at the Rimi forecourt, but make the sliding doors visible beneath its sign.
+  if (hall) { const p = wallAt(hall.outer, [-1321.6, 1047.4], 6); if (p) { STATE.GBC = hall.gbc; portal(p.Fw, p.s, 'rimi', { width: 4.4, height: 3.2, beige: false }); } }
 }
 
 /* ---- the Solo trade park (Rīgas iela 9). Its building is drawn by lmLatgola as the yellow shopping centre next to
@@ -484,6 +544,9 @@ const PARKS = [
   [[1255.1, -984.8], [1263.8, -1000], [1260.6, -1001.9], [1260.4, -1003], [1261.1, -1004.1], [1265.5, -1011.5], [1266.1, -1012.5], [1267, -1012.4], [1270.3, -1010.3], [1274.4, -1016.8], [1270.5, -1019.3], [1270.3, -1020.4], [1271.6, -1022.9], [1272.7, -1022.9], [1276.6, -1020.7], [1281.6, -1029], [1276.9, -1032.2], [1279.7, -1035.4], [1271.5, -1044.2], [1268.5, -1040.4], [1267.3, -1040.2], [1265.1, -1041.7], [1265.1, -1043], [1267.4, -1046.7], [1252.4, -1055.8], [1250.2, -1052.4], [1245.6, -1045.1], [1243.5, -1041.8], [1258.7, -1032.5], [1261, -1036.1], [1264.7, -1033.9], [1266, -1032.4], [1266.7, -1031], [1266.9, -1029.3], [1266.6, -1027.2], [1263.9, -1023.1], [1259.8, -1025.7], [1239.7, -994.2]],   // w367307968 1167 m², Maxima X 3 Arhitektu iela
   [[-1668.1, 992.2], [-1692.3, 1002.7], [-1689.4, 1009.4], [-1665.2, 998.9]],   // w944742868 192 m², Maxima X 5 Kandavas iela
   [[-1228, 802.5], [-1199.3, 784.5], [-1207.4, 771.6], [-1235.4, 789.8]],   // w161665538 505 m², Maxima XX 60 Cietokšņa iela
+  [[-1306.8, 831.9], [-1290.4, 861.4], [-1247.9, 834.9], [-1234.9, 857.8], [-1283.1, 887.6], [-1272.6, 904.7], [-1313.7, 928.8], [-1315.0, 931.0], [-1325.7, 937.4], [-1332.4, 938.4], [-1343.7, 945.0], [-1338.9, 952.6], [-1333.5, 961.1], [-1199.2, 875.8], [-1239.5, 811.6], [-1242.6, 806.4], [-1246.8, 809.3], [-1253.0, 799.0], [-1272.4, 810.9], [-1286.7, 819.5], [-1299.0, 827.1]],   // w161665499 6783 m², north/east Ditton customer car park
+  [[-1258.8, 987.4], [-1219.8, 954.9], [-1210.5, 943.3], [-1174.4, 919.1], [-1167.0, 929.4], [-1255.5, 1006.4], [-1259.9, 999.4], [-1258.2, 995.8], [-1257.5, 990.9]],   // w692805482 1812 m², 60-space paved car park
+  [[-1246.1, 1010.0], [-1207.9, 977.8], [-1204.0, 982.4], [-1242.2, 1014.6]],   // w692805478 300 m², paid 18-space car park
   [[1270, 314.6], [1279.2, 322.4], [1294.8, 304], [1286.3, 296.7]],   // w1088936066 282 m², Mego 1A Valkas iela
   [[-820.4, -2121.4], [-840.2, -2078.1], [-831.2, -2073.3], [-819.8, -2096.4], [-811.1, -2117.1]],   // w409127397 506 m², Mego 26 Aveņu iela
   [[-787.9, -2050.2], [-778.1, -2044], [-794.5, -2020], [-819.2, -2036.6], [-816.7, -2040.7], [-798.8, -2039.5], [-792.1, -2050.3], [-789.2, -2048.4]],   // w409127401 560 m², Mego 26 Aveņu iela
