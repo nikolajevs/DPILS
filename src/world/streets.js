@@ -18,28 +18,32 @@ import { bbox, dec, hb, rnd, sh } from '../core/util.js';
 import { C, HX, HY, WL } from '../core/env.js';
 
 /* ---------- streets, sidewalks, rails, bridges, walls ---------- */
-function ribbon(b, p, off, hw, col, y = 0) {
+/* The direction a ribbon along p (n points) runs at point i and the mitre that keeps its width there, into FR as
+   [tx, tz, m]: the chord through the neighbouring points, square across the segment at the ends; at an end E gives
+   (E[0] the first point, E[1] the last), the end is cut across E[k] and mitred like an inner point (a joint with the
+   next line, see jointEnds in buildLines). */
+const FR = [0, 0, 1];
+function frame(p, i, n, E) {
+  const a = Math.max(0, i - 1), c = Math.min(n - 1, i + 1), e = E ? (i === 0 ? E[0] : i === n - 1 ? E[1] : null) : null;
+  let tx, tz, m = 1;
+  if (e) { tx = e[0]; tz = e[1]; } else { tx = p[2 * c] - p[2 * a]; tz = p[2 * c + 1] - p[2 * a + 1]; const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l; }
+  if (e || (i > 0 && i < n - 1)) { const j = i > 0 ? i : 1, k = j - 1, sx = p[2 * j] - p[2 * k], sz = p[2 * j + 1] - p[2 * k + 1], sl = Math.hypot(sx, sz) || 1; m = 1 / Math.max(0.5, (sx * tx + sz * tz) / sl); }
+  FR[0] = tx; FR[1] = tz; FR[2] = m; return FR;
+}
+function ribbon(b, p, off, hw, col, y = 0, E = null) {
   const n = p.length >> 1; if (n < 2) return; const v0 = b.v; b.ensure(n * 2);
   for (let i = 0; i < n; i++) {
-    const a = Math.max(0, i - 1), c = Math.min(n - 1, i + 1);
-    let tx = p[2 * c] - p[2 * a], tz = p[2 * c + 1] - p[2 * a + 1]; const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
-    let m = 1;
-    if (i > 0 && i < n - 1) { const sx = p[2 * i] - p[2 * a], sz = p[2 * i + 1] - p[2 * a + 1]; const sl = Math.hypot(sx, sz) || 1; m = 1 / Math.max(0.5, (sx * tx + sz * tz) / sl); }
-    const nx = -tz, nz = tx;
+    const [tx, tz, m] = frame(p, i, n, E), nx = -tz, nz = tx;
     b.vert(p[2 * i] + nx * (off - hw) * m, y, p[2 * i + 1] + nz * (off - hw) * m, 0, 1, 0, col);
     b.vert(p[2 * i] + nx * (off + hw) * m, y, p[2 * i + 1] + nz * (off + hw) * m, 0, 1, 0, col);
   }
   for (let i = 0; i < n - 1; i++) { const k = v0 + 2 * i; b.triUp(k, k + 1, k + 3); b.triUp(k, k + 3, k + 2); }
 }
 // like ribbon, between offsets A[i] and B[i] that change along the line
-function ribbonV(b, p, A, B, col) {
+function ribbonV(b, p, A, B, col, E = null) {
   const n = p.length >> 1; if (n < 2) return; const v0 = b.v; b.ensure(n * 2);
   for (let i = 0; i < n; i++) {
-    const a = Math.max(0, i - 1), c = Math.min(n - 1, i + 1);
-    let tx = p[2 * c] - p[2 * a], tz = p[2 * c + 1] - p[2 * a + 1]; const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
-    let m = 1;
-    if (i > 0 && i < n - 1) { const sx = p[2 * i] - p[2 * a], sz = p[2 * i + 1] - p[2 * a + 1]; const sl = Math.hypot(sx, sz) || 1; m = 1 / Math.max(0.5, (sx * tx + sz * tz) / sl); }
-    const nx = -tz, nz = tx;
+    const [tx, tz, m] = frame(p, i, n, E), nx = -tz, nz = tx;
     b.vert(p[2 * i] + nx * A[i] * m, 0, p[2 * i + 1] + nz * A[i] * m, 0, 1, 0, col);
     b.vert(p[2 * i] + nx * B[i] * m, 0, p[2 * i + 1] + nz * B[i] * m, 0, 1, 0, col);
   }
@@ -86,6 +90,37 @@ function buildLines() {
   // (the comparator used to leave the other lines in between, which left that order to the sort and let some service roads lie over 18. novembra iela)
   const rank = l => l.cls <= 4 ? 4 - l.cls : 5;
   sorted.sort((a, b) => rank(a) - rank(b));
+  /* Joints. OSM splits a street into ways at many nodes where nothing else meets it, and each piece was laid with square
+     ends across its own last segment: where the two turn there, even by a few degrees, a wedge of ground showed between
+     them from the centre line out, widest at the outer edge of the sidewalk (in the fortress by the Konstantin gate,
+     where two living streets meet at 3°). Where exactly two lines of the same class end at a node (or a closed line
+     meets itself) and turn there by less than 60°, both ends are cut across the bisector of the two, the way a ribbon
+     is mitred at its inner points, so the two pieces meet edge to edge as if they were one way. Not between classes: a
+     narrower piece (a footway on from a street) would leave bare the inner corner the wider one gives up; nor at a
+     sharper turn or where the inner corner would draw back past the first point of either line, which would fold the
+     ribbon: those keep their square ends. JOINT: the line ends at each node of the data. */
+  const JOINT = new Map(), jKey = (x, z) => Math.round(x * 10) + ',' + Math.round(z * 10);
+  sorted.forEach((l, li) => { if (!LINE[l.cls] || l.cls === 10 || l.cls === 11) return; const p = l.pts, n = p.length;
+    for (const end of [0, 1]) { const k = jKey(end ? p[n - 2] : p[0], end ? p[n - 1] : p[1]); let a = JOINT.get(k); if (!a) JOINT.set(k, a = []); a.push([li, end]); } });
+  // for line li laid along dp: [first, last] the directions its ends are cut across (frame's E), null for a square end
+  function jointEnds(li, dp) {
+    const l = sorted[li]; if (l.cls === 9) return null;   // the tram tracks are laid in runs of their own
+    const p = l.pts, n = p.length, m = dp.length, E = [null, null];
+    for (const end of [0, 1]) {
+      const x = end ? p[n - 2] : p[0], z = end ? p[n - 1] : p[1], at = JOINT.get(jKey(x, z)); if (!at || at.length !== 2) continue;
+      if (Math.abs((end ? dp[m - 2] : dp[0]) - x) > 0.01 || Math.abs((end ? dp[m - 1] : dp[1]) - z) > 0.01) continue;   // its end was moved
+      const [lj, ej] = at[0][0] === li && at[0][1] === end ? at[1] : at[0], q = sorted[lj].pts, nq = q.length; if (sorted[lj].cls !== l.cls) continue;
+      // each line's first segment away from the node, from the data on both sides so the two lines agree on the cut
+      const fx = (end ? p[n - 4] : p[2]) - x, fz = (end ? p[n - 3] : p[3]) - z, gx = (ej ? q[nq - 4] : q[2]) - x, gz = (ej ? q[nq - 3] : q[3]) - z;
+      const fl = Math.hypot(fx, fz), gl = Math.hypot(gx, gz); if (fl < 1e-3 || gl < 1e-3) continue;
+      const cos = -(fx * gx + fz * gz) / (fl * gl); if (cos < 0.5) continue;   // the turn, from the other line on into this one
+      const reach = (LINE[l.cls][0] / 2 + (l.cls <= 3 ? 2.7 : 0)) * Math.sqrt((1 - cos) / (1 + cos));   // how far the inner corner of the sidewalk draws back
+      if (reach >= Math.min(fl, gl)) continue;
+      const tx = fx / fl - gx / gl, tz = fz / fl - gz / gl, tl = (end ? -1 : 1) * Math.hypot(tx, tz);
+      E[end] = [tx / tl, tz / tl];   // along the line: from the other line into this one at its start, on into it at its end
+    }
+    return E[0] || E[1] ? E : null;
+  }
   let lampSeq = 0; const lampGrid = new Set(), tramLater = [];
   /* Dual carriageways. OSM maps many main streets as two one-way ways side by side, and the data keep neither the
      one-way flag nor the lanes, so each way was drawn as a whole two-way street 6–11 m wide. On 18. novembra iela west of
@@ -201,18 +236,16 @@ function buildLines() {
      lane lines stop at it. */
   const ZR = new SegGrid(30), ZEB = new SegGrid(20), JOBS = [], HATCH = []; let zMax = 1;   // ZR: carriageways and painted medians
   const addZone = (x1, z1, x2, z2, li, hw) => { ZR.add(x1, z1, x2, z2, li, hw); if (hw > zMax) zMax = hw; };
-  // the polyline p moved off to the side (off: a number, or one per point), mitred at the joints like a ribbon
-  function offPoly(p, off) {
+  // the polyline p moved off to the side (off: a number, or one per point), mitred at the joints like a ribbon (E as in frame)
+  function offPoly(p, off, E = null) {
     const n = p.length >> 1, q = new Array(2 * n);
-    for (let i = 0; i < n; i++) { const a = Math.max(0, i - 1), c = Math.min(n - 1, i + 1); let tx = p[2 * c] - p[2 * a], tz = p[2 * c + 1] - p[2 * a + 1]; const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
-      let m = 1; if (i > 0 && i < n - 1) { const sx = p[2 * i] - p[2 * a], sz = p[2 * i + 1] - p[2 * a + 1], sl = Math.hypot(sx, sz) || 1; m = 1 / Math.max(0.5, (sx * tx + sz * tz) / sl); }
-      const o = (typeof off === 'number' ? off : off[i]) * m; q[2 * i] = p[2 * i] - tz * o; q[2 * i + 1] = p[2 * i + 1] + tx * o; }
+    for (let i = 0; i < n; i++) { const [tx, tz, m] = frame(p, i, n, E), o = (typeof off === 'number' ? off : off[i]) * m; q[2 * i] = p[2 * i] - tz * o; q[2 * i + 1] = p[2 * i + 1] + tx * o; }
     return q; }
   /* a marking of line li along p at off (a number or one per point), half width w; kind 'k' a kerb, 'e' an edge line,
      'c' a centre or lane line (these also stop at zebras); dash [on, period] for a broken line; keep: per point, where
      the marking runs (all along when absent) */
   function mark(li, p, off, w, col, kind, dash = null, keep = null) {
-    const q = offPoly(p, off), n = q.length >> 1, job = (qq, i0) => JOBS.push({ li, p, i0, q: qq, w, col, kind, dash, gbc: STATE.GBC });
+    const L = sorted[li], q = offPoly(p, off, L.dp === p ? L.je : null), n = q.length >> 1, job = (qq, i0) => JOBS.push({ li, p, i0, q: qq, w, col, kind, dash, gbc: STATE.GBC });
     if (!keep) { job(q, 0); return; }
     let s = -1; for (let i = 0; i <= n; i++) { const k = i < n && keep[i]; if (k && s < 0) s = i; if (!k && s >= 0) { if (i - s >= 2) job(q.slice(2 * s, 2 * i), s); s = -1; } } }
   /* the zones near (x, z) within r that may cut a marking of line li running along (tx, tz): the carriageways of the
@@ -346,6 +379,7 @@ function buildLines() {
     l.isDual = false;
     const tags = cls <= 3 ? streetTags(pts) : null, lanes4 = !!tags && tags.lanes >= 4, rural = !!tags && !!tags.rural, one = !!tags && !!tags.oneway; l.one = one;
     const dual = cls <= 3 && l.name >= 0 && !jn && !one ? dualOf(li, pts, dp, tags && tags.lanes) : null; l.isDual = !!dual;
+    let je = jointEnds(li, dp); l.dp = dp; l.je = je;   // after dualOf, which may move the ends of dp
     // four lanes: across the overpass from guard rail to guard rail, elsewhere 13 m where OSM says so
     const W = dual ? null : onOv && cls === 0 ? ovWidths(dp, lanes4 ? 6.5 : hw) : lanes4 ? new Array(dp.length >> 1).fill(6.5) : null;
     let hwC = hw;   // the half width that traffic, the tram tracks and the lamps go by
@@ -353,7 +387,7 @@ function buildLines() {
       const { side: s, D, H, paint, trm } = dual, m = dp.length >> 1, A = [], B = [];
       // a painted median: each carriageway's asphalt reaches 0.3 m past the middle, so the two always meet
       for (let i = 0; i < m; i++) { const inner = paint[i] ? D[i] / 2 + 0.3 : H[i]; if (s > 0) { A.push(-H[i]); B.push(inner); } else { A.push(-inner); B.push(H[i]); } }
-      ribbonV(groups[def[2]], dp, A, B, lineCol[cls]);
+      ribbonV(groups[def[2]], dp, A, B, lineCol[cls], je);
       for (let i = 0; i < m - 1; i++) if (paint[i] && paint[i + 1]) {   // a painted median cuts the markings of the streets crossing it; tracks in it lie flush
         const o = j => { const a = Math.max(0, j - 1), c = Math.min(m - 1, j + 1), tx = dp[2 * c] - dp[2 * a], tz = dp[2 * c + 1] - dp[2 * a + 1], l = Math.hypot(tx, tz) || 1; return [dp[2 * j] - tz / l * s * D[j] / 2, dp[2 * j + 1] + tx / l * s * D[j] / 2]; };
         const p0 = o(i), p1 = o(i + 1);
@@ -368,12 +402,12 @@ function buildLines() {
       hwC = H.slice().sort((a, b) => a - b)[H.length >> 1];
       mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9], H.map(h => h >= 3));                                      // the line between two lanes, where there are two
       const wk = H.map((h, i) => dual.bed[i] ? h + 0.1 : h + 2.7);   // a sidewalk of no width beside a tram bed
-      ribbonV(walk, dp, H.map((h, i) => s > 0 ? -wk[i] : h + 0.1), H.map((h, i) => s > 0 ? -(h + 0.1) : wk[i]), PAVE);
+      ribbonV(walk, dp, H.map((h, i) => s > 0 ? -wk[i] : h + 0.1), H.map((h, i) => s > 0 ? -(h + 0.1) : wk[i]), PAVE, je);
       mark(li, dp, H.map(h => -s * (h + 0.08)), 0.06, CURB, 'k');
     } else if (W) {   // 18. novembra iela with four lanes: a double centre line, broken lines between the lanes, the trams in the inner two
       const H = W, four = H.map(h => h >= 6);
-      ribbonV(groups[def[2]], dp, H.map(h => -h), H, lineCol[cls]);
-      ribbonV(walk, dp, H.map(h => h + 0.1), H.map(h => h + 2.7), PAVE); ribbonV(walk, dp, H.map(h => -h - 2.7), H.map(h => -h - 0.1), PAVE);
+      ribbonV(groups[def[2]], dp, H.map(h => -h), H, lineCol[cls], je);
+      ribbonV(walk, dp, H.map(h => h + 0.1), H.map(h => h + 2.7), PAVE, je); ribbonV(walk, dp, H.map(h => -h - 2.7), H.map(h => -h - 0.1), PAVE, je);
       for (const sg of [1, -1]) {
         mark(li, dp, H.map(h => sg * (h + 0.08)), 0.12, CURB, 'k'); mark(li, dp, H.map(h => sg * (h - 0.45)), 0.07, WHITE, 'e');
         mark(li, dp, sg * 0.12, 0.06, WHITE, 'c', null, four);                                            // the double centre line
@@ -382,16 +416,16 @@ function buildLines() {
       hwC = H.slice().sort((a, b) => a - b)[H.length >> 1];
     } else if (one) {   // a one-way ramp (OSM oneway): its lanes of 3.5 m with margins, kerbs and edge lines, no sidewalk
       const h1 = tags.hw || Math.max(2.6, tags.lanes * 1.75 + 0.85);
-      splitApart(li, pts, dp, h1);
-      ribbon(groups[def[2]], dp, 0, h1, lineCol[cls]);
+      splitApart(li, pts, dp, h1); l.je = je = jointEnds(li, dp);
+      ribbon(groups[def[2]], dp, 0, h1, lineCol[cls], 0, je);
       for (const sg of [1, -1]) { mark(li, dp, sg * (h1 + 0.08), 0.12, CURB, 'k'); mark(li, dp, sg * (h1 - 0.35), 0.07, WHITE, 'e'); }
       if (tags.lanes >= 2) mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9]);
       if (tags.hatch) { const m = dp.length >> 1; HATCH.push({ li, p: dp, A: new Array(m).fill(h1 - 2.25), B: new Array(m).fill(h1 - 0.35), s: tags.hatch, gbc: STATE.GBC }); }   // the hatched margin
       hwC = h1;
     } else {
-      if (rural) { ribbon(groups[2], dp, hw + 0.6, 0.6, GRAVEL); ribbon(groups[2], dp, -hw - 0.6, 0.6, GRAVEL); }   // a country road: gravel shoulders, no kerb or sidewalk
-      else if (cls <= 3) { ribbon(walk, dp, hw + 1.4, 1.3, PAVE); ribbon(walk, dp, -hw - 1.4, 1.3, PAVE); mark(li, dp, hw + 0.08, 0.12, CURB, 'k'); mark(li, dp, -hw - 0.08, 0.12, CURB, 'k'); }
-      if (cls !== 9) ribbon(groups[def[2]], dp, 0, hw, lineCol[cls]);
+      if (rural) { ribbon(groups[2], dp, hw + 0.6, 0.6, GRAVEL, 0, je); ribbon(groups[2], dp, -hw - 0.6, 0.6, GRAVEL, 0, je); }   // a country road: gravel shoulders, no kerb or sidewalk
+      else if (cls <= 3) { ribbon(walk, dp, hw + 1.4, 1.3, PAVE, 0, je); ribbon(walk, dp, -hw - 1.4, 1.3, PAVE, 0, je); mark(li, dp, hw + 0.08, 0.12, CURB, 'k'); mark(li, dp, -hw - 0.08, 0.12, CURB, 'k'); }
+      if (cls !== 9) ribbon(groups[def[2]], dp, 0, hw, lineCol[cls], 0, je);
       if (cls <= 2) mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9]);
       if (cls === 0) { mark(li, dp, hw - 0.45, 0.07, WHITE, 'e'); mark(li, dp, -hw + 0.45, 0.07, WHITE, 'e'); }
     }

@@ -42,6 +42,28 @@ function fortTex(kind) {
   } else if (kind === 5) {                            // render scored into rustication: a groove every 0.5 m, 4 m per tile
     g.fillStyle = '#e4e2dc'; g.fillRect(0, 0, S, S);
     for (let k = 0; k < 8; k++) { const y = k * S / 8; g.fillStyle = 'rgba(70,60,40,0.55)'; g.fillRect(0, y, S, 3); g.fillStyle = 'rgba(255,255,255,0.5)'; g.fillRect(0, y + 3, S, 2); }
+  } else if (kind === 6) {                            // weathered render over rubble: grey, stained, fallen off in patches, 4 m per tile
+    g.fillStyle = '#b4b1aa'; g.fillRect(0, 0, S, S);
+    const wrap = (x, y, r, fn) => { for (const ox of [0, -S, S]) for (const oy of [0, -S, S]) if (x + ox + r > 0 && x + ox - r < S && y + oy + r > 0 && y + oy - r < S) fn(x + ox, y + oy); };
+    for (let k = 0; k < 70; k++) {                    // stains and paler washes
+      const x = rr() * S, y = rr() * S, r = 20 + rr() * 70, c = rr() < 0.6 ? `rgba(70,68,62,${(0.08 + rr() * 0.12).toFixed(3)})` : `rgba(255,255,250,${(0.06 + rr() * 0.1).toFixed(3)})`;
+      wrap(x, y, r, (X, Y) => { const gr = g.createRadialGradient(X, Y, 0, X, Y, r); gr.addColorStop(0, c); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(X - r, Y - r, 2 * r, 2 * r); });
+    }
+    for (let k = 0; k < 3; k++) {                     // where the render has fallen off: the rubble and a few bricks behind it
+      const x = rr() * S, y = rr() * S, R = 34 + rr() * 40, rim = [], stones = [];
+      for (let a = 0; a < 14; a++) rim.push(R * (0.45 + rr() * 0.65));
+      for (let q = 0; q < 30; q++) stones.push([(rr() - 0.5) * 2 * R, (rr() - 0.5) * 1.4 * R, 7 + rr() * 12, 5 + rr() * 8, ['#8e877d', '#6f685f', '#9a8f82', '#a0645a'][Math.floor(rr() * 4)]]);
+      wrap(x, y, R * 1.2, (X, Y) => {
+        g.save(); g.beginPath(); rim.forEach((rad, a) => { const t = a / rim.length * Math.PI * 2; g.lineTo(X + Math.cos(t) * rad, Y + Math.sin(t) * rad * 0.7); }); g.closePath();
+        g.fillStyle = '#7d766d'; g.fill(); g.strokeStyle = 'rgba(230,228,220,0.6)'; g.lineWidth = 2; g.stroke(); g.clip();
+        for (const [dx, dy, rx, ry, c] of stones) { g.fillStyle = c; g.beginPath(); g.ellipse(X + dx, Y + dy, rx, ry, 0, 0, Math.PI * 2); g.fill(); }
+        g.restore();
+      });
+    }
+    for (let k = 0; k < 10; k++) {                    // rain streaks
+      const x = rr() * S, y = rr() * S, w = 6 + rr() * 14, h = 80 + rr() * 220, c = `rgba(60,58,52,${(0.04 + rr() * 0.05).toFixed(3)})`;
+      g.fillStyle = c; for (const oy of [0, -S]) g.fillRect(x, y + oy, w, h); if (x + w > S) for (const oy of [0, -S]) g.fillRect(x - S, y + oy, w, h);
+    }
   } else {                                            // planks along u, 2 m per tile
     for (let y = 0; y < S; y += 36) { const f = 0.88 + rr() * 0.2; g.fillStyle = `rgb(${170 * f | 0},${132 * f | 0},${88 * f | 0})`; g.fillRect(0, y, S, 34); g.fillStyle = 'rgba(60,40,20,0.55)'; g.fillRect(0, y + 34, S, 2);
       for (let k = 0; k < 6; k++) { g.strokeStyle = `rgba(90,60,30,${0.15 + rr() * 0.2})`; g.lineWidth = 1; g.beginPath(); const yy = y + 4 + rr() * 26; g.moveTo(0, yy); g.bezierCurveTo(S * 0.3, yy + rr() * 6 - 3, S * 0.7, yy + rr() * 6 - 3, S, yy); g.stroke(); } }
@@ -58,7 +80,7 @@ function fortBrickTex() {
   FORT.brickCv = cv; const t = toTex(cv, true, true); t.minFilter = THREE.LinearMipmapLinearFilter; return t;
 }
 function shadeHexF(h, f) { const c = hb(h); return `rgb(${Math.min(255, c[0] * f) | 0},${Math.min(255, c[1] * f) | 0},${Math.min(255, c[2] * f) | 0})`; }
-const FTS = [4, 2, 3, 2, 2.2, 4];   // metres per tile: fieldstone, granite, sandstone, planks, roof steel, rusticated render; brick uses LMWS[3]
+const FTS = [4, 2, 3, 2, 2.2, 4, 4];   // metres per tile: fieldstone, granite, sandstone, planks, roof steel, rusticated render, weathered render; brick uses LMWS[3]
 
 /* gate details: an opaque atlas (doors, grilles, the frieze of the Nicholas gate) and a cut-out one (eagles,
    lettering) — drawn like the landmark atlas, in metres from the top-left of each tile */
