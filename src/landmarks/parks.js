@@ -124,11 +124,15 @@ function fountain(K, J, x, z, name, detail, park) {
 
 // ---- monuments
 function pedestal(G, x, z, a, w, h) { const ux = Math.cos(a), uz = Math.sin(a); box(G, x, z, ux, uz, w * 0.85, w * 0.85, 0, 0.25, GRANITE); box(G, x, z, ux, uz, w / 2, w / 2 * 0.9, 0.25, h, GRANITE); box(G, x, z, ux, uz, w / 2 + 0.05, w / 2 * 0.9 + 0.05, h - 0.08, h, sh(GRANITE, 1.05)); }
-function bust(G, x, z, a) {
-  pedestal(G, x, z, a, 0.8, 2.1);
-  lmLathe(G, x, z, 2.1, [[0.4, 0], [0.42, 0.12], [0.36, 0.3], [0.2, 0.42], [0.11, 0.5]], 14, BRONZE);
-  lmLathe(G, x, z, 2.58, [[0.11, 0], [0.19, 0.08], [0.21, 0.24], [0.2, 0.36], [0.15, 0.47], [0.02, 0.52]], 14, BRONZE);
-  const f = fr(x, z, a); lmBar(G, at(f, 0.18, 0, 2.74), at(f, 0.2, 0, 2.62), 0.12, BRONZE);   // the nose and the beard
+function bust(G, x, z, a, name) {   // a bronze bust (chest, shoulders and a large head) on a tall granite pedestal: Pumpurs with his beard, Rainis with his moustache
+  pedestal(G, x, z, a, 0.75, 2.0); const f = fr(x, z, a), ux = f[2], uz = f[3], beard = /Pumpur/.test(name), y = 2.32;
+  box(G, x, z, ux, uz, 0.15, 0.3, 2.0, 2.2, BRONZE); box(G, x, z, ux, uz, 0.13, 0.24, 2.2, 2.27, BRONZE);   // the chest and the shoulders
+  lmLathe(G, x, z, 2.27, [[0.12, 0], [0.1, 0.05], [0.11, 0.07]], 10, BRONZE);   // the neck
+  lmLathe(G, x, z, y, [[0.11, 0], [0.19, 0.08], [0.22, 0.24], [0.21, 0.4], [0.17, 0.51], [0.09, 0.57], [0.02, 0.6]], 14, BRONZE);
+  lmBar(G, at(f, 0.21, 0, y + 0.34), at(f, 0.25, 0, y + 0.22), 0.08, BRONZE);   // the nose
+  lmBar(G, at(f, 0.2, -0.1, y + 0.38), at(f, 0.2, 0.1, y + 0.38), 0.05, BRONZE);   // the brows
+  if (beard) lmLathe(G, ...at(f, 0.1, 0, 0).filter((_, k) => k !== 1), y - 0.02, [[0.04, 0], [0.16, 0.08], [0.18, 0.2], [0.12, 0.3]], 10, BRONZE);
+  else lmBar(G, at(f, 0.22, -0.09, y + 0.17), at(f, 0.22, 0.09, y + 0.17), 0.05, BRONZE);   // the moustache
 }
 function statue(G, x, z, a) {   // a standing man in a frock coat on a pedestal
   const f = fr(x, z, a); pedestal(G, x, z, a, 1.2, 1.9); const y = 1.9;
@@ -222,7 +226,7 @@ function lmParks(K) {
     STATE.GBC = levelAt(x, z);
     const pth = nearestPath(x, z, 30), a = pth ? Math.atan2(pth.pz - z, pth.px - x) : 0;   // facing the nearest footway
     if (kind === 'fountain') fountain(K, PARK_JETS, x, z, name, detail, park);
-    else if (kind === 'memorial') { if (detail === 'bust') { bust(G, x, z, a); NOTREE.push([x, z, 3]); } else if (detail === 'statue') { statue(G, x, z, a); NOTREE.push([x, z, 3.5]); } else if (detail === 'war_memorial') warMemorial(G, x, z, a, park === 13); else stone(G, x, z, detail === 'plaque'); }
+    else if (kind === 'memorial') { if (detail === 'bust') { bust(G, x, z, a, name); NOTREE.push([x, z, 3]); } else if (detail === 'statue') { statue(G, x, z, a); NOTREE.push([x, z, 3.5]); } else if (detail === 'war_memorial') warMemorial(G, x, z, a, park === 13); else stone(G, x, z, detail === 'plaque'); }
     else if (kind === 'artwork') artwork(K, x, z, name, i);
     else if (kind === 'sundial') sundial(G, x, z);
     else if (kind === 'bench') benchFacing(G, x, z);
