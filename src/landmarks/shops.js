@@ -612,4 +612,4 @@ function lmShops(K, litPatch) {
   KS.det.mesh(LMM.shDet); KS.det = null;
 }
 
-export { SHOP_TREES, SHV, lmShops, shopClaim };
+export { PARKS as SHOP_LOTS, SHOP_TREES, SHV, lmShops, shopClaim };
