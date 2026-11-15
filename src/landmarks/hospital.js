@@ -6,9 +6,8 @@ import { TERR, terrainH } from '../world/terrain.js';
 import { STATE } from '../core/state.js';
 import { hb } from '../core/util.js';
 
-/* Daugavpils Regional Hospital, Vasarnīcu iela 20. The OSM footprint is only the central core, so the tower and
-   connected low wings are reconstructed from Ministry, hospital and city photographs. Dimensions and unseen details
-   remain approximate; the radio-therapy block follows its mapped outline and current extension. */
+/* Daugavpils Regional Hospital, Vasarnīcu iela 20. LGIA's 1:2,000 topographic plan and 7th-cycle orthophoto fix the
+   tower axis, entry court, parking and therapy-wing position. Ministry, hospital and city photographs guide facades. */
 const HF = LMF.hosp;             // u east, v south
 const RF = LMF.rt;
 const PANEL = hb('#e0e2dd'), PANEL_DK = hb('#b7c2c3'), CEM = hb('#c5cbca');
@@ -31,16 +30,16 @@ function strip(G, f, local, half, y, col) {
 function beam(G, f, a, b, w, col) { lmBar(G, pt(f, ...a), pt(f, ...b), w, col); }
 
 function tower(K) {
-  const ops = [], sill = hb('#aeb8ba'), plan = [[-27, -8.2], [27, -8.2], [27, 8.2], [-27, 8.2]];
+  const ops = [], sill = hb('#aeb8ba'), plan = [[-12.5, -42], [12.5, -42], [12.5, 42], [-12.5, 42]];
   for (let floor = 0; floor < 12; floor++) {
     const y0 = 3.15 + floor * 2.92, y1 = y0 + 1.72;
     const tile = i => (floor + i) % 5 === 0 ? 'hsWinB' : 'hsWin';
     const win = () => ({ d: 0.24, sill, lit: lmLit(0.16), rcol: PANEL_DK });
-    lmRow(ops, -25.7, -8.2, 25.7, -8.2, 18, 1.74, y0, y1, tile, win);
-    lmRow(ops, -25.7, 8.2, 25.7, 8.2, 18, 1.74, y0, y1, tile, win);
-    lmRow(ops, 27, -6.4, 27, 6.4, 4, 1.45, y0, y1, tile, win);
-    // Deep, open balcony recesses on the west end are a distinctive feature in the photographs.
-    lmRow(ops, -27, -6.6, -27, 6.6, 1, 12.4, y0 + 0.05, y0 + 1.82, 'hsLoggia', { d: 1.0, lit: false });
+    lmRow(ops, -12.5, -40, -12.5, 40, 28, 1.74, y0, y1, tile, win);
+    lmRow(ops, 12.5, -40, 12.5, 40, 28, 1.74, y0, y1, tile, win);
+    lmRow(ops, -10.8, -42, 10.8, -42, 7, 1.45, y0, y1, tile, win);
+    // Recessed open loggias repeat along the south end, visible in the frontal photographs.
+    lmRow(ops, -6.2, 42, 6.2, 42, 1, 12.4, y0 + 0.05, y0 + 1.82, 'hsLoggia', { d: 1.0, lit: false });
   }
   lmBlock(K, HF, { poly: plan, top: 40.2, st: { tex: 5, col: PANEL }, roof: hb('#777f80'), roofY: 40.2,
     cornice: [[39.85, 40.28, 0.32, WHITE]] }, ops);
@@ -48,43 +47,43 @@ function tower(K) {
   // Broad concrete floor bands and the unusually deep, repeated end balconies.
   for (let floor = 0; floor < 12; floor++) {
     const y = 3.0 + floor * 2.92, col = floor % 2 ? PANEL_DK : WHITE;
-    for (const [v0, v1] of [[-8.33, -8.12], [8.12, 8.33]]) lmBoxL(K.plain, HF, -27, 27, v0, v1, y, y + 0.15, col);
-    for (const v of [-6.3, 6.3]) {
+    for (const [u0, u1] of [[-12.72, -12.5], [12.5, 12.72]]) lmBoxL(K.plain, HF, u0, u1, -42, 42, y, y + 0.15, col);
+    for (const u of [-6.3, 6.3]) {
       const ya = 3.2 + floor * 2.92;
-      lmBoxL(K.plain, HF, -28.55, -26.9, v - 0.18, v + 0.18, ya, ya + 0.12, CEM);
+      lmBoxL(K.plain, HF, u - 0.18, u + 0.18, 41.9, 43.55, ya, ya + 0.12, CEM);
     }
     if (floor < 11) {
       const ya = 3.25 + floor * 2.92;
-      beam(K.plain, HF, [-28.45, -6.0, ya + 1.05], [-28.45, 6.0, ya + 1.05], 0.06, STEEL);
-      beam(K.plain, HF, [-28.45, -6.0, ya + 0.12], [-28.45, 6.0, ya + 0.12], 0.045, STEEL);
-      for (let v = -6; v <= 6.01; v += 1.2) beam(K.plain, HF, [-28.45, v, ya + 0.12], [-28.45, v, ya + 1.05], 0.04, STEEL);
+      beam(K.plain, HF, [-6.0, 43.45, ya + 1.05], [6.0, 43.45, ya + 1.05], 0.06, STEEL);
+      beam(K.plain, HF, [-6.0, 43.45, ya + 0.12], [6.0, 43.45, ya + 0.12], 0.045, STEEL);
+      for (let u = -6; u <= 6.01; u += 1.2) beam(K.plain, HF, [u, 43.45, ya + 0.12], [u, 43.45, ya + 1.05], 0.04, STEEL);
     }
   }
   // Lift and stair overrun, roof access rail and small exhaust cowls.
   lmBlock(K, HF, { poly: [[-4.2, -2.6], [3.0, -2.6], [3.0, 2.6], [-4.2, 2.6]], y0: 40.2, top: 41.8,
     st: { tex: 5, col: PANEL_DK }, roof: hb('#858b8b'), roofY: 41.8 }, []);
-  for (const [u, v, r, h] of [[-10, -5.3, 0.65, 0.95], [10, -5.2, 0.52, 0.8], [-12, 5.5, 0.48, 0.78], [12, 5.3, 0.58, 0.9]]) {
+  for (const [u, v, r, h] of [[-8, -34, 0.65, 0.95], [8, -31, 0.52, 0.8], [-8, 33, 0.48, 0.78], [8, 35, 0.58, 0.9]]) {
     const w = lmW(HF, u, v); lmLathe(K.plain, w[0], w[1], 40.24, [[r, 0], [r, h], [r * 0.82, h + 0.14]], 8, CEM);
   }
-  for (let u = -26; u <= 26.01; u += 5.2) beam(K.plain, HF, [u, -8.05, 40.35], [u, 8.05, 40.35], 0.035, STEEL);
+  for (let v = -40; v <= 40.01; v += 5.2) beam(K.plain, HF, [-11.5, v, 40.35], [11.5, v, 40.35], 0.035, STEEL);
 }
 
 function podium(K) {
   const ops = [], sill = hb('#b6bdbb'), plan = [[-66, -14], [-46, -14], [-46, 4], [51, 4], [51, 32], [-66, 32]];
   const rows = [[0.58, 2.2], [3.48, 5.15], [6.38, 8.08]];
   for (const [y0, y1] of rows) {
-    // Long public-facing wing. Ground-floor gaps are reserved for the lobby and ambulance bays.
-    for (const [a, b, n] of (y0 < 5.2 ? [[-63, 14, 16], [28.5, 34.2, 2]] : [[-63, 14, 16], [28.5, 34.2, 2], [35, 50, 4]]))
+    // The patient lobby and two ambulance portals sit at the southwest drop-off, below a shared canopy.
+    for (const [a, b, n] of (y0 < 5.2 ? [[-63, -54, 3], [-46, -39, 2], [-18, 50, 24]] : [[-63, 50, 40]]))
       lmRow(ops, a, 32, b, 32, n, 1.75, y0, y1, 'hsWin', { d: 0.2, sill, lit: lmLit(0.2) });
     lmRow(ops, -43, 4, 48, 4, 20, 1.65, y0, y1, 'hsWin', { d: 0.18, sill, lit: lmLit(0.16) });
     lmRow(ops, -66, -11, -66, 28, 9, 1.65, y0, y1, 'hsWin', { d: 0.18, sill, lit: lmLit(0.18) });
     lmRow(ops, 51, 5, 51, 31, 5, 1.55, y0, y1, 'hsWin', { d: 0.18, sill, lit: lmLit(0.18) });
     lmRow(ops, -46, -12, -46, 2, 4, 1.45, y0, y1, 'hsWin', { d: 0.18, sill, lit: lmLit(0.15) });
   }
-  // Entrance doors and two recessed ambulance bays share the south elevation.
-  lmOp(ops, 21.3, 32, 6.4, 0.28, 3.7, 'hsEntry', { d: 0.32, lit: true });
-  lmOp(ops, 39.4, 32, 5.8, 0.22, 4.65, 'hsBay', { d: 0.45, lit: true });
-  lmOp(ops, 46.1, 32, 5.8, 0.22, 4.65, 'hsBay', { d: 0.45, lit: true });
+  // Patient doors are west of the two ambulance garages on the southwest-facing arrival court.
+  lmOp(ops, -51.5, 32, 6.0, 0.28, 3.7, 'hsEntry', { d: 0.32, lit: true });
+  lmOp(ops, -35.0, 32, 5.8, 0.22, 4.65, 'hsBay', { d: 0.45, lit: true });
+  lmOp(ops, -26.0, 32, 5.8, 0.22, 4.65, 'hsBay', { d: 0.45, lit: true });
   // Thin horizontal clerestory strip beneath the roof parapet.
   lmRow(ops, -62, 32, 49, 32, 33, 2.1, 9.25, 10.05, 'hsSlot', { d: 0.14, lit: lmLit(0.08) });
   lmRow(ops, -43, 4, 48, 4, 28, 1.65, 9.25, 10.05, 'hsSlot', { d: 0.14, lit: lmLit(0.08) });
@@ -99,35 +98,29 @@ function podium(K) {
 }
 
 function entrance(K) {
-  const sign = hb('#314a52'), pale = hb('#e0e2dc');
-  // Small wall sign above the main glazed door, rather than a large freestanding billboard.
-  lmSign(K, HF, [18.3, 32.12], [24.1, 32.12], 4.02, 4.82, 'hospital', 1);
-  // Narrow blue-grey canopy, glazed soffit and square steel supports.
-  rect(K.plain, HF, 16.5, 27.8, 32.2, 38.7, 5.35, hb('#60757c'));
-  lmBoxL(K.plain, HF, 16.5, 27.8, 38.25, 38.75, 4.85, 5.45, sign);
-  for (const u of [16.7, 27.6]) for (const v of [32.5, 38.1]) lmBoxL(K.plain, HF, u, u + 0.18, v, v + 0.18, 0.05, 5.15, STEEL);
-
-  // Two covered ambulance bays integrated into the right-hand end of the lower wing.
-  rect(K.plain, HF, 34, 51, 32.15, 41.0, 5.1, hb('#55717b'));
-  lmBoxL(K.plain, HF, 34, 51, 40.5, 41.05, 4.7, 5.35, sign);
-  for (const u of [34.25, 50.7]) for (const v of [32.35, 40.2]) lmBoxL(K.plain, HF, u, u + 0.24, v, v + 0.24, 0.05, 4.9, CEM);
+  const sign = hb('#314a52');
+  // The main glazed entry and ambulance portals share the broad blue-grey southwest canopy.
+  lmSign(K, HF, [-54.4, 32.12], [-48.6, 32.12], 4.02, 4.82, 'hospital', 1);
+  rect(K.plain, HF, -59.5, -17.5, 32.2, 40.8, 5.35, hb('#60757c'));
+  lmBoxL(K.plain, HF, -59.5, -17.5, 40.2, 40.8, 4.85, 5.45, sign);
+  for (const u of [-59.2, -38.8, -17.8]) for (const v of [32.5, 40.1]) lmBoxL(K.plain, HF, u, u + 0.18, v, v + 0.18, 0.05, 5.15, STEEL);
 
   // Shallow entrance steps, a broad wheelchair ramp, rails, tactile paving and bollards.
   for (let k = 0; k < 5; k++) {
     const v0 = 32.7 + k * 0.82, v1 = v0 + 0.78, h = 0.14 + k * 0.12;
-    lmBoxL(K.plain, HF, 17.9, 24.7, v0, v1, 0.04, h, hb('#c5c6c1'));
+    lmBoxL(K.plain, HF, -55.0, -48.0, v0, v1, 0.04, h, hb('#c5c6c1'));
   }
-  polyA(K.plain, [pt(HF, 27.2, 32.7, 0.72), pt(HF, 31.2, 32.7, 0.72), pt(HF, 31.2, 38.0, 0.08), pt(HF, 27.2, 38.0, 0.08)], hb('#c4c6c2'), 0, 1, 0);
-  for (const u of [27.2, 31.2]) {
+  polyA(K.plain, [pt(HF, -46.5, 32.7, 0.72), pt(HF, -42.5, 32.7, 0.72), pt(HF, -42.5, 38.0, 0.08), pt(HF, -46.5, 38.0, 0.08)], hb('#c4c6c2'), 0, 1, 0);
+  for (const u of [-46.5, -42.5]) {
     beam(K.plain, HF, [u, 32.7, 1.55], [u, 38.0, 0.92], 0.055, STEEL);
     for (let v = 33; v < 38; v += 1.05) { const t = (v - 32.7) / 5.3; beam(K.plain, HF, [u, v, 0.72 - t * 0.64], [u, v, 1.5 - t * 0.64], 0.035, STEEL); }
   }
-  rect(K.plain, HF, 17.0, 25.6, 38.1, 39.0, 0.08, PAVE);
-  for (let u = 18; u < 25.6; u += 1.1) lmBoxL(K.plain, HF, u, u + 0.16, 38.0, 38.22, 0.08, 0.13, hb('#c8bb9c'));
-  for (const u of [15.5, 33, 52]) lmBoxL(K.plain, HF, u, u + 0.2, 36.4, 36.6, 0.05, 0.85, hb('#858b87'));
+  rect(K.plain, HF, -57.0, -47.0, 38.1, 39.0, 0.08, PAVE);
+  for (let u = -56; u < -47; u += 1.1) lmBoxL(K.plain, HF, u, u + 0.16, 38.0, 38.22, 0.08, 0.13, hb('#c8bb9c'));
+  for (const u of [-61.0, -42.0, -16.5]) lmBoxL(K.plain, HF, u, u + 0.2, 36.4, 36.6, 0.05, 0.85, hb('#858b87'));
 
-  // A white ambulance idling below the canopy; the body, wheels, red belt and warning lamps are separate pieces.
-  const u = 42.6, v = 36.1, white = hb('#e5e8e3'), glass = hb('#627981'), red = hb('#c44a44');
+  // A white ambulance waiting in the eastern portal; body, wheels and warning lamps are separate pieces.
+  const u = -26.0, v = 36.1, white = hb('#e5e8e3'), glass = hb('#627981'), red = hb('#c44a44');
   lmBoxL(K.plain, HF, u - 1.15, u + 1.15, v - 3.25, v + 3.25, 0.18, 1.48, white);
   lmBoxL(K.plain, HF, u - 0.95, u + 0.95, v - 2.35, v + 2.85, 1.42, 2.45, hb('#d6dcd9'));
   lmBoxL(K.plain, HF, u - 0.98, u + 0.98, v - 3.2, v - 2.75, 0.72, 1.08, red);
@@ -168,48 +161,54 @@ function radiotherapy(K) {
 
 function grounds(K) {
   const road = hb('#5d6261'), curb = hb('#d2c355'), mark = hb('#eeeeea'), green = hb('#557455'), trunk = hb('#725c45');
-  // Curving uphill driveway, yellow edge paint and a clear turning court below the ambulance bays.
-  strip(K.plain, HF, [[72, 103], [70, 88], [64, 72], [57, 58], [51, 47], [46, 39]], 3.55, 0.06, road);
-  strip(K.plain, HF, [[75.6, 103], [73.6, 88], [67.4, 72], [60.3, 58], [54.5, 47], [49.5, 39]], 0.085, 0.15, curb);
-  strip(K.plain, HF, [[68.4, 103], [66.4, 88], [60.6, 72], [53.7, 58], [47.5, 47], [42.5, 39]], 0.085, 0.15, curb);
-  rect(K.plain, HF, 31, 53, 30, 43, 0.08, road);
-  // Entrance forecourt and patient path.
-  rect(K.plain, HF, 16, 32, 32, 40, 0.09, PAVE);
-  strip(K.plain, HF, [[21, 43], [21, 40], [21, 37], [21, 33]], 1.4, 0.11, hb('#c2c1b9'));
-  for (let u = 14; u <= 33.01; u += 1.0) rect(K.plain, HF, u, u + 0.4, 39.8, 40.55, 0.12, mark);
-  // One side parking court, with marked bays and only a few parked cars.
-  rect(K.plain, HF, 56, 84, 4, 29, 0.055, road);
-  for (let u = 58; u <= 82.01; u += 2.8) {
-    beam(K.plain, HF, [u, 4.6, 0.1], [u, 10.5, 0.1], 0.04, mark);
-    beam(K.plain, HF, [u, 16, 0.1], [u, 21.9, 0.1], 0.04, mark);
+  // The vehicle route comes from the west and turns into the covered southwest drop-off.
+  strip(K.plain, HF, [[-126, 112], [-111, 91], [-96, 73], [-83, 58], [-72, 50], [-64, 50]], 3.45, 0.06, road);
+  strip(K.plain, HF, [[-129.4, 113], [-114, 92], [-99, 74], [-86, 59], [-75, 51], [-67, 51]], 0.085, 0.15, curb);
+  strip(K.plain, HF, [[-122.8, 111], [-108, 90], [-93, 72], [-80, 57], [-69, 49]], 0.085, 0.15, curb);
+  const loop = [[-68, 44], [-76, 48], [-80, 55], [-78, 62], [-71, 68], [-61, 70], [-51, 68], [-43, 62], [-41, 55], [-46, 49], [-56, 45], [-68, 44]];
+  strip(K.plain, HF, loop, 3.25, 0.07, road);
+  strip(K.plain, HF, loop.map(([u, v]) => [u - 2.8, v - 1.9]), 0.085, 0.16, curb);
+  rect(K.plain, HF, -63, -16, 31, 44, 0.08, road);
+  // A narrow access lane follows the western side of the hospital to the northwest car park.
+  strip(K.plain, HF, [[-77, 52], [-83, 34], [-88, 14], [-93, -9], [-100, -33], [-111, -55], [-122, -78], [-124, -109]], 3.25, 0.06, road);
+  strip(K.plain, HF, [[-80.2, 52], [-86.2, 34], [-91.2, 14], [-96.2, -9], [-103.2, -33], [-114.2, -55], [-125.2, -78], [-127.2, -109]], 0.08, 0.15, curb);
+  // Paved entrance apron, pedestrian crossing and direct accessible path to the lobby doors.
+  rect(K.plain, HF, -61, -17, 32, 43, 0.09, PAVE);
+  strip(K.plain, HF, [[-52, 55], [-52, 49], [-52, 43], [-52, 34]], 1.4, 0.11, hb('#c2c1b9'));
+  for (let u = -62; u <= -16.99; u += 1.05) rect(K.plain, HF, u, u + 0.42, 43.6, 44.3, 0.12, mark);
+
+  // Main patient and staff parking sits northwest of the tower, reached from the west-side lane.
+  rect(K.plain, HF, -172, -74, -145, -109, 0.055, road);
+  for (let u = -169; u <= -75.01; u += 2.8) {
+    for (const [v0, v1] of [[-143, -137], [-128, -122], [-115, -109]])
+      beam(K.plain, HF, [u, v0, 0.1], [u, v1, 0.1], 0.04, mark);
   }
-  beam(K.plain, HF, [56.2, 10.5, 0.1], [83.8, 10.5, 0.1], 0.04, mark);
-  beam(K.plain, HF, [56.2, 16, 0.1], [83.8, 16, 0.1], 0.04, mark);
-  beam(K.plain, HF, [56.2, 21.9, 0.1], [83.8, 21.9, 0.1], 0.04, mark);
+  for (const v of [-143, -137, -128, -122, -115, -109])
+    beam(K.plain, HF, [-171.2, v, 0.1], [-74.8, v, 0.1], 0.04, mark);
   const car = (u, v, color) => {
     lmBoxL(K.plain, HF, u - 0.92, u + 0.92, v - 2.2, v + 2.2, 0.1, 0.72, color);
     lmBoxL(K.plain, HF, u - 0.72, u + 0.72, v - 1.25, v + 1.4, 0.68, 1.23, hb('#46575c'));
     for (const du of [-0.91, 0.91]) for (const dv of [-1.45, 1.45]) { const p = lmW(HF, u + du, v + dv); lmLathe(K.plain, p[0], p[1], 0.15, [[0.22, 0], [0.22, 0.12]], 10, hb('#343839')); }
   };
-  car(61, 7.5, hb('#7d8886')); car(69, 18.7, hb('#d6d8d2')); car(77, 7.5, hb('#596b73')); car(80, 18.7, hb('#84756d'));
+  for (const [u, v, color] of [[-164, -140, '#7d8886'], [-154, -125, '#d6d8d2'], [-143, -112, '#596b73'], [-132, -140, '#84756d'], [-121, -125, '#79837e'], [-110, -112, '#656f73'], [-99, -140, '#8a786e'], [-88, -125, '#66797b'], [-78, -112, '#737e78']]) car(u, v, hb(color));
 
-  // Quiet, accessible path to the therapy block, benches and low garden lamps.
-  strip(K.plain, HF, [[43, 8], [48, -13], [50, -35], [44, -57], [38, -78], [32, -94]], 1.35, 0.08, hb('#c7c4bb'));
-  for (const v of [-28, -55, -80]) {
-    lmBoxL(K.plain, HF, 49, 52, v, v + 0.65, 0.52, 0.7, hb('#806f5c'));
-    lmBoxL(K.plain, HF, 49, 49.18, v, v + 0.62, 0.08, 0.52, STEEL);
+  // A sheltered pedestrian link follows the southeast side of the site to the separate therapy block.
+  strip(K.plain, HF, [[-25, 42], [-5, 48], [18, 55], [43, 63], [67, 72], [88, 79]], 1.45, 0.08, hb('#c7c4bb'));
+  for (const [u, v] of [[8, 53], [43, 63], [72, 74]]) {
+    lmBoxL(K.plain, HF, u, u + 3, v, v + 0.65, 0.52, 0.7, hb('#806f5c'));
+    lmBoxL(K.plain, HF, u, u + 0.18, v, v + 0.62, 0.08, 0.52, STEEL);
   }
-  // A small number of pines, shrubs and bollards preserve the open lawn visible between the hospital wings.
+  // Tree belts stay on the forest edge and open lawn around the campus.
   const pine = (u, v, h) => {
     const p = lmW(HF, u, v); lmLathe(K.plain, p[0], p[1], 0.06, [[0.12, 0], [0.09, h * 0.55]], 7, trunk);
     for (let i = 0; i < 3; i++) { const y = h * (0.22 + i * 0.22), r = h * (0.19 - i * 0.035); lmLathe(K.plain, p[0], p[1], y, [[r, 0], [r * 0.66, h * 0.31], [0.015, h * 0.55]], 9, green); }
   };
-  for (const [u, v, h] of [[-74, -7, 4.8], [-73, 20, 4.4], [58, 36, 4.2], [86, 29, 4.8], [88, 0, 4.3], [27, -48, 4.9], [31, -75, 4.5]]) pine(u, v, h);
-  for (const [u, v] of [[14.5, 39], [32.5, 39], [53, 38], [56, 30]]) {
+  for (const [u, v, h] of [[-168, -73, 4.8], [-165, -30, 4.4], [-151, 28, 4.5], [-151, 74, 4.7], [95, -55, 4.8], [119, -34, 4.4], [129, 4, 4.3], [139, 41, 4.8], [118, 111, 4.5]]) pine(u, v, h);
+  for (const [u, v] of [[-62, 40], [-42, 40], [-18, 40], [24, 59], [60, 71]]) {
     const p = lmW(HF, u, v); lmLathe(K.plain, p[0], p[1], 0.05, [[0.12, 0], [0.1, 3.7]], 8, STEEL);
     lmBoxL(K.plain, HF, u - 0.2, u + 0.2, v - 0.2, v + 0.2, 3.65, 3.85, hb('#eee6cf'));
   }
-  for (const [u, v] of [[15.3, 30.1], [31.8, 30.1], [52.2, 30.1]]) lmBoxL(K.plain, HF, u, u + 0.24, v, v + 0.24, 0.06, 0.95, hb('#687a7c'));
+  for (const [u, v] of [[-63.0, 30.1], [-40.0, 30.1], [-17.0, 30.1]]) lmBoxL(K.plain, HF, u, u + 0.24, v, v + 0.24, 0.06, 0.95, hb('#687a7c'));
 }
 
 function lmHospital(K) {
