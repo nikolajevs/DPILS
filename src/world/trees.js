@@ -12,6 +12,7 @@ import { lmClear } from '../landmarks/core.js';
 import { ovNoTree } from './overpass.js';
 import { vbNoTree } from './bridge-vienibas.js';
 import { AREAS, inBuilding, onRoad, wetTree } from './data.js';
+import { treeRoom } from './tree-room.js';
 import { std } from '../render/materials.js';
 import { R, mkCanvas } from '../render/textures.js';
 import { U, renderer, scene, terrUniforms } from '../render/renderer.js';
@@ -24,6 +25,7 @@ function lidarTrees() { const L = window.LIDAR_TREES; if (!L || !L.n) return nul
 // A crown is a cloud of small leaf cards that always face the viewer (and the sun in the shadow pass), shaded as one soft
 // ball. Far trees are two-quad impostors baked from the very same model, so the switch between the two is hard to spot.
 const treeTiles = new Map();
+const LIDAR_STATS = { moved: 0, narrower: 0, out: 0 };   // what treeRoom did to the lidar trees (for checks: window.__city.treeStats)
 // Leaf atlas, 2 × 2 cells: 0 broadleaf, 1 birch, 2 pine needles, 3 spruce twigs
 function leafAtlas() {
   const S = 256, cv = mkCanvas(S * 2, S * 2), g = cv.getContext('2d'), rr = (a, b) => a + R() * (b - a);
@@ -236,8 +238,8 @@ function buildTrees() {
   /* The trees the lidar found (lidar-trees.js, tools/lidar.js --trees): outside the woods each where it stands, as high
      and as wide as it was measured. With them the guessed trees go — those of OpenStreetMap, the rows of the parks, and
      the ones scattered over the land classes but for the woods and the scrub; the trees the landmarks set by hand stay,
-     and a lidar tree within 4 m of one gives way to it. A lidar tree in a building (built since the flight) or more than
-     a metre into a carriageway is left out. */
+     and a lidar tree within 4 m of one gives way to it. Where the model has no room for it — in a house, on a street,
+     a path or a pitch, its crown in a wall — it is moved a few metres, its crown made narrower, or left out (treeRoom). */
   const LT = lidarTrees();
   if (!LT) for (let i = 0; i < C.t.length; i += 2) { const v = rnd(i, 2); add(C.t[i] / 10, C.t[i + 1] / 10, v < 0.7 ? 1 : v < 0.85 ? 2 : 3, 0.8 + rnd(i, 1) * 0.5, v); }
   const HAND = [];
@@ -248,9 +250,10 @@ function buildTrees() {
     const near = new Set(); for (let k = 0; k < HAND.length; k += 2) for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) near.add((Math.floor(HAND[k] / 4) + a) * 100000 + Math.floor(HAND[k + 1] / 4) + b);
     for (let k = 0; k < LT.length; k += 6) {
       const x = (LT[k] | LT[k + 1] << 8) / 5 - 6600, z = (LT[k + 2] | LT[k + 3] << 8) / 5 - 6600, h = LT[k + 4] / 5, r = (LT[k + 5] >> 4) * 0.8, type = LT[k + 5] & 15;
-      if (near.has(Math.floor(x / 4) * 100000 + Math.floor(z / 4)) || inBuilding(x, z) || onRoad(x, z, -1)) continue;
+      if (near.has(Math.floor(x / 4) * 100000 + Math.floor(z / 4))) continue;
+      const p = treeRoom(x, z, r); if (!p) { LIDAR_STATS.out++; continue; } if (p.moved) LIDAR_STATS.moved++; if (p.r < r) LIDAR_STATS.narrower++;
       const g = hi[type].userData, v = hash(k * 2654435761 + 7);
-      add(x, z, type, Math.max(0.3, Math.min(3.5, r / g.R)), v, Math.max(0.3, Math.min(3.2, h / g.H)));
+      add(p.x, p.z, type, Math.max(0.3, Math.min(3.5, p.r / g.R)), v, Math.max(0.3, Math.min(3.2, h / g.H)));
     }
   }
   // density per land class: spacing (m), keep probability, type picker
@@ -313,4 +316,4 @@ function buildTrees() {
   return count;
 }
 
-export { buildTrees, treeTiles };
+export { LIDAR_STATS, buildTrees, treeTiles };
