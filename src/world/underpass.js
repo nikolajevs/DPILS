@@ -70,9 +70,11 @@ function upPatch() {
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
     const x = x0 + i, z = z0 + j, H = terrainH(x, z), [s, dd] = upLocal(x, z), [sb, db] = vbLocal(x, z), adb = Math.abs(db);
     // the end of the bridge on the level of the junction, north of the street, fading out 25 m past it and 10 m beside it
-    const wp = sb >= UP.gap[1] - 0.5 && sb <= VB.L + 25 && adb <= VB.HW + 12 ? (sb <= VB.L + 6 ? 1 : 1 - fss((sb - VB.L - 6) / 19)) * (adb <= VB.HW + 2 ? 1 : 1 - fss((adb - VB.HW - 2) / 10)) : 0;
+    const wp = sb >= UP.gap[1] - 0.5 && sb <= VB.L + 25 && adb <= VB.HW + 12 ? (sb <= VB.L + 6 ? 1 : 1 - fss((sb - VB.L - 6) / 19)) * (adb <= VB.HW + 3 ? 1 : 1 - fss((adb - VB.HW - 3) / 10)) : 0;
     const He = H + Math.max(0, UP.D1 - H) * wp;
-    const wE = s <= 0 || s >= UP.L ? 0 : fss(Math.min(s, UP.L - s) / 10), hs = upH(s), under = sb > VB.L - 40 && sb < VB.L + 0.5 && adb <= VB.HW + 0.5;
+    const wE = s <= 0 || s >= UP.L ? 0 : fss(Math.min(s, UP.L - s) / 10), hs = upH(s), under = (sb > VB.L - 40 && sb < VB.L + 0.5 && adb <= VB.HW + 0.5) || (sb >= UP.gap[1] - 0.5 && sb <= VB.L + 15 && adb <= VB.HW + 3);
+    // (the end of the bridge and the start of the ramps beyond it keep the level of the junction up to the wall of the box:
+    // the gabion and its slope had cut it by up to a metre just past the end of the deck, which then stood in the air)
     let t;
     if (dd >= -UP.NW && dd <= UP.SW) t = hs;   // the street, level across
     else { const e = dd < 0 ? -UP.NW - dd : dd - UP.SW; t = under ? He : Math.min(He, hs + (dd < 0 ? 1.8 : 0.8) + e / 1.5); }   // gabion and slope above it; under the bridge its walls
@@ -105,7 +107,7 @@ function lmUnderpass(K) {
   const at = (s, d, y) => { const k = Math.max(0, Math.min(UP.X.length - 1, Math.round(s / STEP))); return [UP.X[k] - UP.TZ[k] * d + UP.TX[k] * (s - k * STEP), y, UP.Z[k] + UP.TX[k] * d + UP.TZ[k] * (s - k * STEP)]; };
   const gnd = (s, d) => { const [x, , z] = at(s, d, 0); return terrainH(x, z); };
   const nrm = (s, sg) => { const k = Math.max(0, Math.min(UP.X.length - 1, Math.round(s / STEP))); return [-UP.TZ[k] * sg, 0, UP.TX[k] * sg]; };
-  const inBox = (s, d) => { const [x, , z] = at(s, d, 0), [sb, db] = vbLocal(x, z); return sb > VB.L - 40 && sb < VB.L + 0.5 && Math.abs(db) <= VB.HW + 0.6; };
+  const inBox = (s, d) => { const [x, , z] = at(s, d, 0), [sb, db] = vbLocal(x, z); return sb > VB.L - 40 && sb < VB.L + 0.5 && Math.abs(db) <= VB.HW + (d < 0 ? 3.6 : 0.6); };   // the wall under the end of the bridge has wings
   // ---- gabions: baskets of stones in a wire mesh, 0.6 m thick, from the street (or the ground) up to the ground (or the street)
   for (const [dEdge, sg] of [[-UP.NW, -1], [UP.SW, 1]]) {
     for (let s = 6; s < UP.L - 6; s += STEP) {
@@ -129,8 +131,9 @@ function lmUnderpass(K) {
   const [g0, g1] = UP.gap, deckP = (sb, db, y) => vbP(sb, db, y);
   for (const [sb, sg] of [[g0, -1], [g1, 1]]) {   // g0: the wall towards the river (facing north), g1: under the end of the bridge (facing south)
     const top = sb2 => upDeck(sb2) - 1.1, n = [VB.T[0] * -sg, 0, VB.T[1] * -sg];
-    for (let db = -VB.HW - 0.5; db < VB.HW + 0.5 - 1e-6; db += 1) { const d2 = Math.min(VB.HW + 0.5, db + 1), A = deckP(sb, db, 0), B = deckP(sb, d2, 0);
-      const ra = upH(upLocal(A[0], A[2])[0]) - 0.2, rb = upH(upLocal(B[0], B[2])[0]) - 0.2, ta = Math.abs(db) <= VB.HW ? top(sb) : terrainH(A[0], A[2]) + 0.1, tb = Math.abs(d2) <= VB.HW ? top(sb) : terrainH(B[0], B[2]) + 0.1;
+    const wd = VB.HW + (sg > 0 ? 3.5 : 0.5), gnd2 = (db) => { const Q = deckP(sb + sg * 0.8, db, 0); return terrainH(Q[0], Q[2]) + 0.1; };   // under the end of the bridge with wings beside it
+    for (let db = -wd; db < wd - 1e-6; db += 1) { const d2 = Math.min(wd, db + 1), A = deckP(sb, db, 0), B = deckP(sb, d2, 0);
+      const ra = upH(upLocal(A[0], A[2])[0]) - 0.2, rb = upH(upLocal(B[0], B[2])[0]) - 0.2, ta = Math.abs(db) <= VB.HW ? top(sb) : gnd2(db), tb = Math.abs(d2) <= VB.HW ? top(sb) : gnd2(d2);
       polyA(G, [[A[0], ra, A[2]], [B[0], rb, B[2]], [B[0], Math.max(rb, tb), B[2]], [A[0], Math.max(ra, ta), A[2]]], sh(CONC, sg > 0 ? 0.97 : 1), n[0], 0, n[2]);
       COL.add(A[0], A[2], B[0], B[2], 0.2, 0); }
     const A = deckP(sb, -VB.HW - 0.5, 0), B = deckP(sb, VB.HW + 0.5, 0), c0 = deckP(sb - sg * 0.6, -VB.HW - 0.5, 0), c1 = deckP(sb - sg * 0.6, VB.HW + 0.5, 0), y = top(sb);   // a ledge under the beam
