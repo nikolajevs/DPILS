@@ -42,8 +42,10 @@ function parkNoTree(x, z) {
 }
 // the ground level under a free-standing thing, as GBC: it stands upright and level
 const levelAt = (x, z) => { if (!TERR.on) return null; const b = terrainH(x, z); return (X, y, Z) => { const t = terrainH(X, Z); return y <= 0.05 ? Math.min(b, t) - 0.3 - t - y : b - t; }; };
+// the outlines of the parks as OSM has them: the city data has cut some of them (the pond of Dubrovin park lies in grass)
 const ring = a => { let r = new Float32Array(a); if (r.length > 4 && r[0] === r[r.length - 2] && r[1] === r[r.length - 1]) r = r.slice(0, -2); if (area2(r) < 0) r = reversed(r); return r; };
 const P2 = (a, i) => [a[2 * i], a[2 * i + 1]];
+const PARK_RINGS = PD ? PD.parks.map(([, , pts]) => ring(pts)) : [];
 // a frame at (x, z) turned by the angle a: u along (cos a, sin a)
 const fr = (x, z, a) => [x, z, Math.cos(a), Math.sin(a)];
 const at = (f, u, v, y) => [f[0] + u * f[2] - v * f[3], y, f[1] + u * f[3] + v * f[2]];
@@ -100,7 +102,7 @@ function fountain(K, J, x, z, name, detail, park) {
   const G = K.plain; STATE.GBC = levelAt(x, z);
   if (inWater(x, z)) {   // in a pond: the jets only (the pond of Dubrovin park: a tall one with a ring of small ones)
     if (detail === 'nozzle') jet(J, x, z, 0, 2.2, 0.08);
-    else { jet(J, x, z, 0, 7.5, 0.22); for (let k = 0; k < 10; k++) { const t = k / 10 * Math.PI * 2; jet(J, x + Math.cos(t) * 2.4, z + Math.sin(t) * 2.4, 0, 1.6, 0.06); } NOTREE.push([x, z, 6]); }
+    else { jet(J, x, z, 0, 7.5, 0.38); jet(J, x, z, 0, 5.2, 0.6); for (let k = 0; k < 10; k++) { const t = k / 10 * Math.PI * 2; jet(J, x + Math.cos(t) * 2.4, z + Math.sin(t) * 2.4, 0, 1.6, 0.06); } NOTREE.push([x, z, 6]); }
   } else if (/lilij/i.test(name)) {   // the girl with the lily: a shallow round plate of a basin, a slender bronze girl on a pedestal
     basin(G, x, z, 5.2, 0.45); lmLathe(G, x, z, 0, [[0.9, 0], [0.8, 0.9], [0.55, 1.0]], 16, GRANITE);
     lmLathe(G, x, z, 1.0, [[0.16, 0], [0.22, 0.5], [0.2, 0.9], [0.27, 1.25], [0.18, 1.45], [0.07, 1.55], [0.1, 1.62], [0.11, 1.75], [0.08, 1.86], [0.01, 1.88]], 12, BRONZE);
@@ -247,10 +249,10 @@ function lmParks(K) {
   for (let k = 0; k < np; k++) { M.compose(new THREE.Vector3(pools[2 * k], 0.07, pools[2 * k + 1]), q, S); PARK_POOLS.setMatrixAt(k, M); }
   PARK_POOLS.visible = false; PARK_POOLS.renderOrder = 5; scene.add(PARK_POOLS);
   // the water of the jets: white and half clear, lit at night
-  const jm = lmStd({ vertexColors: true, transparent: true, opacity: 0.55, depthWrite: false, roughness: 0.15, metalness: 0, emissive: new THREE.Color(0.85, 0.95, 1), emissiveIntensity: 0 }, 'park-jets');
+  const jm = lmStd({ vertexColors: true, transparent: true, opacity: 0.7, depthWrite: false, roughness: 0.15, metalness: 0, emissive: new THREE.Color(0.85, 0.95, 1), emissiveIntensity: 0 }, 'park-jets');
   const mj = PARK_JETS.mesh(jm); if (mj) { mj.renderOrder = 6; scene.add(mj); PARK_JETS = jm; } else PARK_JETS = null;
 }
 // at night: the light under the lamps and the lit jets
 function parksNight(n) { if (PARK_POOLS) PARK_POOLS.visible = n > 0.5; if (PARK_JETS) PARK_JETS.emissiveIntensity = n * 0.9; }
 
-export { PARK_TREES, lmParks, parkNoTree, parksNight };
+export { PARK_RINGS, PARK_TREES, lmParks, parkNoTree, parksNight };

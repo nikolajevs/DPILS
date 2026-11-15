@@ -4,7 +4,7 @@ import { fortTreeY } from '../fortress/build.js';
 import { fortNoTree } from '../fortress/ground-height.js';
 import { SQ_SPRUCES } from '../landmarks/unity-square.js';
 import { SHOP_TREES } from '../landmarks/shops.js';
-import { PARK_TREES, parkNoTree } from '../landmarks/parks.js';
+import { PARK_RINGS, PARK_TREES, parkNoTree } from '../landmarks/parks.js';
 import { fuelNoTree } from '../landmarks/fuel.js';
 import { spwNoTree } from '../landmarks/speedway.js';
 import { lmClear } from '../landmarks/core.js';
@@ -246,6 +246,17 @@ function buildTrees() {
       if (!pip(x, z, a.rings[0])) continue; let hole = false; for (let k = 1; k < a.rings.length; k++) if (pip(x, z, a.rings[k])) { hole = true; break; } if (hole) continue;
       if (onRoad(x, z, 2) || inBuilding(x, z) || inBuilding(x + 2, z) || inBuilding(x - 2, z) || inBuilding(x, z + 2) || inBuilding(x, z - 2)) continue;
       const sc = SCALE[a.cls]; add(x, z, typ(h2), sc[0] + h1 * sc[1], h2);
+    }
+  });
+  // the parks as OpenStreetMap draws them, where the city data has no park: as dense as the parks above
+  const parkAreas = AREAS.filter(a => a.cls === 4), inPark = (x, z) => parkAreas.some(a => x >= a.bb[0] && x <= a.bb[2] && z >= a.bb[1] && z <= a.bb[3] && pip(x, z, a.rings[0]));
+  PARK_RINGS.forEach((r, n) => {
+    const [s, keep, typ] = DENS[4], sc = SCALE[4]; let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9; for (let k = 0; k < r.length; k += 2) { x0 = Math.min(x0, r[k]); x1 = Math.max(x1, r[k]); z0 = Math.min(z0, r[k + 1]); z1 = Math.max(z1, r[k + 1]); }
+    for (let gx = Math.ceil(x0 / s); gx * s < x1; gx++) for (let gz = Math.ceil(z0 / s); gz * s < z1; gz++) {
+      const h1 = hash(gx * 73856093 ^ gz * 19349663 ^ (n + 7000)), h2 = hash(gx * 83492791 ^ gz * 2971215073 ^ (n + 7000)); if (h1 > keep) continue;
+      const x = gx * s + (h2 - 0.5) * s * 0.9, z = gz * s + (hash(gx * 19 + gz * 7 + n + 7000) - 0.5) * s * 0.9;
+      if (!pip(x, z, r) || inPark(x, z) || onRoad(x, z, 2) || inBuilding(x, z) || inBuilding(x + 2, z) || inBuilding(x - 2, z) || inBuilding(x, z + 2) || inBuilding(x, z - 2)) continue;
+      add(x, z, typ(h2), sc[0] + h1 * sc[1], h2);
     }
   });
   const M = new THREE.Matrix4(), q = new THREE.Quaternion(), q0 = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), col = new THREE.Color(); let count = 0;
