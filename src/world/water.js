@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { WMASK, waterMask } from './data.js';
+import { WATER, WMASK, waterMask } from './data.js';
+import { pip } from '../core/util.js';
 import { sky } from './terrain.js';
 import { U, hook } from '../render/renderer.js';
 import { waterNormalTex } from '../render/textures.js';
@@ -68,13 +69,22 @@ void main() {
   #include <fog_fragment>
 }`;
 
-// metres from the nearest bank on an 8 m grid over the water mask (two-pass chamfer distance), as a texture
+/* metres from the nearest bank on an 8 m grid (two-pass chamfer distance), as a texture. A cell is water when its centre
+   lies in a water polygon: the 4 m mask also marks the cells on both sides of every shore as "by a shore", and counting
+   only its open water had moved the edge 4-6 m out into the water and left the ponds under about 40 m across without
+   any water at all */
 function shoreTexture() {
   if (!WMASK) waterMask();
   const W = WMASK, NX = W.NX >> 1, NZ = W.NZ >> 1, S = W.S * 2, n = NX * NZ, d = new Float32Array(n), INF = 1e6;
-  for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) { let wet = 0;
-    for (let b = 0; b < 2; b++) for (let a = 0; a < 2; a++) if (W.m[(2 * j + b) * W.NX + 2 * i + a] === 1) wet++;
-    d[j * NX + i] = wet >= 3 ? INF : 0; }
+  for (const a of WATER) {
+    const bb = a.bb, j0 = Math.max(0, Math.ceil((bb[1] - W.Z0) / S - 0.5)), j1 = Math.min(NZ - 1, Math.floor((bb[3] - W.Z0) / S - 0.5));
+    for (let j = j0; j <= j1; j++) {
+      const z = W.Z0 + (j + 0.5) * S, xs = [];
+      for (const r of a.rings) { const m = r.length >> 1; for (let i = 0, k = m - 1; i < m; k = i++) { const zi = r[2 * i + 1], zk = r[2 * k + 1]; if ((zi > z) !== (zk > z)) xs.push(r[2 * i] + (r[2 * k] - r[2 * i]) * (z - zi) / (zk - zi)); } }
+      xs.sort((p, q) => p - q);
+      for (let q = 0; q + 1 < xs.length; q += 2) for (let i = Math.max(0, Math.ceil((xs[q] - W.X0) / S - 0.5)), i1 = Math.min(NX - 1, Math.floor((xs[q + 1] - W.X0) / S - 0.5)); i <= i1; i++) d[j * NX + i] = INF;
+    }
+  }
   const D1 = S, D2 = S * Math.SQRT2;
   for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) { const k = j * NX + i; if (!d[k]) continue; let v = d[k];
     if (i > 0) v = Math.min(v, d[k - 1] + D1); if (j > 0) { v = Math.min(v, d[k - NX] + D1); if (i > 0) v = Math.min(v, d[k - NX - 1] + D2); if (i < NX - 1) v = Math.min(v, d[k - NX + 1] + D2); } d[k] = v; }
@@ -87,11 +97,27 @@ function shoreTexture() {
   const data = new Uint8Array(n); for (let k = 0; k < n; k++) data[k] = Math.round(Math.max(0, Math.min(64, d[k] - S / 2)) / 64 * 255);
   const t = new THREE.DataTexture(data, NX, NZ, THREE.RedFormat, THREE.UnsignedByteType);
   t.magFilter = t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; t.needsUpdate = true;
-  return { tex: t, a: new THREE.Vector4(W.X0, W.Z0, 1 / (NX * S), 1 / (NZ * S)) };
+  return { tex: t, a: new THREE.Vector4(W.X0, W.Z0, 1 / (NX * S), 1 / (NZ * S)), data, NX, NZ, S, X0: W.X0, Z0: W.Z0 };
 }
 
-/* the material of the water: for the river and the lakes (made once the water areas are known), or with shoreFix the
-   metres from the bank everywhere (the ditches of the fortress, which are not in the water mask) */
+/* is water area a wide enough for the field? Its water has to fade in fully (3.5 m from the bank) over at least half of
+   it, in a sample of at most about 400 cells of the grid. A pond too small or too narrow for the 8 m grid would show
+   little or no water: it is drawn as the ditches of the fortress are, 6 m from the bank everywhere */
+const SMALL_WATER = 6;
+function waterDeep(a) {
+  if (!SHORE) SHORE = shoreTexture();
+  const s = SHORE, bb = a.bb, lim = 3.5 / 64 * 255;
+  const i0 = Math.max(0, Math.ceil((bb[0] - s.X0) / s.S - 0.5)), i1 = Math.min(s.NX - 1, Math.floor((bb[2] - s.X0) / s.S - 0.5));
+  const j0 = Math.max(0, Math.ceil((bb[1] - s.Z0) / s.S - 0.5)), j1 = Math.min(s.NZ - 1, Math.floor((bb[3] - s.Z0) / s.S - 0.5));
+  const step = Math.max(1, Math.ceil(Math.sqrt((i1 - i0 + 1) * (j1 - j0 + 1) / 400))); let n = 0, full = 0;
+  for (let j = j0; j <= j1; j += step) for (let i = i0; i <= i1; i += step) {
+    const x = s.X0 + (i + 0.5) * s.S, z = s.Z0 + (j + 0.5) * s.S;
+    if (!pip(x, z, a.rings[0]) || a.rings.some((h, k) => k && pip(x, z, h))) continue;
+    n++; if (s.data[j * s.NX + i] >= lim) full++;
+  }
+  return n > 0 && full * 2 >= n;
+}
+
 let SHORE = null, NORMAL = null; const MATS = new Map();
 function waterMat(shoreFix = -1) {
   if (MATS.has(shoreFix)) return MATS.get(shoreFix);
@@ -106,4 +132,4 @@ function waterMat(shoreFix = -1) {
   return m;
 }
 
-export { waterMat };
+export { SMALL_WATER, waterDeep, waterMat };

@@ -129,9 +129,9 @@ function fenceMats() {
   FM = { chain: [m(chain, true), 2.0, 1.0], bars: [m(bars, true), 1.6, 1.0], boards: [m(boards, false), 1.6, 1.0], concrete: [m(conc, false), 2.0, 2.0] };
 }
 function fenceKind(t) { if (/wire|chain|mesh/.test(t)) return 'chain'; if (/wood/.test(t)) return 'boards'; if (/concrete/.test(t)) return 'concrete'; return 'bars'; }
-function fences(G) {
+function fences(G, SD) {
   if (!SD.fences.length) return;
-  fenceMats(); const geo = {}; for (const k in FM) geo[k] = { p: [], n: [], t: [], i: [] };
+  if (!FM) fenceMats(); const geo = {}; for (const k in FM) geo[k] = { p: [], n: [], t: [], i: [] };
   for (const [type, hTag, pts] of SD.fences) {
     const kind = fenceKind(type), [, hDef, uScale] = FM[kind], h = hTag || hDef, g = geo[kind]; let u = 0;
     for (let i = 0; i + 3 < pts.length; i += 2) {
@@ -162,8 +162,8 @@ function bandAlong(b, pts, closed, half, col, lines) {
   if (lines) for (const o of lines) strip(o - 0.025, o + 0.025, WHITE);
 }
 
-function schGrounds(G) {
-  if (!SD) return;
+/* The grounds of data in the shape of schools.js (pitches, tracks, areas, fences, points): also used for the parks. */
+function groundsOf(G, SD) {
   const surf = new GB(false), marks = new GB(false), surfMat = groundMaterial(detailTex(0), 1 / 3, 0.18, 'sch-pitch'), markMat = groundMaterial(detailTex(1), 1 / 2, 0.05, 'sch-marks');
   for (const [, sport, surface, hoops, athletics, ring] of SD.pitches) {
     const r = ring.slice(0, -2), o = obb(r); if (!o) continue;
@@ -215,7 +215,8 @@ function schGrounds(G) {
     else if (kind === 'bicycle_parking') for (let k = 0; k < 5; k++) { const ux = Math.cos(a), uz = Math.sin(a), px = x + ux * (k - 2) * 0.8, pz = z + uz * (k - 2) * 0.8; for (let q = 0; q < 6; q++) { const t0 = q / 6 * Math.PI, t1 = (q + 1) / 6 * Math.PI; lmBar(G, [px - uz * Math.cos(t0) * 0.4, 0.05 + Math.sin(t0) * 0.75, pz + ux * Math.cos(t0) * 0.4], [px - uz * Math.cos(t1) * 0.4, 0.05 + Math.sin(t1) * 0.75, pz + ux * Math.cos(t1) * 0.4], 0.05, STEEL); } }
     else if (kind === 'waste_basket') lmLathe(G, x, z, 0, [[0.22, 0], [0.24, 0.7], [0.25, 0.75], [0, 0.75]], 10, hb('#6b4a32'));
   }
-  fences(G);
+  fences(G, SD);
 }
+const schGrounds = G => { if (SD) groundsOf(G, SD); };
 
-export { schGrounds };
+export { bandAlong, bench, fillPoly, groundMesh, groundsOf, playground, schGrounds };

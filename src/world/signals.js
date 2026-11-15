@@ -180,7 +180,7 @@ function roundabouts(sorted, ZB, quad) {
     for (const E of ends) {
       const L = sorted[E.li], q = E.q, m = q.length >> 1, fx = q[q.length - 2], fz = q[q.length - 1];
       // a one-way pair: the two split from one node (their far ends meet) or run side by side under one name
-      const oneway = L.isDual || ends.some(F => F.li !== E.li && F.e !== E.e && Math.hypot(F.q[0] - q[0], F.q[1] - q[1]) < 60 &&
+      const oneway = L.isDual || L.one || ends.some(F => F.li !== E.li && F.e !== E.e && Math.hypot(F.q[0] - q[0], F.q[1] - q[1]) < 60 &&
         (Math.hypot(F.q[F.q.length - 2] - fx, F.q[F.q.length - 1] - fz) < 3 || (F.key === E.key && Math.hypot(F.q[0] - q[0], F.q[1] - q[1]) < 40 && F.ox * E.ox + F.oz * E.oz > 0.8)));
       if (oneway && E.e === 0) continue;   // a one-way carriageway leaving the ring
       // out along the street to 0.8 m past the outer edge of the ring

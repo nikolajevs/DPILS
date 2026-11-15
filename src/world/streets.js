@@ -98,11 +98,31 @@ function buildLines() {
   sorted.forEach((l, li) => { if ((l.cls <= 3 && l.name >= 0) || l.cls === 9) for (let i = 0; i < l.pts.length - 2; i += 2) (l.cls === 9 ? TRK : PAIR).add(l.pts[i], l.pts[i + 1], l.pts[i + 2], l.pts[i + 3], li, 0); });
   // the ends of the named streets: how many other lines of the same street end within 2.5 m of (x, z)
   const ENDS = []; sorted.forEach((l, li) => { if (l.cls <= 3 && l.name >= 0) { const p = l.pts, n = p.length; ENDS.push([p[0], p[1], li], [p[n - 2], p[n - 1], li]); } });
+  /* One-way ramps (OSM oneway, street-tags.js) that leave the end of a two-way road together, as at both ends of the
+     teardrop junction at Vienības tilts: OSM starts both from the road's end node, so their kerbs and edge lines crossed
+     in a V. Each is laid in its half of the road it splits from (a lane's half width aside at the node), turning back to
+     its own line over 30 m. */
+  const ONE = []; sorted.forEach((l, li) => { if (l.cls <= 3) { const t = streetTags(l.pts); if (t && t.oneway) { const p = l.pts, n = p.length; ONE.push([p[0], p[1], li, 0], [p[n - 2], p[n - 1], li, 1]); } } });
+  const dirFrom = (p, end) => { const n = p.length >> 1; let acc = 0, x = end ? p[2 * n - 2] : p[0], z = end ? p[2 * n - 1] : p[1]; const x0 = x, z0 = z;
+    for (let k = 1; k < n && acc < 15; k++) { const i = end ? n - 1 - k : k; acc += Math.hypot(p[2 * i] - x, p[2 * i + 1] - z); x = p[2 * i]; z = p[2 * i + 1]; }
+    const l = Math.hypot(x - x0, z - z0) || 1; return [(x - x0) / l, (z - z0) / l]; };
+  function splitApart(li, pts, dp, hw) {
+    const n = pts.length, m = dp.length >> 1;
+    for (const end of [0, 1]) {
+      const ex = end ? pts[n - 2] : pts[0], ez = end ? pts[n - 1] : pts[1], near = o => Math.abs(o[0] - ex) < 1 && Math.abs(o[1] - ez) < 1;
+      const sibs = ONE.filter(o => o[2] !== li && near(o)); if (sibs.length !== 1 || !ENDS.some(o => near(o) && !ONE.some(q => q[2] === o[2]))) continue;
+      const a = dirFrom(pts, end), b = dirFrom(sorted[sibs[0][2]].pts, sibs[0][3]); let bx = a[0] + b[0], bz = a[1] + b[1]; const bl = Math.hypot(bx, bz) || 1; bx /= bl; bz /= bl;
+      let px = -bz, pz = bx; if (px * a[0] + pz * a[1] < 0) { px = -px; pz = -pz; }
+      const idx = Array.from({ length: m }, (_, k) => end ? m - 1 - k : k), cum = [0]; for (let k = 1; k < m; k++) cum.push(cum[k - 1] + Math.hypot(dp[2 * idx[k]] - dp[2 * idx[k - 1]], dp[2 * idx[k] + 1] - dp[2 * idx[k - 1] + 1]));
+      for (let k = 0; k < m && cum[k] < 30; k++) { const t = cum[k] / 30, w = hw * (1 - t * t * (3 - 2 * t)), i = idx[k]; dp[2 * i] += px * w; dp[2 * i + 1] += pz * w; }
+    }
+  }
   const splitAt = (li, x, z) => { const me = sorted[li], seen = new Set();
     for (const [ex, ez, lj] of ENDS) if (lj !== li && Math.abs(ex - x) < 2.5 && Math.abs(ez - z) < 2.5 && sorted[lj].name === me.name && sorted[lj].cls === me.cls) seen.add(lj);
     return seen.size; };
   const partner = (li, x, z, tx, tz) => { const me = sorted[li]; let best = null;
     PAIR.near(x, z, 26, (id, d, px, pz) => { const s = PAIR.s, lj = s[id * 6 + 4], o = sorted[lj]; if (lj === li || o.cls !== me.cls || o.name !== me.name || d < 3) return;
+      if (o.oneTag === undefined) { const t = streetTags(o.pts); o.oneTag = !!t && !!t.oneway; } if (o.oneTag) return;   // a one-way ramp is no carriageway of a pair (Daugavas iela at the bridge)
       const dx = s[id * 6 + 2] - s[id * 6], dz = s[id * 6 + 3] - s[id * 6 + 1], l = Math.hypot(dx, dz) || 1; if (Math.abs((dx * tx + dz * tz) / l) < 0.9) return;
       if (Math.abs((px - x) * tx + (pz - z) * tz) > 0.3 * d) return;
       if (!best || d < best.d) best = { d, s: Math.sign((px - x) * -tz + (pz - z) * tx) || 1 }; });
@@ -203,7 +223,7 @@ function buildLines() {
     const me = sorted[li], s = ZR.s, e = ZEB.s; let out = ZNONE; zStamp++;
     const put = (k, g, rr, type) => { const dx = g[k + 2] - g[k], dz = g[k + 3] - g[k + 1]; if (out === ZNONE) out = []; out.push([g[k], g[k + 1], dx, dz, dx * dx + dz * dz || 1e-9, rr * rr, type]); };
     ZR.near(x, z, r + zMax, id => { if (zSeen[id] === zStamp) return; zSeen[id] = zStamp; const k = id * 6, lj = s[k + 4]; if (lj === li) return; const o = sorted[lj];
-      if (me.name >= 0 && o.name === me.name && o.cls === me.cls) return;   // the same street: its next piece, the other carriageway
+      if (me.name >= 0 && o.name === me.name && o.cls === me.cls && !(me.one && o.one)) return;   // the same street: its next piece, the other carriageway (one-way ramps crossing in a junction do cut each other)
       const dx = s[k + 2] - s[k], dz = s[k + 3] - s[k + 1], l = Math.hypot(dx, dz) || 1; if (Math.abs((dx * tx + dz * tz) / l) > 0.94) return;   // alongside
       put(k, s, s[k + 5] + 0.15, o.cls === 4 ? 1 : 0); });
     ZEB.near(x, z, r + 3, id => put(id * 6, e, e[id * 6 + 5], 2));
@@ -279,6 +299,10 @@ function buildLines() {
     const l = sorted[li], { cls, pts } = l; const n = pts.length >> 1;
     if (cls === 12 || cls === 13 || cls === 14) {
       if (fortSkipLine(cls, pts)) continue;   // the fortress draws its own walls and earthworks
+      /* an embankment is in the terrain model already (bare earth by lidar). The ridge, 3 m high and 10 m wide, came from
+         before the terrain: it stood a second time on the top edge where OSM draws the line, so on the dam of Daugavas iela
+         two of them walled in the street and covered its carriageway */
+      if (cls === 14 && TERR.on) continue;
       const h = cls === 13 ? 5.5 : cls === 12 ? 2 : 3, hw = cls === 13 ? 1.1 : cls === 12 ? 0.2 : 5, col = hb(cls === 13 ? '#8a6e5c' : cls === 12 ? '#a39d92' : '#6b8a4d');
       for (let i = 0; i < n - 1; i++) {
         const x1 = pts[2 * i], z1 = pts[2 * i + 1], x2 = pts[2 * i + 2], z2 = pts[2 * i + 3]; const L = Math.hypot(x2 - x1, z2 - z1); if (L < 0.2) continue;
@@ -320,8 +344,8 @@ function buildLines() {
     if (cls === 10 || cls === 11) for (let i = 0; i < n - 1; i++) STREAM.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, 0);
     l.gbc = STATE.GBC;
     l.isDual = false;
-    const tags = cls <= 3 ? streetTags(pts) : null, lanes4 = !!tags && tags.lanes >= 4, rural = !!tags && !!tags.rural;
-    const dual = cls <= 3 && l.name >= 0 && !jn ? dualOf(li, pts, dp, tags && tags.lanes) : null; l.isDual = !!dual;
+    const tags = cls <= 3 ? streetTags(pts) : null, lanes4 = !!tags && tags.lanes >= 4, rural = !!tags && !!tags.rural, one = !!tags && !!tags.oneway; l.one = one;
+    const dual = cls <= 3 && l.name >= 0 && !jn && !one ? dualOf(li, pts, dp, tags && tags.lanes) : null; l.isDual = !!dual;
     // four lanes: across the overpass from guard rail to guard rail, elsewhere 13 m where OSM says so
     const W = dual ? null : onOv && cls === 0 ? ovWidths(dp, lanes4 ? 6.5 : hw) : lanes4 ? new Array(dp.length >> 1).fill(6.5) : null;
     let hwC = hw;   // the half width that traffic, the tram tracks and the lamps go by
@@ -356,6 +380,14 @@ function buildLines() {
         mark(li, dp, H.map(h => sg * h / 2), 0.07, WHITE, 'c', [3, 9], four); }                           // between the lanes
       mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9], four.map(f => !f));                                         // past the overpass, two lanes again
       hwC = H.slice().sort((a, b) => a - b)[H.length >> 1];
+    } else if (one) {   // a one-way ramp (OSM oneway): its lanes of 3.5 m with margins, kerbs and edge lines, no sidewalk
+      const h1 = tags.hw || Math.max(2.6, tags.lanes * 1.75 + 0.85);
+      splitApart(li, pts, dp, h1);
+      ribbon(groups[def[2]], dp, 0, h1, lineCol[cls]);
+      for (const sg of [1, -1]) { mark(li, dp, sg * (h1 + 0.08), 0.12, CURB, 'k'); mark(li, dp, sg * (h1 - 0.35), 0.07, WHITE, 'e'); }
+      if (tags.lanes >= 2) mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9]);
+      if (tags.hatch) { const m = dp.length >> 1; HATCH.push({ li, p: dp, A: new Array(m).fill(h1 - 2.25), B: new Array(m).fill(h1 - 0.35), s: tags.hatch, gbc: STATE.GBC }); }   // the hatched margin
+      hwC = h1;
     } else {
       if (rural) { ribbon(groups[2], dp, hw + 0.6, 0.6, GRAVEL); ribbon(groups[2], dp, -hw - 0.6, 0.6, GRAVEL); }   // a country road: gravel shoulders, no kerb or sidewalk
       else if (cls <= 3) { ribbon(walk, dp, hw + 1.4, 1.3, PAVE); ribbon(walk, dp, -hw - 1.4, 1.3, PAVE); mark(li, dp, hw + 0.08, 0.12, CURB, 'k'); mark(li, dp, -hw - 0.08, 0.12, CURB, 'k'); }

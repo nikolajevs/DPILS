@@ -4,6 +4,7 @@ import { lmSchools } from './schools.js';
 import { lmChurchHill } from './church-hill.js';
 import { lmShops } from './shops.js';
 import { lmHospital } from './hospital.js';
+import { lmParks, parksNight } from './parks.js';
 import { TX, rigaNow } from '../transit/transit.js';
 import { lmGrounds, lmSquare } from './unity-square.js';
 import { lmAirBridge } from './air-bridge.js';
@@ -23,6 +24,7 @@ import { lmUnityHouse } from './unity-house.js';
 import { lmSigns, lmTiles, lmWallTex } from './tiles.js';
 import { LMB } from './core.js';
 import { lmTramWires, lmVienibas } from '../world/tram-wires.js';
+import { lmUnderpass } from '../world/underpass.js';
 import { lmOverpass } from '../world/overpass.js';
 import { allMats, std } from '../render/materials.js';
 import { mkCanvas, toTex } from '../render/textures.js';
@@ -39,6 +41,7 @@ function lmNight(n) {
   if (LMM.schDet) LMM.schDet.emissiveIntensity = n * 1.7;   // schools: the lit windows
   if (LMM.chDet) LMM.chDet.emissiveIntensity = n * 1.7;   // Church Hill: the lit windows
   if (LMM.shDet) LMM.shDet.emissiveIntensity = n * 1.05;   // supermarkets: shop windows and boards
+  parksNight(n);   // the parks: the light under the lamps, the lit fountains
   if (LMM.fuLamp) { LMM.fuLamp.emissiveIntensity = n * 2.6; LMM.fuTxt.emissiveIntensity = n * 1.6; LMM.fuFascia.userData.glow.value = 0.28 + n * 0.45; } if (FUEL_POOLS) FUEL_POOLS.visible = n > 0.5;   // fuel stations
 }
 function lmTick() {
@@ -77,7 +80,7 @@ function buildLandmarks() {
   const K = { ash: new LMB(), ren: new LMB(), det: new LMB(), txt: new LMB(), clk: new LMB(), plain: new GB(false), stone: new GB(false), globe: new GB(false) };
   K.walls = [K.ash, K.ren, new LMB(), new LMB(), new LMB(), new LMB(), new LMB(), new LMB()];
   lmUnityHouse(K); lmLatgola(K); lmSquare(K); lmGrounds(K); lmDUMain(K); lmDUParades(K); lmDULab(K); lmRenesanse(K); lmRigas(K); lmVesma(K); lmTVTower(K); lmStation(K); lmSpeedway(K); lmKP(K); lmSC(K); lmFuel(K, litPatch); lmOverpass(K); lmTramWires(K); lmAirBridge(K); lmJunction(K); lmSchools(K, litPatch); lmChurchHill(K, litPatch); lmShops(K, litPatch); STATE.GBC = TERR.on ? vbComp : null; lmVienibas(K); STATE.GBC = null;
-  lmHospital(K);
+  lmHospital(K); lmParks(K); lmUnderpass(K);
   [LMM.ash, LMM.ren, LMM.duw, LMM.brick, LMM.tile, LMM.panel, LMM.buff, LMM.sil].forEach((m, k) => K.walls[k].mesh(m)); K.det.mesh(LMM.det); K.txt.mesh(LMM.txt, false); K.clk.mesh(LMM.clk, false);
   for (const [b, m] of [[K.plain, LMM.plain], [K.stone, LMM.stone]]) { const pm = b.mesh(m); if (pm) { pm.castShadow = pm.receiveShadow = true; scene.add(pm); } }
   const gm = K.globe.mesh(LMM.globe); if (gm) { gm.receiveShadow = true; scene.add(gm); }
