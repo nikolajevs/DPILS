@@ -2,10 +2,10 @@ import { defineConfig } from 'vite';
 import { cpSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-// The city data stay plain scripts that set window.CITY, window.TRANSIT, window.FORTRESS, window.TERRAIN and window.SCHOOLS (written
+// The city data stay plain scripts that set window.CITY, window.TRANSIT, window.FORTRESS, window.TERRAIN, window.SCHOOLS and window.PARKS (written
 // by the tools in tools/; src/boot.js downloads them with a progress bar); they are copied next to the bundle as they
 // are, with the old address of the page and the textures the page loads at run time.
-const STATIC = ['citydata.js', 'transit.js', 'fortress.js', 'terrain.js', 'schools.js', 'daugavpils.html', 'textures/water_normal.webp'];
+const STATIC = ['citydata.js', 'transit.js', 'fortress.js', 'terrain.js', 'schools.js', 'parks.js', 'daugavpils.html', 'textures/water_normal.webp'];
 
 export default defineConfig({
   base: './',

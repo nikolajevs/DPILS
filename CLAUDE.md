@@ -1,6 +1,6 @@
 # Правила для агентов Claude
 
-Даугавпилс в 3D: страница на three.js, модули в `src/`, данные в `citydata.js`, `transit.js`, `fortress.js`, `terrain.js`, `schools.js`. Устройство проекта описано в [README.md](README.md).
+Даугавпилс в 3D: страница на three.js, модули в `src/`, данные в `citydata.js`, `transit.js`, `fortress.js`, `terrain.js`, `schools.js`, `parks.js`. Устройство проекта описано в [README.md](README.md).
 
 ## Задача доводится до сайта без вопросов
 
