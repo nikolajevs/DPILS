@@ -89,12 +89,65 @@ function terrainRails(T, q) {
   }
   for (let c = 0; c < q.length; c++) if (dmin[c] < R) { const w = dmin[c] < 10 ? 1 : 1 - fss((dmin[c] - 10) / (R - 10)); q[c] = Math.round(q[c] * (1 - w) + tgt[c] * 10 * w); }
 }
+/* Streets on dams. Daugavas iela runs on the flood dam along the Daugava, between the two top edges OSM draws as
+   embankments. On the 20 m grid its nodes fall now on the crest, now on a slope: the street rose and fell by 2-3 m every
+   few tens of metres and leaned by up to 2 m across. A street with an embankment line along it within 15 m on both
+   sides (40 m and more from any bridge: the Vienības bridge has ramps of its own) gets the crest as its profile — the highest ground within 6 m across, the
+   median over ±60 m, then the mean over ±60 m, narrowing towards the ends of the stretch, no steeper than 3 % — and the
+   grid takes it within 14 m of the axis, blending back to the terrain by 34 m: a level crest with the slopes below. */
+function terrainDams(T, q) {
+  const nx = T.nx, nz = T.nz, s = T.step, hm = (x, z) => { const gx = Math.max(0, Math.min(nx - 1.001, (x - T.x0) / s)), gz = Math.max(0, Math.min(nz - 1.001, (z - T.z0) / s)), i = Math.floor(gx), j = Math.floor(gz), fx = gx - i, fz = gz - j, k = j * nx + i; return ((q[k] * (1 - fx) + q[k + 1] * fx) * (1 - fz) + (q[k + nx] * (1 - fx) + q[k + nx + 1] * fx) * fz) * 0.1; };
+  // the embankment lines and the bridges, as segments in 50 m cells
+  const cells = new Map(), key = (i, j) => i * 100003 + j, put = (seg, r) => { for (let i = Math.floor((Math.min(seg[0], seg[2]) - r) / 50); i <= Math.floor((Math.max(seg[0], seg[2]) + r) / 50); i++) for (let j = Math.floor((Math.min(seg[1], seg[3]) - r) / 50); j <= Math.floor((Math.max(seg[1], seg[3]) + r) / 50); j++) { const k = key(i, j); if (!cells.has(k)) cells.set(k, []); cells.get(k).push(seg); } };
+  for (const l of C.l) { const emb = l[0] === 14; if (!emb && !l[3]) continue; const p = dec(l[2]); for (let i = 0; i + 3 < p.length; i += 2) put([p[i], p[i + 1], p[i + 2], p[i + 3], emb], emb ? 16 : 40); }
+  const near = (x, z, tx, tz) => {   // [an embankment along the street on the left, on the right, a bridge within 40 m]
+    let L = false, R = false, B = false;
+    for (const g of cells.get(key(Math.floor(x / 50), Math.floor(z / 50))) || []) {
+      const dx = g[2] - g[0], dz = g[3] - g[1], l2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((x - g[0]) * dx + (z - g[1]) * dz) / l2)), ex = g[0] + dx * t - x, ez = g[1] + dz * t - z, d = Math.hypot(ex, ez);
+      if (!g[4]) { if (d < 40) B = true; continue; }
+      if (d > 15 || Math.abs(dx * tx + dz * tz) < 0.8 * Math.sqrt(l2)) continue;
+      if (ex * tz - ez * tx > 0) L = true; else R = true;
+    }
+    return [L, R, B];
+  };
+  const dmin = new Float32Array(nx * nz).fill(1e9), tgt = new Float32Array(nx * nz), R0 = 14, R = 34, ST = 10;
+  for (const l of C.l) {
+    if (l[0] > 5 || l[3]) continue;
+    const p = dec(l[2]), n = p.length >> 1; let Ltot = 0; const cum = [0]; for (let i = 1; i < n; i++) cum.push(Ltot += Math.hypot(p[2 * i] - p[2 * i - 2], p[2 * i + 1] - p[2 * i - 1])); if (Ltot < 60) continue;
+    const M = Math.ceil(Ltot / ST) + 1, X = new Float32Array(M), Z = new Float32Array(M), TX = new Float32Array(M), TZ = new Float32Array(M), on = new Uint8Array(M);
+    let sg = 0; for (let k = 0; k < M; k++) { const d = Math.min(Ltot, k * Ltot / (M - 1)); while (sg < n - 2 && cum[sg + 1] < d) sg++; const sl = Math.max(1e-6, cum[sg + 1] - cum[sg]), t = (d - cum[sg]) / sl;
+      X[k] = p[2 * sg] + (p[2 * sg + 2] - p[2 * sg]) * t; Z[k] = p[2 * sg + 1] + (p[2 * sg + 3] - p[2 * sg + 1]) * t; TX[k] = (p[2 * sg + 2] - p[2 * sg]) / sl; TZ[k] = (p[2 * sg + 3] - p[2 * sg + 1]) / sl;
+      const [a, b, br] = near(X[k], Z[k], TX[k], TZ[k]); on[k] = a && b && !br ? 1 : 0; }
+    for (let k = 1; k < M - 1; k++) if (!on[k]) { let a = k, b = k; while (a > 0 && !on[a - 1] && k - a < 3) a--; while (b < M - 1 && !on[b + 1] && b - k < 3) b++; if (a > 0 && b < M - 1 && on[a - 1] && on[b + 1] && b - a < 3) for (let j = a; j <= b; j++) on[j] = 2; }   // close gaps up to 30 m
+    for (let k0 = 0; k0 < M;) {
+      if (!on[k0]) { k0++; continue; } let k1 = k0; while (k1 + 1 < M && on[k1 + 1]) k1++;
+      const m = k1 - k0 + 1; if (m >= 7) {
+        const raw = new Float32Array(m), med = new Float32Array(m), pr = new Float32Array(m);
+        for (let k = 0; k < m; k++) { const x = X[k0 + k], z = Z[k0 + k], ux = -TZ[k0 + k], uz = TX[k0 + k]; let h = -1e9; for (let o = -6; o <= 6; o += 2) h = Math.max(h, hm(x + ux * o, z + uz * o)); raw[k] = h; }
+        for (let k = 0; k < m; k++) { const w = Math.min(6, k, m - 1 - k), a = Array.from(raw.subarray(k - w, k + w + 1)).sort((u, v) => u - v); med[k] = a[w]; }
+        for (let k = 0; k < m; k++) { const w = Math.min(6, k, m - 1 - k); let t = 0; for (let j = -w; j <= w; j++) t += med[k + j]; pr[k] = t / (2 * w + 1); }
+        const g = 0.03 * ST; for (let k = 1; k < m; k++) pr[k] = Math.max(pr[k - 1] - g, Math.min(pr[k - 1] + g, pr[k])); for (let k = m - 2; k >= 0; k--) pr[k] = Math.max(pr[k + 1] - g, Math.min(pr[k + 1] + g, pr[k]));
+        for (let k = 0; k < m - 1; k++) {
+          const x1 = X[k0 + k], z1 = Z[k0 + k], dx = X[k0 + k + 1] - x1, dz = Z[k0 + k + 1] - z1, l2 = dx * dx + dz * dz || 1;
+          const i0 = Math.max(0, Math.floor((Math.min(x1, x1 + dx) - R - T.x0) / s)), i1 = Math.min(nx - 1, Math.ceil((Math.max(x1, x1 + dx) + R - T.x0) / s)), j0 = Math.max(0, Math.floor((Math.min(z1, z1 + dz) - R - T.z0) / s)), j1 = Math.min(nz - 1, Math.ceil((Math.max(z1, z1 + dz) + R - T.z0) / s));
+          for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+            const x = T.x0 + i * s, z = T.z0 + j * s, t = Math.max(0, Math.min(1, ((x - x1) * dx + (z - z1) * dz) / l2)), d = Math.hypot(x - x1 - dx * t, z - z1 - dz * t), c = j * nx + i;
+            if (d < R && d < dmin[c]) { dmin[c] = d; tgt[c] = pr[k] + (pr[k + 1] - pr[k]) * t; }
+          }
+        }
+      }
+      k0 = k1 + 1;
+    }
+  }
+  for (let c = 0; c < q.length; c++) if (dmin[c] < R) { const w = dmin[c] < R0 ? 1 : 1 - fss((dmin[c] - R0) / (R - R0)); q[c] = Math.round(q[c] * (1 - w) + tgt[c] * 10 * w); }
+}
 function terrainInit() {
   const T = window.TERRAIN; if (!T || !T.h) return;
   const bin = atob(T.h), n = bin.length >> 1, q = new Int16Array(n);
   for (let k = 0; k < n; k++) q[k] = (bin.charCodeAt(2 * k) | bin.charCodeAt(2 * k + 1) << 8) << 16 >> 16;
   Object.assign(TERR, { x0: T.x0, z0: T.z0, s: T.step, nx: T.nx, nz: T.nz, q });
   terrainRails(T, q);
+  terrainDams(T, q);   // streets on dams: a level crest
   // the fortress keeps a level site: inside it the height of the ground round it, blending out over 200 m
   if (FORT.ok) {
     const at = k => Math.hypot(T.x0 + (k % T.nx) * T.step - FORT.cx, T.z0 + Math.floor(k / T.nx) * T.step - FORT.cz);

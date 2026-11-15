@@ -273,6 +273,10 @@ function buildLines() {
     const l = sorted[li], { cls, pts } = l; const n = pts.length >> 1;
     if (cls === 12 || cls === 13 || cls === 14) {
       if (fortSkipLine(cls, pts)) continue;   // the fortress draws its own walls and earthworks
+      /* an embankment is in the terrain model already (bare earth by lidar). The ridge, 3 m high and 10 m wide, came from
+         before the terrain: it stood a second time on the top edge where OSM draws the line, so on the dam of Daugavas iela
+         two of them walled in the street and covered its carriageway */
+      if (cls === 14 && TERR.on) continue;
       const h = cls === 13 ? 5.5 : cls === 12 ? 2 : 3, hw = cls === 13 ? 1.1 : cls === 12 ? 0.2 : 5, col = hb(cls === 13 ? '#8a6e5c' : cls === 12 ? '#a39d92' : '#6b8a4d');
       for (let i = 0; i < n - 1; i++) {
         const x1 = pts[2 * i], z1 = pts[2 * i + 1], x2 = pts[2 * i + 2], z2 = pts[2 * i + 3]; const L = Math.hypot(x2 - x1, z2 - z1); if (L < 0.2) continue;
