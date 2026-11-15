@@ -1,6 +1,7 @@
 import { FORT_FOUNTAIN } from './monuments.js';
 import { fortBldHulls, fortNearBld } from './arsenals.js';
 import { FH, FORT, FT, fortGates, fortIn, fss } from './index.js';
+import { konPoint, konZone } from './konstantin.js';
 import { lmL } from '../landmarks/core.js';
 import { BLD, LINES } from '../world/data.js';
 import { SegGrid } from '../core/geometry.js';
@@ -88,6 +89,7 @@ function fortPoint(x, z) {
   if (rd < 2.5) { h = 0; w = 0; o.b |= 32; o.b &= ~(2 | 4 | 16); }
   else if (rd < 10.5 && !(o.b & 8)) { const lim = (rd - 2.5) * 0.9; h = Math.max(-lim, Math.min(lim, h)); w = Math.max(-lim, Math.min(lim, w)); }
   if (FS.bridge && pip(x, z, FS.bridge)) w = FH.floor;
+  [h, w] = konPoint(x, z, o, h, w);   // the walls of the Konstantin gate and the earth they hold
   o.h = h; o.w = w; return o;
 }
 const fortWingTop = t => 1.0 + 6.6 * Math.sqrt(Math.max(0, 1 - t * t));
@@ -99,6 +101,6 @@ function fortGridH(x, z) {
   const fx = fx0 - i, fz = fz0 - j, k = j * G.N + i, H = G.H, a = H[k], b = H[k + 1], d = H[k + G.N], e = H[k + G.N + 1];
   return fx + fz <= 1 ? a + fx * (b - a) + fz * (d - a) : e + (1 - fx) * (d - e) + (1 - fz) * (b - e);
 }
-function fortNoTree(x, z) { if (!fortIn(x, z, 30) || !FS.SEG) return false; if (fortNearBld(x, z, 2) || Math.hypot(x - FORT_FOUNTAIN[0], z - FORT_FOUNTAIN[1]) < 9) return true; const p = fortPoint(x, z); return (p.b & (8 | 16 | 32)) !== 0 || Math.abs(p.h - p.w) > 0.5; }
+function fortNoTree(x, z) { if (!fortIn(x, z, 30) || !FS.SEG) return false; if (konZone(x, z) || fortNearBld(x, z, 2) || Math.hypot(x - FORT_FOUNTAIN[0], z - FORT_FOUNTAIN[1]) < 9) return true; const p = fortPoint(x, z); return (p.b & (8 | 16 | 32)) !== 0 || Math.abs(p.h - p.w) > 0.5; }
 
 export { FS, fortGridH, fortGround, fortNoTree, fortPoint, fortPrep, fortWingTop, inBB };
