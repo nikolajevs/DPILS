@@ -59,6 +59,8 @@ const SHOPS = [
   { id: 'n1707161675', b: 'rimi', n: 'Rimi', a: 'Cietokšņa iela 60, Ditton nams', k: 'ditton', p: [-1335.5, 1006.1], e: [-1321.6, 1047.4] },
   { id: 'n1707171536', b: 'rimi', n: 'mini Rimi', a: 'Viestura iela 10, autoosta', k: 'in', p: [-936.3, 1262.4], pk: [-928.9, 1285.5] },
   { id: 'n8365754782', b: 'rimi', n: 'Rimi', a: 'Smilšu iela 92B', k: 'box', p: [884.7, -488.5], e: [861.9, -482.1] },
+  // OSM shop point plus its separately mapped main door at the east end of the former PROMO trade centre.
+  { id: 'n9987023862', b: 'jysk', n: 'JYSK', a: 'Stadiona iela 3G', k: 'in', model: 'jyskCentre', p: [-1401.46, 530.05], e: [-1388.02, 550.94] },
 ];
 // the walls of each chain: height to the top of the parapet, panels (wall texture 5) or render (1), bands [y from the top, height, colour]
 const STY = {
@@ -80,7 +82,7 @@ const signOf = S => S.b === 'rimi' ? (/Hyper/.test(S.n) ? 'rimiHyper' : /Super/.
 const MALL = { ditton: [[-1210, 915], [-1290, 960], [-1400, 980], [-1268, 993.5]] };
 
 // ---- claiming the buildings while buildBuildings runs
-const SH = { own: new Map(), host: new Map(), mall: { ditton: [] } };
+const SH = { own: new Map(), host: new Map(), custom: new Map(), mall: { ditton: [] } };
 const H_OF = S => STY[S.style || S.b].h;
 function inner(r) {   // a point inside a ring (its centre, else the middle of the widest run through it)
   const n = r.length >> 1; let cx = 0, cz = 0; for (let i = 0; i < r.length; i += 2) { cx += r[i]; cz += r[i + 1]; } cx /= n; cz /= n;
@@ -104,7 +106,7 @@ function shopClaim(id, rec, rings, outer, bb) {
   for (const S of SHOPS) {
     if ((S.k !== 'box' && S.k !== 'in') || !near(bb, S.p) || !pip(S.p[0], S.p[1], outer)) continue;
     const part = { id, rings, outer, bb, h: rec[1] / 10, floors: Math.max(1, rec[5]), gbc: STATE.GBC };
-    if (S.k === 'in') { SH.host.set(S.id, part); return false; }
+    if (S.k === 'in') { SH.host.set(S.id, part); if (S.model === 'jyskCentre') { SH.custom.set(S.id, part); return true; } return false; }
     part.H = Math.max(part.h, H_OF(S)); SH.own.set(S.id, part);
     const T = tileOf((bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2), seed = Math.floor(rnd(id, 9) * 255);
     if (!(STY[S.style || S.b].pitched && hipRoof(T, outer, rings, part.H, hb(STY[S.b].pitched), seed))) flatRoof(T.m.roof, rings, part.H - 0.45, pick(ROOFPAL[5], id, 2), 5, seed);
@@ -195,6 +197,9 @@ function shAtlas() {
     ['dittonPassaza', 5.2, 1.0, () => { R(0, 0, 5.2, 1.0, '#eceeed'); text('PASĀŽA', 0.12, 0.05, 4.96, 0.9, '#303a40', { wt: 900, glow: '#303a40' }); }],
     ['dittonHanza', 4.8, 1.0, () => { R(0, 0, 4.8, 1.0, '#eceeed'); text('HANZA', 0.12, 0.05, 4.56, 0.9, '#303a40', { wt: 900, glow: '#303a40' }); }],
     ['dittonMarket', 6.4, 1.0, () => { R(0, 0, 6.4, 1.0, '#eceeed'); text('ZAĻAIS TIRGUS', 0.12, 0.05, 6.16, 0.9, '#303a40', { wt: 900, glow: '#303a40' }); }],
+    ['jysk', 4.8, 1.6, () => { R(0, 0, 4.8, 1.6, '#174b91', 'gloss', '#3475cf'); text('JYSK', 0.18, 0.1, 4.44, 1.38, '#ffffff', { wt: 900, glow: '#ffffff' }); }],
+    ['jyskSquare', 2.3, 2.3, () => { R(0, 0, 2.3, 2.3, '#174b91', 'gloss', '#3475cf'); text('JYSK', 0.12, 0.38, 2.06, 1.48, '#ffffff', { wt: 900, glow: '#ffffff' }); }],
+    ['promo', 6.2, 2.1, () => { R(0, 0, 6.2, 2.1, '#f1f0eb'); text('PROMO', 0.12, 0.05, 5.96, 1.28, '#e3232c', { wt: 900, glow: '#ff4548' }); text('Cash&Carry', 0.2, 1.35, 5.8, 0.62, '#174b91', { wt: 800, glow: '#3475cf' }); }],
     ['solo', 5.0, 4.4, () => { R(0, 0, 5, 4.4, '#e7dfc6'); for (const [c, s] of [[g, '#1f4fa3'], [e, '#3070e0']]) { c.fillStyle = s; c.beginPath(); c.roundRect(X + 1.45 * PX, Y + 0.2 * PX, 2.1 * PX, 1.7 * PX, 0.7 * PX); c.fill(); }
       g.fillStyle = '#e7dfc6'; g.beginPath(); g.roundRect(X + 1.85 * PX, Y + 0.55 * PX, 1.3 * PX, 1.0 * PX, 0.4 * PX); g.fill();
       for (const [c, s] of [[g, '#3a9a3a'], [e, '#50c050']]) { c.fillStyle = s; c.beginPath(); c.ellipse(X + 2.9 * PX, Y + 0.95 * PX, 1.0 * PX, 0.22 * PX, -0.25, 0, 7); c.fill(); }
@@ -341,6 +346,77 @@ function tenant(K, S, host) {
   const name = signOf(S), t = CT[name], bh = Math.min(t.h, floors >= 3 ? 0.95 : 1.3), y = floors >= 3 ? top - 0.25 : Math.max(top - 0.2, h - 0.5 - bh);
   lmBoxW(K.plain, Fw, sc - gw / 2 - 0.15, sc + gw / 2 + 0.15, top - 0.35, top - 0.25, -0.9, 0, hb('#cfd2d4'));
   board(K, Fw, name, sc, y, bh, 0.12, S.b === 'beta' ? '#c9252c' : null);
+}
+
+/* Stadiona 3G is a one-storey corrugated-metal retail hall shared by JYSK and PROMO. The mapped JYSK door is on
+   the Stadiona-side end wall; PROMO's sliding door is on the long south frontage. Replace the generic two-storey
+   cadastre facade with the photographed cladding, the two real door positions, the JYSK corner sign and PROMO's
+   raised sign frame from the 2022 facade drawings. */
+function jyskCentre(K, S, part) {
+  if (!part) return;
+  const r = part.outer, n = r.length >> 1, H = 9.6, G = K.plain, J = { i: frontEdge(r, S) };
+  J.Fw = edgeF(r, J.i); J.s = Math.max(3, Math.min(J.Fw.L - 3, along(r, J.i, S.e)));
+  const P = { p: [-1442.4, 530.7], e: [-1417.17, 555.08] }, M = { i: frontEdge(r, P) };
+  M.Fw = edgeF(r, M.i); M.s = Math.max(4, Math.min(M.Fw.L - 4, along(r, M.i, P.e)));
+  let glassI = -1, glassL = 0;
+  for (let i = 0; i < n; i++) { const L = edgeF(r, i).L; if (i !== J.i && i !== M.i && L > glassL) { glassI = i; glassL = L; } }
+  const openings = new Map(), door = (i, s, width) => {
+    let list = openings.get(i); if (!list) openings.set(i, list = []);
+    const s0 = Math.max(0.3, s - width / 2), s1 = Math.min(edgeF(r, i).L - 0.3, s + width / 2);
+    list.push({ s0, s1, y0: 0.08, y1: 3.2, d: 0.16, tile: CT.door, det: KS.det, lit: 1 });
+    list.push({ s0, s1, y0: 3.2, y1: 3.9, d: 0.16, tile: CT.glass, det: KS.det, lit: 1 });
+  };
+  door(J.i, J.s, 4.4); door(M.i, M.s, 4.8);
+  if (glassI >= 0 && glassL > 30) {
+    const Fw = edgeF(r, glassI), w = Math.min(17, Fw.L - 8), s = Fw.L * 0.56, list = openings.get(glassI) || [];
+    list.push({ s0: s - w / 2, s1: s + w / 2, y0: 7.2, y1: 8.55, d: 0.12, tile: CT.glass, det: KS.det, lit: 1 }); openings.set(glassI, list);
+  }
+  STATE.GBC = part.gbc;
+  const wall = { tex: 5, col: hb('#b9bec1'), plinth: 0.42, pcol: hb('#646a6d') }, rib = hb('#d1d4d5'), rib2 = hb('#9da4a7'), seam = hb('#a2a8ab');
+  for (let i = 0; i < n; i++) {
+    const Fw = edgeF(r, i), L = Fw.L, ops = openings.get(i) || [];
+    lmWall(K, Fw.P, [Fw.P[0] + Fw.tx * L, Fw.P[1] + Fw.tz * L], 0, H, ops, wall);
+    // Fine horizontal ribs and regular sheet joints match the silver metal cladding in the street photographs.
+    for (let y = 0.42; y < H - 0.12; y += 0.24) {
+      const spans = [[0, L]];
+      for (const o of ops) if (y < o.y1 && y + 0.022 > o.y0) {
+        for (let k = spans.length - 1; k >= 0; k--) { const [a, b] = spans[k]; if (o.s1 <= a || o.s0 >= b) continue; spans.splice(k, 1, ...(o.s0 > a ? [[a, o.s0]] : []), ...(o.s1 < b ? [[o.s1, b]] : [])); }
+      }
+      for (const [a, b] of spans) if (b - a > 0.08) lmBoxW(G, Fw, a, b, y, y + 0.022, -0.065, -0.035, Math.round(y * 10) % 2 ? rib : rib2, false);
+    }
+    for (let s = 3.2; s < L - 1; s += 4.2) if (!ops.some(o => s > o.s0 - 0.12 && s < o.s1 + 0.12)) lmBoxW(G, Fw, s - 0.022, s + 0.022, 0.48, H - 0.18, -0.07, -0.035, seam, false);
+  }
+  const canopy = (Fw, s, width, depth, y, color = '#aeb4b7') => {
+    lmBoxW(G, Fw, s - width / 2, s + width / 2, y, y + 0.24, -depth, -0.12, hb(color));
+    lmBoxW(G, Fw, s - width / 2, s + width / 2, y - 0.12, y, -depth, -depth + 0.12, hb('#72797d'));
+  };
+  // JYSK's entrance, small canopy, sign and open cross-braced corner frame.
+  canopy(J.Fw, J.s, 5.5, 1.65, 3.55, '#c3c7c9');
+  board(K, J.Fw, 'jysk', J.s, 5.95, 1.45, 0.14, null);
+  const towerS = Math.max(1.7, Math.min(J.Fw.L - 1.7, J.s - 4.2)), y0 = H - 0.1, y1 = H + 3.55, tw = 2.25, td = -0.35, steel = hb('#879095');
+  for (const q of [-tw / 2, tw / 2]) {
+    lmBar(G, J.Fw.at(towerS + q, y0, td), J.Fw.at(towerS + q, y1, td), 0.13, steel);
+    lmBar(G, J.Fw.at(towerS + q, y0, td), J.Fw.at(towerS - q, y1, td), 0.1, steel);
+  }
+  for (const y of [y0, H + 1.65, y1]) lmBar(G, J.Fw.at(towerS - tw / 2, y, td), J.Fw.at(towerS + tw / 2, y, td), 0.11, steel);
+  board(K, J.Fw, 'jyskSquare', towerS, H + 0.2, 2.05, 0.2, null);
+  // PROMO remains the neighbouring tenant on the long frontage; its wide awning and raised sign match the approved plan.
+  lmBoxW(G, M.Fw, 0.55, M.Fw.L - 0.55, 3.45, 3.78, -2.1, -0.18, hb('#aab0b3'));
+  for (let s = 3; s < M.Fw.L - 2; s += 6) lmBar(G, M.Fw.at(s, 0.3, -1.9), M.Fw.at(s, 3.45, -1.9), 0.1, hb('#888f92'));
+  const promoTower = Math.max(3.6, Math.min(M.Fw.L - 3.6, M.s - 5.2)), pw = 6.4, py0 = H - 0.1, py1 = H + 3.15, psteel = hb('#747c80');
+  for (const q of [-pw / 2, pw / 2]) {
+    lmBar(G, M.Fw.at(promoTower + q, py0, -0.28), M.Fw.at(promoTower + q, py1, -0.28), 0.14, psteel);
+    lmBar(G, M.Fw.at(promoTower + q, py0, -0.28), M.Fw.at(promoTower - q, py1, -0.28), 0.1, psteel);
+  }
+  for (const y of [py0, py1]) lmBar(G, M.Fw.at(promoTower - pw / 2, y, -0.28), M.Fw.at(promoTower + pw / 2, y, -0.28), 0.12, psteel);
+  board(K, M.Fw, 'promo', promoTower, H + 0.25, 2.2, 0.3, null);
+  for (const [Fw, s, w] of [[J.Fw, J.s, 5.5], [M.Fw, M.s, 6]]) {
+    const apron = [Fw.at(s - w / 2, 0, -0.4), Fw.at(s + w / 2, 0, -0.4), Fw.at(s + w / 2, 0, -4.5), Fw.at(s - w / 2, 0, -4.5)].map(p => [p[0], p[2]]);
+    flatPlain(G, [new Float32Array(apron.flat())], 0.04, hb('#b9b9b5'), false);
+  }
+  const bb = part.bb, T = tileOf((bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2), seed = Math.floor(rnd(part.id, 9) * 255);
+  flatRoof(T.m.roof, part.rings, H - 0.28, hb('#747a7d'), 5, seed);
+  STATE.GBC = null;
 }
 
 /* Beta on Inženieru iela 1: the glazed front (the edge facing the entrance) in curtain wall modules of 1.6 m a storey
@@ -605,7 +681,7 @@ function lmShops(K, litPatch) {
       const base = Math.min(hi - 0.15, lo + 2.5), gbc = TERR.on ? (x, y, z) => { const t = terrainH(x, z); return y <= 0.05 ? Math.min(base, t) - 0.25 - t - y : base - t; } : null, H = H_OF(S);
       STATE.GBC = gbc; flatPlain(K.plain, [r], H - 0.45, hb('#8d9194'), false);
       storeBox(K, S, r, H, gbc);
-    } else if (S.k === 'in') tenant(K, S, SH.host.get(S.id));
+    } else if (S.k === 'in') { if (S.model === 'jyskCentre') jyskCentre(K, S, SH.custom.get(S.id)); else tenant(K, S, SH.host.get(S.id)); }
   }
   ditton(K); solo(K); carParks(K);
   STATE.GBC = null;
