@@ -19,6 +19,8 @@ import { hash, hb, pip, rnd } from '../core/util.js';
 import { C, HX, HY, TTILE } from '../core/env.js';
 
 /* ---------- trees ---------- */
+// the trees of lidar-trees.js as bytes, 6 a tree (see tools/lidar.js), or null
+function lidarTrees() { const L = window.LIDAR_TREES; if (!L || !L.n) return null; const s = atob(L.d), b = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i); return b.length === L.n * 6 ? b : null; }
 // A crown is a cloud of small leaf cards that always face the viewer (and the sun in the shadow pass), shaded as one soft
 // ball. Far trees are two-quad impostors baked from the very same model, so the switch between the two is hard to spot.
 const treeTiles = new Map();
@@ -225,15 +227,32 @@ function buildTrees() {
   farGeo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1], 2));
   farGeo.setAttribute('aQ', new THREE.Float32BufferAttribute([0, 0, 0, 0, 1, 1, 1, 1], 1));
   farGeo.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
-  const add = (x, z, type, sc, v) => {
+  // a tree: its kind, the scale of the model across (sc) and up (sy), and a variation v for its tint and turn
+  const add = (x, z, type, sc, v, sy = sc * (0.88 + (v * 7 % 1) * 0.3)) => {
     if (Math.abs(x) > HX || Math.abs(z) > HY || lmClear(x, z) || wetTree(x, z) || fortNoTree(x, z) || vbNoTree(x, z) || spwNoTree(x, z) || fuelNoTree(x, z) || ovNoTree(x, z) || parkNoTree(x, z) || upNoTree(x, z)) return;
     const i = Math.floor(x / TTILE), j = Math.floor(z / TTILE), k = (i + 100) * 1000 + j + 100;
-    let t = treeTiles.get(k); if (!t) treeTiles.set(k, t = { x0: i * TTILE, z0: j * TTILE, list: [] }); t.list.push(x, z, type, sc, v);
+    let t = treeTiles.get(k); if (!t) treeTiles.set(k, t = { x0: i * TTILE, z0: j * TTILE, list: [] }); t.list.push(x, z, type, sc, v, sy);
   };
-  for (let i = 0; i < C.t.length; i += 2) { const v = rnd(i, 2); add(C.t[i] / 10, C.t[i + 1] / 10, v < 0.7 ? 1 : v < 0.85 ? 2 : 3, 0.8 + rnd(i, 1) * 0.5, v); }
-  SQ_SPRUCES.forEach(([x, z, sc], k) => add(x, z, 3, sc, rnd(k, 5)));   // the spruces by Vienības laukums
-  SHOP_TREES.forEach(([x, z, type, sc], k) => add(x, z, type, sc, rnd(k, 11)));   // trees on the lawns of the stores
-  PARK_TREES.forEach(([x, z, type, sc], k) => add(x, z, type, sc, rnd(k, 13)));   // the rows of trees in the parks
+  /* The trees the lidar found (lidar-trees.js, tools/lidar.js --trees): outside the woods each where it stands, as high
+     and as wide as it was measured. With them the guessed trees go — those of OpenStreetMap, the rows of the parks, and
+     the ones scattered over the land classes but for the woods and the scrub; the trees the landmarks set by hand stay,
+     and a lidar tree within 4 m of one gives way to it. A lidar tree in a building (built since the flight) or more than
+     a metre into a carriageway is left out. */
+  const LT = lidarTrees();
+  if (!LT) for (let i = 0; i < C.t.length; i += 2) { const v = rnd(i, 2); add(C.t[i] / 10, C.t[i + 1] / 10, v < 0.7 ? 1 : v < 0.85 ? 2 : 3, 0.8 + rnd(i, 1) * 0.5, v); }
+  const HAND = [];
+  SQ_SPRUCES.forEach(([x, z, sc], k) => { add(x, z, 3, sc, rnd(k, 5)); HAND.push(x, z); });   // the spruces by Vienības laukums
+  SHOP_TREES.forEach(([x, z, type, sc], k) => { add(x, z, type, sc, rnd(k, 11)); HAND.push(x, z); });   // trees on the lawns of the stores
+  if (!LT) PARK_TREES.forEach(([x, z, type, sc], k) => add(x, z, type, sc, rnd(k, 13)));   // the rows of trees in the parks
+  if (LT) {
+    const near = new Set(); for (let k = 0; k < HAND.length; k += 2) for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) near.add((Math.floor(HAND[k] / 4) + a) * 100000 + Math.floor(HAND[k + 1] / 4) + b);
+    for (let k = 0; k < LT.length; k += 6) {
+      const x = (LT[k] | LT[k + 1] << 8) / 5 - 6600, z = (LT[k + 2] | LT[k + 3] << 8) / 5 - 6600, h = LT[k + 4] / 5, r = (LT[k + 5] >> 4) * 0.8, type = LT[k + 5] & 15;
+      if (near.has(Math.floor(x / 4) * 100000 + Math.floor(z / 4)) || inBuilding(x, z) || onRoad(x, z, -1)) continue;
+      const g = hi[type].userData, v = hash(k * 2654435761 + 7);
+      add(x, z, type, Math.max(0.3, Math.min(3.5, r / g.R)), v, Math.max(0.3, Math.min(3.2, h / g.H)));
+    }
+  }
   // density per land class: spacing (m), keep probability, type picker
   const DENS = { 1: [17, 1, v => v < 0.58 ? 0 : v < 0.74 ? 3 : v < 0.9 ? 2 : 1], 2: [15, 0.8, v => 1], 4: [9.5, 0.82, v => v < 0.6 ? 1 : v < 0.8 ? 2 : v < 0.95 ? 3 : 0], 5: [16, 0.9, v => v < 0.55 ? 1 : v < 0.75 ? 2 : 3],
     8: [20, 0.38, v => v < 0.72 ? 1 : v < 0.86 ? 2 : 3], 11: [12, 0.5, v => v < 0.85 ? 1 : 2], 3: [30, 0.25, v => v < 0.6 ? 1 : 2] };
@@ -241,7 +260,7 @@ function buildTrees() {
   // the paved pedestrian squares (highway areas): no tree on them in a park
   const paved = AREAS.filter(a => a.cls === 12), onPaved = (x, z) => paved.some(a => x >= a.bb[0] && x <= a.bb[2] && z >= a.bb[1] && z <= a.bb[3] && pip(x, z, a.rings[0]));
   AREAS.forEach((a, n) => {
-    const d = DENS[a.cls]; if (!d) return; const [s, keep, typ] = d, bb = a.bb;
+    const d = DENS[a.cls]; if (!d || (LT && a.cls !== 1 && a.cls !== 2)) return; const [s, keep, typ] = d, bb = a.bb;
     for (let gx = Math.ceil(bb[0] / s); gx * s < bb[2]; gx++) for (let gz = Math.ceil(bb[1] / s); gz * s < bb[3]; gz++) {
       const h1 = hash(gx * 73856093 ^ gz * 19349663 ^ n), h2 = hash(gx * 83492791 ^ gz * 2971215073 ^ n);
       if (h1 > keep) continue;
@@ -253,7 +272,7 @@ function buildTrees() {
   });
   // the parks as OpenStreetMap draws them, where the city data has no park: as dense as the parks above
   const parkAreas = AREAS.filter(a => a.cls === 4), inPark = (x, z) => parkAreas.some(a => x >= a.bb[0] && x <= a.bb[2] && z >= a.bb[1] && z <= a.bb[3] && pip(x, z, a.rings[0]));
-  PARK_RINGS.forEach((r, n) => {
+  if (!LT) PARK_RINGS.forEach((r, n) => {
     const [s, keep, typ] = DENS[4], sc = SCALE[4]; let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9; for (let k = 0; k < r.length; k += 2) { x0 = Math.min(x0, r[k]); x1 = Math.max(x1, r[k]); z0 = Math.min(z0, r[k + 1]); z1 = Math.max(z1, r[k + 1]); }
     for (let gx = Math.ceil(x0 / s); gx * s < x1; gx++) for (let gz = Math.ceil(z0 / s); gz * s < z1; gz++) {
       const h1 = hash(gx * 73856093 ^ gz * 19349663 ^ (n + 7000)), h2 = hash(gx * 83492791 ^ gz * 2971215073 ^ (n + 7000)); if (h1 > keep) continue;
@@ -270,22 +289,22 @@ function buildTrees() {
   const a2cOn = () => { if (PP.msaa > 0) gl.enable(gl.SAMPLE_ALPHA_TO_COVERAGE); }, a2cOff = () => gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE);
   const tint = v => { const f = 0.84 + v * 0.3; return col.setRGB(f * (0.94 + (v * 13 % 1) * 0.14), f, f * (0.86 + (v * 29 % 1) * 0.12)); };
   for (const t of treeTiles.values()) {
-    const l = t.list, n = l.length / 5; count += n; t.hi = []; t.lo = [];
+    const l = t.list, n = l.length / 6; count += n; t.hi = []; t.lo = [];
     const cx = t.x0 + TTILE / 2, cz = t.z0 + TTILE / 2;
     const fg = farGeo.clone(), types = new Float32Array(n); fg.boundingSphere = tileSphere;
     const L = new THREE.InstancedMesh(fg, matTreeFar, n);
     for (let i = 0; i < n; i++) {
-      const type = l[5 * i + 2], sc = l[5 * i + 3], v = l[5 * i + 4], sy = sc * (0.88 + (v * 7 % 1) * 0.3), H = hi[type].userData.H; types[i] = type;
-      M.compose(new THREE.Vector3(l[5 * i] - cx, fortTreeY(l[5 * i], l[5 * i + 1]), l[5 * i + 1] - cz), q0, new THREE.Vector3(sc * H / 2, sy * H, 1)); L.setMatrixAt(i, M); L.setColorAt(i, tint(v));
+      const type = l[6 * i + 2], sc = l[6 * i + 3], v = l[6 * i + 4], sy = l[6 * i + 5], H = hi[type].userData.H; types[i] = type;
+      M.compose(new THREE.Vector3(l[6 * i] - cx, fortTreeY(l[6 * i], l[6 * i + 1]), l[6 * i + 1] - cz), q0, new THREE.Vector3(sc * H / 2, sy * H, 1)); L.setMatrixAt(i, M); L.setColorAt(i, tint(v));
     }
     fg.setAttribute('aType', new THREE.InstancedBufferAttribute(types, 1));
     L.position.set(cx, 0, cz); L.instanceMatrix.needsUpdate = true; L.instanceColor.needsUpdate = true; L.onBeforeRender = a2cOn; L.onAfterRender = a2cOff; scene.add(L); t.lo.push(L);
     for (let type = 0; type < 4; type++) {
-      const idx = []; for (let i = 0; i < n; i++) if (l[5 * i + 2] === type) idx.push(i); if (!idx.length) continue;
+      const idx = []; for (let i = 0; i < n; i++) if (l[6 * i + 2] === type) idx.push(i); if (!idx.length) continue;
       const Hm = new THREE.InstancedMesh(hi[type], matTree, idx.length);
       idx.forEach((i, k) => {
-        const sc = l[5 * i + 3], v = l[5 * i + 4], sy = sc * (0.88 + (v * 7 % 1) * 0.3); q.setFromAxisAngle(up, v * 6.283);
-        M.compose(new THREE.Vector3(l[5 * i] - cx, fortTreeY(l[5 * i], l[5 * i + 1]), l[5 * i + 1] - cz), q, new THREE.Vector3(sc, sy, sc)); Hm.setMatrixAt(k, M); Hm.setColorAt(k, tint(v));
+        const sc = l[6 * i + 3], v = l[6 * i + 4], sy = l[6 * i + 5]; q.setFromAxisAngle(up, v * 6.283);
+        M.compose(new THREE.Vector3(l[6 * i] - cx, fortTreeY(l[6 * i], l[6 * i + 1]), l[6 * i + 1] - cz), q, new THREE.Vector3(sc, sy, sc)); Hm.setMatrixAt(k, M); Hm.setColorAt(k, tint(v));
       });
       Hm.position.set(cx, 0, cz); Hm.instanceMatrix.needsUpdate = true; Hm.instanceColor.needsUpdate = true; Hm.customDepthMaterial = matTreeDepth;
       Hm.castShadow = true; Hm.receiveShadow = true; Hm.visible = false; Hm.onBeforeRender = a2cOn; Hm.onAfterRender = a2cOff; scene.add(Hm); t.hi.push(Hm);
