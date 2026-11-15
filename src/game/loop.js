@@ -6,7 +6,6 @@ import { QUALITY, qi } from '../render/lighting.js';
 import { P, step } from './player.js';
 import { TX, updateBoard, updateClockUI, updateTags, updateTransit } from '../transit/transit.js';
 import { lmTick } from '../landmarks/index.js';
-import { waterNormal } from '../world/data.js';
 import { sky, terrainH } from '../world/terrain.js';
 import { U, camera, renderer, scene } from '../render/renderer.js';
 import { $, reduceMotion } from '../core/env.js';
@@ -22,7 +21,6 @@ function frame(now) {
   else { STATE.introT += reduceMotion ? 0 : dt; P.yaw = 0.6 + STATE.introT * 0.05; P.x = -1350 + Math.sin(P.yaw) * 420; P.z = 1250 + Math.cos(P.yaw) * 420; P.y = 150 + terrainH(P.x, P.z); P.pitch = -0.33; }
   updateTransit(dt); lmTick();
   if (!reduceMotion) U.time.value = clock;
-  if (waterNormal) waterNormal.offset.set(clock * 0.012, clock * 0.007);
   const bob = (!P.fly && STATE.started && !reduceMotion) ? Math.sin(P.walked * 2.1) * 0.035 : 0;
   camera.position.set(P.x, P.y + bob, P.z); camera.rotation.set(P.pitch, P.yaw, 0);
   const far = QUALITY[qi].far + Math.max(0, P.y - 2) * 9; scene.fog.far = far;
