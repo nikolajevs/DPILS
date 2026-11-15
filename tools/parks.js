@@ -8,7 +8,7 @@
 
    Kept for every park (leisure=park inside the city): its outline and name; the footways in it with their surface;
    the pitches, tracks, playgrounds, fitness stations and dog parks in it or within 20 m of it; the fences, walls and
-   hedges; the flower beds and the rows of trees; benches, waste baskets, street lamps, bicycle stands, picnic tables,
+   hedges; the flower beds, the reed beds and marshes and the rows of trees; benches, waste baskets, street lamps, bicycle stands, picnic tables,
    barbecues, toilets, drinking water taps; fountains, memorials (with their kind and name), artworks and sundials.
    Coordinates are metres in the frame of citydata.js (x east, z south), rounded to 0.1 m. */
 'use strict';
@@ -53,7 +53,7 @@ parks.sort((a, b) => (a.t.name || '~').localeCompare(b.t.name || '~') || a.id.lo
 const which = (p, near = 0) => parks.findIndex(g => pip(p, g.ring) || (near && ringD(p, g.ring) < near));
 const anyIn = (pts, near = 0) => { for (const p of pts) { const k = which(p, near); if (k >= 0) return k; } return -1; };
 
-const out = { parks: [], paths: [], pitches: [], tracks: [], areas: [], fences: [], beds: [], rows: [], points: [] };
+const out = { parks: [], paths: [], pitches: [], tracks: [], areas: [], fences: [], beds: [], wet: [], rows: [], points: [] };
 parks.forEach(g => out.parks.push([g.t.name || '', g.id, enc(g.ring)]));
 for (const [, w] of ways) {
   const t = w.tags, p = ptsOf(w.refs); if (!p) continue;
@@ -69,6 +69,7 @@ for (const [, w] of ways) {
     const s = anyIn(p, 5); if (s < 0) continue;
     out.fences.push([t.barrier === 'hedge' ? 'hedge' : t.barrier === 'fence' ? (t.fence_type || t.material || '') : 'wall', +(t.height || 0), enc(p)]);
   } else if (t.landuse === 'flowerbed' && isArea) { const s = which(centre(p)); if (s >= 0) out.beds.push([s, enc(p)]); }
+  else if (t.natural === 'wetland' && isArea) { const s = anyIn(p, 5); if (s >= 0) out.wet.push([s, t.wetland || 'marsh', enc(p)]); }
   else if (t.natural === 'tree_row') { const s = anyIn(p, 5); if (s >= 0) out.rows.push([s, t.leaf_type === 'needleleaved' ? 1 : 0, enc(p)]); }
 }
 // things on the ground: [park, kind, x, z, name, detail]
@@ -86,4 +87,4 @@ for (const [id, t] of nodeTags) {
 const head = '/* Parks and squares of Daugavpils from OpenStreetMap (© OpenStreetMap contributors, ODbL), built by tools/parks.js */\n';
 fs.writeFileSync(outFile, head + 'window.PARKS = ' + JSON.stringify(out) + ';\n');
 const cnt = {}; for (const p of out.points) cnt[p[1]] = (cnt[p[1]] || 0) + 1;
-console.log(`${out.parks.length} parks, ${out.paths.length} paths, ${out.pitches.length} pitches, ${out.tracks.length} tracks, ${out.areas.length} areas, ${out.fences.length} fences and hedges, ${out.beds.length} flower beds, ${out.rows.length} rows of trees; points ${JSON.stringify(cnt)}`);
+console.log(`${out.parks.length} parks, ${out.paths.length} paths, ${out.pitches.length} pitches, ${out.tracks.length} tracks, ${out.areas.length} areas, ${out.fences.length} fences and hedges, ${out.beds.length} flower beds, ${out.wet.length} wetlands, ${out.rows.length} rows of trees; points ${JSON.stringify(cnt)}`);

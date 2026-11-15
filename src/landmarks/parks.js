@@ -197,6 +197,31 @@ function hedge(G, pts, i) {
   const n = pts.length >> 1, C = sh(hb('#3e6a2e'), 0.92 + hash(i) * 0.16);
   for (let k = 0; k < n - 1; k++) { const Fw = lmWF(P2(pts, k), P2(pts, k + 1)); if (Fw.L < 0.05) continue; lmBoxW(G, Fw, -0.3, Fw.L + 0.3, 0, 1.05, -0.4, 0.4, C); }
 }
+/* a reed bed: tufts about 0.7 m apart of four thin blades, each leaning its own way and of its own height, dark green
+   below and olive to straw at the tips, a third of the tufts with a dark brown plume; other wetlands get lower and
+   sparser sedge. Trees keep out of them. */
+const REED = [hb('#3f5a26'), hb('#557030'), hb('#8a8c4c'), hb('#ab9f66')], PLUME = hb('#4a3426');
+function reeds(G, r, i, kind) {
+  const bb = bbox(r), tall = kind === 'reedbed', step = tall ? 0.7 : 1.2;
+  const face = (P, col, nx, nz) => { polyA(G, P, col, nx, 0, nz); polyA(G, P, col, -nx, 0, -nz); };   // seen from both sides
+  for (let x = bb[0] + step / 2; x < bb[2]; x += step) for (let z = bb[1] + step / 2; z < bb[3]; z += step) {
+    const px = x + (hash(x * 7.3 + z * 1.9 + i) - 0.5) * step, pz = z + (hash(x * 2.1 + z * 5.7 + i) - 0.5) * step;
+    if (!pip(px, pz, r)) continue;
+    const H = (tall ? 1.5 : 0.6) + hash(px * 3.3 + pz * 9.1) * (tall ? 1.0 : 0.4), tone = hash(px * 5 + pz * 11) * 0.14 + 0.92;
+    let top = null;
+    for (let b = 0; b < 4; b++) {
+      const q = k => hash(px * (17 + k) + pz * (29 + 3 * k) + b * 7.7), h = H * (0.7 + q(1) * 0.35), a = q(2) * Math.PI, w = (tall ? 0.07 : 0.05) + q(3) * 0.04;
+      const ux = Math.cos(a) * w, uz = Math.sin(a) * w, bx = px + (q(4) - 0.5) * 0.3, bz = pz + (q(5) - 0.5) * 0.3, lx = (q(6) - 0.5) * h * 0.4, lz = (q(7) - 0.5) * h * 0.4;
+      const at2 = (t, s) => [bx + lx * t * t + ux * s, h * t - 0.4 * (1 - t), bz + lz * t * t + uz * s];
+      const P0 = at2(0, -1), P1 = at2(0, 1), Q1 = at2(0.55, 0.7), Q0 = at2(0.55, -0.7), T = at2(1, 0.05), T0 = at2(1, -0.05);
+      face([P0, P1, Q1, Q0], sh(REED[b & 1], tone), -uz, ux);
+      face([Q0, Q1, T, T0], sh(REED[tall ? 2 + (b >> 1) : 1], tone), -uz, ux);
+      if (!b) top = at2(1, 0);
+    }
+    if (tall && hash(px * 13 + pz * 17) < 0.33) lmBar(G, [top[0], top[1] - 0.25, top[2]], [top[0], top[1] + 0.05, top[2]], 0.06, PLUME);
+  }
+  NOTREE_POLY.push({ r, bb: [bb[0] - 1, bb[1] - 1, bb[2] + 1, bb[3] + 1] });
+}
 function lowWall(G, pts) { const n = pts.length >> 1; for (let k = 0; k < n - 1; k++) { const Fw = lmWF(P2(pts, k), P2(pts, k + 1)); if (Fw.L > 0.05) lmBoxW(G, Fw, -0.15, Fw.L + 0.15, 0, 0.6, -0.2, 0.2, hb('#8f8a80')); } }
 
 /* Draws what is in the parks. */
@@ -214,9 +239,10 @@ function lmParks(K) {
   for (const d of dogs) fillPoly(surf, [ring(d[2])], hb('#bfae86'));
   for (const t of bmx) { const pts = t[5], closed = pts.length > 6 && Math.hypot(pts[0] - pts[pts.length - 2], pts[1] - pts[pts.length - 1]) < 0.5; bandAlong(surf, closed ? pts.slice(0, -2) : pts, closed, 1.4, hb('#7a6146'), null); }
   groundMesh(surf, groundMaterial(detailTex(3), 1 / 3, 0.2, 'park-ground'), -32.6);
-  // beds, hedges, walls, rows of trees
+  // beds, hedges, walls, reed beds, rows of trees
   PD.beds.forEach(([, pts], i) => bed(G, ring(pts), i));
   PD.fences.forEach(([kind, , pts], i) => { if (kind === 'hedge') hedge(G, pts, i); else if (kind === 'wall') lowWall(G, pts); });
+  (PD.wet || []).forEach(([, kind, pts], i) => reeds(G, ring(pts), i, kind));
   for (const [, needle, pts] of PD.rows) { const n = pts.length >> 1; let acc = 3;
     for (let k = 0; k < n - 1; k++) { const [ax, az] = P2(pts, k), [bx, bz] = P2(pts, k + 1), L = Math.hypot(bx - ax, bz - az);
       for (; acc < L; acc += 7) { const x = ax + (bx - ax) * acc / L, z = az + (bz - az) * acc / L; if (!inBuilding(x, z) && !inWater(x, z)) PARK_TREES.push([x, z, needle ? 3 : 1, 0.95 + hash(x * 3.1 + z) * 0.35]); }
