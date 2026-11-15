@@ -3,6 +3,7 @@ import { STATE } from '../core/state.js';
 import { TIMES, timeI } from '../render/lighting.js';
 import { P } from '../game/player.js';
 import { vbGround } from '../world/bridge-vienibas.js';
+import { upUnder } from '../world/underpass.js';
 import { COL, inBuilding, matPlain } from '../world/data.js';
 import { std } from '../render/materials.js';
 import { mkCanvas, toTex } from '../render/textures.js';
@@ -216,8 +217,8 @@ function updateTransit(dt) {
       lanePoint(shapeAt(sh, front - 0.3, PA), kind); lanePoint(shapeAt(sh, front - L + 0.3, PB2), kind);
       const cx = (PA[0] + PB2[0]) / 2, cz = (PA[1] + PB2[1]) / 2, yaw = Math.atan2(PA[0] - PB2[0], PA[1] - PB2[1]);
       // over a bridge the deck stands above the ground under it: up Vienības tilts nose up or down
-      const hdx = PA[0] - PB2[0], hdz = PA[1] - PB2[1], lift = (x, z) => vbGround(x, z) + vbLift(x, z) + bridgeY(x, z, hdx, hdz), ya = lift(PA[0], PA[1]), yb = lift(PB2[0], PB2[1]), gy = (ya + yb) / 2;
-      if (vbGround(PA[0], PA[1]) || vbGround(PB2[0], PB2[1])) QY.setFromEuler(VE.set(-Math.atan2(ya - yb, L), yaw, 0, 'YXZ')); else QY.setFromAxisAngle(VUP, yaw);
+      const hdx = PA[0] - PB2[0], hdz = PA[1] - PB2[1], lift = (x, z) => (upUnder(x, z, hdx, hdz) ? 0 : vbGround(x, z) + vbLift(x, z)) + bridgeY(x, z, hdx, hdz), ya = lift(PA[0], PA[1]), yb = lift(PB2[0], PB2[1]), gy = (ya + yb) / 2;
+      if ((vbGround(PA[0], PA[1]) || vbGround(PB2[0], PB2[1])) && !upUnder(PA[0], PA[1], hdx, hdz)) QY.setFromEuler(VE.set(-Math.atan2(ya - yb, L), yaw, 0, 'YXZ')); else QY.setFromAxisAngle(VUP, yaw);
       MX.compose(VP.set(cx, gy, cz), QY, VS.set(1, 1, L / MODEL_LEN[kind])); M.b.setMatrixAt(cnt[kind], MX); M.g.setMatrixAt(cnt[kind], MX);
       MX.compose(VP.set(cx, gy + 0.035, cz), QY, VS.set(3.6, 1, L + 1.6)); M.s.setMatrixAt(cnt[kind], MX);
       if (first) placed.push({ x: cx, z: cz, kind, route: TR.routes[p.route][0], dest: TR.stops[p.stops[p.stops.length - 1]][0], dx: hdx, dz: hdz });
