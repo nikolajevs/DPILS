@@ -185,6 +185,7 @@ function serWing(T, o, fl, type, id, seed, opt) {
     else box(Dd.plain, c[0], c[2], ux, uz, 0.4, 0.3, H + b * 0.24 - 0.6, H + b * 0.24 + 0.9, sh(tint, 0.82)); }
   // entrances: a door through the plinth, a concrete canopy, two steps
   for (let k = 0; k < nSec; k++) { const t = (-a + (k + 0.5) * secW) / a, c = P(t, ent, 0), nx = vx * ent, nz = vz * ent;
+    if (opt.doors) SER_DOORS.push(c[0], c[2], nx, nz);
     polyA(Dd.plain, [[c[0] - ux * 0.6 + nx * 0.03, 0, c[2] - uz * 0.6 + nz * 0.03], [c[0] + ux * 0.6 + nx * 0.03, 0, c[2] + uz * 0.6 + nz * 0.03], [c[0] + ux * 0.6 + nx * 0.03, yb + 0.02, c[2] + uz * 0.6 + nz * 0.03], [c[0] - ux * 0.6 + nx * 0.03, yb + 0.02, c[2] - uz * 0.6 + nz * 0.03]], hb('#4a3e34'), nx, 0, nz);
     box(Dd.plain, c[0] + nx * 0.65, c[2] + nz * 0.65, ux, uz, 1.25, 0.65, 2.45, 2.6, hb('#9d9a93')); box(Dd.plain, c[0] + nx * 0.55, c[2] + nz * 0.55, ux, uz, 1.0, 0.55, 0, 0.3, hb('#8f8c86')); }
   // balconies, loggias; their fronts in one colour, or each its own of the colours photographed
@@ -242,7 +243,7 @@ function kimOf(outer) {
 }
 const KIM_KIND = { R: { bands: 1, strip: 1 }, S: {}, B: {}, G: { mode: 2 }, P: { mode: 2, pil: 1, re: 1 }, W: { mode: 1 }, T: { strip: 1, tall: 1 }, T5: { strip: 1 }, N: { mode: 2, tall: 1 } };
 const BEARING = { N: 0, NE: 45, E: 90, SE: 135, S: 180, SW: 225, W: 270, NW: 315 };
-const SER_STAT = { kim: 0, wings: 0, fillers: 0, generic: [] };   // the blocks of Ķīmija drawn from kimija.js (for checks: window.__city.series)
+const SER_STAT = { kim: 0, wings: 0, fillers: 0, generic: [] }, SER_DOORS = [];   // SER_DOORS: [x, z, out x, out z] of each door of those blocks (for the benches of yards.js)   // the blocks of Ķīmija drawn from kimija.js (for checks: window.__city.series)
 function kimBuild(rec, outer, T, id, seed, K) {
   const kind = KIM_KIND[K.p] || {}, fl = K.fl || rec[5], o = obb(outer); if (!o) { SER_STAT.generic.push(id); return false; }
   const parts = (o.fill < 0.9 && serWings(outer, o)) || (o.fill >= 0.8 ? [{ o, join: {} }] : null);
@@ -260,7 +261,7 @@ function kimBuild(rec, outer, T, id, seed, K) {
       let on = false; ROAD.near(x, z, 6, (rid, dd) => { if (dd < ROAD.s[rid * 6 + 4] + 0.8) on = true; }); if (on) n++; } return n; };
       const h0 = hits(-1), h1 = hits(1); ent = h0 === h1 ? (rnd(id, 51) < 0.5 ? -1 : 1) : h0 > h1 ? -1 : 1; }
     const tint = hb(K.c), red = hb('#a24e36');
-    serWing(T, w, fl, type, id, seed, { ent, other: 'B', tint, endTint: K.re || kind.re ? red : null, mode: kind.mode || 0, bands: kind.bands, strip: kind.strip, pil: kind.pil, bal: K.bal, join: pt.join, wing: parts.length > 1, pitched: false });
+    serWing(T, w, fl, type, id, seed, { ent, other: 'B', tint, endTint: K.re || kind.re ? red : null, mode: kind.mode || 0, bands: kind.bands, strip: kind.strip, pil: kind.pil, bal: K.bal, join: pt.join, wing: parts.length > 1, pitched: false, doors: true });
   }
   return true;
 }
@@ -311,4 +312,4 @@ function serWings(outer, o) {
   return out;
 }
 
-export { SER_STAT, serBuild, seriesAtlas, seriesMaterial };
+export { SER_DOORS, SER_STAT, serBuild, seriesAtlas, seriesMaterial };

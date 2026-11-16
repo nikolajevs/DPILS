@@ -285,4 +285,4 @@ function lmParks(K) {
 // at night: the light under the lamps and the lit jets
 function parksNight(n) { if (PARK_POOLS) PARK_POOLS.visible = n > 0.5; if (PARK_JETS) PARK_JETS.emissiveIntensity = n * 0.9; }
 
-export { PARK_RINGS, PARK_TREES, lmParks, parkNoTree, parksNight };
+export { PARK_RINGS, PARK_TREES, bbq, lmParks, parkNoTree, parksNight, picnic };
