@@ -8,6 +8,7 @@
 
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
+| Claude (сессия владельца) | `claude/adoring-goldberg-0qz2d2` | Все стоянки города: данные OSM (`parking.js`), разметка мест по проездам, машины по времени суток, столкновения, фонари | `tools/parking.js`, `parking.js`, `src/landmarks/parking.js`, стоянки в `src/landmarks/shops.js`, `src/world/tree-room.js`, `collide` в `src/game/player.js`, `src/ui/map.js` |
 | Claude (сессия владельца) | `claude/nifty-bell-byecnv` | Крепость по порядку: пороховые погреба, затем фасады исторических казарм и офицерских домов, затем редюиты (по фото Mapillary и Commons) | `src/fortress/*`, участки крепости в `src/buildings/buildings.js`, раздел крепости в README.md |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
