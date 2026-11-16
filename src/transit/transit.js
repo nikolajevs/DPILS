@@ -6,7 +6,8 @@ import { vbGround } from '../world/bridge-vienibas.js';
 import { upUnder } from '../world/underpass.js';
 import { COL, LINES, inBuilding, matPlain } from '../world/data.js';
 import { LINE } from '../world/palette.js';
-import { buildNet, dDir, matchShape } from './route-match.js';
+import { buildNet, dDir, laneRoute, matchShape, nearOn, routeAt } from './route-match.js';
+import { TRN, buildTrains, trainDepartures, updateTrains } from './trains.js';
 import { std } from '../render/materials.js';
 import { mkCanvas, toTex } from '../render/textures.js';
 import { bridgeY, terrainH, vbLift } from '../world/terrain.js';
@@ -114,55 +115,12 @@ function buildRoutes() {
   });
   TX.pats.forEach(p => { const sh = TX.shapes[p.shape], R = TX.routes[p.shape]; p.alongU = p.along.map(a => shapeToRoute(sh, R, a)); });
 }
-// the nearest point on a line (flat x, z)
-function nearOn(p, x, z) {
-  let bd = Infinity, bx = x, bz = z;
-  for (let i = 0; i + 3 < p.length; i += 2) { const ax = p[i], az = p[i + 1], dx = p[i + 2] - ax, dz = p[i + 3] - az, l2 = dx * dx + dz * dz || 1e-9, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)), px = ax + dx * t, pz = az + dz * t, d = (x - px) ** 2 + (z - pz) ** 2; if (d < bd) { bd = d; bx = px; bz = pz; } }
-  return [bx, bz];
-}
-// the route of a match: the points moved off the middle of the road into the lane, rounded, resampled
-function laneRoute(m, offAt, step, round) {
-  const P = m.pts, n = P.length >> 1, O = new Float32Array(n);
-  for (let i = 0; i < n; i++) O[i] = offAt(m.de[i]);
-  if (n > 1) O[0] = O[1];
-  const Q = new Float32Array(2 * n);
-  for (let i = 0; i < n; i++) {
-    const a = Math.max(0, i - 1), c = Math.min(n - 1, i + 1); let ix = P[2 * i] - P[2 * a], iz = P[2 * i + 1] - P[2 * a + 1], ox = P[2 * c] - P[2 * i], oz = P[2 * c + 1] - P[2 * i + 1];
-    const li = Math.hypot(ix, iz), lo = Math.hypot(ox, oz); if (li > 1e-6) { ix /= li; iz /= li; } if (lo > 1e-6) { ox /= lo; oz /= lo; }
-    if (li <= 1e-6) { ix = ox; iz = oz; } if (lo <= 1e-6) { ox = ix; oz = iz; }
-    let tx = ix + ox, tz = iz + oz, tl = Math.hypot(tx, tz); if (tl < 0.2) { tx = ix; tz = iz; tl = 1; } tx /= tl; tz /= tl;
-    const off = (O[i] + O[Math.min(n - 1, i + 1)]) / 2 / Math.max(0.6, tx * ix + tz * iz);   // a mitre at a corner
-    Q[2 * i] = P[2 * i] - tz * off; Q[2 * i + 1] = P[2 * i + 1] + tx * off;
-  }
-  const qc = new Float32Array(n); for (let i = 1; i < n; i++) qc[i] = qc[i - 1] + Math.hypot(Q[2 * i] - Q[2 * i - 2], Q[2 * i + 1] - Q[2 * i - 1]);
-  const L = n ? qc[n - 1] : 0, k = Math.max(2, Math.ceil(L / step) + 1), R = new Float32Array(2 * k);
-  for (let j = 0, i = 0; j < k; j++) { const u = L * j / (k - 1); while (i < n - 2 && qc[i + 1] < u) i++; const f = n > 1 ? Math.max(0, Math.min(1, (u - qc[i]) / ((qc[i + 1] - qc[i]) || 1))) : 0, i2 = Math.min(n - 1, i + 1);
-    R[2 * j] = Q[2 * i] + (Q[2 * i2] - Q[2 * i]) * f; R[2 * j + 1] = Q[2 * i + 1] + (Q[2 * i2 + 1] - Q[2 * i + 1]) * f; }
-  let pts = R;
-  if (round > 0) { pts = new Float32Array(2 * k);
-    for (let j = 0; j < k; j++) { let sx = 0, sz = 0, w = 0; for (let q = -round; q <= round; q++) { const jj = Math.max(0, Math.min(k - 1, j + q)), ww = round + 1 - Math.abs(q); sx += R[2 * jj] * ww; sz += R[2 * jj + 1] * ww; w += ww; } pts[2 * j] = sx / w; pts[2 * j + 1] = sz / w; } }
-  const cum = new Float32Array(k); for (let j = 1; j < k; j++) cum[j] = cum[j - 1] + Math.hypot(pts[2 * j] - pts[2 * j - 2], pts[2 * j + 1] - pts[2 * j - 1]);
-  // the vertices of the shape: their distance along the offset line, then along the resampled, rounded one
-  const vu = new Float32Array(m.at.length); m.at.forEach((idx, v) => { const f = L > 0 ? qc[idx] / L * (k - 1) : 0, j = Math.min(k - 2, Math.floor(f)); vu[v] = k > 1 ? cum[j] + (cum[j + 1] - cum[j]) * (f - j) : 0; });
-  return { pts, cum, len: cum[k - 1], vu };
-}
 // a distance along a shape of the feed → along its route (between the vertices in proportion)
 function shapeToRoute(sh, R, a) {
   const c = sh.cum, n = c.length; if (a <= 0) return R.vu[0]; if (a >= c[n - 1]) return R.vu[n - 1];
   let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (c[m] <= a) lo = m; else hi = m; }
   return R.vu[lo] + (R.vu[hi] - R.vu[lo]) * (a - c[lo]) / ((c[hi] - c[lo]) || 1);
 }
-// the point and the direction at u along a route (past its ends straight on)
-function routeAt(R, u, o) {
-  const c = R.cum, p = R.pts, n = c.length; let lo, hi;
-  if (u <= 0) { lo = 0; hi = 1; } else if (u >= R.len) { lo = n - 2; hi = n - 1; }
-  else { lo = 0; hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (c[m] <= u) lo = m; else hi = m; } }
-  const L = (c[hi] - c[lo]) || 1, f = (u - c[lo]) / L;
-  o[2] = (p[2 * hi] - p[2 * lo]) / L; o[3] = (p[2 * hi + 1] - p[2 * lo + 1]) / L;
-  o[0] = p[2 * lo] + (p[2 * hi] - p[2 * lo]) * f; o[1] = p[2 * lo + 1] + (p[2 * hi + 1] - p[2 * lo + 1]) * f;
-  return o;
-}
-
 // vehicle models: a tram section (14 m) and a 12 m city bus, front towards +z; "glow" holds lit windows and lamps
 const MODEL_LEN = [14, 12];
 function vehicleModel(kind) {
@@ -215,10 +173,11 @@ function buildTransit() {
     b.receiveShadow = true; s.renderOrder = 3; TX.glow.push(g);
     return { b, g, s };
   });
+  TX.trainTrips = buildTrains(); TX.glow.push(...TRN.glow);   // the passenger trains through the station (trains.js)
   for (const g of TX.glow) g.visible = TIMES[timeI].lamps;
   buildStops();
   scanActive();
-  return TR.trips.length;
+  return TR.trips.length + TX.trainTrips;
 }
 /* the stops: by the kerb on the right of the way the vehicles go there, along it, open towards the road. For a bus the
    kerb of the road it was laid on, the shelter 2.4 m beyond it on the sidewalk; for a tram the kerb of the road its
@@ -306,6 +265,7 @@ function updateTransit(dt) {
     }
   }
   for (const kind of [0, 1]) { const M = TX.mesh[kind]; for (const m of [M.b, M.g, M.s]) { m.count = cnt[kind]; m.instanceMatrix.needsUpdate = true; } }
+  TX.trainsOn = updateTrains(TX.sec, TX.day, placed);
   TX.placed = placed;
 }
 // small labels over vehicles near the camera
@@ -324,12 +284,12 @@ function updateTags() {
       for (let i = 1; i <= n && !hidden; i++) { const f = i * 3 / d; hidden = inBuilding(cx + (v.x - cx) * f, cz + (v.z - cz) * f); }
       if (hidden) continue;
     }
-    TAGV.set(v.x, (v.kind === 0 ? 4.9 : 3.7) + terrainH(v.x, v.z) + bridgeY(v.x, v.z, v.dx || 0, v.dz || 0), v.z).project(camera);
+    TAGV.set(v.x, (v.kind === 0 ? 4.9 : v.kind === 2 ? 5.2 : 3.7) + terrainH(v.x, v.z) + bridgeY(v.x, v.z, v.dx || 0, v.dz || 0), v.z).project(camera);
     if (TAGV.z > 1 || TAGV.z < -1 || Math.abs(TAGV.x) > 1.05 || Math.abs(TAGV.y) > 1.05) continue;
     let e = tagEls[k];
     if (!e) { e = document.createElement('div'); e.className = 'vtag'; e.innerHTML = '<span class="rt"></span><span></span>'; host.append(e); tagEls[k] = e; }
     const key = v.kind + v.route + v.dest;
-    if (e.dataset.key !== key) { e.dataset.key = key; e.firstChild.textContent = v.route; e.firstChild.className = 'rt' + (v.kind === 0 ? ' tram' : ''); e.lastChild.textContent = '→ ' + v.dest; }
+    if (e.dataset.key !== key) { e.dataset.key = key; e.firstChild.textContent = v.route; e.firstChild.className = 'rt' + (v.kind === 0 ? ' tram' : v.kind === 2 ? ' train' : ''); e.lastChild.textContent = '→ ' + v.dest; }
     e.hidden = false; e.style.opacity = String(Math.max(0.35, 1 - d / 170));
     e.style.transform = `translate(${((TAGV.x + 1) / 2 * w).toFixed(1)}px, ${((1 - TAGV.y) / 2 * h).toFixed(1)}px) translate(-50%, -100%)`;
     k++;
@@ -345,12 +305,13 @@ function updateClockUI() {
   $('clkSpeed').textContent = '×' + SPEEDS[TX.si]; $('clkSpeed').setAttribute('aria-pressed', TX.si > 0);
   $('clkNow').hidden = TX.live && TX.si === 0;
   const info = $('clkInfo'), first = $('clkFirst');
-  if (TX.trams + TX.buses > 0) { info.textContent = 'на линии: ' + plural(TX.trams, 'трамвай', 'трамвая', 'трамваев') + ', ' + plural(TX.buses, 'автобус', 'автобуса', 'автобусов'); first.hidden = true; }
+  if (TX.trams + TX.buses > 0) { info.textContent = 'на линии: ' + plural(TX.trams, 'трамвай', 'трамвая', 'трамваев') + ', ' + plural(TX.buses, 'автобус', 'автобуса', 'автобусов') + (TX.trainsOn ? ', ' + plural(TX.trainsOn, 'поезд', 'поезда', 'поездов') : ''); first.hidden = true; }
   else { const n = nextDeparture(); info.textContent = n == null ? 'транспорт не ходит' : 'транспорт не ходит, первый рейс в ' + hhmm(n); first.hidden = n == null; first.dataset.t = n == null ? '' : n; }
 }
 function updateBoard() {
   const el = $('board');
   if (!TX.ok || P.fly) { el.hidden = true; TX.board = -2; return; }
+  if (TRN.ok && TRN.near(P.x, P.z)) { trainBoard(el); return; }
   let best = 35, bi = -1;
   TR.stops.forEach((s, i) => { const d = Math.hypot(s[1] / 10 - P.x, s[2] / 10 - P.z); if (d < best) { best = d; bi = i; } });
   if (bi < 0) { el.hidden = true; TX.board = -2; return; }
@@ -382,12 +343,25 @@ function updateBoard() {
     li.append(rt, hd, mn); ol.append(li);
   }
 }
+// by the railway station: the next trains out of it
+function trainBoard(el) {
+  const list = trainDepartures(TX.sec, TX.day, 6), now = TX.sec, ol = $('boardList');
+  el.hidden = false; $('boardName').textContent = 'Вокзал Daugavpils · поезда'; ol.textContent = '';
+  if (!list.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = 'Поездов в ближайшие сутки нет'; ol.append(li); return; }
+  for (const d of list) {
+    const li = document.createElement('li'), rt = document.createElement('span'), hd = document.createElement('span'), mn = document.createElement('span');
+    rt.className = 'rt train'; rt.textContent = 'Поезд'; hd.className = 'hd'; hd.textContent = d.dest; hd.title = d.name;
+    const m = Math.ceil((d.at - now) / 60), b = document.createElement('b'); mn.className = 'mn';
+    b.textContent = m <= 0 ? 'сейчас' : m < 120 ? m + ' мин' : Math.floor(m / 60) + ' ч ' + (m % 60) + ' мин'; mn.append(b, ' · ' + hhmm(d.at));
+    li.append(rt, hd, mn); ol.append(li);
+  }
+}
 function setClock(sec, live) { TX.sec = sec; TX.live = live; while (TX.sec >= 86400) { TX.sec -= 86400; TX.day++; } while (TX.sec < 0) { TX.sec += 86400; TX.day--; } TX.scan = 0; updateClockUI(); updateBoard(); }
 function drawVehicles(ctx, ox, oz, ppm, w, h, r) {
   if (!TX.ok) return;
   for (const v of TX.placed) {
     const x = w / 2 + (v.x - ox) * ppm, y = h / 2 + (v.z - oz) * ppm; if (x < -5 || y < -5 || x > w + 5 || y > h + 5) continue;
-    ctx.beginPath(); ctx.arc(x, y, r, 0, 6.3); ctx.fillStyle = v.kind === 0 ? '#c0262d' : '#1d5ca6'; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 6.3); ctx.fillStyle = v.kind === 0 ? '#c0262d' : v.kind === 2 ? '#2f7d4f' : '#1d5ca6'; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = '#fff'; ctx.stroke();
   }
 }
 

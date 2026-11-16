@@ -328,6 +328,18 @@ function buildLines() {
       if (best) out.push(best); }
     return out; }
   const N18 = C.names.indexOf('18. novembra iela');
+  /* the ballast of a railway track reaches half way to the next track alongside (closer than 9 m): a station's or a
+     yard's tracks lie in one bed of ballast, not each on its own strip in the grass */
+  const RAILS = new SegGrid(20); sorted.forEach((l, li) => { if (l.cls === 8) for (let i = 0; i + 3 < l.pts.length; i += 2) RAILS.add(l.pts[i], l.pts[i + 1], l.pts[i + 2], l.pts[i + 3], 0, li); });
+  const railBed = (li, dp, hw) => {
+    const m = dp.length >> 1, A = new Array(m).fill(-hw), B = new Array(m).fill(hw), rs = RAILS.s;
+    for (let i = 0; i < m; i++) { const a = Math.max(0, i - 1), c = Math.min(m - 1, i + 1), tx = dp[2 * c] - dp[2 * a], tz = dp[2 * c + 1] - dp[2 * a + 1], l = Math.hypot(tx, tz) || 1, ux = tx / l, uz = tz / l, x = dp[2 * i], z = dp[2 * i + 1];
+      RAILS.near(x, z, 9, (id, d, px, pz) => { const k = id * 6; if (rs[k + 5] === li) return; const ex = rs[k + 2] - rs[k], ez = rs[k + 3] - rs[k + 1], el = Math.hypot(ex, ez) || 1; if (Math.abs((ex * ux + ez * uz) / el) < 0.8) return;
+        const lat = (px - x) * -uz + (pz - z) * ux; if (Math.abs(lat) < 2.5) return; const half = Math.min(4.6, Math.abs(lat) / 2 + 0.15);
+        if (lat > 0) B[i] = Math.max(B[i], half); else A[i] = Math.min(A[i], -half); }); }
+    const sm = (V, f) => V.map((_, i) => { let v = V[i]; for (let j = Math.max(0, i - 2); j <= Math.min(m - 1, i + 2); j++) v = f(v, V[j]); return v; });
+    return [sm(A, Math.max), sm(B, Math.min)];   // a neighbour that comes and goes for a point or two makes no notch
+  };
   for (let li = 0; li < sorted.length; li++) {
     const l = sorted[li], { cls, pts } = l; const n = pts.length >> 1;
     if (cls === 12 || cls === 13 || cls === 14) {
@@ -425,7 +437,8 @@ function buildLines() {
     } else {
       if (rural) { ribbon(groups[2], dp, hw + 0.6, 0.6, GRAVEL, 0, je); ribbon(groups[2], dp, -hw - 0.6, 0.6, GRAVEL, 0, je); }   // a country road: gravel shoulders, no kerb or sidewalk
       else if (cls <= 3) { ribbon(walk, dp, hw + 1.4, 1.3, PAVE, 0, je); ribbon(walk, dp, -hw - 1.4, 1.3, PAVE, 0, je); mark(li, dp, hw + 0.08, 0.12, CURB, 'k'); mark(li, dp, -hw - 0.08, 0.12, CURB, 'k'); }
-      if (cls !== 9) ribbon(groups[def[2]], dp, 0, hw, lineCol[cls], 0, je);
+      if (cls === 8) { const [A, B] = railBed(li, dp, hw); ribbonV(groups[def[2]], dp, A, B, lineCol[cls], je); }
+      else if (cls !== 9) ribbon(groups[def[2]], dp, 0, hw, lineCol[cls], 0, je);
       if (cls <= 2) mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9]);
       if (cls === 0) { mark(li, dp, hw - 0.45, 0.07, WHITE, 'e'); mark(li, dp, -hw + 0.45, 0.07, WHITE, 'e'); }
     }
