@@ -10,6 +10,7 @@
    the pitches, tracks, playgrounds, fitness stations and dog parks in it or within 20 m of it; the fences, walls and
    hedges; the flower beds, the reed beds and marshes and the rows of trees; benches, waste baskets, street lamps, bicycle stands, picnic tables,
    barbecues, toilets, drinking water taps; fountains, memorials (with their kind and name), artworks and sundials.
+   A park mapped only as a point gets its outline from the areas listed in NODE_PARKS below.
    Coordinates are metres in the frame of citydata.js (x east, z south), rounded to 0.1 m. */
 'use strict';
 const fs = require('fs');
@@ -48,6 +49,14 @@ const parks = [];
 for (const [id, w] of ways) if (w.tags.leisure === 'park' && closed(w.refs)) {
   const p = ptsOf(w.refs); if (!p) continue; const c = centre(p);
   if (Math.abs(c[0]) < HX && Math.abs(c[1]) < HY) parks.push({ id: 'w' + id, t: w.tags, ring: p });
+}
+/* Parks that OpenStreetMap maps only as a point (leisure=park on a node, its borders not yet drawn): their outline is
+   given here as the areas of OSM that make them up. Aizpilsētas parks by Gubiščes ezers (node 10093613104): the wood of
+   its western part (way 366853571) and the meadow of the shore promenade east of it (way 835557212). */
+const NODE_PARKS = { 10093613104: [366853571, 835557212] };
+for (const [nid, wids] of Object.entries(NODE_PARKS)) {
+  const t = nodeTags.get(String(nid)); if (!t || t.leisure !== 'park') continue;
+  for (const wid of wids) { const w = ways.get(String(wid)), p = w && closed(w.refs) && ptsOf(w.refs); if (p) parks.push({ id: 'n' + nid, t, ring: p }); }
 }
 parks.sort((a, b) => (a.t.name || '~').localeCompare(b.t.name || '~') || a.id.localeCompare(b.id));
 const which = (p, near = 0) => parks.findIndex(g => pip(p, g.ring) || (near && ringD(p, g.ring) < near));

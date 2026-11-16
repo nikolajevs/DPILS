@@ -2,6 +2,7 @@ import { STATE } from '../core/state.js';
 import { CARROAD, TRAMGRID } from '../transit/transit.js';
 import { fortBridgeLine, fortSkipLine } from '../fortress/index.js';
 import { airOnLine } from '../landmarks/air-bridge.js';
+import { gubOnLine } from '../landmarks/gubisce.js';
 import { jnFix } from '../landmarks/junction.js';
 import { spwTrackLine } from '../landmarks/speedway.js';
 import { ovComp, ovDensify, ovPrep, ovRoadHW, ovTouches } from './overpass.js';
@@ -373,6 +374,10 @@ function buildLines() {
     if (l.bridge && vbOnLine(pts)) {   // on Vienības tilts: lmVienibas draws the deck, the line still guides traffic and walking
       if (cls <= 4) for (let i = 0; i < n - 1; i++) CARROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, cls);
       for (let i = 0; i < n - 1; i++) ROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw + (cls <= 3 ? 2.6 : 0), cls <= 7 ? l.name : -1);
+      continue;
+    }
+    if (l.bridge && gubOnLine(pts)) {   // the boardwalk at Gubiščes ezers: lmGubisce draws its deck of planks, the line still guides walking
+      for (let i = 0; i < n - 1; i++) ROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, l.name);
       continue;
     }
     if (l.bridge && airOnLine(pts)) {   // the air bridge to Jaunā Forštadte: lmAirBridge draws it and sets its heights

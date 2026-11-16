@@ -5,6 +5,7 @@ import { lmChurchHill } from './church-hill.js';
 import { lmShops } from './shops.js';
 import { lmParking, parkTick } from './parking.js';
 import { lmYards } from './yards.js';
+import { gubTick, lmGubisce } from './gubisce.js';
 import { lmHospital } from './hospital.js';
 import { lmParks, parksNight } from './parks.js';
 import { TX, rigaNow } from '../transit/transit.js';
@@ -49,7 +50,7 @@ function lmNight(n) {
   if (LMM.fuLamp) { LMM.fuLamp.emissiveIntensity = n * 2.6; LMM.fuTxt.emissiveIntensity = n * 1.6; LMM.fuFascia.userData.glow.value = 0.28 + n * 0.45; } if (FUEL_POOLS) FUEL_POOLS.visible = n > 0.5;   // fuel stations
 }
 function lmTick() {
-  const now = TX.ok ? TX : rigaNow(); parkTick(now.day, now.sec);   // the cars in the car parks by the time of day
+  const now = TX.ok ? TX : rigaNow(); parkTick(now.day, now.sec); gubTick();   // the cars in the car parks by the time of day, the reeds of Gubiščes ezers by the distance
   if (!lmClk) return;
   const m = Math.floor(now.sec / 60) % 1440; if (m === lmClk.m) return; lmClk.m = m;
   const g = lmClk.g, W = lmClk.cv.width, H = lmClk.cv.height;
@@ -85,7 +86,7 @@ function buildLandmarks() {
   const K = { ash: new LMB(), ren: new LMB(), det: new LMB(), txt: new LMB(), clk: new LMB(), plain: new GB(false), stone: new GB(false), globe: new GB(false) };
   K.walls = [K.ash, K.ren, new LMB(), new LMB(), new LMB(), new LMB(), new LMB(), new LMB()];
   lmUnityHouse(K); lmLatgola(K); lmSquare(K); lmGrounds(K); lmDUMain(K); lmDUParades(K); lmDULab(K); lmRenesanse(K); lmRigas(K); lmVesma(K); lmTVTower(K); lmStation(K); lmStationYard(K); lmAutoosta(K); lmSpeedway(K); lmKP(K); lmSC(K); lmFuel(K, litPatch); lmOverpass(K); lmTramWires(K); lmAirBridge(K); lmJunction(K); lmSchools(K, litPatch); lmChurchHill(K, litPatch); lmShops(K, litPatch); STATE.GBC = TERR.on ? vbComp : null; lmVienibas(K); STATE.GBC = null;
-  lmParking(K); lmYards(K); lmHospital(K); lmParks(K); lmUnderpass(K);
+  lmParking(K); lmYards(K); lmGubisce(K); lmHospital(K); lmParks(K); lmUnderpass(K);
   [LMM.ash, LMM.ren, LMM.duw, LMM.brick, LMM.tile, LMM.panel, LMM.buff, LMM.sil].forEach((m, k) => K.walls[k].mesh(m)); K.det.mesh(LMM.det); K.txt.mesh(LMM.txt, false); K.clk.mesh(LMM.clk, false);
   for (const [b, m] of [[K.plain, LMM.plain], [K.stone, LMM.stone]]) { const pm = b.mesh(m); if (pm) { pm.castShadow = pm.receiveShadow = true; scene.add(pm); } }
   const gm = K.globe.mesh(LMM.globe); if (gm) { gm.receiveShadow = true; scene.add(gm); }
