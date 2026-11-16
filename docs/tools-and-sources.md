@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude (сессия владельца) | `claude/nifty-bell-byecnv` | Крепость по порядку: пороховые погреба, затем фасады исторических казарм и офицерских домов, затем редюиты (по фото Mapillary и Commons) | `src/fortress/*`, участки крепости в `src/buildings/buildings.js`, раздел крепости в README.md |
-| Chatbox (агент) | `chatbox/kimija-substation` | Подстанция «Daugavpils» 330/110 кВ и ТП района Химия: ОРУ, порталы, трансформаторы, опоры и провода ЛЭП, корпуса ТП (по OSM); плюс исправление падения сборки из-за крыши Jysk | `src/landmarks/substation.js`, `src/landmarks/index.js`, `src/landmarks/core.js` (строки LMF и LM_DROP_BIG), `src/landmarks/shops.js` (крыша Jysk на этапе claim), `src/ui/places.js`, раздел «Химия» в README.md |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
 
