@@ -8,7 +8,6 @@
 
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
-| Claude (сессия владельца) | `claude/adoring-goldberg-0qz2d2` | Поезда по расписанию и территория вокзала: пути, перроны, переходы | `src/transit/*` (поезда), `src/landmarks/station.js`, новый файл данных поездов, `tools/` для него |
 | Claude (сессия владельца) | `claude/nifty-bell-byecnv` | Крепость по порядку: пороховые погреба, затем фасады исторических казарм и офицерских домов, затем редюиты (по фото Mapillary и Commons) | `src/fortress/*`, участки крепости в `src/buildings/buildings.js`, раздел крепости в README.md |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
@@ -48,6 +47,10 @@ node tools/lks92.js city -1487 1263
   Так собраны `parks.js` и `schools.js` и прочитаны теги развязки у моста Единства (`oneway`, `lanes`, `maxheight` → [src/world/street-tags.js](../src/world/street-tags.js)). Из облака работает.
 - **Nominatim** (поиск объектов по названию и типу) работает. Нужен свой `User-Agent` и не чаще запроса в секунду.
 - **Overpass** (`overpass-api.de`) из облачного окружения не отвечает: туннель рвётся. Вместо него — OSM API по прямоугольникам.
+
+### Расписание поездов
+- **GTFS внутренних поездов Vivi** (VSIA Autotransporta direkcija, каталог data.gov.lv, набор «Vilcienu kustības saraksts iekšzemes dzelzceļa maršrutos»): `https://vivi.lv/uploads/GTFS.zip`. Отвечает из облака. Есть линии (shapes), но нет `shape_dist_traveled`; станция в пределах карты одна — Daugavpils. Сборка — `tools/trains.js`, см. README «Поезда и станция».
+- Международных поездов в нём нет.
 
 ### Mapillary — уличные фото для фасадов
 - API v4: `https://graph.mapillary.com`. Фото по лицензии CC BY-SA 4.0. Используем их как образец, а не как текстуры.

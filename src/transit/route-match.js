@@ -167,4 +167,47 @@ function matchShape(net, shape, opt) {
   return { pts, de, at, place, how, breaks };
 }
 
-export { buildNet, dDir, matchShape, placesNear };
+// the nearest point on a line (flat x, z)
+function nearOn(p, x, z) {
+  let bd = Infinity, bx = x, bz = z;
+  for (let i = 0; i + 3 < p.length; i += 2) { const ax = p[i], az = p[i + 1], dx = p[i + 2] - ax, dz = p[i + 3] - az, l2 = dx * dx + dz * dz || 1e-9, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)), px = ax + dx * t, pz = az + dz * t, d = (x - px) ** 2 + (z - pz) ** 2; if (d < bd) { bd = d; bx = px; bz = pz; } }
+  return [bx, bz];
+}
+// the route of a match: the points moved off the middle of the road into the lane, rounded, resampled
+function laneRoute(m, offAt, step, round) {
+  const P = m.pts, n = P.length >> 1, O = new Float32Array(n);
+  for (let i = 0; i < n; i++) O[i] = offAt(m.de[i]);
+  if (n > 1) O[0] = O[1];
+  const Q = new Float32Array(2 * n);
+  for (let i = 0; i < n; i++) {
+    const a = Math.max(0, i - 1), c = Math.min(n - 1, i + 1); let ix = P[2 * i] - P[2 * a], iz = P[2 * i + 1] - P[2 * a + 1], ox = P[2 * c] - P[2 * i], oz = P[2 * c + 1] - P[2 * i + 1];
+    const li = Math.hypot(ix, iz), lo = Math.hypot(ox, oz); if (li > 1e-6) { ix /= li; iz /= li; } if (lo > 1e-6) { ox /= lo; oz /= lo; }
+    if (li <= 1e-6) { ix = ox; iz = oz; } if (lo <= 1e-6) { ox = ix; oz = iz; }
+    let tx = ix + ox, tz = iz + oz, tl = Math.hypot(tx, tz); if (tl < 0.2) { tx = ix; tz = iz; tl = 1; } tx /= tl; tz /= tl;
+    const off = (O[i] + O[Math.min(n - 1, i + 1)]) / 2 / Math.max(0.6, tx * ix + tz * iz);   // a mitre at a corner
+    Q[2 * i] = P[2 * i] - tz * off; Q[2 * i + 1] = P[2 * i + 1] + tx * off;
+  }
+  const qc = new Float32Array(n); for (let i = 1; i < n; i++) qc[i] = qc[i - 1] + Math.hypot(Q[2 * i] - Q[2 * i - 2], Q[2 * i + 1] - Q[2 * i - 1]);
+  const L = n ? qc[n - 1] : 0, k = Math.max(2, Math.ceil(L / step) + 1), R = new Float32Array(2 * k);
+  for (let j = 0, i = 0; j < k; j++) { const u = L * j / (k - 1); while (i < n - 2 && qc[i + 1] < u) i++; const f = n > 1 ? Math.max(0, Math.min(1, (u - qc[i]) / ((qc[i + 1] - qc[i]) || 1))) : 0, i2 = Math.min(n - 1, i + 1);
+    R[2 * j] = Q[2 * i] + (Q[2 * i2] - Q[2 * i]) * f; R[2 * j + 1] = Q[2 * i + 1] + (Q[2 * i2 + 1] - Q[2 * i + 1]) * f; }
+  let pts = R;
+  if (round > 0) { pts = new Float32Array(2 * k);
+    for (let j = 0; j < k; j++) { let sx = 0, sz = 0, w = 0; for (let q = -round; q <= round; q++) { const jj = Math.max(0, Math.min(k - 1, j + q)), ww = round + 1 - Math.abs(q); sx += R[2 * jj] * ww; sz += R[2 * jj + 1] * ww; w += ww; } pts[2 * j] = sx / w; pts[2 * j + 1] = sz / w; } }
+  const cum = new Float32Array(k); for (let j = 1; j < k; j++) cum[j] = cum[j - 1] + Math.hypot(pts[2 * j] - pts[2 * j - 2], pts[2 * j + 1] - pts[2 * j - 1]);
+  // the vertices of the shape: their distance along the offset line, then along the resampled, rounded one
+  const vu = new Float32Array(m.at.length); m.at.forEach((idx, v) => { const f = L > 0 ? qc[idx] / L * (k - 1) : 0, j = Math.min(k - 2, Math.floor(f)); vu[v] = k > 1 ? cum[j] + (cum[j + 1] - cum[j]) * (f - j) : 0; });
+  return { pts, cum, len: cum[k - 1], vu };
+}
+// the point and the direction at u along a route (past its ends straight on)
+function routeAt(R, u, o) {
+  const c = R.cum, p = R.pts, n = c.length; let lo, hi;
+  if (u <= 0) { lo = 0; hi = 1; } else if (u >= R.len) { lo = n - 2; hi = n - 1; }
+  else { lo = 0; hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (c[m] <= u) lo = m; else hi = m; } }
+  const L = (c[hi] - c[lo]) || 1, f = (u - c[lo]) / L;
+  o[2] = (p[2 * hi] - p[2 * lo]) / L; o[3] = (p[2 * hi + 1] - p[2 * lo + 1]) / L;
+  o[0] = p[2 * lo] + (p[2 * hi] - p[2 * lo]) * f; o[1] = p[2 * lo + 1] + (p[2 * hi + 1] - p[2 * lo + 1]) * f;
+  return o;
+}
+
+export { buildNet, dDir, laneRoute, matchShape, nearOn, placesNear, routeAt };
