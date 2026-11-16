@@ -3,6 +3,7 @@ import { LAMPS } from './streets.js';
 import { COL, inBuilding, inWater, matPlain } from './data.js';
 import { glowTex } from '../render/textures.js';
 import { bridgeY } from './terrain.js';
+import { upNoLamp } from './underpass.js';
 import { hook, scene } from '../render/renderer.js';
 import { GB, box, lathe } from '../core/geometry.js';
 import { hb, lin } from '../core/util.js';
@@ -12,7 +13,7 @@ let lampHeads, lampPools, matHeadDay, matHeadNight;
 
 function buildLamps() {
   const n = LAMPS.length / 3, ok = [];
-  for (let i = 0; i < n; i++) { const x = LAMPS[3 * i], z = LAMPS[3 * i + 1]; if (!inBuilding(x, z) && !inWater(x, z)) ok.push(i); }
+  for (let i = 0; i < n; i++) { const x = LAMPS[3 * i], z = LAMPS[3 * i + 1]; if (!inBuilding(x, z) && !inWater(x, z) && !upNoLamp(x, z)) ok.push(i); }
   const pole = new GB(false), PC = hb('#55595c');
   lathe(pole, 0, 0, 0, [[0.11, 0], [0.08, 7.6], [0.06, 8.2]], 6, 0, PC); box(pole, 0.7, 0, 1, 0, 0.75, 0.04, 8.05, 8.15, PC);
   const pg = pole.mesh(matPlain).geometry;

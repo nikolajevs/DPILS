@@ -1,6 +1,7 @@
 import { STATE } from '../core/state.js';
 import { COL, inBuilding, inWater, onRoad } from '../world/data.js';
 import { terrainH, walkLift } from '../world/terrain.js';
+import { parkedAt, parkedPush } from '../landmarks/parking.js';
 import { $, HX, HY } from '../core/env.js';
 
 /* ---------- player ---------- */
@@ -8,7 +9,7 @@ const P = { x: -1487, y: 1.7, z: 1263, yaw: 0.6, pitch: 0, fly: false, walked: 0
 const keys = new Set(); const touch = { mx: 0, mz: 0 };
 STATE.started = false; STATE.night = false; STATE.locked = false; STATE.introT = 0;
 function freeSpot(x, z) {
-  const bad = (a, b) => inBuilding(a, b) || (inWater(a, b) && !onRoad(a, b, 1));
+  const bad = (a, b) => inBuilding(a, b) || (inWater(a, b) && !onRoad(a, b, 1)) || parkedAt(a, b);
   if (!bad(x, z)) return [x, z];
   for (let r = 4; r < 400; r += 5) for (let k = 0; k < 14; k++) { const a = k / 14 * 6.283 + r, nx = x + Math.cos(a) * r, nz = z + Math.sin(a) * r; if (!bad(nx, nz)) return [nx, nz]; }
   return [x, z];
@@ -20,9 +21,9 @@ function teleport(x, z, yaw) {
   STATE.hudTimer = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
 }
 function collide() {
-  for (let it = 0; it < 2; it++) COL.near(P.x, P.z, 0.45, (id, d, px, pz) => {
+  for (let it = 0; it < 2; it++) { COL.near(P.x, P.z, 0.45, (id, d, px, pz) => {
     const Rr = 0.45 + COL.s[id * 6 + 4]; if (d >= Rr || d < 1e-5) return; const k = (Rr - d) / d; P.x += (P.x - px) * k; P.z += (P.z - pz) * k;
-  });
+  }); parkedPush(P); }   // and the cars parked at this time of day
 }
 function step(dt) {
   let f = 0, s = 0;

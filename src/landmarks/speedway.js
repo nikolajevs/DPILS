@@ -198,13 +198,13 @@ function lmSpeedway(K) {
   const ground = (b, mat, order) => { const m = b.mesh(mat); if (m) { m.renderOrder = order; m.frustumCulled = false; m.receiveShadow = true; scene.add(m); } };
   const rect = (b, u0, u1, v0, v1, col) => { const k = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]].map(([u, v]) => { const w = W2(u, v); return b.vert(w[0], 0, w[1], 0, 1, 0, col); }); b.triUp(k[0], k[1], k[2]); b.triUp(k[0], k[2], k[3]); };
 
-  // ---- the ground: asphalt in front of the stands, in the paddock and on the car park, paving at the main entrance;
+  // ---- the ground: asphalt in front of the stands and in the paddock (the car park south of the stands, OSM way
+  // 803378639, is lmParking's, with its cars), paving at the main entrance;
   // the infield lawn mown in stripes across the track; the granite track, darker on the racing line by the inside and
   // lighter where the loose shale is thrown out towards the fence
   const asph = new GB(false), pave = new GB(false), mk = new GB(false), ASPH = hb('#5c5d5f');
-  rect(asph, -58.5, 55.2, 43.0, 47.3, ASPH); rect(asph, -57.6, 56.4, -49.05, -43.6, ASPH); rect(asph, -113.2, -93, -23.5, 40.5, ASPH); rect(asph, -62.6, 58.5, -92.3, -60.6, ASPH);
+  rect(asph, -58.5, 55.2, 43.0, 47.3, ASPH); rect(asph, -57.6, 56.4, -49.05, -43.6, ASPH); rect(asph, -113.2, -93, -23.5, 40.5, ASPH);
   rect(pave, -56.3, 57.2, 61.8, 66.4, hb('#968f84'));
-  for (let u = -60; u < 56.5; u += 2.6) { rect(mk, u - 0.06, u + 0.06, -92.0, -87.0, WHITE); rect(mk, u - 0.06, u + 0.06, -65.9, -60.9, WHITE); }
   ground(asph, M_ASPH, -32.9); ground(pave, M_PAVE, -32.85);
   const inW = []; for (const p of T.I) inW.push(...W2(p[0], p[1]));
   { const stripes = `\n      diffuseColor.rgb *= 1.0 + 0.07 * clamp(sin(dot(vWxz, vec2(${f[2].toFixed(5)}, ${f[3].toFixed(5)})) * 0.62832) * 5.0, -1.0, 1.0);`;

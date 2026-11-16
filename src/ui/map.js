@@ -13,7 +13,7 @@ function drawMap(ctx, w, h, cx, cz, ppm, dpr, detail) {
   ctx.setTransform(ppm * dpr, 0, 0, ppm * dpr, (w / 2 - cx * ppm) * dpr, (h / 2 - cz * ppm) * dpr);
   const vis = bb => bb[2] >= x0 && bb[0] <= x1 && bb[3] >= z0 && bb[1] <= z1;
   const path = r => { ctx.moveTo(r[0], r[1]); for (let i = 2; i < r.length; i += 2) ctx.lineTo(r[i], r[i + 1]); ctx.closePath(); };
-  const AC = STATE.night ? { 0: '#2c4f66', 1: '#2c4433', 4: '#31503a', 3: '#2f4636', 5: '#2f4636', 10: '#356043', 6: '#4c4a3c' } : { 0: '#9cc3d9', 1: '#b5d0a4', 4: '#c3dcae', 3: '#d2e2be', 5: '#c5d6b8', 10: '#b2d6a3', 6: '#efe4bd', 2: '#c8d9b3', 11: '#d3dfc0' };
+  const AC = STATE.night ? { 0: '#2c4f66', 1: '#2c4433', 4: '#31503a', 3: '#2f4636', 5: '#2f4636', 10: '#356043', 6: '#4c4a3c', 14: '#38393c' } : { 0: '#9cc3d9', 1: '#b5d0a4', 4: '#c3dcae', 3: '#d2e2be', 5: '#c5d6b8', 10: '#b2d6a3', 6: '#efe4bd', 2: '#c8d9b3', 11: '#d3dfc0', 14: '#d6d4cf' };
   for (const a of AREAS) { const c = AC[a.cls]; if (!c || !vis(a.bb)) continue; ctx.beginPath(); for (const r of a.rings) path(r); ctx.fillStyle = c; ctx.fill('evenodd'); }
   if (detail > 0) { ctx.fillStyle = STATE.night ? '#4a535c' : '#c9bfae'; ctx.beginPath(); for (const b of BLD) if (vis(b.bb) && (detail > 1 || b.kind !== 7)) path(b.ring); ctx.fill(); }
   const minW = 1 / ppm;

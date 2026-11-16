@@ -6,6 +6,7 @@
      by x ≈ −20 carry no lanes tag but lie between four-lane ways;
    - west of the overpass the two one-way carriageways have two lanes each (lanes=2 on oneway ways); the two short
      pieces with a third, turning lane before the junction at x ≈ −660 are drawn with two;
+   - one-way ramps of one lane at the end of Vienības tilts (below);
    - a country road (maxspeed=70 and no lit tag, the rest of the street is 50 km/h and mostly lit=yes) between x ≈ 2517 and
      3590 and between x ≈ 4405 and 4784: no kerbs, sidewalks or street lamps, gravel shoulders instead.
 
@@ -35,6 +36,23 @@ const TAGS = [
   [127382595, 3296, -1019, 3022, -891, { rural: true }],
   [128080447, 3590, -1156, 3296, -1019, { rural: true }],
   [127382450, 4784, -2611, 4405, -1857, { rural: true }],
+  // Latgales iela between its two roundabouts, the two one-way carriageways of the cutting (lanes=2)
+  [133296796, -309, -1184, -1109, -1269, { lanes: 2 }],
+  [133296797, -1098, -1236, -331, -1174, { lanes: 2 }],
+  /* Daugavas iela at the north end of Vienības tilts (OSM API, November 2026): the way under the bridge is one-way, one
+     lane between a hatched margin on its left (Street View) and maxheight=3.9; the ramps of the teardrop junction on the
+     dam are one-way, one lane each (lanes=1 on one of them). */
+  [22734923, -1817.6, 1656.6, -1536.6, 1773.1, { oneway: true, lanes: 1, hw: 3.2, hatch: -1 }],
+  [13865228, -1682.1, 1711.6, -1673.3, 1700.6, { oneway: true, lanes: 1 }],
+  [256273745, -1621.9, 1715.5, -1666.2, 1681.4, { oneway: true, lanes: 1 }],
+  [256273746, -1695.8, 1680.6, -1744.8, 1680.6, { oneway: true, lanes: 1 }],
+  [256273749, -1744.8, 1680.6, -1686.4, 1695.7, { oneway: true, lanes: 1 }],
+  [338788509, -1683.7, 1677.1, -1695.8, 1680.6, { oneway: true, lanes: 1 }],
+  [338788510, -1673.3, 1700.6, -1621.9, 1715.5, { oneway: true, lanes: 1 }],
+  [338788512, -1666.2, 1681.4, -1683.7, 1677.1, { oneway: true, lanes: 1 }],
+  [338788513, -1686.4, 1695.7, -1687.1, 1709.6, { oneway: true, lanes: 1 }],
+  [522952506, -1673.3, 1700.6, -1666.2, 1681.4, { oneway: true, lanes: 1 }],
+  [694354737, -1683.7, 1677.1, -1686.4, 1695.7, { oneway: true, lanes: 1 }],
 ];
 /* Nodes of 18. novembra iela, from the same reading (x, z on the centre line of a carriageway):
    - SIGNALS: traffic lights. 'j' a node highway=traffic_signals (at a junction, or on each one-way carriageway before
@@ -57,6 +75,15 @@ const CROSSINGS = SIGNALS.filter(s => s[2] === 'p').map(s => [s[0], s[1], true])
   [2194.4, -469.9, true], [3601.7, -1161.9, true], [4011.8, -1353.9, true], [4342.3, -1732.7, true],
   [-507.1, 1572.7, false], [-347.1, 1502.8, false],
 ]);
+/* The pedestrian crossings around Latgales iela and its two roundabouts (OSM highway=crossing nodes in x −1250…−230,
+   z −1450…−1080, November 2026), the same way: true where marked. Within 6 m of one the zebras guessed from footways
+   are dropped, so the unmarked ones (false) leave none. */
+const CROSSINGS_LAT = [
+  [-758, -1444.2, true], [-1104.8, -1139.1, true], [-325.2, -1398.5, true], [-283.6, -1207.7, true], [-336.5, -1193.7, true], [-278.2, -1123, true],
+  [-265.6, -1162.3, true], [-295.9, -1260.8, true], [-780.2, -1442.9, true], [-1075.8, -1257, true], [-1081.5, -1269.1, true], [-1137.9, -1309.4, true],
+  [-1167.9, -1222, true], [-1055.2, -1130.3, true], [-359.1, -1152.9, true], [-326.5, -1199.1, true],
+  [-757.1, -1431, false], [-341.9, -1424.9, false], [-796.2, -1380, false], [-255.9, -1409.1, false], [-1151.9, -1328.8, false],
+];
 const near = (x, z, a, b) => Math.abs(x - a) < 1.5 && Math.abs(z - b) < 1.5;
 // the tags of the street line pts (flat x, z pairs), or null
 function streetTags(pts) {
@@ -65,4 +92,4 @@ function streetTags(pts) {
   return null;
 }
 
-export { CROSSINGS, SIGNALS, streetTags };
+export { CROSSINGS, CROSSINGS_LAT, SIGNALS, streetTags };

@@ -94,6 +94,8 @@ body { margin: 0; background: var(--page); color: var(--ink); font-family: var(-
 .board li.empty { display: block; color: var(--muted); }
 .rt { min-width: 30px; text-align: center; border-radius: 4px; padding: 4px 5px; font: 700 12px/1 var(--f-body); color: #fff; background: var(--bus); }
 .rt.tram { background: var(--tram); }
+.rt.train { background: #2f7d4f; }
+.rt.coach { background: #e0782b; }
 .hd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mn { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
 .mn b { color: var(--ink); font-weight: 600; }

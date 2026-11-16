@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { SIGNALS } from './street-tags.js';
 import { COL, inBuilding, matPlain } from './data.js';
+import { STATE } from '../core/state.js';
 import { U, hook, scene } from '../render/renderer.js';
 import { GB, box, lathe, polyA } from '../core/geometry.js';
 import { hb } from '../core/util.js';
@@ -144,6 +145,7 @@ function buildSignals(sorted, ZR, ZB, marks, WHITE, N18) {
       }
     }
   });
+  roundabouts(sorted, ZB, quad);
   const pm = post.mesh(matPlain); if (pm) { pm.castShadow = pm.receiveShadow = true; scene.add(pm); }
   const lm = lens.mesh(hook(new THREE.MeshBasicMaterial({ vertexColors: true }), 'signal-lens', sh => {
     sh.uniforms.uSigTime = U.time;
@@ -151,6 +153,52 @@ function buildSignals(sorted, ZR, ZB, marks, WHITE, N18) {
   }));
   if (lm) scene.add(lm);
   return groups.size;
+}
+/* Give way at the roundabouts: the traffic on the ring goes first. A ring is a closed street of classes 0–3 drawn round
+   (16 points or more, every one within 10 % of the mean radius, 8–40 m): the two of Latgales iela, Vidzemes, Smiltenes
+   iela and a few more. Every street that ends on it gets the broken transverse line across the lanes coming in, 0.8 m
+   out from the outer edge of the ring, or past a zebra that lies right there. OSM keeps a one-way way in its direction, so
+   of the one-way carriageways at a ring (a pair split from one node, or of the same street side by side, both ends
+   within 40 m and leaving the same way) the one that ends there comes in, across its whole width, and the one that
+   starts there goes out. A two-way street gets the line on the right half, the lanes coming in. */
+function roundabouts(sorted, ZB, quad) {
+  const rings = [];
+  sorted.forEach((L, li) => { const p = L.pts, n = p.length >> 1; if (L.cls > 3 || !L.zone || n < 16 || Math.hypot(p[0] - p[2 * n - 2], p[1] - p[2 * n - 1]) > 1) return;
+    let cx = 0, cz = 0, R = 0; for (let i = 0; i < n - 1; i++) { cx += p[2 * i]; cz += p[2 * i + 1]; } cx /= n - 1; cz /= n - 1;
+    for (let i = 0; i < n - 1; i++) R += Math.hypot(p[2 * i] - cx, p[2 * i + 1] - cz); R /= n - 1; if (R < 8 || R > 40) return;
+    for (let i = 0; i < n - 1; i++) if (Math.abs(Math.hypot(p[2 * i] - cx, p[2 * i + 1] - cz) - R) > 0.1 * R) return;
+    rings.push({ li, cx, cz, R, hw: L.zone }); });
+  for (const G of rings) {
+    // the streets ending on the ring: the end (0 the first point, 1 the last), the points from it out, the way out
+    const ends = [];
+    sorted.forEach((L, li) => { if (li === G.li || L.cls > 4 || !L.zone) return; const p = L.pts, n = p.length >> 1; if (n < 2) return;
+      for (const e of [0, 1]) { const i0 = e ? n - 1 : 0; if (Math.abs(Math.hypot(p[2 * i0] - G.cx, p[2 * i0 + 1] - G.cz) - G.R) > G.hw + 1.5) continue;
+        const q = []; for (let k = 0; k < n; k++) { const i = e ? n - 1 - k : k; q.push(p[2 * i], p[2 * i + 1]); }
+        let ox = 0, oz = 0; for (let k = 2, acc = 0; k < q.length && acc < 12; k += 2) { acc += Math.hypot(q[k] - q[k - 2], q[k + 1] - q[k - 1]); ox = q[k] - q[0]; oz = q[k + 1] - q[1]; }
+        const ol = Math.hypot(ox, oz); if (ol < 1) continue;
+        ends.push({ li, e, q, ox: ox / ol, oz: oz / ol, key: L.name >= 0 ? 'n' + L.name : 'c' + L.cls }); } });
+    for (const E of ends) {
+      const L = sorted[E.li], q = E.q, m = q.length >> 1, fx = q[q.length - 2], fz = q[q.length - 1];
+      // a one-way pair: the two split from one node (their far ends meet) or run side by side under one name
+      const oneway = L.isDual || L.one || ends.some(F => F.li !== E.li && F.e !== E.e && Math.hypot(F.q[0] - q[0], F.q[1] - q[1]) < 60 &&
+        (Math.hypot(F.q[F.q.length - 2] - fx, F.q[F.q.length - 1] - fz) < 3 || (F.key === E.key && Math.hypot(F.q[0] - q[0], F.q[1] - q[1]) < 40 && F.ox * E.ox + F.oz * E.oz > 0.8)));
+      if (oneway && E.e === 0) continue;   // a one-way carriageway leaving the ring
+      // out along the street to 0.8 m past the outer edge of the ring
+      const at = sv => { let acc = 0; for (let k = 0; k < m - 1; k++) { const dx = q[2 * k + 2] - q[2 * k], dz = q[2 * k + 3] - q[2 * k + 1], l = Math.hypot(dx, dz); if (l < 1e-6) continue;
+          if (acc + l >= sv || k === m - 2) { const t = Math.min(1, (sv - acc) / l); return [q[2 * k] + dx * t, q[2 * k + 1] + dz * t, dx / l, dz / l]; } acc += l; } return null; };
+      let dS = -1; for (let sv = 0; sv < 30; sv += 0.25) { const P = at(sv); if (!P) break; if (Math.hypot(P[0] - G.cx, P[1] - G.cz) >= G.R + G.hw + 0.8) { dS = sv; break; } }
+      if (dS < 0) continue;
+      // a zebra the line would cross (its stripes run 2 m either side of it) puts the line out past it; one set back a car
+      // length or more, as most at the rings are, leaves it at the ring
+      for (const Z of ZB) { if (Z.li !== E.li) continue; const zs = Math.hypot(Z.x - q[0], Z.z - q[1]); if (Math.abs(zs - dS) < 2.6) dS = Math.max(dS, zs + 2.8); }
+      const A = at(dS), B = at(dS + 0.3); if (!A || !B) continue;
+      const ux = A[2], uz = A[3], rx = uz, rz = -ux, hw = L.zone, a = oneway ? -hw + 0.3 : 0.15, b = hw - 0.3;
+      const P = (Q, off) => [Q[0] + rx * off, Q[1] + rz * off];
+      STATE.GBC = L.gbc || null;
+      for (let t = a; t < b - 0.1; t += 0.9) { const e = Math.min(t + 0.5, b); quad(P(A, t), P(A, e), P(B, e), P(B, t)); }
+      STATE.GBC = null;
+    }
+  }
 }
 /* The cycle of a junction, 60 s, in the vertex shader of the lens mesh (a light that is off collapses to a point):
    18. novembra iela (A) green 0–30 s, amber 30–33, red 33–58, red and amber 58–60; the street across (B) red until 35,

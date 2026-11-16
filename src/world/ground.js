@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { FORT } from '../fortress/index.js';
 import { AREAS, M_LAND, WATER, WMASK, matBank, waterMask } from './data.js';
-import { waterMat } from './water.js';
+import { SMALL_WATER, waterDeep, waterMat } from './water.js';
 import { AREA_HEX, AREA_ORDER } from './palette.js';
 import { groundMaterial } from '../render/materials.js';
 import { detailTex } from '../render/textures.js';
-import { TERR, densify, subTris, terrainH, waterLevel } from './terrain.js';
+import { PATCH, TERR, densify, inPatch, subTris, terrainH, waterLevel } from './terrain.js';
+import { cutFloor } from './cutting.js';
 import { scene } from '../render/renderer.js';
 import { GB, polyA } from '../core/geometry.js';
 import { bbox, dec, hb, rnd, sh, triangulate } from '../core/util.js';
@@ -23,6 +24,7 @@ function terrainDepth() {
   const g = new GB(false), nx = TERR.nx, nz = TERR.nz, s = TERR.s, q = TERR.q, C0 = [0, 0, 0]; g.ensure(nx * nz);
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
     let m = 1e9; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = Math.min(nx - 1, Math.max(0, i + di)), jj = Math.min(nz - 1, Math.max(0, j + dj)); m = Math.min(m, q[jj * nx + ii]); }
+    m = Math.min(m, cutFloor(TERR.x0 + i * s, TERR.z0 + j * s) * 10);   // beside the retaining walls of the Latgales cutting
     g.vert(TERR.x0 + i * s, (m - q[j * nx + i]) * 0.1 - 0.5, TERR.z0 + j * s, 0, 1, 0, C0);
   }
   const wet = (x, z) => { const W = WMASK, i = Math.floor((x - W.X0) / W.S), j = Math.floor((z - W.Z0) / W.S); return i >= 0 && j >= 0 && i < W.NX && j < W.NZ && W.m[j * W.NX + i] !== 0; };
@@ -30,7 +32,17 @@ function terrainDepth() {
     const x = TERR.x0 + i * s, z = TERR.z0 + j * s;
     if (FORT.ok && Math.abs(x + s / 2 - FORT.cx) < FORT.R + 60 && Math.abs(z + s / 2 - FORT.cz) < FORT.R + 60) continue;
     let w = false; for (let a = 0; a <= s && !w; a += s / 4) for (let b = 0; b <= s && !w; b += s / 4) w = wet(x + a, z + b); if (w) continue;
+    if (inPatch(x, z, x + s, z + s)) continue;   // the fine patch has a depth grid of its own, below
     const k = j * nx + i; g.triUp(k, k + nx, k + 1); g.triUp(k + 1, k + nx, k + nx + 1);
+  }
+  /* over the fine patch (src/world/underpass.js) a 2 m grid, each node 0.5 m under the lowest ground around it, over
+     the cells of the coarse grid it replaces; the water left out as there */
+  if (PATCH.on) {
+    const S = 2, X0 = TERR.x0 + Math.floor((PATCH.bb[0] - TERR.x0) / s) * s, Z0 = TERR.z0 + Math.floor((PATCH.bb[1] - TERR.z0) / s) * s;
+    const X1 = TERR.x0 + Math.ceil((PATCH.bb[2] - TERR.x0) / s) * s, Z1 = TERR.z0 + Math.ceil((PATCH.bb[3] - TERR.z0) / s) * s, NX = Math.round((X1 - X0) / S) + 1, NZ = Math.round((Z1 - Z0) / S) + 1, v0 = g.v;
+    g.ensure(NX * NZ);
+    for (let j = 0; j < NZ; j++) for (let i = 0; i < NX; i++) { const x = X0 + i * S, z = Z0 + j * S; let m = 1e9; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) m = Math.min(m, terrainH(x + di * S, z + dj * S)); g.vert(x, m - terrainH(x, z) - 0.5, z, 0, 1, 0, C0); }
+    for (let j = 0; j < NZ - 1; j++) for (let i = 0; i < NX - 1; i++) { const x = X0 + i * S, z = Z0 + j * S; if (wet(x, z) || wet(x + S, z) || wet(x, z + S) || wet(x + S, z + S)) continue; const k = v0 + j * NX + i; g.triUp(k, k + NX, k + 1); g.triUp(k + 1, k + NX, k + NX + 1); }
   }
   const m = g.mesh(new THREE.MeshBasicMaterial({ colorWrite: false })); if (!m) return; m.renderOrder = -60; m.frustumCulled = false; m.castShadow = true; scene.add(m);
 }
@@ -51,11 +63,11 @@ function buildGround() {
   for (const a of C.a) { const rings = a.slice(1).map(dec); const o = { cls: a[0], rings, bb: bbox(rings[0]) }; AREAS.push(o); if (o.cls === 0) WATER.push(o); }
   AREAS.sort((p, q) => AREA_ORDER.indexOf(p.cls) - AREA_ORDER.indexOf(q.cls));
   const colors = {}; for (const k in AREA_HEX) colors[k] = hb(AREA_HEX[k]);
-  const land = new GB(false), water = new THREE.BufferGeometry(), wp = [], wi = [], bank = new GB(false);
+  const land = new GB(false), wet = [[[], []], [[], []]], bank = new GB(false);   // the water: [positions, indices] with the field of src/world/water.js, then the small ponds
   AREAS.forEach((a, n) => {
     const tr0 = triangulate(a.rings), { flat, tris } = TERR.on ? subTris(tr0.flat, tr0.tris, a.cls === 0 ? 0.4 : 0.25) : tr0;
     if (a.cls === 0) {
-      const v0 = wp.length / 3; for (let i = 0; i < flat.length; i += 2) wp.push(flat[i], TERR.on ? waterLevel(flat[i], flat[i + 1]) - 0.1 - terrainH(flat[i], flat[i + 1]) : WL, flat[i + 1]);
+      const [wp, wi] = wet[waterDeep(a) ? 0 : 1], v0 = wp.length / 3; for (let i = 0; i < flat.length; i += 2) wp.push(flat[i], TERR.on ? waterLevel(flat[i], flat[i + 1]) - 0.1 - terrainH(flat[i], flat[i + 1]) : WL, flat[i + 1]);
       for (let i = 0; i < tris.length; i += 3) { const A = v0 + tris[i], B = v0 + tris[i + 1], Cc = v0 + tris[i + 2]; const s = (wp[3 * B + 2] - wp[3 * A + 2]) * (wp[3 * Cc] - wp[3 * A]) - (wp[3 * B] - wp[3 * A]) * (wp[3 * Cc + 2] - wp[3 * A + 2]); if (s >= 0) wi.push(A, B, Cc); else wi.push(A, Cc, B); }
       /* the bank down to under the water where the ground stands more than 0.8 m over it; a lower bank is left out: the
          water fades in from it (src/world/water.js), and its wall only drew the straight outline of OSM as a dark line */
@@ -73,12 +85,13 @@ function buildGround() {
   const lm = land.mesh(M_LAND); if (lm) { lm.renderOrder = -40; lm.frustumCulled = false; lm.receiveShadow = true; scene.add(lm); }
   if (TERR.on) terrainDepth();
   const bm = bank.mesh(matBank); if (bm) { bm.renderOrder = -39; bm.frustumCulled = false; scene.add(bm); }
-  if (wp.length) {
-    const uv = []; for (let i = 0; i < wp.length; i += 3) uv.push(wp[i] / 24, wp[i + 2] / 24);
-    const nrm = []; for (let i = 0; i < wp.length; i += 3) nrm.push(0, 1, 0);
+  wet.forEach(([wp, wi], k) => {
+    if (!wp.length) return;
+    const water = new THREE.BufferGeometry(), uv = [], nrm = [];
+    for (let i = 0; i < wp.length; i += 3) { uv.push(wp[i] / 24, wp[i + 2] / 24); nrm.push(0, 1, 0); }
     water.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3)); water.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); water.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    water.setIndex(wi); const wm = new THREE.Mesh(water, waterMat()); wm.renderOrder = -38; wm.frustumCulled = false; scene.add(wm);
-  }
+    water.setIndex(wi); const wm = new THREE.Mesh(water, k ? waterMat(SMALL_WATER) : waterMat()); wm.renderOrder = -38; wm.frustumCulled = false; scene.add(wm);
+  });
 }
 
 export { buildGround };
