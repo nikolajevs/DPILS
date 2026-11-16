@@ -8,7 +8,6 @@
 
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
-| Claude (сессия владельца) | `claude/adoring-goldberg-0qz2d2` | Район Химия (Ķīmiķu ciemats): дома по фото (серии, утепление, подъезды, Г/П-корпуса), дворы из OSM, затем ориентиры района | `src/buildings/series.js`, `src/buildings/kimija.js`, `tools/facades.js`, `tools/yards.js`, `yards.js`, `src/landmarks/yards.js` |
 | Claude (сессия владельца) | `claude/nifty-bell-byecnv` | Крепость по порядку: пороховые погреба, затем фасады исторических казарм и офицерских домов, затем редюиты (по фото Mapillary и Commons) | `src/fortress/*`, участки крепости в `src/buildings/buildings.js`, раздел крепости в README.md |
 
 ## Проверка в браузере без экрана: `tools/shots.js`

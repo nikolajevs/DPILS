@@ -33,9 +33,11 @@ import { scene } from '../render/renderer.js';
      trefoil at the east end, the middle one high under a grey half-dome.
    - Old Believers' Church of the Nativity of the Theotokos (1908): salmon-pink walls with white lesenes, window
      hoods and pointed gables, the bell tower behind the west porch with a small gilded onion on a red drum, a large
-     gilded onion on a red drum over the nave and a small blue one over the altar. */
-const F = { bg: [-139.48, 1291.67, 0.7689, 0.6394], lu: [52.07, 1292.68, 0.7125, 0.7017], ca: [176.09, 1275.05, 0.7237, 0.6901], ob: [-21.39, 1039.03, 0.7248, 0.6889] };
-LM_KEYS.push(lmW(F.bg, 30, 11), lmW(F.lu, 15, 12), lmW(F.ca, 20, 14), lmW(F.ob, 17, 10));   // the cadastre buildings these replace
+     gilded onion on a red drum over the nave and a small blue one over the altar.
+   And, away from the hill, the Catholic Church of the Divine Mercy in Ķīmiķu ciemats (2019), drawn with the same
+   means (churchKm). */
+const F = { bg: [-139.48, 1291.67, 0.7689, 0.6394], lu: [52.07, 1292.68, 0.7125, 0.7017], ca: [176.09, 1275.05, 0.7237, 0.6901], ob: [-21.39, 1039.03, 0.7248, 0.6889], km: [1153.2, -1430.6, -0.2201, -0.9755] };
+LM_KEYS.push(lmW(F.bg, 30, 11), lmW(F.lu, 15, 12), lmW(F.ca, 20, 14), lmW(F.ob, 17, 10), lmW(F.km, 20, -9));   // the cadastre buildings these replace
 
 let seed = 1905; const rr = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 const W3 = (f, u, v, y) => { const w = lmW(f, u, v); return [w[0], y, w[1]]; };
@@ -503,11 +505,42 @@ function churchOb(K) {
 }
 
 /* Draws the four churches with their own atlas of windows and doors; the gilded domes and crosses go into one mesh. */
+/* ---- the Catholic Church of the Divine Mercy in Ķīmiķu ciemats (Višķu iela 36, consecrated in 2019; OSM way 705215817) ----
+   Away from Church Hill, but built with its means. From the Mapillary photographs of 2020 (from the south-east, the
+   south-west and the north-west): red brick, a hall of two storeys under a pitched roof of red-brown tiles, tall
+   windows of small panes in white frames along both sides, the front gable to the south with a cross on its apex, the
+   door and a narrow window over it, the north end with two rows of windows; the square bell tower of about 27 m on the
+   south-east corner, with small windows up each face, the belfry with two openings a face, a low pyramid and a cross.
+   Frame km: u from the south-east corner northwards along the east side, v eastwards (the hall lies at v < 0). */
+function churchKm(K) {
+  const f = F.km, G = K.plain, a = ang(f), BR = { tex: 3, col: [255, 238, 228] }, ROOF = hb('#94473a'), TRIM = hb('#efe9df'), STONE = hb('#8f8b84');
+  const BODY = [[0, -18.5], [43, -18.5], [43, 1.5], [0, 1.5]], H = 9.6, TW = [[-1.0, -4.1], [4.6, -4.1], [4.6, 1.6], [-1.0, 1.6]], HT = 25.5;
+  STATE.GBC = standOn(f, BODY);
+  const pom = (s, y, w = 1.2, h = 1.8) => ({ s, w, y, h, tile: CT.pom, trim: TRIM, tw: 0.1 });
+  const body = walls(K, f, BODY, 0, H, BR, e => {
+    if (Math.abs(e.nv) > 0.9) { const o = []; for (let u = 7.5; u <= 39; u += 6.3) o.push({ s: e.s(u, e.Pl[1]), w: 1.5, y: 1.4, h: 6.6, tile: CT.bar, trim: TRIM, tw: 0.12 }); return o; }   // the long sides
+    if (e.nu < -0.9) { const s = e.s(0, -11.3); return [{ s, w: 2.0, y: 0.15, h: 3.0, tile: CT.door, lit: false, tw: 0.25, trim: TRIM }, { s, w: 1.0, y: 4.2, h: 4.9, tile: CT.bar, trim: TRIM, tw: 0.1 }]; }   // the south front
+    return [pom(e.L * 0.3, 1.6), pom(e.L * 0.7, 1.6), pom(e.L * 0.3, 5.6), pom(e.L * 0.7, 5.6)];   // the north end
+  });
+  band(K, body, 0, 0.6, 0.06, STONE); band(K, body, H - 0.35, H, 0.12, sh(hb('#b5553e'), 0.9));
+  gable(K, f, 0, 43, -18.5, 1.5, H, 5.2, ROOF, BR, 'u', 0.5);
+  // small gablets on the roof, two a side
+  for (const u of [14, 30]) for (const sv of [-1, 1]) { const v0 = sv < 0 ? -18.5 : 1.5, vm = -8.5, A = W3(f, u - 1.2, v0 + (vm - v0) * 0.35, H + 5.2 * 0.35), B = W3(f, u + 1.2, v0 + (vm - v0) * 0.35, H + 5.2 * 0.35), C = W3(f, u, v0 + (vm - v0) * 0.35, H + 5.2 * 0.35 + 1.1);
+    polyA(G, [A, B, C], hb('#a85a45'), -f[3] * sv, 0.3, f[2] * sv); lmBar(G, A, C, 0.12, ROOF); lmBar(G, C, B, 0.12, ROOF); }
+  crossOn(...lmW(f, -0.1, -8.5), H + 5.2, 1.6, a, true);
+  // the bell tower
+  const tw = walls(K, f, TW, 0, HT, BR, e => { const o = []; for (let y = 3.4; y < 19; y += 3.6) o.push(pom(e.L / 2, y, 0.8, 1.3));
+    for (const d of [-0.8, 0.8]) o.push({ s: e.L / 2 + d, w: 1.0, y: 21.6, h: 2.6, tile: CT.bell, lit: false, trim: TRIM, tw: 0.08 }); return o; });
+  band(K, tw, 0, 0.6, 0.06, STONE); band(K, tw, 20.8, 21.2, 0.14, STONE); band(K, tw, HT - 0.4, HT, 0.18, STONE);
+  const [tx, tz] = lmW(f, 1.8, -1.25);
+  latheF(G, tx, tz, HT, [[3.96 + 0.3, 0], [0.06, 2.8]], 4, ROOF, a + Math.PI / 4);
+  crossOn(tx, tz, HT + 2.7, 2.2, a, true);
+}
 function lmChurchHill(K, litPatch) {
   const [dc, dorm, dglow] = chAtlas();
   LMM.chDet = lmStd({ vertexColors: true, map: dc, roughnessMap: dorm, metalnessMap: dorm, roughness: 1, metalness: 1, emissive: new THREE.Color(1, 1, 1), emissiveMap: dglow, emissiveIntensity: 0 }, 'lm-ch-det', litPatch);
   KC.det = new LMB(); KC.gold = new GB(false);
-  cathedralBG(K); cathedralLu(K); churchCa(K); churchOb(K);
+  cathedralBG(K); cathedralLu(K); churchCa(K); churchOb(K); churchKm(K);
   STATE.GBC = null;
   KC.det.mesh(LMM.chDet);
   const gm = KC.gold.mesh(matGold); if (gm) { gm.castShadow = true; gm.receiveShadow = true; scene.add(gm); }
