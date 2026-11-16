@@ -10,7 +10,7 @@ import { area2, pip } from '../core/util.js';
    gives collisions and the map footprint. Proportions are measured on photographs (Wikimedia Commons,
    visitdaugavpils.lv, celotajs.lv, militaryheritagetourism.info, neighborhood.lv); the portico, its 29.4 m width,
    the 18 m cornice and the 12 m columns match the cadastre outline. */
-const LMF = { vn: [-1488, 1328.7, 0.8678, -0.4969], lat: [-1448.3, 1174.1, 0.8528, -0.5223], du: [-1497.7, 1537.4, -0.8604, 0.5097], p1: [-2088.2, 1366.8, 0.8607, -0.5090], ren: [-1759.53, 1019.91, -0.5075, -0.8616], ves: [-1172.1, 1098.1, -0.523, -0.852], tv: [-405.55, 1114.19, 0.5015, 0.8652], vk: [-810.09, 820.13, 0.7919, -0.6106], kp: [922.3, -465.5, -0.3338, -0.9426], sc: [-1142.8, 1903.9, 0.9224, -0.3863], hosp: [3235.1, -1761.3, 1, 0], rt: [3339.1, -1691.3, 1, 0] };
+const LMF = { vn: [-1488, 1328.7, 0.8678, -0.4969], lat: [-1448.3, 1174.1, 0.8528, -0.5223], du: [-1497.7, 1537.4, -0.8604, 0.5097], p1: [-2088.2, 1366.8, 0.8607, -0.5090], ren: [-1759.53, 1019.91, -0.5075, -0.8616], ves: [-1172.1, 1098.1, -0.523, -0.852], tv: [-405.55, 1114.19, 0.5015, 0.8652], vk: [-810.09, 820.13, 0.7919, -0.6106], kp: [922.3, -465.5, -0.3338, -0.9426], sc: [-1142.8, 1903.9, 0.9224, -0.3863], hosp: [3235.1, -1761.3, 1, 0], rt: [3339.1, -1691.3, 1, 0], ss: [881.95, -1035.6, 0.3245, -0.9459] };
 const lmW = (f, u, v) => [f[0] + u * f[2] - v * f[3], f[1] + u * f[3] + v * f[2]];
 const lmL = (f, x, z) => [(x - f[0]) * f[2] + (z - f[1]) * f[3], -(x - f[0]) * f[3] + (z - f[1]) * f[2]];
 // a cadastre building whose outline contains one of these points is left to buildLandmarks
@@ -21,8 +21,11 @@ const LM_KEYS = [lmW(LMF.vn, 40, 15), lmW(LMF.lat, 10, 30), lmW(LMF.lat, 50, 30)
   [3182.1, -1788.3]]; // old estimated tower position: leave its former cadastre footprint to the revised campus model
 // outlines that are not real buildings: the canopy of the cinema Renesanse, mapped in OSM as its only building:part way
 const LM_DROP = [lmW(LMF.ren, -8.85, 40.6), lmW(LMF.vk, 1.55, 41.75), lmW(LMF.kp, 69.5, -2.4)];   // canopies that OSM maps as building parts
-// larger structures OSM maps as buildings and a landmark draws itself, whatever their size: the platform canopy of the bus station
-const LM_DROP_BIG = [[-911, 1245]];
+// larger structures OSM maps as buildings and a landmark draws itself, whatever their size: the platform canopy of the bus station,
+// the service buildings of the 330/110 kV substation and the transformer substations of Ķīmiķu ciemats (src/landmarks/substation.js)
+const LM_DROP_BIG = [[-911, 1245],
+  [766.7, -1079.1], [672.9, -1109.3], [681.7, -1079.8], [756.2, -1021.8], [749.6, -976.9], [802, -1072.9], [692.1, -987.8], [617.6, -1033.3], [861.5, -1589.5],
+  [406.3, -911.9], [473.9, -1276.7], [386.9, -1182], [593.6, -922.5], [1474.9, -1548.6], [1773.4, -916.2], [1435.7, -1281.9], [-55.8, -1283], [-257.3, -2467.8], [16.1, -983.1], [1270.3, -1671.2]];
 function lmDrops(ring, bb) { for (const [x, z] of LM_DROP_BIG) if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pip(x, z, ring)) return true; if (Math.abs(area2(ring)) > 150) return false; for (const [x, z] of LM_DROP) if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pip(x, z, ring)) return true; return false; }
 function lmOwns(ring, bb) { for (const [x, z] of LM_KEYS) if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pip(x, z, ring)) return true; return false; }
 /* Flower beds by Vienības nams (frame vn): the long carpet bed in the garden strip in front of the portico with a
