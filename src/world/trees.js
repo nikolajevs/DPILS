@@ -13,6 +13,7 @@ import { ovNoTree } from './overpass.js';
 import { vbNoTree } from './bridge-vienibas.js';
 import { AREAS, inBuilding, onRoad, wetTree } from './data.js';
 import { treeRoom } from './tree-room.js';
+import { inParking } from '../landmarks/parking.js';
 import { std } from '../render/materials.js';
 import { R, mkCanvas } from '../render/textures.js';
 import { U, renderer, scene, terrUniforms } from '../render/renderer.js';
@@ -269,7 +270,7 @@ function buildTrees() {
       if (h1 > keep) continue;
       const x = gx * s + (h2 - 0.5) * s * 0.9, z = gz * s + (hash(gx * 19 + gz * 7 + n) - 0.5) * s * 0.9;
       if (!pip(x, z, a.rings[0])) continue; let hole = false; for (let k = 1; k < a.rings.length; k++) if (pip(x, z, a.rings[k])) { hole = true; break; } if (hole) continue;
-      if (onRoad(x, z, 2) || inBuilding(x, z) || inBuilding(x + 2, z) || inBuilding(x - 2, z) || inBuilding(x, z + 2) || inBuilding(x, z - 2) || (a.cls === 4 && onPaved(x, z))) continue;
+      if (onRoad(x, z, 2) || inBuilding(x, z) || inBuilding(x + 2, z) || inBuilding(x - 2, z) || inBuilding(x, z + 2) || inBuilding(x, z - 2) || (a.cls === 4 && onPaved(x, z)) || inParking(x, z)) continue;
       const sc = SCALE[a.cls]; add(x, z, typ(h2), sc[0] + h1 * sc[1], h2);
     }
   });

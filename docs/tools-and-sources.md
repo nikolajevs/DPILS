@@ -8,7 +8,6 @@
 
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
-| Claude (сессия владельца) | `claude/adoring-goldberg-0qz2d2` | Все стоянки города: данные OSM (`parking.js`), разметка мест по проездам, машины по времени суток, столкновения, фонари | `tools/parking.js`, `parking.js`, `src/landmarks/parking.js`, стоянки в `src/landmarks/shops.js`, `src/world/tree-room.js`, `collide` в `src/game/player.js`, `src/ui/map.js` |
 | Claude (сессия владельца) | `claude/nifty-bell-byecnv` | Крепость по порядку: пороховые погреба, затем фасады исторических казарм и офицерских домов, затем редюиты (по фото Mapillary и Commons) | `src/fortress/*`, участки крепости в `src/buildings/buildings.js`, раздел крепости в README.md |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
@@ -46,8 +45,9 @@ node tools/lks92.js city -1487 1263
   https://api.openstreetmap.org/api/0.6/map?bbox=W,S,E,N
   ```
   Так собраны `parks.js` и `schools.js` и прочитаны теги развязки у моста Единства (`oneway`, `lanes`, `maxheight` → [src/world/street-tags.js](../src/world/street-tags.js)). Из облака работает.
+  Весь город целиком — 42 квадрата 0,03° × 0,02° (около 95 МБ, 2–9 МБ на квадрат, ни один не упёрся в лимит точек); цикл выгрузки — в README, «Как обновить parking.js». Так собран `parking.js`.
 - **Nominatim** (поиск объектов по названию и типу) работает. Нужен свой `User-Agent` и не чаще запроса в секунду.
-- **Overpass** (`overpass-api.de`) из облачного окружения не отвечает: туннель рвётся. Вместо него — OSM API по прямоугольникам.
+- **Overpass** из облачного окружения не отвечает: `overpass-api.de` рвёт соединение, зеркала `overpass.kumi.systems`, `overpass.private.coffee` и `maps.mail.ru` не отвечают по таймауту. Вместо него — OSM API по прямоугольникам.
 
 ### Расписание поездов
 - **GTFS внутренних поездов Vivi** (VSIA Autotransporta direkcija, каталог data.gov.lv, набор «Vilcienu kustības saraksts iekšzemes dzelzceļa maršrutos»): `https://vivi.lv/uploads/GTFS.zip`. Отвечает из облака. Есть линии (shapes), но нет `shape_dist_traveled`; станция в пределах карты одна — Daugavpils. Сборка — `tools/trains.js`, см. README «Поезда и станция».

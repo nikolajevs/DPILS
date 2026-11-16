@@ -1,24 +1,24 @@
 import { AREAS, BGRID, BLD, ROAD, inBuilding } from './data.js';
-import { SHOP_LOTS } from '../landmarks/shops.js';
-import { bbox, pip } from '../core/util.js';
+import { PARKING_LOTS } from '../landmarks/parking.js';
+import { pip } from '../core/util.js';
 
 /* ---------- room for a lidar tree ----------
    The lidar finds a tree by the top of its crown, and the model's streets, paths and pitches are drawn wider or a little
    off where they really are, its outlines of the houses a little off too, and its crowns are round where a real one
    grows away from a wall. So a lidar tree is set where the model has room for it:
    - its trunk not in a house, nor on a street or its sidewalks, a path, a track or a rail (0.6 m off their edge), nor on
-     a pitch, a playground or the car park of a store (half its crown off their edge, so no more than half of it hangs
-     over them): pushed out of each the shortest way, at most 2.5 to 5 m (60 % of its crown) in all from where the lidar
-     saw it, else left out;
+     a pitch, a playground or a car park (half its crown off their edge, so no more than half of it hangs over them; a
+     tree deep inside a car park stays, on the grass island lmParking draws round it): pushed out of each the shortest
+     way, at most 2.5 to 5 m (60 % of its crown) in all from where the lidar saw it, else left out;
    - its crown out of the walls (the trunk 0.85 of the radius off the nearest wall): moved away within the same reach, and
      what is still too close makes the crown narrower, down to half of what was measured; narrower than that, the tree is
      left out (it stands right against a house or between two). */
 const CELL = 60, FREE = 0.6, WALL = 0.85;
 let OB = null, stamp = null, stampN = 0;
 function obstacles() {
-  OB = new Map(); const put = (r, bb) => { for (let i = Math.floor(bb[0] / 50); i <= Math.floor(bb[2] / 50); i++) for (let j = Math.floor(bb[1] / 50); j <= Math.floor(bb[3] / 50); j++) { const k = i * 100000 + j; let l = OB.get(k); if (!l) OB.set(k, l = []); l.push({ r, bb }); } };
+  OB = new Map(); const put = (r, bb, isl) => { for (let i = Math.floor(bb[0] / 50); i <= Math.floor(bb[2] / 50); i++) for (let j = Math.floor(bb[1] / 50); j <= Math.floor(bb[3] / 50); j++) { const k = i * 100000 + j; let l = OB.get(k); if (!l) OB.set(k, l = []); l.push({ r, bb, isl }); } };
   for (const a of AREAS) if (a.cls === 10 || a.cls === 13) put(a.rings[0], a.bb);   // pitches, playgrounds
-  for (const p of SHOP_LOTS) { const r = p.flat(); put(r, bbox(r)); }   // the car parks of the stores
+  for (const p of PARKING_LOTS) put(p.r, p.bb, p.isl);   // the car parks
   stamp = new Int32Array(BLD.length + 16);
 }
 // the nearest point on the edges of a ring
@@ -56,11 +56,12 @@ function stepOut(x, z, r) {
   for (let i = Math.floor((x - c) / 50); i <= Math.floor((x + c) / 50); i++) for (let j = Math.floor((z - c) / 50); j <= Math.floor((z + c) / 50); j++) for (const o of OB.get(i * 100000 + j) || []) {
     if (o.seen === stampN || x < o.bb[0] - c || x > o.bb[2] + c || z < o.bb[1] - c || z > o.bb[3] + c) continue; o.seen = stampN;
     const e = edgeNear(x, z, o.r, { d: 1e9 }), dx = e.px - x, dz = e.pz - z, d = Math.hypot(dx, dz) || 1e-3;
-    if (pip(x, z, o.r)) return [dx / d * (d + c), dz / d * (d + c)];
+    if (pip(x, z, o.r)) { if (o.isl && onIsland(o.isl, x, z)) continue; return [dx / d * (d + c), dz / d * (d + c)]; }
     if (d < c) return [-dx / d * (c - d + 0.05), -dz / d * (c - d + 0.05)];
   }
   return null;
 }
+const onIsland = (isl, x, z) => { for (let k = 0; k < isl.length; k += 2) if (Math.hypot(isl[k] - x, isl[k + 1] - z) < 1) return true; return false; };
 // where a lidar tree seen at (x0, z0) with a crown of radius r0 can stand: { x, z, r, moved }, or null
 function treeRoom(x0, z0, r0) {
   if (!OB) obstacles();
