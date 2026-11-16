@@ -16,6 +16,10 @@ class GB {
     this.cap = cap;
   }
   vert(x, y, z, nx, ny, nz, c, u, v, i0, i1, i2) {
+    // mesh() nulls the buffers once a builder has been turned into a mesh (finishBuildings does this to the tile
+    // builders before the landmarks run). A late draw into such a builder must not crash the whole city: start a
+    // fresh buffer instead. Correct code never hits this; it is a guard against stale cached modules and regressions.
+    if (this.pos === null) { this.v = 0; this.ni = 0; this.cap = 0; this.idx = new Uint32Array(6144); this.ensure(2048); }
     if (STATE.GBC) y += STATE.GBC(x, y, z);
     if (this.v >= this.cap) this.ensure(1);
     const k = this.v, k3 = k * 3;
