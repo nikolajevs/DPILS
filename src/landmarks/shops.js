@@ -92,6 +92,7 @@ function inner(r) {   // a point inside a ring (its centre, else the middle of t
 let OSMR = null;   // the OSM outlines of the 'osm' stores as rings
 const osmRings = () => OSMR || (OSMR = SHOPS.filter(S => S.k === 'osm').map(S => { let r = new Float32Array(S.o.flat()); if (area2(r) < 0) r = reversed(r); return { S, r, bb: bbox(r) }; }));
 const near = (bb, [x, z], m = 0) => x >= bb[0] - m && x <= bb[2] + m && z >= bb[1] - m && z <= bb[3] + m;
+const JYSK_H = 9.6;   // Stadiona 3G hall: roof drawn at claim time (the tile is meshed before landmarks), walls by jyskCentre
 /* Called by buildBuildings for every building. A store's own building is kept (its roof drawn now with the city's
    roof textures, its walls later by lmShops); the parts of the two shopping centres are kept for their models; the
    buildings that hold a store as a tenant are noted and left to the generic generator; the canopy parts of the stores
@@ -104,7 +105,11 @@ function shopClaim(id, rec, rings, outer, bb) {
   for (const S of SHOPS) {
     if ((S.k !== 'box' && S.k !== 'in') || !near(bb, S.p) || !pip(S.p[0], S.p[1], outer)) continue;
     const part = { id, rings, outer, bb, h: rec[1] / 10, floors: Math.max(1, rec[5]), gbc: STATE.GBC };
-    if (S.k === 'in') { SH.host.set(S.id, part); if (S.model === 'jyskCentre') { SH.custom.set(S.id, part); return true; } return false; }
+    if (S.k === 'in') { SH.host.set(S.id, part);
+      if (S.model === 'jyskCentre') { SH.custom.set(S.id, part);
+        const T = tileOf((bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2), seed = Math.floor(rnd(id, 9) * 255);
+        flatRoof(T.m.roof, rings, JYSK_H - 0.28, hb('#747a7d'), 5, seed); return true; }
+      return false; }
     part.H = Math.max(part.h, H_OF(S)); SH.own.set(S.id, part);
     const T = tileOf((bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2), seed = Math.floor(rnd(id, 9) * 255);
     if (!(STY[S.style || S.b].pitched && hipRoof(T, outer, rings, part.H, hb(STY[S.b].pitched), seed))) flatRoof(T.m.roof, rings, part.H - 0.45, pick(ROOFPAL[5], id, 2), 5, seed);
@@ -352,7 +357,7 @@ function tenant(K, S, host) {
    raised sign frame from the 2022 facade drawings. */
 function jyskCentre(K, S, part) {
   if (!part) return;
-  const r = part.outer, n = r.length >> 1, H = 9.6, G = K.plain, J = { i: frontEdge(r, S) };
+  const r = part.outer, n = r.length >> 1, H = JYSK_H, G = K.plain, J = { i: frontEdge(r, S) };
   J.Fw = edgeF(r, J.i); J.s = Math.max(3, Math.min(J.Fw.L - 3, along(r, J.i, S.e)));
   const P = { p: [-1442.4, 530.7], e: [-1417.17, 555.08] }, M = { i: frontEdge(r, P) };
   M.Fw = edgeF(r, M.i); M.s = Math.max(4, Math.min(M.Fw.L - 4, along(r, M.i, P.e)));
@@ -412,8 +417,6 @@ function jyskCentre(K, S, part) {
     const apron = [Fw.at(s - w / 2, 0, -0.4), Fw.at(s + w / 2, 0, -0.4), Fw.at(s + w / 2, 0, -4.5), Fw.at(s - w / 2, 0, -4.5)].map(p => [p[0], p[2]]);
     flatPlain(G, [new Float32Array(apron.flat())], 0.04, hb('#b9b9b5'), false);
   }
-  const bb = part.bb, T = tileOf((bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2), seed = Math.floor(rnd(part.id, 9) * 255);
-  flatRoof(T.m.roof, part.rings, H - 0.28, hb('#747a7d'), 5, seed);
   STATE.GBC = null;
 }
 
