@@ -14,6 +14,7 @@ import './ui/places.js';
 import { TX, buildTransit, setClock, updateBoard } from './transit/transit.js';
 import { LIDAR_STATS, buildTrees } from './world/trees.js';
 import { PSTAT } from './landmarks/parking.js';
+import { SER_STAT } from './buildings/series.js';
 import { buildFortress } from './fortress/build.js';
 import './fortress/monuments.js';
 import './fortress/arsenals.js';
@@ -94,6 +95,6 @@ const step = (text, w, reported) => {
     loading.done('Готово: ' + BLD.length.toLocaleString('ru') + ' зданий, ' + LINES.length.toLocaleString('ru') + ' улиц и дорожек, ' + trees.toLocaleString('ru') + ' деревьев, ' + lamps.toLocaleString('ru') + ' фонарей' + (tripsN ? ', ' + tripsN.toLocaleString('ru') + ' рейсов в расписании' : '') + '.');
     $('view').classList.add('shown');
     $('go').disabled = false; $('go').focus();
-    window.__city = { SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, setClock, updateBoard, P, teleport, setFly, setTime, fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU };
+    window.__city = { SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, setClock, updateBoard, P, teleport, setFly, setTime, fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU };
   } catch (e) { console.error(e); loading.fail('Ошибка при сборке города: ' + e.message); }
 })();
