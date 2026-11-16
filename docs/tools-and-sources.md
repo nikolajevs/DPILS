@@ -8,6 +8,7 @@
 
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
+| Claude (сессия владельца) | `claude/adoring-goldberg-0qz2d2` | Озеро Губище и Aizpilsētas parks: тростник, настил, набережная, парк из OSM | `src/landmarks/gubisce.js`, `tools/parks.js`, `parks.js`, настил в `src/world/streets.js` |
 | Claude (сессия владельца) | `claude/nifty-bell-byecnv` | Крепость по порядку: пороховые погреба, затем фасады исторических казарм и офицерских домов, затем редюиты (по фото Mapillary и Commons) | `src/fortress/*`, участки крепости в `src/buildings/buildings.js`, раздел крепости в README.md |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
