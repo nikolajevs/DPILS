@@ -21,7 +21,9 @@ const LM_KEYS = [lmW(LMF.vn, 40, 15), lmW(LMF.lat, 10, 30), lmW(LMF.lat, 50, 30)
   [3182.1, -1788.3]]; // old estimated tower position: leave its former cadastre footprint to the revised campus model
 // outlines that are not real buildings: the canopy of the cinema Renesanse, mapped in OSM as its only building:part way
 const LM_DROP = [lmW(LMF.ren, -8.85, 40.6), lmW(LMF.vk, 1.55, 41.75), lmW(LMF.kp, 69.5, -2.4)];   // canopies that OSM maps as building parts
-function lmDrops(ring, bb) { if (Math.abs(area2(ring)) > 150) return false; for (const [x, z] of LM_DROP) if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pip(x, z, ring)) return true; return false; }
+// larger structures OSM maps as buildings and a landmark draws itself, whatever their size: the platform canopy of the bus station
+const LM_DROP_BIG = [[-911, 1245]];
+function lmDrops(ring, bb) { for (const [x, z] of LM_DROP_BIG) if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pip(x, z, ring)) return true; if (Math.abs(area2(ring)) > 150) return false; for (const [x, z] of LM_DROP) if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pip(x, z, ring)) return true; return false; }
 function lmOwns(ring, bb) { for (const [x, z] of LM_KEYS) if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pip(x, z, ring)) return true; return false; }
 /* Flower beds by Vienības nams (frame vn): the long carpet bed in the garden strip in front of the portico with a
    five-globe candelabrum at each end, and the bed in front of the concert-hall wing towards Rīgas iela. */
