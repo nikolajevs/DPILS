@@ -8,7 +8,6 @@
 
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
-| Claude (сессия владельца) | `claude/adoring-goldberg-0qz2d2` | Автобусный вокзал (Autoosta): здание, перроны, навесы, междугородние автобусы по расписанию | новый модуль в `src/landmarks/`, `src/transit/*`, новый файл данных и инструмент в `tools/` |
 | Claude (сессия владельца) | `claude/nifty-bell-byecnv` | Крепость по порядку: пороховые погреба, затем фасады исторических казарм и офицерских домов, затем редюиты (по фото Mapillary и Commons) | `src/fortress/*`, участки крепости в `src/buildings/buildings.js`, раздел крепости в README.md |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
@@ -52,6 +51,10 @@ node tools/lks92.js city -1487 1263
 ### Расписание поездов
 - **GTFS внутренних поездов Vivi** (VSIA Autotransporta direkcija, каталог data.gov.lv, набор «Vilcienu kustības saraksts iekšzemes dzelzceļa maršrutos»): `https://vivi.lv/uploads/GTFS.zip`. Отвечает из облака. Есть линии (shapes), но нет `shape_dist_traveled`; станция в пределах карты одна — Daugavpils. Сборка — `tools/trains.js`, см. README «Поезда и станция».
 - Международных поездов в нём нет.
+
+### Междугородние автобусы
+- **GTFS ATD** (VSIA Autotransporta direkcija, все региональные автобусы Латвии): `https://www.atd.lv/sites/default/files/GTFS/gtfs-latvia-lv.zip`. Из облака сайт сбрасывает соединение. Копия есть в каталоге Mobility Database (`https://storage.googleapis.com/storage/v1/b/mdb-latest/o/lv-riga-valsts-sia-autotransporta-direkcija-atd-gtfs-992.zip?alt=media`), она отвечает. Поля CSV там разделены «, », названия в кавычках; `shapes.txt` — 100 МБ (читается потоком). Остановка автовокзала — «Daugavpils AO». Сборка — `tools/intercity.js`, см. README «Автовокзал».
+- Каталог всех фидов Mobility Database (CSV): `https://storage.googleapis.com/storage/v1/b/mdb-csv/o/sources.csv?alt=media`.
 
 ### Mapillary — уличные фото для фасадов
 - API v4: `https://graph.mapillary.com`. Фото по лицензии CC BY-SA 4.0. Используем их как образец, а не как текстуры.

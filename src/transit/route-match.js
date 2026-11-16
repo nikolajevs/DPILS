@@ -124,7 +124,7 @@ function matchShape(net, shape, opt) {
   const n = shape.length >> 1, V = []; for (let i = 0; i < n; i++) V.push([shape[2 * i], shape[2 * i + 1]]);
   // places per vertex (a stop stands to the right of the way: the place facing it scores better); and the vertex itself
   const C = V.map(([x, z]) => {
-    const pl = placesNear(net, x, z, R, K);
+    let pl = placesNear(net, x, z, R, K); if (opt.allow) pl = pl.filter(p => opt.allow(x, z, p));   // a vertex may be held to some ways
     for (const p of pl) { const [dx, dz] = dDir(net, p.d), side = (x - p.x) * -dz + (z - p.z) * dx; p.e = (p.dist / sigma) ** 2 + (opt.side && side < -2 ? 1.5 : 0);
       // keeping right: a track with another one alongside to its right is the one for the other way
       if (opt.keepRight && placesNear(net, p.x, p.z, 5, 12).some(q => { if ((q.d >> 1) === (p.d >> 1)) return false; const [qx, qz] = dDir(net, q.d); return Math.abs(qx * dx + qz * dz) > 0.9 && (q.x - p.x) * -dz + (q.z - p.z) * dx > 1; })) p.e += 3; }

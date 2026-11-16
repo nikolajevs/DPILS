@@ -422,6 +422,17 @@ function lmSigns() {
     g.font = font(64, '800', '"Trebuchet MS", sans-serif'); g.textAlign = 'center'; g.fillStyle = '#eef6f4'; g.fillText('V', x0 + w / 2, cy + 3);
     e.font = g.font; e.textAlign = 'center'; e.textBaseline = 'middle'; e.fillStyle = '#b8f0ec'; e.fillText('BĀRS     BISTRO', x0 + w / 2, cy);
   });
+  // the bus station: the bay numbers, then AUTOOSTA in white on blue for the fascia of the platform canopy (lit at night).
+  // Small, to fit the space left at the end of the last row
+  for (let k = 1; k <= 3; k++) add('aoBay' + k, 96, 96, (x0, y0, w, h) => {
+    g.fillStyle = '#1d5ca6'; g.fillRect(x0, y0, w, h); g.strokeStyle = '#ffffff'; g.lineWidth = 5; g.strokeRect(x0 + 6, y0 + 6, w - 12, h - 12);
+    g.font = font(62, '700', '"Golos Text", "Trebuchet MS", sans-serif'); g.textBaseline = 'middle'; g.textAlign = 'center'; g.fillStyle = '#ffffff'; g.fillText(String(k), x0 + w / 2, y0 + h / 2 + 3);
+    e.font = g.font; e.textBaseline = 'middle'; e.textAlign = 'center'; e.fillStyle = '#e8f0ff'; e.fillText(String(k), x0 + w / 2, y0 + h / 2 + 3);
+  });
+  add('aoName', 470, 100, (x0, y0, w, h) => {
+    g.fillStyle = '#1d5ca6'; g.fillRect(x0, y0, w, h); g.font = font(72, '700', '"Golos Text", "Trebuchet MS", sans-serif'); g.textBaseline = 'middle'; g.textAlign = 'center';
+    g.fillStyle = '#ffffff'; g.fillText('AUTOOSTA', x0 + w / 2, y0 + h / 2 + 3); e.font = g.font; e.textBaseline = 'middle'; e.textAlign = 'center'; e.fillStyle = '#e8f0ff'; e.fillText('AUTOOSTA', x0 + w / 2, y0 + h / 2 + 3);
+  });
   const t = toTex(cv, true, false), te = toTex(gm, true, false); t.minFilter = te.minFilter = THREE.LinearMipmapLinearFilter; return [t, te];
 }
 
