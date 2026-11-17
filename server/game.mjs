@@ -60,7 +60,7 @@ export function createGame(opts) {
   // damage dmg from attacker p to v (weapon w; from = where it came from): the hit and the hurt messages, and the kill
   function hurt(p, v, dmg, head, w, from) {
     if (!v.alive || dmg <= 0) return; const t0 = now();
-    v.hp -= dmg; if (p !== v) p.st.dmg += dmg + Math.min(0, v.hp); send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: from[0] - v.x, dz: from[2] - v.z }); if (p !== v) send(p, { t: 'hit', id: v.id, head, kill: v.hp <= 0 });
+    v.hp -= dmg; if (p !== v) p.st.dmg += dmg + Math.min(0, v.hp); send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: from[0] - v.x, dz: from[2] - v.z }); if (p !== v) send(p, { t: 'hit', id: v.id, head, kill: v.hp <= 0, dmg: Math.min(dmg, dmg + Math.min(0, v.hp)) });
     if (v.hp > 0) return;
     v.alive = false; v.deaths++; v.diedAt = t0; if (p !== v) { p.kills++; if (!FFA) teamScore[p.team]++; if (head) p.st.heads++; }
     all({ t: 'kill', killer: p.id, victim: v.id, kn: p.name, vn: v.name, kt: p.team, vt: v.team, head, w }); sendBoard();

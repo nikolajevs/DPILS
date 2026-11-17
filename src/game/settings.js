@@ -9,12 +9,12 @@ const ACTIONS = [
   ['w1', 'Автомат', 'Digit1'], ['w2', 'Дробовик', 'Digit2'], ['w3', 'Снайперская', 'Digit3'], ['w4', 'Пистолет', 'Digit4'], ['w5', 'Пулемёт', 'Digit5'],
   ['voice', 'Рация (удерживать)', 'KeyV'], ['chat', 'Чат всем', 'KeyY'], ['teamChat', 'Чат команде', 'KeyU'], ['board', 'Таблица очков', 'Tab'],
 ];
-const DEFAULTS = { sens: 1, fov: 66, vol: 0.8, voiceVol: 1, invertY: false };
+const DEFAULTS = { sens: 1, fov: 66, vol: 0.8, voiceVol: 1, ambVol: 0.6, invertY: false };
 const SET = { ...DEFAULTS, keys: Object.fromEntries(ACTIONS.map(a => [a[0], a[2]])) };
 const listeners = [];
 try {
   const s = JSON.parse(localStorage.getItem('dpils.settings') || '{}'), num = (v, lo, hi, d) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
-  SET.sens = num(s.sens, 0.2, 3, 1); SET.fov = num(s.fov, 60, 100, 66); SET.vol = num(s.vol, 0, 1, 0.8); SET.voiceVol = num(s.voiceVol, 0, 1, 1); SET.invertY = s.invertY === true;
+  SET.sens = num(s.sens, 0.2, 3, 1); SET.fov = num(s.fov, 60, 100, 66); SET.vol = num(s.vol, 0, 1, 0.8); SET.voiceVol = num(s.voiceVol, 0, 1, 1); SET.ambVol = num(s.ambVol, 0, 1, 0.6); SET.invertY = s.invertY === true;
   if (s.keys && typeof s.keys === 'object') for (const [a, , d] of ACTIONS) if (typeof s.keys[a] === 'string' && /^[A-Za-z0-9]{1,16}$/.test(s.keys[a])) SET.keys[a] = s.keys[a];
 } catch (e) {}
 function save() { try { localStorage.setItem('dpils.settings', JSON.stringify(SET)); } catch (e) {} for (const f of listeners) f(); }
@@ -32,7 +32,7 @@ function slider(label, key, lo, hi, step, show) {
 function build() {
   body.textContent = '';
   const g = document.createElement('div'); g.className = 'set-group';
-  g.append(slider('Чувствительность мыши', 'sens', 0.2, 3, 0.05, v => '×' + v.toFixed(2)), slider('Поле зрения', 'fov', 60, 100, 1, v => Math.round(v) + '°'), slider('Громкость звуков', 'vol', 0, 1, 0.05, v => Math.round(v * 100) + ' %'), slider('Громкость голосов', 'voiceVol', 0, 1, 0.05, v => Math.round(v * 100) + ' %'));
+  g.append(slider('Чувствительность мыши', 'sens', 0.2, 3, 0.05, v => '×' + v.toFixed(2)), slider('Поле зрения', 'fov', 60, 100, 1, v => Math.round(v) + '°'), slider('Громкость звуков', 'vol', 0, 1, 0.05, v => Math.round(v * 100) + ' %'), slider('Громкость голосов', 'voiceVol', 0, 1, 0.05, v => Math.round(v * 100) + ' %'), slider('Громкость окружения', 'ambVol', 0, 1, 0.05, v => Math.round(v * 100) + ' %'));
   const inv = document.createElement('label'); inv.className = 'set-row check'; const c = document.createElement('input'); c.type = 'checkbox'; c.checked = SET.invertY; c.onchange = () => { SET.invertY = c.checked; save(); };
   const it = document.createElement('span'); it.textContent = 'Инвертировать вертикаль мыши'; inv.append(c, it); g.append(inv); body.append(g);
   const h = document.createElement('h3'); h.textContent = 'Клавиши (щёлкните и нажмите новую; Esc — отмена)'; body.append(h);

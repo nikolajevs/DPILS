@@ -18,7 +18,7 @@ export function createBrain(g) {
   const inArea = (x, z) => Math.hypot(x - area.cx, z - area.cz) < area.r - 8;
   // ---- routes: A* over a grid of 4 m cells; a cell is free when its centre and its four corners can be stood on (about
   // 4 m clear of a wall), the route is then pulled straight where the straight line is free
-  const CELL = 4, okMemo = new Map();
+  const CELL = 4, okMemo = new Map(); let lastRoute = 0;
   const cellOK = (i, j) => {
     const k = (i + 4096) * 8192 + (j + 4096); let v = okMemo.get(k); if (v !== undefined) return v;
     const x = i * CELL + CELL / 2, z = j * CELL + CELL / 2, h = 1.8;
@@ -33,7 +33,7 @@ export function createBrain(g) {
     const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let c = 0; for (;;) { let l = 2 * c + 1, r = l + 1, m = c; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === c) break; [heap[m], heap[c]] = [heap[c], heap[m]]; c = m; } } return top; };
     const hh = (i, j) => Math.hypot(i - g0[0], j - g0[1]); gs.set(key(s0[0], s0[1]), 0); push(hh(s0[0], s0[1]), s0[0], s0[1]);
     let n = 0, found = false;
-    while (heap.length && n++ < 12000) {
+    while (heap.length && n++ < 60000) {
       const [, i, j] = pop(), k = key(i, j); if (closed.has(k)) continue; closed.add(k);
       if (i === g0[0] && j === g0[1]) { found = true; break; }
       for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
@@ -101,7 +101,7 @@ export function createBrain(g) {
       if (p.hp < 35 && b.retreatUntil < now && Math.random() < 0.02) b.retreatUntil = now + 3000;
     } else {   // roam
       const stale = !b.path || b.pi >= b.path.length || now - b.wpAt > 60000;
-      if (stale) { b.path = null; for (let k = 0; k < 4 && !b.path; k++) b.path = route(p.x, p.z, ...waypoint(p)); b.pi = 0; b.wpAt = now; }
+      if (stale && now - lastRoute >= 45) { lastRoute = now; b.path = null; for (let k = 0; k < 4 && !b.path; k++) b.path = route(p.x, p.z, ...waypoint(p)); b.pi = 0; b.wpAt = now; }   // one route a tick for all the bots: no hitch at the start
       const nx = b.path && b.path[b.pi]; if (nx) { walk(p, nx[0], nx[1], speed, dt); if (Math.hypot(nx[0] - p.x, nx[1] - p.z) < 3) b.pi++; if (b.moving) aimYaw = Math.atan2(-(nx[0] - p.x), -(nx[1] - p.z)); }
       aimPitch = 0;
       if ((b.stuckT -= dt) <= 0) { b.stuckT = 1.5; if (Math.hypot(p.x - b.sx, p.z - b.sz) < 0.6) b.path = null; b.sx = p.x; b.sz = p.z; }
@@ -131,5 +131,5 @@ export function createBrain(g) {
     if (--b.burstLeft <= 0) { b.burstLeft = Math.round(rnd(L.burst[0], L.burst[1])); b.pauseUntil = now + L.pause * 1000 * rnd(0.6, 1.4); }
   }
   const make = (level, p) => { p.bot = { level: LEVELS[level] ? level : 'normal', target: 0, react: 0, look: rnd(0, 0.25), nextShot: 0, pauseUntil: 0, burstLeft: 3, path: null, pi: 0, wpAt: 0, strafe: Math.random() < 0.5 ? 1 : -1, strafeT: 1, stuckT: 1.5, sx: 0, sz: 0, moving: false, retreatUntil: 0, respawnExtra: rnd(0, 2000) }; };
-  return { think, make };
+  return { think, make, route };
 }
