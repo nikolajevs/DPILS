@@ -1,3 +1,5 @@
 {
-  "servers": []
+  "servers": [
+    { "name": "Даугавпилс", "url": "wss://dvinsk.lat" }
+  ]
 }

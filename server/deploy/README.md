@@ -24,3 +24,20 @@ curl http://127.0.0.1:8787/health
 Имя сервера в списке на странице и число убийств до победы задаются переменными в unit-файле: `Environment=SERVER_NAME=Даугавпилс` и `Environment=WIN_SCORE=30`; режим «каждый сам за себя» включает `Environment=MODE=ffa`; арену — `Environment=ARENA=center` (или `fortress`, `station`, `park`, `church`, `pond`, `speedway`, `culture`, `griva`), ботов, которые занимают свободные места, — `Environment=BOTS=6` и `Environment=BOT_LEVEL=normal` (на одном VPS можно держать два сервера на разных портах, по одному unit-файлу на режим). Таблица лидеров хранится в файле `server/data/leaderboard.json` (другое место — `Environment=LEADERBOARD=/var/lib/dpils/leaderboard.json`, без таблицы — `LEADERBOARD=off`); пользователь сервиса должен иметь право писать туда. Через Caddy она доступна по тому же домену: `https://ваш-домен/leaderboard`. Чтобы сервер появился в списке, добавьте его в `servers.json` в корне репозитория (`{"servers": [{"name": "Даугавпилс", "url": "wss://ваш-домен"}]}`).
 
 Обновление: `cd /opt/dpils && sudo -u dpils git pull && sudo systemctl restart dpils-game`. Логи: `journalctl -u dpils-game -f`.
+
+## dvinsk.lat: страница и сервер в одном процессе (pm2, без sudo)
+
+На VPS `kicad-vps` (пользователь `administrator`, Node из nvm) игра стоит в `~/dpils` и работает под pm2 как `dpils` на порту 3000; снаружи её отдаёт Traefik соседнего хоста по https://dvinsk.lat. Переменная `STATIC=dist` включает раздачу собранной страницы тем же сервером, что принимает игроков, поэтому отдельный прокси для `wss://` не нужен.
+
+```bash
+git clone https://github.com/nikolajevs/DPILS.git ~/dpils && cd ~/dpils && npm ci && npm run build
+```
+```bash
+PORT=3000 STATIC=dist SERVER_NAME=Даугавпилс BOTS=4 pm2 start server/index.mjs --name dpils && pm2 save
+```
+
+Обновление:
+
+```bash
+cd ~/dpils && git pull && npm ci && npm run build && pm2 restart dpils
+```
