@@ -8,7 +8,6 @@
    game knows it. */
 import { NADE, RULES as R, WEAPONS, W_NADE, rayToSegment } from './combat.mjs';
 import { LEVELS, botName, createBrain } from './bots.mjs';
-import { validKey } from './leaderboard.mjs';
 
 const TEAMS = ['Красные', 'Синие'], HX = 5200, HY = 4200;   // bounds a bit wider than the city
 const num = (v, lim) => (typeof v === 'number' && isFinite(v) ? Math.max(-lim, Math.min(lim, v)) : 0);
@@ -33,7 +32,7 @@ export function createGame(opts) {
     while (taken(n)) n = base.slice(0, 13) + '#' + k++;
     return n;
   }
-  const lb = opts.board || null;   // the leaderboard (leaderboard.mjs): only the humans who sent a key are in it
+  const validKey = k => typeof k === 'string' && /^[0-9a-f]{16,64}$/i.test(k), lb = opts.board || null;   // the leaderboard (leaderboard.mjs): only the humans who sent a key are in it
   const board = () => [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, bot: !!p.bot }));
   const sendBoard = () => all({ t: 'board', board: board(), score: FFA ? [] : teamScore });
   const count = k => [...players.values()].filter(p => p.team === k).length;
