@@ -40,7 +40,7 @@ function spawn(p, x, z, yaw) {
 }
 wss.on('connection', ws => {
   ws.since = Date.now(); ws.joined = false;
-  const p = { id: nextId++, ws, name: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, lastShot: 0, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(), live: true };
+  const p = { id: nextId++, ws, name: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, lastShot: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(), live: true };
   ws.on('pong', () => { p.live = true; });
   ws.on('message', raw => {
     const t0 = now(); if (t0 - p.win > 1000) { p.win = t0; p.msgs = 0; } if (++p.msgs > 90) return;
@@ -60,7 +60,7 @@ wss.on('connection', ws => {
       const far = Math.hypot(x - p.x, z - p.z), first = p.free && far < 80; p.free = false;   // right after a spawn the client may nudge itself off a wall or out of the water
       if (!first && far > R.runSpeed * dt * 1.6 + 3) send(p, { t: 'correct', x: p.x, y: p.y, z: p.z });   // too fast: put back
       else { p.x = x; p.z = z; p.y = y; }
-      p.yaw = num(m.yaw, 100); p.pitch = num(m.pitch, 1.6);
+      p.yaw = num(m.yaw, 100); p.pitch = num(m.pitch, 1.6); p.eye = Math.max(0.9, Math.min(1.8, num(m.h, 1.8) || 1.7));
       p.hist.push([t0, p.x, p.y, p.z]); while (p.hist.length > 2 && t0 - p.hist[0][0] > 1000) p.hist.shift();
     } else if (m.t === 'shoot' && p.alive) {
       if (t0 - p.lastShot < R.fireGapMs) return; p.lastShot = t0;
@@ -69,7 +69,7 @@ wss.on('connection', ws => {
       all({ t: 'shot', id: p.id, o, d, len });
       const v = m.hit && players.get(+m.hit);
       if (v && v !== p && v.team !== p.team && v.alive && t0 > v.protectUntil && !roundOver) {
-        const [vx, vy, vz] = poseAt(v, t0 - 120 - Math.min(300, p.rtt / 2)), a = [vx, vy - R.bodyBottom, vz], b = [vx, vy + R.bodyTop, vz], r = rayToSegment(o, d, R.range, a, b);
+        const [vx, vy, vz] = poseAt(v, t0 - 120 - Math.min(300, p.rtt / 2)), a = [vx, vy - v.eye + 0.1, vz], b = [vx, vy + R.bodyTop, vz], r = rayToSegment(o, d, R.range, a, b);
         if (r.dist <= R.tolerance && r.t <= wall + 0.5) {
           const head = rayToSegment(o, d, len, [vx, vy - 0.1, vz], [vx, vy + 0.1, vz]).dist <= R.headTolerance, dmg = head ? R.headDmg : R.bodyDmg;
           v.hp -= dmg; send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: o[0] - v.x, dz: o[2] - v.z }); send(p, { t: 'hit', id: v.id, head, kill: v.hp <= 0 });
@@ -94,7 +94,7 @@ function endRound(team) {
   setTimeout(() => { teamScore[0] = teamScore[1] = 0; for (const p of players.values()) { p.kills = p.deaths = 0; } roundOver = false; sendBoard(); all({ t: 'chat', text: 'Новый раунд' }); }, 10000);
 }
 setInterval(() => {
-  const list = [...players.values()].filter(p => p.alive).map(p => [p.id, +p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3)]);
+  const list = [...players.values()].filter(p => p.alive).map(p => [p.id, +p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), +p.eye.toFixed(2)]);
   if (players.size) all({ t: 'snap', now: now(), p: list });
 }, 1000 / R.tickHz);
 setInterval(() => { for (const c of wss.clients) if (!c.joined && Date.now() - c.since > 15000) c.terminate(); for (const p of players.values()) { if (!p.live) { p.ws.terminate(); continue; } p.live = false; p.ws.ping(); } }, 15000);
