@@ -31,7 +31,7 @@ for (const file of files) {
   const mod = { file, ast, sm, scope: scope.type === 'module' ? scope : scope.childScopes[0], imports: new Map(), exports: new Map(), sideImports: [] };
   for (const n of ast.body) {
     if (n.type === 'ImportDeclaration') {
-      if (n.source.value === 'three') continue;
+      if (n.source.value === 'three' || n.source.value.startsWith('three/')) continue;   // the library (three, three/addons/…)
       const to = path.resolve(path.dirname(file), n.source.value);
       if (!n.specifiers.length) mod.sideImports.push(to);
       for (const s of n.specifiers) mod.imports.set(s.local.name, [to, s.type === 'ImportSpecifier' ? s.imported.name : '*']);

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { buildingAt } from '../world/data.js';
 import { terrainH } from '../world/terrain.js';
 import { scene } from '../render/renderer.js';
+import { worldSpace } from '../render/world-space.js';
 
 /* ---------- grenades ----------
    The server flies every grenade and says where and when it goes off (server/index.mjs, damage and all). Each page
@@ -9,7 +10,7 @@ import { scene } from '../render/renderer.js';
    it moves smoothly; at the blast the copy is put where the server's grenade was. */
 const NADE = { g: 18 };
 const list = new Map(), blasts = [];
-const GEO = new THREE.SphereGeometry(0.1, 10, 8), MAT = new THREE.MeshLambertMaterial({ color: 0x3d5a2a });
+const GEO = new THREE.SphereGeometry(0.1, 10, 8), MAT = worldSpace(new THREE.MeshLambertMaterial({ color: 0x3d5a2a }));
 function stepNade(n, dt) {
   const [px, py, pz] = n.p; n.v[1] -= NADE.g * dt;
   let x = px + n.v[0] * dt, y = py + n.v[1] * dt, z = pz + n.v[2] * dt;
@@ -28,7 +29,7 @@ function addNade(m) {
 // the blast: a fireball that swells and fades, and a flash of smoke
 function boomNade(m) {
   const n = list.get(m.id); if (n) { scene.remove(n.mesh); list.delete(m.id); }
-  const mat = new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.95, fog: false }), mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), mat);
+  const mat = worldSpace(new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.95, fog: false })), mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), mat);
   mesh.position.set(m.x, m.y + 0.5, m.z); scene.add(mesh); blasts.push({ mesh, t: 0 });
 }
 function tickNades(dt) {
