@@ -5,6 +5,8 @@ import { PLACES } from '../ui/places.js';
 import { buildingAt } from '../world/data.js';
 import { terrainH } from '../world/terrain.js';
 import { camera, canvas, scene } from '../render/renderer.js';
+import { CH, addLine, openChat } from './chat.js';
+import { createVoice } from './voice.js';
 import { $ } from '../core/env.js';
 
 /* ---------- online shooter: deathmatch on the city map ----------
@@ -12,9 +14,16 @@ import { $ } from '../core/env.js';
    (simple procedural figures, drawn 120 ms in the past between two snapshots), the gun in hand, shooting with the
    line of fire checked against terrain and buildings, and the game panels. Keep RULES and rayToSegment in step with
    server/combat.mjs. */
-const RULES = { mag: 30, reloadMs: 1800, gapMs: 100, range: 160, hitR: 0.4, headR: 0.28, bodyBottom: 1.6, bodyTop: 0.05 };
-const MP = { on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, ammo: RULES.mag, reloadAt: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0 };
+const RULES = { hitR: 0.4, headR: 0.28, bodyBottom: 1.6, bodyTop: 0.05 };
+// the weapons (keep server/combat.mjs in step; the server has the damage): the rifle fires bursts, the shotgun
+// throws eight pellets in a cone, one shot per click
+const WEAPONS = [
+  { name: 'Автомат', mag: 30, reloadMs: 1800, gapMs: 100, range: 160, pellets: 1, cone: 0, auto: true },
+  { name: 'Дробовик', mag: 6, reloadMs: 2600, gapMs: 800, range: 45, pellets: 8, cone: 0.05, auto: false },
+];
+const MP = { on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, ammo: [30, 6], reloadAt: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0 };
 STATE.mp = false;
+let voice = null;
 const remotes = new Map();   // id → { name, group, buf: [{ t, x, y, z, yaw, pitch }], tag }
 const tracers = [];
 const DEFAULT_SERVER = '';   // e.g. 'wss://dpils-game.example.com'; empty: ?server=…, the saved address, or localhost
@@ -43,6 +52,7 @@ const aim = (yaw = P.yaw, pitch = P.pitch) => { const cp = Math.cos(pitch); retu
 // how wide the shots scatter now: a little always, more when walking or running, more after each shot of a burst
 function spreadNow() {
   const moving = ['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(k => keys.has(k)), run = keys.has('ShiftLeft') || keys.has('ShiftRight');
+  if (W().cone) return W().cone * (P.crouch ? 0.8 : 1) + (moving ? 0.01 : 0) + (P.up > 0.02 ? 0.03 : 0);   // the shotgun's pellets spread in a wide cone
   return (0.002 + (moving ? (run ? 0.022 : 0.008) : 0) + MP.burst) * (P.crouch ? 0.5 : 1) + (P.up > 0.02 ? 0.03 : 0);   // crouching steadies the aim, a jump spoils it
 }
 
@@ -77,11 +87,14 @@ function pose(r, t) {
 }
 
 /* ---------- the gun in hand, tracers, sounds ---------- */
-const gun = new THREE.Group();
+const gun = new THREE.Group(), models = [new THREE.Group(), new THREE.Group()];
 (function () {
-  const m1 = new THREE.MeshLambertMaterial({ color: 0x2a2d31 }), m2 = new THREE.MeshLambertMaterial({ color: 0x6b4a2b });
-  const add = (m, sx, sy, sz, x, y, z) => { const o = new THREE.Mesh(GEO.box, m); o.scale.set(sx, sy, sz); o.position.set(x, y, z); gun.add(o); };
-  add(m1, 0.06, 0.09, 0.52, 0, 0, 0); add(m1, 0.03, 0.03, 0.18, 0, 0.0, -0.33); add(m2, 0.055, 0.16, 0.1, 0, -0.11, 0.14); add(m1, 0.045, 0.13, 0.07, 0, -0.1, -0.06);
+  const m1 = new THREE.MeshLambertMaterial({ color: 0x2a2d31 }), m2 = new THREE.MeshLambertMaterial({ color: 0x6b4a2b }), m3 = new THREE.MeshLambertMaterial({ color: 0x555a60 });
+  const add = (g, m, sx, sy, sz, x, y, z) => { const o = new THREE.Mesh(GEO.box, m); o.scale.set(sx, sy, sz); o.position.set(x, y, z); g.add(o); };
+  const [r, s] = models;
+  add(r, m1, 0.06, 0.09, 0.52, 0, 0, 0); add(r, m1, 0.03, 0.03, 0.18, 0, 0.0, -0.33); add(r, m2, 0.055, 0.16, 0.1, 0, -0.11, 0.14); add(r, m1, 0.045, 0.13, 0.07, 0, -0.1, -0.06);   // rifle
+  add(s, m3, 0.035, 0.035, 0.8, -0.022, 0.012, -0.12); add(s, m3, 0.035, 0.035, 0.8, 0.022, 0.012, -0.12); add(s, m2, 0.075, 0.06, 0.22, 0, -0.045, -0.3); add(s, m1, 0.07, 0.1, 0.3, 0, -0.01, 0.2); add(s, m2, 0.06, 0.16, 0.3, 0, -0.07, 0.38);   // shotgun: two barrels, pump, stock
+  s.visible = false; gun.add(r, s);
   gun.position.set(0.17, -0.19, -0.5); gun.scale.setScalar(0.8); gun.visible = false; camera.add(gun); scene.add(camera);
 })();
 const flash = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffd36a })); flash.position.set(0, 0, -0.45); flash.visible = false; gun.add(flash);
@@ -108,34 +121,44 @@ function tracer(o, d, len, color) {
 }
 
 /* ---------- shooting ---------- */
+const W = () => WEAPONS[MP.weapon];
 function fire(now) {
-  if (MP.dead || !STATE.locked || now - MP.lastShot < RULES.gapMs) return;
+  const w = W();
+  if (MP.dead || !STATE.locked || now - MP.lastShot < w.gapMs) return;
   if (MP.reloadAt) return;
-  if (MP.ammo <= 0) { reload(now); return; }
-  const sp = spreadNow(), ang = Math.random() * 6.283, rad = sp * Math.sqrt(Math.random());
-  MP.lastShot = now; MP.ammo--; MP.kick = 1; P.pitch = Math.min(1.5, P.pitch + 0.0035); P.yaw += (Math.random() - 0.5) * 0.0016; MP.burst = Math.min(0.03, MP.burst + 0.0045);
-  const o = [P.x, P.y, P.z], d = aim(P.yaw + Math.cos(ang) * rad, P.pitch + Math.sin(ang) * rad), clear = freePath(o, d, RULES.range), t = performance.now() - 120;
-  let best = null;
-  for (const [id, r] of remotes) {
-    if (r.team === MP.team) continue;   // no friendly fire: shots pass through teammates
-    const p = pose(r, t); if (!p || !r.group.visible) continue;
-    const a = [p.x, p.y - (p.h || 1.7) + 0.1, p.z], b = [p.x, p.y + RULES.bodyTop, p.z], h = rayToSegment(o, d, clear, a, b);
-    if (h.dist <= RULES.hitR && (!best || h.t < best.t)) best = { id, t: h.t };
+  if (MP.ammo[MP.weapon] <= 0) { reload(now); return; }
+  MP.lastShot = now; MP.ammo[MP.weapon]--; MP.kick = 1; P.pitch = Math.min(1.5, P.pitch + (w.pellets > 1 ? 0.02 : 0.0035)); P.yaw += (Math.random() - 0.5) * (w.pellets > 1 ? 0.006 : 0.0016); if (w.auto) MP.burst = Math.min(0.03, MP.burst + 0.0045);
+  const o = [P.x, P.y, P.z], t = performance.now() - 120, rays = [];
+  for (let i = 0; i < w.pellets; i++) {
+    const sp = spreadNow(), ang = Math.random() * 6.283, rad = sp * Math.sqrt(Math.random());
+    const d = aim(P.yaw + Math.cos(ang) * rad, P.pitch + Math.sin(ang) * rad), clear = freePath(o, d, w.range);
+    let best = null;
+    for (const [id, r] of remotes) {
+      if (r.team === MP.team) continue;   // no friendly fire: shots pass through teammates
+      const p = pose(r, t); if (!p || !r.group.visible) continue;
+      const a = [p.x, p.y - (p.h || 1.7) + 0.1, p.z], b = [p.x, p.y + RULES.bodyTop, p.z], h = rayToSegment(o, d, clear, a, b);
+      if (h.dist <= RULES.hitR && (!best || h.t < best.t)) best = { id, t: h.t };
+    }
+    const len = best ? best.t : clear; rays.push([+d[0].toFixed(4), +d[1].toFixed(4), +d[2].toFixed(4), +len.toFixed(1), best ? best.id : 0]);
+    tracer(o, d, len, 0xffe9a0);
   }
-  const len = best ? best.t : clear;
-  tracer(o, d, len, 0xffe9a0); bang(0.35, true);
-  MP.ws.send(JSON.stringify({ t: 'shoot', dx: d[0], dy: d[1], dz: d[2], len, hit: best ? best.id : 0 }));
-  if (MP.ammo <= 0) reload(now);
+  bang(w.pellets > 1 ? 0.6 : 0.35, true);
+  MP.ws.send(JSON.stringify({ t: 'shoot', w: MP.weapon, rays }));
+  if (MP.ammo[MP.weapon] <= 0) reload(now);
   updatePanel();
 }
-function reload(now) { if (MP.reloadAt || MP.ammo >= RULES.mag || MP.dead) return; MP.reloadAt = now; updatePanel(); }
+function switchWeapon(i) {
+  if (MP.dead || i === MP.weapon || i < 0 || i >= WEAPONS.length) return;
+  MP.weapon = i; MP.reloadAt = 0; MP.firing = false; models.forEach((m, k) => { m.visible = k === i; }); tone(300, 200, 0.06, 0.15, 'square'); updatePanel();
+}
+function reload(now) { const w = W(); if (MP.reloadAt || MP.ammo[MP.weapon] >= w.mag || MP.dead) return; MP.reloadAt = now; updatePanel(); }
 
 /* ---------- panels ---------- */
 const el = id => $(id);
 let hitT = 0, hurtT = 0;
 function updatePanel() {
   el('mpHp').style.width = Math.max(0, MP.hp) + '%'; el('mpHpN').textContent = Math.max(0, Math.ceil(MP.hp));
-  el('mpAmmo').textContent = MP.reloadAt ? 'перезарядка…' : MP.ammo + ' / ' + RULES.mag;
+  el('mpAmmo').textContent = W().name + '  ' + (MP.reloadAt ? 'перезарядка…' : MP.ammo[MP.weapon] + ' / ' + W().mag);
   el('mpScore').textContent = MP.kills + ' · ' + MP.deaths;
   const tm = el('mpTeams'); tm.textContent = ''; const chip = (i, t) => { const e = document.createElement('b'); e.className = 't' + i; e.textContent = t; return e; };
   const lim = document.createElement('small'); lim.textContent = ' до ' + MP.win; tm.append(chip(0, MP.teams[0] + ' ' + MP.score[0]), ' : ', chip(1, MP.score[1] + ' ' + MP.teams[1]), lim);
@@ -165,11 +188,11 @@ function respawn() {
 /* ---------- messages from the server ---------- */
 function onMsg(m) {
   switch (m.t) {
-    case 'hello': MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team); document.body.dataset.team = m.team; break;
+    case 'hello': voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team); document.body.dataset.team = m.team; break;
     case 'spawn': {
       const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.crouch = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
-      MP.hp = m.hp; MP.ammo = RULES.mag; MP.reloadAt = 0; MP.dead = false; gun.visible = true; el('mpDead').hidden = true; updatePanel();
+      MP.weapon = 0; models.forEach((mm, k) => { mm.visible = k === 0; }); MP.hp = m.hp; MP.ammo = WEAPONS.map(w => w.mag); MP.reloadAt = 0; MP.dead = false; gun.visible = true; el('mpDead').hidden = true; updatePanel();
       MP.ws.send(JSON.stringify({ t: 'state', x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch }));   // the server has the point as asked: tell it where the player really stands
       if (canvas.requestPointerLock) { canvas.focus(); try { const pr = canvas.requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} }
       break;
@@ -182,7 +205,7 @@ function onMsg(m) {
       for (const [id, r] of remotes) if (!seen.has(id) && !r.fallT) { r.group.visible = false; r.buf.length = 0; }
       break;
     }
-    case 'shot': { if (m.id === MP.id) break; const rs = remotes.get(m.id); if (rs) rs.shotAt = performance.now(); tracer(m.o, m.d, m.len, 0xffb060); const dd = Math.hypot(m.o[0] - P.x, m.o[2] - P.z); if (dd < 220) bang(0.3 * (1 - dd / 220), true); break; }
+    case 'shot': { if (m.id === MP.id) break; const rs = remotes.get(m.id); if (rs) rs.shotAt = performance.now(); for (const r of m.rays) tracer(m.o, r, r[3], 0xffb060); const dd = Math.hypot(m.o[0] - P.x, m.o[2] - P.z); if (dd < 220) bang((m.w ? 0.5 : 0.3) * (1 - dd / 220), true); break; }
     case 'hit': hitT = performance.now(); if (m.kill) { tone(880, 880, 0.12, 0.25, 'triangle'); tone(1320, 1320, 0.25, 0.25, 'triangle', 0.1); } else tone(m.head ? 2600 : 1700, m.head ? 2200 : 1400, 0.07, 0.2, 'square'); el('mpHit').className = m.head ? 'head' : m.kill ? 'kill' : ''; el('mpHit').hidden = false; break;
     case 'hurt': {
       MP.hp = m.hp; hurtT = performance.now(); tone(160, 60, 0.18, 0.4, 'sawtooth'); el('mpHurt').hidden = false; updatePanel();
@@ -192,8 +215,10 @@ function onMsg(m) {
     }
     case 'kill': { feed(m.kn + '  ➜  ' + m.vn + (m.head ? '  (в голову)' : ''), m.killer === MP.id ? 'mine' : m.victim === MP.id ? 'dead' : ''); if (m.killer === MP.id) { MP.kills++; } if (m.victim === MP.id) { MP.deaths++; if (!MP.dead) die(m.kn); } else { const rv = remotes.get(m.victim); if (rv && rv.buf.length) { rv.fallT = performance.now(); rv.corpse = { ...rv.buf[rv.buf.length - 1] }; } } updatePanel(); break; }
     case 'alive': { const r = remotes.get(m.id); if (r) { r.buf.length = 0; r.fallT = 0; } break; }
-    case 'board': MP.board = m.board; MP.score = m.score; for (const e of m.board) { const r = addRemote(e.id, e.name, e.team); if (r) { r.name = e.name; r.tag.textContent = e.name; } if (e.id === MP.id) { MP.kills = e.kills; MP.deaths = e.deaths; } } for (const id of [...remotes.keys()]) if (!m.board.some(e => e.id === id)) dropRemote(id); drawBoard(); updatePanel(); break;
+    case 'board': MP.board = m.board; MP.score = m.score; for (const e of m.board) { const r = addRemote(e.id, e.name, e.team); if (r) { r.name = e.name; r.tag.textContent = e.name; } if (e.id === MP.id) { MP.kills = e.kills; MP.deaths = e.deaths; } } for (const id of [...remotes.keys()]) if (!m.board.some(e => e.id === id)) dropRemote(id); drawBoard(); updatePanel(); if (voice) voice.setPeers(m.board.filter(e => e.id !== MP.id).map(e => e.id)); break;
     case 'left': dropRemote(m.id); break;
+    case 'say': addLine(m, MP.id); if (m.id !== MP.id) tone(900, 700, 0.05, 0.08, 'sine'); break;
+    case 'rtc': if (voice) voice.signal(m.from, m.d); break;
     case 'win': { const mine = m.team === MP.team; el('mpBanner').hidden = false; el('mpBanner').className = 'mp-banner t' + (m.team === 1 ? 1 : 0); el('mpBanner').textContent = (mine ? 'Победа! ' : 'Поражение. ') + 'Выиграли ' + m.name.toLowerCase() + ', ' + m.score[0] + ' : ' + m.score[1]; setTimeout(() => { el('mpBanner').hidden = true; }, 9000); break; }
     case 'chat': feed(m.text, 'sys'); break;
     case 'full': el('mpMsg').textContent = 'На сервере нет мест.'; break;
@@ -237,25 +262,31 @@ function initUi() {
 }
 
 /* ---------- input ---------- */
+canvas.addEventListener('wheel', e => { if (MP.on && !MP.dead) switchWeapon((MP.weapon + (e.deltaY > 0 ? 1 : WEAPONS.length - 1)) % WEAPONS.length); }, { passive: true });
 canvas.addEventListener('mousedown', e => { if (!MP.on || e.button !== 0) return; MP.firing = true; if (!STATE.locked && !MP.dead) return; fire(performance.now()); });
 window.addEventListener('mouseup', e => { if (e.button === 0) MP.firing = false; });
 window.addEventListener('keydown', e => {
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;   // typing in the chat box
   if (!MP.on || e.repeat) return;
-  if (e.code === 'KeyR') reload(performance.now());
+  if (e.code === 'KeyV' && voice) { if (!voice.hasMic) { voice.enableMic().then(ok => { el('mpVoice').dataset.mic = ok ? 'on' : 'denied'; }); } else voice.talk(true); }
+  else if (!MP.dead && (e.code === 'KeyY' || e.code === 'KeyU' || e.code === 'Enter')) { e.preventDefault(); openChat(e.code === 'KeyU'); }
+  else if (e.code === 'KeyR') reload(performance.now());
+  else if (e.code === 'Digit1' || e.code === 'Digit2') switchWeapon(+e.code.slice(5) - 1);
   else if (e.code === 'Tab') { e.preventDefault(); el('mpBoard').hidden = false; drawBoard(); }
   else if ((e.code === 'Space' || e.code === 'Enter') && MP.dead) { e.preventDefault(); respawn(); }
 });
-window.addEventListener('keyup', e => { if (e.code === 'Tab') el('mpBoard').hidden = true; });
+window.addEventListener('keyup', e => { if (e.code === 'Tab') el('mpBoard').hidden = true; if (e.code === 'KeyV' && voice) voice.talk(false); });
 el('mpDead').addEventListener('click', respawn);
 
 /* ---------- every frame ---------- */
 function mpTick(dt) {
   if (!MP.on) return;
   const now = performance.now(), t = now - 120;
-  if (MP.reloadAt && now - MP.reloadAt >= RULES.reloadMs) { MP.reloadAt = 0; MP.ammo = RULES.mag; updatePanel(); }
+  if (voice) voice.update(dt);
+  if (MP.reloadAt && now - MP.reloadAt >= W().reloadMs) { MP.reloadAt = 0; MP.ammo[MP.weapon] = W().mag; updatePanel(); }
   MP.burst = Math.max(0, MP.burst - dt * 0.03); { const px = Math.max(6, Math.round(spreadNow() * 1400)), cr = $('cross'); if (cr.dataset.px !== String(px)) { cr.dataset.px = px; cr.style.width = cr.style.height = px + 'px'; cr.style.margin = (-px / 2) + 'px 0 0 ' + (-px / 2) + 'px'; } }
   if ((MP.pingT = (MP.pingT || 0) - dt) <= 0 && MP.ws.readyState === 1) { MP.pingT = 2; MP.ws.send(JSON.stringify({ t: 'ping', c: now, rtt: MP.rtt })); }
-  if (MP.firing) fire(now);
+  if (MP.firing && W().auto) fire(now);
   if (MP.dead) { const left = Math.max(0, 3 - (now - MP.deadAt) / 1000); el('mpRespawn').disabled = left > 0; el('mpRespawn').textContent = left > 0 ? 'Возрождение через ' + Math.ceil(left) : 'Возродиться (пробел)'; }
   else if ((MP.sendT -= dt) <= 0 && MP.ws.readyState === 1) { MP.sendT = 0.05; MP.ws.send(JSON.stringify({ t: 'state', x: +P.x.toFixed(2), y: +P.y.toFixed(2), z: +P.z.toFixed(2), yaw: +P.yaw.toFixed(3), pitch: +P.pitch.toFixed(3), h: +P.eye.toFixed(2) })); }
   for (const r of remotes.values()) {
@@ -269,7 +300,7 @@ function mpTick(dt) {
   }
   for (let i = tracers.length - 1; i >= 0; i--) { const tr = tracers[i]; tr.t += dt; tr.l.material.opacity = Math.max(0, 0.9 - tr.t * 9); if (tr.t > 0.1) { scene.remove(tr.l); tr.l.geometry.dispose(); tr.l.material.dispose(); tracers.splice(i, 1); } }
   MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06; flash.visible = MP.kick > 0.6;
-  if (MP.reloadAt) gun.rotation.x = -0.5 * Math.sin(Math.min(1, (now - MP.reloadAt) / RULES.reloadMs) * Math.PI);
+  if (MP.reloadAt) gun.rotation.x = -0.5 * Math.sin(Math.min(1, (now - MP.reloadAt) / W().reloadMs) * Math.PI);
   if (hitT && now - hitT > 140) { hitT = 0; el('mpHit').hidden = true; }
   if (hurtT && now - hurtT > 600) { hurtT = 0; el('mpHurt').hidden = true; }
 }
@@ -285,6 +316,16 @@ function mpLabels() {
     if (!mate) { const dy = g.position.y + 1.6 - P.y, l = Math.hypot(d, dy) || 1, dir = [(g.position.x - P.x) / l, dy / l, (g.position.z - P.z) / l]; if (freePath([P.x, P.y, P.z], dir, l) < l - 2) { r.tag.hidden = true; continue; } }
     r.tag.hidden = false; r.tag.style.transform = 'translate(-50%,-100%) translate(' + ((V.x + 1) / 2 * w).toFixed(0) + 'px,' + ((1 - V.y) / 2 * h).toFixed(0) + 'px)';
   }
+}
+// the voice chat: how audible a player is (a teammate always, an enemy within 30 m) and who is speaking now
+function voiceInfo(id) {
+  const r = remotes.get(id); if (!r) return null; const p = r.buf[r.buf.length - 1];
+  return { mate: r.team === MP.team, dist: p ? Math.hypot(p.x - P.x, p.y - P.y, p.z - P.z) : 1e9 };
+}
+function showSpeaking(ids, me) {
+  const box = el('mpVoice'); box.dataset.talk = me ? '1' : '0';
+  const names = ids.map(id => nameOf(id)).join(', '); const list = el('mpVoiceList'); if (list.textContent !== names) list.textContent = names;
+  for (const [id, r] of remotes) r.tag.classList.toggle('speaking', ids.includes(id));
 }
 // teammates on the maps; an enemy shows for two seconds after it fires
 STATE.mapOverlay = (ctx, cx, cz, ppm, w, h) => {

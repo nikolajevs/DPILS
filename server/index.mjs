@@ -4,7 +4,7 @@
    the wall. Hits are checked against fire rate, range and the target's position as the server knows it. */
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
-import { RULES as R, rayToSegment } from './combat.mjs';
+import { RULES as R, WEAPONS, rayToSegment } from './combat.mjs';
 import { loadWorld } from './world.mjs';
 
 const PORT = +process.env.PORT || 8787, HX = 5200, HY = 4200;   // bounds a bit wider than the city
@@ -14,7 +14,7 @@ const server = http.createServer((req, res) => {
   if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' }); res.end(JSON.stringify({ ok: true, players: players.size, max: R.maxPlayers })); return; }
   res.writeHead(404); res.end();
 });
-const wss = new WebSocketServer({ server, maxPayload: 2048 });
+const wss = new WebSocketServer({ server, maxPayload: 16384 });
 const send = (p, m) => { if (p.ws.readyState === 1) p.ws.send(JSON.stringify(m)); };
 const all = m => { const s = JSON.stringify(m); for (const p of players.values()) if (p.ws.readyState === 1) p.ws.send(s); };
 const num = (v, lim) => (typeof v === 'number' && isFinite(v) ? Math.max(-lim, Math.min(lim, v)) : 0);
@@ -40,12 +40,13 @@ function spawn(p, x, z, yaw) {
 }
 wss.on('connection', ws => {
   ws.since = Date.now(); ws.joined = false;
-  const p = { id: nextId++, ws, name: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, lastShot: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(), live: true };
+  const p = { id: nextId++, ws, name: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, lastShot: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(), live: true };
   ws.on('pong', () => { p.live = true; });
   ws.on('message', raw => {
-    const t0 = now(); if (t0 - p.win > 1000) { p.win = t0; p.msgs = 0; } if (++p.msgs > 90) return;
+    const t0 = now(); if (t0 - p.win > 1000) { p.win = t0; p.msgs = 0; }
     let m; try { m = JSON.parse(raw); } catch { return; }
     if (!m || typeof m !== 'object') return;
+    if (m.t !== 'rtc' && ++p.msgs > 90) return;   // the handshake of the voice chat has its own, larger limit
     if (m.t === 'join' && !p.joined) {
       if (players.size >= R.maxPlayers) { send(p, { t: 'full' }); ws.close(); return; }
       p.name = cleanName(m.name); p.team = pickTeam(m.team); p.joined = ws.joined = true; players.set(p.id, p);
@@ -63,22 +64,38 @@ wss.on('connection', ws => {
       p.yaw = num(m.yaw, 100); p.pitch = num(m.pitch, 1.6); p.eye = Math.max(0.9, Math.min(1.8, num(m.h, 1.8) || 1.7));
       p.hist.push([t0, p.x, p.y, p.z]); while (p.hist.length > 2 && t0 - p.hist[0][0] > 1000) p.hist.shift();
     } else if (m.t === 'shoot' && p.alive) {
-      if (t0 - p.lastShot < R.fireGapMs) return; p.lastShot = t0;
-      const d = [num(m.dx, 1), num(m.dy, 1), num(m.dz, 1)], l = Math.hypot(...d); if (l < 0.5) return; d.forEach((v, i) => d[i] = v / l);
-      const o = [p.x, p.y, p.z], wall = WORLD.freePath(o, d, R.range), len = Math.min(wall, Math.max(1, num(m.len, R.range)));
-      all({ t: 'shot', id: p.id, o, d, len });
-      const v = m.hit && players.get(+m.hit);
-      if (v && v !== p && v.team !== p.team && v.alive && t0 > v.protectUntil && !roundOver) {
-        const [vx, vy, vz] = poseAt(v, t0 - 120 - Math.min(300, p.rtt / 2)), a = [vx, vy - v.eye + 0.1, vz], b = [vx, vy + R.bodyTop, vz], r = rayToSegment(o, d, R.range, a, b);
-        if (r.dist <= R.tolerance && r.t <= wall + 0.5) {
-          const head = rayToSegment(o, d, len, [vx, vy - 0.1, vz], [vx, vy + 0.1, vz]).dist <= R.headTolerance, dmg = head ? R.headDmg : R.bodyDmg;
-          v.hp -= dmg; send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: o[0] - v.x, dz: o[2] - v.z }); send(p, { t: 'hit', id: v.id, head, kill: v.hp <= 0 });
-          if (v.hp <= 0) {
-            v.alive = false; v.deaths++; p.kills++; v.diedAt = t0; teamScore[p.team]++; all({ t: 'kill', killer: p.id, victim: v.id, kn: p.name, vn: v.name, kt: p.team, vt: v.team, head }); sendBoard();
-            if (teamScore[p.team] >= WIN) endRound(p.team);
-          }
+      const W = WEAPONS[m.w === 1 ? 1 : 0]; if (!Array.isArray(m.rays) || !m.rays.length) return;
+      if (t0 - p.lastShot < W.gapMs) return; p.lastShot = t0;
+      const o = [p.x, p.y, p.z], out = [], hits = new Map(), lag = t0 - 120 - Math.min(300, p.rtt / 2);
+      for (const ray of m.rays.slice(0, W.pellets)) {   // a rifle shot is one ray, a shotgun shot is up to eight pellets
+        if (!Array.isArray(ray)) continue;
+        const d = [num(ray[0], 1), num(ray[1], 1), num(ray[2], 1)], l = Math.hypot(...d); if (l < 0.5) continue; d.forEach((x, i) => d[i] = x / l);
+        const wall = WORLD.freePath(o, d, W.range), len = Math.min(wall, Math.max(1, num(ray[3], W.range))); out.push([+d[0].toFixed(4), +d[1].toFixed(4), +d[2].toFixed(4), +len.toFixed(1)]);
+        const v = ray[4] && players.get(+ray[4]);
+        if (!v || v === p || v.team === p.team || !v.alive || t0 <= v.protectUntil || roundOver) continue;
+        const [vx, vy, vz] = poseAt(v, lag), r = rayToSegment(o, d, W.range, [vx, vy - v.eye + 0.1, vz], [vx, vy + R.bodyTop, vz]);
+        if (r.dist > R.tolerance || r.t > wall + 0.5) continue;
+        const head = rayToSegment(o, d, len, [vx, vy - 0.1, vz], [vx, vy + 0.1, vz]).dist <= R.headTolerance, k = 1 - W.falloff * Math.min(1, r.t / W.range), h = hits.get(v.id) || { v, dmg: 0, head: false };
+        h.dmg += (head ? W.head : W.dmg) * k; h.head = h.head || head; hits.set(v.id, h);
+      }
+      if (!out.length) return;
+      all({ t: 'shot', id: p.id, w: m.w === 1 ? 1 : 0, o, rays: out });
+      for (const { v, dmg, head } of hits.values()) {
+        v.hp -= Math.round(dmg); send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: o[0] - v.x, dz: o[2] - v.z }); send(p, { t: 'hit', id: v.id, head, kill: v.hp <= 0 });
+        if (v.hp <= 0) {
+          v.alive = false; v.deaths++; p.kills++; v.diedAt = t0; teamScore[p.team]++; all({ t: 'kill', killer: p.id, victim: v.id, kn: p.name, vn: v.name, kt: p.team, vt: v.team, head, w: m.w === 1 ? 1 : 0 }); sendBoard();
+          if (teamScore[p.team] >= WIN) endRound(p.team);
         }
       }
+    } else if (m.t === 'chat') {
+      const text = String(m.text || '').replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
+      if (!text || t0 - p.lastChat < 700) return; p.lastChat = t0;
+      const say = { t: 'say', id: p.id, name: p.name, team: p.team, text, teamOnly: !!m.team };
+      if (m.team) { for (const q of players.values()) if (q.team === p.team) send(q, say); } else all(say);
+    } else if (m.t === 'rtc') {   // voice chat: the server only passes the WebRTC handshake between two players
+      const q = players.get(+m.to); if (!q || q === p || !m.d || typeof m.d !== 'object') return;
+      if (t0 - p.rwin > 1000) { p.rwin = t0; p.rmsgs = 0; } if (++p.rmsgs > 400) return;
+      send(q, { t: 'rtc', from: p.id, d: m.d });
     } else if (m.t === 'ping') { p.rtt = Math.max(0, Math.min(1000, num(m.rtt, 1000))); send(p, { t: 'pong', c: m.c });
     } else if (m.t === 'respawn' && !p.alive && t0 - p.diedAt >= R.respawnMs) {
       const mate = m.mate && [...players.values()].filter(q => q.alive && q.team === p.team && q !== p);

@@ -30,11 +30,13 @@ canvas.addEventListener('pointermove', e => {
 const up = e => { if (e.pointerId === joyId) { joyId = null; touch.mx = touch.mz = 0; $('joy').hidden = true; } if (e.pointerId === lookId) lookId = null; if (e.pointerType !== 'touch') drag = false; };
 canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
 window.addEventListener('keydown', e => {
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;   // typing in a box (the chat) is not a command
   if ((e.target instanceof HTMLButtonElement || e.target instanceof HTMLAnchorElement) && (e.code === 'Space' || e.code === 'Enter')) return;
   if (!STATE.started) return;
   if (e.code === 'Escape' && !big.hidden) { closeMap(); return; }
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
   if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (STATE.mp && e.code === 'KeyV') return;   // in the game V is push-to-talk, not Street View
   keys.add(e.code);
   if (e.repeat) return;
   if (e.code === 'KeyF') setFly(!P.fly); else if (e.code === 'KeyN') setTime((timeI + 1) % TIMES.length); else if (e.code === 'KeyT') { TX.si = (TX.si + 1) % SPEEDS.length; if (TX.si) TX.live = false; updateClockUI(); } else if (e.code === 'KeyM') { big.hidden ? openMap() : closeMap(); } else if (e.code === 'KeyP') togglePlaces();
