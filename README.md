@@ -717,7 +717,7 @@ node tools/terrain.js citydata.js terrain.js --tiles terrain-tiles
 npm run server
 ```
 
-Сервер слушает порт 8787 (`PORT=…` меняет), `/health` отвечает числом игроков. Ему нужны файлы города рядом: запускать из клона репозитория. На GitHub Pages сервер не запустить: его нужно разместить отдельно за `wss://`. Адрес берётся из поля «Сервер», из `?server=wss://…` или из константы `DEFAULT_SERVER` в [src/game/mp.js](src/game/mp.js); на localhost по умолчанию `ws://localhost:8787`.
+Сервер слушает порт 8787 (`PORT=…` меняет), `/health` отвечает числом игроков. Ему нужны файлы города рядом: запускать из клона репозитория. На GitHub Pages сервер не запустить: его нужно разместить отдельно за `wss://` (установка на VPS с systemd и Caddy — в [server/deploy/README.md](server/deploy/README.md)). Адрес берётся из поля «Сервер», из `?server=wss://…` или из константы `DEFAULT_SERVER` в [src/game/mp.js](src/game/mp.js); на localhost по умолчанию `ws://localhost:8787`.
 
 ## Разработка
 
