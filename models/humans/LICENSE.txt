@@ -1,0 +1,10 @@
+Модели людей и анимации — Quaternius (https://quaternius.com), лицензия CC0 1.0
+(https://creativecommons.org/publicdomain/zero/1.0/). Бесплатные версии наборов:
+
+- Universal Base Characters [Standard] — тела Superhero Male/Female, причёски
+  https://quaternius.itch.io/universal-base-characters
+- Universal Animation Library [Standard] — анимации (оставлены нужные клипы)
+  https://quaternius.itch.io/universal-animation-library
+
+Файлы пересобраны для браузера: текстуры уменьшены и сжаты в WebP, всё упаковано в .glb,
+из анимаций убран демонстрационный манекен. Оригинальные лицензии в архивах: CC0 1.0.

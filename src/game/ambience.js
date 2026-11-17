@@ -6,8 +6,9 @@ import { timeI } from '../render/lighting.js';
 
 /* ---------- the sound of the place ----------
    Made in the page, from noise and a few oscillators, by what is round the player: the wind (more in the open), birds
-   in the day and crickets at night in the open, away from the streets, water within some tens of metres of the river or
-   a pond, the traffic by a street (with a car passing now and then), the hum of the city among houses. Every 0.6 s
+   in the day in the open, away from the streets, water within some tens of metres of the river or
+   a pond, the traffic by a street (with a car passing now and then), the hum of the city among houses.
+   The night is quiet: no crickets (they were asked away). Every 0.6 s
    the place is looked at (houses, water and streets at a few distances round) and the levels glide to what it needs.
    The volume is the one of the sounds times the one of the ambience in the settings. */
 let ctx = null, master = null, N = null, probeT = 0, birdT = 2, carT = 4, last = null;
@@ -25,10 +26,8 @@ function start() {
   try {
     ctx = new (window.AudioContext || window.webkitAudioContext)(); master = ctx.createGain(); master.gain.value = SET.vol * SET.ambVol; master.connect(ctx.destination);
     const white = noiseBuffer(ctx, 3, false), brown = noiseBuffer(ctx, 4, true);
-    N = { wind: chain(ctx, brown, 'lowpass', 420, 0.5, master), water: chain(ctx, white, 'bandpass', 650, 0.45, master), traffic: chain(ctx, brown, 'lowpass', 150, 0.7, master), hum: null, crick: null };
+    N = { wind: chain(ctx, brown, 'lowpass', 420, 0.5, master), water: chain(ctx, white, 'bandpass', 650, 0.45, master), traffic: chain(ctx, brown, 'lowpass', 150, 0.7, master), hum: null };
     const hum = ctx.createOscillator(), hg = ctx.createGain(); hum.type = 'sawtooth'; hum.frequency.value = 62; hg.gain.value = 0; const hf = ctx.createBiquadFilter(); hf.type = 'lowpass'; hf.frequency.value = 220; hum.connect(hf); hf.connect(hg); hg.connect(master); hum.start(); N.hum = { g: hg };
-    const cr = ctx.createOscillator(), cg = ctx.createGain(), lfo = ctx.createOscillator(), lg = ctx.createGain(); cr.type = 'sine'; cr.frequency.value = 4300; lfo.type = 'square'; lfo.frequency.value = 13; lg.gain.value = 0.5; cg.gain.value = 0;
-    const base = ctx.createGain(); base.gain.value = 0.5; lfo.connect(lg); lg.connect(base.gain); cr.connect(base); base.connect(cg); cg.connect(master); cr.start(); lfo.start(); N.crick = { g: cg };
   } catch (e) { ctx = null; }
 }
 onChange(() => { if (master) master.gain.value = SET.vol * SET.ambVol; });
@@ -62,7 +61,6 @@ function ambTick(dt) {
   if ((probeT -= dt) <= 0) {
     probeT = 0.6; last = probe(P.x, P.z); const E = last;
     set(N.wind, 0.05 + 0.13 * E.open); set(N.water, E.water * 0.32); set(N.traffic, 0.015 + E.road * 0.16); set(N.hum, E.bld > 0.12 ? 0.012 + E.bld * 0.05 : 0.002);
-    set(N.crick, !E.day && E.open > 0.5 && E.road < 1 ? 0.04 * E.open : 0);
   }
   const E = last; if (!E) return;
   if (E.day && E.open > 0.55 && E.road < 1 && (birdT -= dt) <= 0) { birdT = 0.7 + Math.random() * (E.open > 0.85 ? 2 : 5); chirp(Math.random() * 1.6 - 0.8); }
