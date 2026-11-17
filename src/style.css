@@ -203,3 +203,6 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
 .mp-tag.t0 { background: rgba(190, 40, 30, .7); } .mp-tag.t1 { background: rgba(40, 100, 200, .7); }
 .mp-board li.t0 span, .mp-board li.t1 span { border-left: 4px solid var(--team); padding-left: 6px; }
 .mp-banner { position: fixed; left: 50%; top: 22%; transform: translateX(-50%); z-index: 9; padding: 14px 24px; border-radius: 10px; font: 700 22px/1.2 var(--f-display); color: #fff; background: var(--team); pointer-events: none; text-align: center; }
+.mp-at { display: grid; gap: 4px; font: 500 12px/1.2 var(--f-body); color: var(--muted); }
+.mp-at select { font: 500 14px/1.3 var(--f-body); padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-solid); color: var(--ink); }
+.cross { background: transparent !important; border: 2px solid rgba(255, 255, 255, .85); box-shadow: 0 0 0 1px rgba(0, 0, 0, .35), inset 0 0 0 1px rgba(0, 0, 0, .35); }
