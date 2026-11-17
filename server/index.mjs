@@ -1,5 +1,5 @@
 /* Daugavpils shooter: the game server. The rules are in game.mjs (team deathmatch, or MODE=ffa: everybody against
-   everybody; an arena with bases for the teams, ARENA=center|fortress|station; bots, BOTS=6 and BOT_LEVEL=easy|normal|hard,
+   everybody; an arena with bases for the teams, ARENA=center|fortress|station|park|church|pond|speedway|culture|griva; bots, BOTS=6 and BOT_LEVEL=easy|normal|hard,
    fill the empty places). This file is the network: WebSockets for the players and /health for the list of servers.
      PORT, SERVER_NAME, MODE, WIN_SCORE, ARENA, BOTS, BOT_LEVEL */
 import http from 'node:http';

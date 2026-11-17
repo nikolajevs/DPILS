@@ -44,6 +44,7 @@
     <button class="btn" id="bQuality" title="Качество графики">Графика: высокая</button>
     <button class="btn" id="bHelp">?</button>
     <button class="btn" id="bHint" title="Все клавиши, F1">Клавиши<kbd>F1</kbd></button>
+    <button class="btn" id="bStats" title="Ваша статистика за всё время">Статистика</button>
     <button class="btn" id="bSet" title="Чувствительность, громкость, клавиши">Настройки<kbd>O</kbd></button>
     <button class="btn" id="bLeave">Выйти из игры</button>
   </div>
@@ -86,7 +87,7 @@
         <label>Ботов<select id="trBots"><option>2</option><option>4</option><option selected>6</option><option>8</option><option>12</option></select></label>
         <label>Сложность<select id="trLevel"><option value="easy">лёгкая</option><option value="normal" selected>средняя</option><option value="hard">трудная</option></select></label>
         <label>Режим<select id="trMode"><option value="team" selected>команды</option><option value="ffa">каждый сам за себя</option></select></label>
-        <label>Карта<select id="trArena"><option value="">открытый город</option><option value="center" selected>арена: Центр города</option><option value="fortress">арена: крепость</option><option value="station">арена: вокзал</option></select></label>
+        <label>Карта<select id="trArena"><option value="">открытый город</option><option value="center" selected>арена: Центр города</option><option value="fortress">арена: крепость</option><option value="station">арена: вокзал</option><option value="park">арена: Центральный парк</option><option value="church">арена: Церковная горка</option><option value="pond">арена: Пороховка (пруд)</option><option value="speedway">арена: спидвей</option><option value="culture">арена: Дворец культуры</option><option value="griva">арена: Грива, левый берег</option></select></label>
       </div>
       <button class="go" id="goTrain" disabled>Тренироваться</button>
       <h2>Играть онлайн · командный бой</h2>
@@ -99,6 +100,7 @@
       <label>Адрес сервера<input id="mpServer" placeholder="wss://адрес-сервера (или выберите из списка)" autocomplete="off" spellcheck="false"></label>
       <button class="go" id="goPlay" disabled>Играть</button>
       <button class="btn" id="bSetStart" type="button">Настройки: мышь, звук, клавиши</button>
+      <button class="btn" id="bStatsStart" type="button">Моя статистика за всё время</button>
       <div class="mp-msg" id="mpMsg" role="status"></div>
     </form>
     <div class="credit">Карта © участники <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>. Здания: кадастр Государственной земельной службы Латвии (<a href="https://data.gov.lv/dati/lv/dataset/kadastra-informacijas-sistemas-atvertie-dati">data.gov.lv</a>, CC BY 4.0). Расписание: GTFS <a href="https://satiksme.daugavpils.lv/">Daugavpils satiksme</a>. Фасады нарисованы по материалу стен и году постройки, это не фотографии; Дом Единства, «Латгола» и храмы Церковной горки смоделированы по снимкам с Wikimedia Commons, visitdaugavpils.lv, celotajs.lv и militaryheritagetourism.info.</div>
@@ -116,6 +118,7 @@
 <div class="mp-banner" id="mpBanner" hidden></div>
 <div class="mp-flash" id="mpFlash" hidden></div>
 <div class="mp-hints" id="mpHints" hidden></div>
+<div class="mp-settings" id="mpStats" hidden><div class="panel"><header><h2>Статистика</h2><button class="btn" id="mpStatsClose">Закрыть</button></header><div id="mpStatsBody" class="st"></div><footer><button class="btn" id="mpStatsReset">Сбросить статистику</button></footer></div></div>
 <div class="mp-settings" id="mpHelp" hidden><div class="panel"><header><h2>Клавиши</h2><button class="btn" id="mpHelpClose">Закрыть</button></header><div id="mpHelpBody" class="help-grid"></div></div></div>
 <div class="mp-end" id="mpEnd" hidden><div class="panel"><h2 id="mpEndTitle"></h2><div id="mpEndMvp"></div><div class="end-table" id="mpEndTable"></div><div id="mpEndNext"></div></div></div>
 <div class="mp-scope" id="mpScope" hidden><i></i><b></b></div>

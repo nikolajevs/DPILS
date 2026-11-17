@@ -15,6 +15,8 @@ import { camera, canvas, scene } from '../render/renderer.js';
 import { CH, addLine, openChat } from './chat.js';
 import { createVoice } from './voice.js';
 import { openLocal } from './local.js';
+import { ambStart, ambTick } from './ambience.js';
+import { statEvent } from './stats.js';
 import { $ } from '../core/env.js';
 
 /* ---------- online shooter: deathmatch on the city map ----------
@@ -163,7 +165,7 @@ function fire(now) {
   if (MP.dead || !STATE.locked || now - MP.lastShot < w.gapMs) return;
   if (MP.reloadAt) return;
   if (MP.ammo[MP.weapon] <= 0) { reload(now); return; }
-  MP.lastShot = now; MP.ammo[MP.weapon]--; MP.kick = 1; P.pitch = Math.min(1.5, P.pitch + (w.pellets > 1 ? 0.02 : w.scope ? 0.03 : (w.kick ?? FEEL.kick))); P.yaw += (Math.random() - 0.5) * (w.pellets > 1 ? 0.006 : 0.0016); if (w.auto) MP.burst = Math.min(w.cap ?? 0.03, MP.burst + (w.burst ?? 0.0045));
+  statEvent('shot', {}, !!MP.local); MP.lastShot = now; MP.ammo[MP.weapon]--; MP.kick = 1; P.pitch = Math.min(1.5, P.pitch + (w.pellets > 1 ? 0.02 : w.scope ? 0.03 : (w.kick ?? FEEL.kick))); P.yaw += (Math.random() - 0.5) * (w.pellets > 1 ? 0.006 : 0.0016); if (w.auto) MP.burst = Math.min(w.cap ?? 0.03, MP.burst + (w.burst ?? 0.0045));
   const o = [P.x, P.y, P.z], t = performance.now() - 120, rays = [];
   for (let i = 0; i < w.pellets; i++) {
     const sp = spreadNow(), ang = Math.random() * 6.283, rad = sp * Math.sqrt(Math.random());
@@ -287,14 +289,14 @@ function onMsg(m) {
       break;
     }
     case 'shot': { if (m.id === MP.id) break; const rs = remotes.get(m.id); if (rs) rs.shotAt = performance.now(); for (const r of m.rays) tracer(m.o, r, r[3], 0xffb060); const dd = Math.hypot(m.o[0] - P.x, m.o[2] - P.z); const wf = WEAPONS[m.w] || WEAPONS[0], hear = m.w === 2 ? 600 : (wf.hear ?? FEEL.hear); if (dd < hear) bang((m.w === 2 ? 0.7 : m.w === 1 ? 0.5 : (wf.vol ?? FEEL.vol) * 0.85) * (1 - dd / hear), true); break; }
-    case 'hit': hitT = performance.now(); if (m.kill) { tone(880, 880, 0.12, 0.25, 'triangle'); tone(1320, 1320, 0.25, 0.25, 'triangle', 0.1); } else tone(m.head ? 2600 : 1700, m.head ? 2200 : 1400, 0.07, 0.2, 'square'); el('mpHit').className = m.head ? 'head' : m.kill ? 'kill' : ''; el('mpHit').hidden = false; break;
+    case 'hit': statEvent('hit', m, !!MP.local); hitT = performance.now(); if (m.kill) { tone(880, 880, 0.12, 0.25, 'triangle'); tone(1320, 1320, 0.25, 0.25, 'triangle', 0.1); } else tone(m.head ? 2600 : 1700, m.head ? 2200 : 1400, 0.07, 0.2, 'square'); el('mpHit').className = m.head ? 'head' : m.kill ? 'kill' : ''; el('mpHit').hidden = false; break;
     case 'hurt': {
-      MP.hp = m.hp; hurtT = performance.now(); tone(160, 60, 0.18, 0.4, 'sawtooth'); el('mpHurt').hidden = false; updatePanel();
+      statEvent('taken', { dmg: Math.max(0, MP.hp - m.hp) }, !!MP.local); MP.hp = m.hp; hurtT = performance.now(); tone(160, 60, 0.18, 0.4, 'sawtooth'); el('mpHurt').hidden = false; updatePanel();
       const a = Math.atan2(-m.dx, -m.dz) - P.yaw; el('mpHurtDir').style.transform = 'rotate(' + (-a) + 'rad)';   // the side the shot came from
       if (m.hp <= 0) die(nameOf(m.by), m.by);
       break;
     }
-    case 'kill': { feed(m.kn + '  ➜  ' + m.vn + (m.w === 9 ? '  (граната)' : m.head ? '  (в голову)' : ''), m.killer === MP.id ? 'mine' : m.victim === MP.id ? 'dead' : ''); if (m.killer === MP.id) { MP.kills++; } if (m.victim === MP.id) { MP.deaths++; if (!MP.dead) die(m.kn, m.killer); } else { const rv = remotes.get(m.victim); if (rv && rv.buf.length) { rv.fallT = performance.now(); rv.corpse = { ...rv.buf[rv.buf.length - 1] }; } } updatePanel(); break; }
+    case 'kill': { feed(m.kn + '  ➜  ' + m.vn + (m.w === 9 ? '  (граната)' : m.head ? '  (в голову)' : ''), m.killer === MP.id ? 'mine' : m.victim === MP.id ? 'dead' : ''); if (m.killer === MP.id) { MP.kills++; if (m.victim !== MP.id) statEvent('kill', m, !!MP.local); } if (m.victim === MP.id) { MP.deaths++; statEvent('death', {}, !!MP.local); if (!MP.dead) die(m.kn, m.killer); } else { const rv = remotes.get(m.victim); if (rv && rv.buf.length) { rv.fallT = performance.now(); rv.corpse = { ...rv.buf[rv.buf.length - 1] }; } } updatePanel(); break; }
     case 'alive': { const r = remotes.get(m.id); if (r) { r.buf.length = 0; r.fallT = 0; } break; }
     case 'board': MP.board = m.board; MP.score = m.score; for (const e of m.board) { const r = addRemote(e.id, e.name, e.team); if (r) { r.name = e.name; r.tag.textContent = e.name; } if (e.id === MP.id) { MP.kills = e.kills; MP.deaths = e.deaths; } } for (const id of [...remotes.keys()]) if (!m.board.some(e => e.id === id)) dropRemote(id); drawBoard(); updatePanel(); if (voice) voice.setPeers(m.board.filter(e => e.id !== MP.id && !e.bot).map(e => e.id)); break;
     case 'left': dropRemote(m.id); break;
@@ -306,7 +308,7 @@ function onMsg(m) {
     }
     case 'say': addLine(m, MP.id); if (m.id !== MP.id) tone(900, 700, 0.05, 0.08, 'sine'); break;
     case 'rtc': if (voice) voice.signal(m.from, m.d); break;
-    case 'win': showSummary(m); break;
+    case 'win': { const mine = m.mode === 'ffa' ? m.mvp === MP.id : m.team === MP.team, row = m.rows.find(r => r.id === MP.id); statEvent('round', { win: mine, kills: row ? row.kills : 0 }, !!MP.local); showSummary(m); break; }
     case 'round': el('mpEnd').hidden = true; clearInterval(endTimer); break;
     case 'chat': feed(m.text, 'sys'); break;
     case 'full': el('mpMsg').textContent = 'На сервере нет мест.'; break;
@@ -321,7 +323,7 @@ function serverUrl() {
   return u;
 }
 function showGame() {
-  firstGames();
+  firstGames(); ambStart();
   STATE.mp = true; MP.on = true; STATE.started = true; P.fly = false; document.body.classList.add('mp');
   $('start').hidden = true; $('hud').hidden = false; el('mpHud').hidden = false; $('cross').hidden = false; STATE.lodTimer = 0;
   $('bFly').setAttribute('aria-pressed', false); if ($('places').hidden === false) $('places').hidden = true;
@@ -375,7 +377,7 @@ window.addEventListener('keyup', e => { if (e.code === SET.keys.board) el('mpBoa
 function mpTick(dt) {
   if (!MP.on) return;
   const now = performance.now(), t = now - 120;
-  if (voice) voice.update(dt);
+  if (voice) voice.update(dt); ambTick(dt); statEvent('tick', { dt }, !!MP.local);
   if (MP.arena && !MP.dead) { const A = MP.arena, dx = P.x - A.cx, dz = P.z - A.cz, d = Math.hypot(dx, dz); if (d > A.r - 1) { P.x = A.cx + dx / d * (A.r - 1); P.z = A.cz + dz / d * (A.r - 1); edgeNotice(); } }   // the edge of the arena
   if ((MP.fpsT = (MP.fpsT || 0) - dt) <= 0) { MP.fpsT = 1; updatePanel(); }
   // the scope: the picture closes in (the field of view 66° → 20°) and the gun goes out of sight

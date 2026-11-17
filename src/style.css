@@ -273,3 +273,9 @@ body.dead .mp-stat { display: none; }
 .mp-end h2.tf { background: #5a5f66; }
 .train { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .train label { display: grid; gap: 3px; font: 500 12px/1.2 var(--f-body); color: var(--muted); }
 .train select { font: 500 14px/1.3 var(--f-body); padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-solid); color: var(--ink); min-width: 0; }
+.st { display: grid; gap: 4px; } .st-row { display: grid; grid-template-columns: 1fr 120px 120px; gap: 8px; padding: 4px 6px; border-radius: 5px; font: 500 14px/1.3 var(--f-body); } .st-row:nth-child(even) { background: rgba(0, 0, 0, .04); }
+.st-row span:not(:first-child) { text-align: right; font-weight: 600; } .st-row.head { color: var(--muted); font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--line); border-radius: 0; background: none; }
+.st h3 { margin: 10px 0 2px; font: 500 12px/1.3 var(--f-body); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); } .st-weapons { display: grid; gap: 3px; }
+.st-w { display: grid; grid-template-columns: 110px 1fr 40px; gap: 8px; align-items: center; font: 500 13px/1.3 var(--f-body); } .st-w i { display: block; height: 8px; background: var(--brick); border-radius: 4px; min-width: 2px; } .st-w b { text-align: right; }
+.st-since { margin-top: 8px; font: 400 12px/1.3 var(--f-body); color: var(--muted); }
+@media (max-width: 560px) { .st-row { grid-template-columns: 1fr 76px 76px; font-size: 13px; } }
