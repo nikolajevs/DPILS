@@ -11,10 +11,9 @@ import { worldSpace } from '../render/world-space.js';
    Everything that belongs to this one file is in MODEL: to use another character change that and nothing else. The model
    is scaled to a man's height with the feet on the ground, and turned to look where the game looks (the file looks
    along +z, the game along −z). The loader drops the dots of the bone names (Fist.R is FistR).
-   The weapons in hand are ready models too (models/Rifle.glb, models/Shotgun.glb, CC0, the same pack as the zombie
-   survivors of Quaternius): the muzzle along +z, the top along +y, the grip at the origin, in the units of the soldier. */
+   The weapons in hand are ready models too (models/Rifle.glb, Shotgun.glb, Sniper.glb, CC0, by Quaternius): the muzzle along +z, the top along +y, the grip at the origin, in the units of the soldier. */
 const MODEL = {
-  file: 'models/Soldier.glb', guns: ['models/Rifle.glb', 'models/Shotgun.glb', 'models/Rifle.glb'], gunLen: [1, 1, 1.15], height: 1.8, headScale: 0.8,   // the guns: one model for each weapon of the game   // the head of the file is big: a little smaller
+  file: 'models/Soldier.glb', guns: ['models/Rifle.glb', 'models/Shotgun.glb', 'models/Sniper.glb'], gunLen: [1, 1, 1], gunYaw: [0, 0, Math.PI / 2], height: 1.8, headScale: 0.8,   // one gun model for each weapon of the game; gunYaw: the sniper rifle of the file points along −x, turned to +z; the head of the file is big: a little smaller
   tint: ['Main', 'Helmet'],   // the materials painted in the colour of the team
   clips: { idle: 'Idle', walk: 'Walk', run: 'Run', jump: 'Jump', death: 'Death', hold: 'Walk_Carry' },   // hold: the pose of the arms with a rifle
   arms: ['ShoulderL', 'UpperArmL', 'LowerArmL', 'FistL', 'ShoulderR', 'UpperArmR', 'LowerArmR', 'FistR'], hand: 'FistR', head: 'Head',
@@ -46,8 +45,8 @@ function boxRifle() {
   g.userData.muzzle = 0.92; return g;
 }
 // a ready gun in metres (its units are those of the soldier, so it is scaled like him); the flash is at the muzzle
-function readyGun(src, k) {
-  const g = src.clone(true); g.traverse(o => { if (o.isMesh) o.material = worldSpace(o.material.clone()); });
+function readyGun(src, k, yaw) {
+  const g = src.clone(true); g.rotation.y = yaw || 0; g.traverse(o => { if (o.isMesh) o.material = worldSpace(o.material.clone()); });
   const box = new THREE.Box3().setFromObject(g), holder = new THREE.Group(); holder.add(g); holder.scale.setScalar(asset.scale * k); holder.userData.muzzle = box.max.z * asset.scale * k; return holder;
 }
 // one player's model: update(dt, { speed, air, dead, shot }) every frame
@@ -80,8 +79,8 @@ function makeAvatar(hue) {
     if (s.shot) flashT = 0.07; flashT = Math.max(0, flashT - dt); flash.visible = flashT > 0;
   }
   // a mount on the hand in metres: the skeleton of the file is in other units, so the mount is scaled back
-  const hand = root.getObjectByName(MODEL.hand), mount = new THREE.Group(), guns = MODEL.guns.map((f, i) => asset.guns[i] ? readyGun(asset.guns[i], MODEL.gunLen[i]) : boxRifle());
-  const flash = new THREE.Mesh(GEO, MF); flash.scale.setScalar(0.14); flash.visible = false; let gun = guns[0];
+  const hand = root.getObjectByName(MODEL.hand), mount = new THREE.Group(), guns = MODEL.guns.map((f, i) => asset.guns[i] ? readyGun(asset.guns[i], MODEL.gunLen[i], MODEL.gunYaw[i]) : boxRifle());
+  const flash = new THREE.Mesh(GEO, MF); flash.scale.setScalar(0.09); flash.visible = false; let gun = guns[0];
   if (hand) { inner.updateMatrixWorld(true); const k = hand.getWorldScale(new THREE.Vector3()).x || 1; mount.scale.setScalar(1 / k); hand.add(mount); }
   mount.quaternion.setFromAxisAngle(new THREE.Vector3(1, 1, 1).normalize(), Math.PI * 2 / 3);   // the axes of the fist: x forward, z up; the gun's muzzle is z, its top y
   guns.forEach((g, i) => { g.visible = i === 0; mount.add(g); }); mount.add(flash);
@@ -91,6 +90,6 @@ function makeAvatar(hue) {
 }
 
 // a ready gun for the viewmodel of the player himself (a clone in metres, the muzzle along +z), or null before the files have come
-function gunModel(i) { return asset && asset.guns[i] ? readyGun(asset.guns[i], MODEL.gunLen[i]) : null; }
+function gunModel(i) { return asset && asset.guns[i] ? readyGun(asset.guns[i], MODEL.gunLen[i], MODEL.gunYaw[i]) : null; }
 
 export { MODEL, gunModel, loadAvatar, makeAvatar, ready };
