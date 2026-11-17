@@ -9,6 +9,7 @@ import { MP, enablePlay } from './game/mp.js';
 import { ambProbe, ambStatus } from './game/ambience.js';
 import { statEvent, statsOf } from './game/stats.js';
 import './game/input.js';
+import './ui/auth.js';
 import './ui/hud.js';
 import './ui/map.js';
 import { PP, renderFrame, warmUp } from './render/post.js';

@@ -93,6 +93,7 @@
       <button class="go" id="goTrain" disabled>Тренироваться</button>
       <h2>Играть онлайн · командный бой</h2>
       <p class="hint">Командный бой (красные против синих, по своим огонь не идёт) или каждый сам за себя: режим выбирает сервер. Мышь — прицел, левая кнопка — огонь, R — перезарядка, Tab — таблица очков.</p>
+      <div class="acct"><span id="acctState">Без аккаунта: результаты привязаны к этому браузеру.</span><button class="btn" id="bAuth" type="button">Войти / регистрация</button></div>
       <label>Ник<input id="mpName" maxlength="16" autocomplete="off"></label>
       <label>Команда<select id="mpTeam"><option value="-1">Любая (по балансу)</option><option value="0">Красные</option><option value="1">Синие</option></select></label>
       <label>Где появиться<select id="mpSpawn"></select></label>
@@ -109,6 +110,31 @@
       <div class="mp-msg" id="mpMsg" role="status"></div>
     </form>
     <div class="credit">Карта © участники <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>. Здания: кадастр Государственной земельной службы Латвии (<a href="https://data.gov.lv/dati/lv/dataset/kadastra-informacijas-sistemas-atvertie-dati">data.gov.lv</a>, CC BY 4.0). Расписание: GTFS <a href="https://satiksme.daugavpils.lv/">Daugavpils satiksme</a>. Фасады нарисованы по материалу стен и году постройки, это не фотографии; Дом Единства, «Латгола» и храмы Церковной горки смоделированы по снимкам с Wikimedia Commons, visitdaugavpils.lv, celotajs.lv и militaryheritagetourism.info.</div>
+  </div>
+</div>
+<div class="auth" id="auth" hidden>
+  <div class="panel card auth-card">
+    <div class="eyebrow">Даугавпилс в 3D · онлайн-бой</div>
+    <h1 id="authTitle">Вход</h1>
+    <div class="auth-tabs">
+      <button class="auth-tab on" id="authTabLogin" type="button" aria-pressed="true">Вход</button>
+      <button class="auth-tab" id="authTabReg" type="button" aria-pressed="false">Регистрация</button>
+    </div>
+    <p class="hint" id="authHint">Аккаунт привязывает результаты таблицы лидеров к вам, а не к браузеру: войдите с любого устройства.</p>
+    <form class="auth-form" id="authForm">
+      <label>Сервер<input id="authServer" list="authServers" placeholder="wss://адрес-сервера" autocomplete="off" spellcheck="false"></label>
+      <datalist id="authServers"></datalist>
+      <label>Ник<input id="authName" maxlength="16" autocomplete="username" spellcheck="false"></label>
+      <label>Пароль<input id="authPass" type="password" maxlength="128" autocomplete="current-password"></label>
+      <label id="authPass2Row" hidden>Повторите пароль<input id="authPass2" type="password" maxlength="128" autocomplete="new-password"></label>
+      <div class="auth-msg" id="authMsg" role="status"></div>
+      <button class="go" id="authGo" type="submit">Войти</button>
+    </form>
+    <div class="sec-btns auth-btns">
+      <button class="btn" id="authGuest" type="button">Продолжить без аккаунта</button>
+      <button class="btn" id="authClose" type="button">Закрыть</button>
+    </div>
+    <p class="hint">Аккаунт создаётся на выбранном игровом сервере и действует на нём. Пароль хранится там только как необратимый хеш. Без аккаунта играть можно как раньше.</p>
   </div>
 </div>
 <div class="mp-settings" id="mpSet" hidden><div class="panel"><header><h2>Настройки</h2><button class="btn" id="mpSetClose">Закрыть</button></header><div id="mpSetBody"></div><footer><button class="btn" id="mpSetReset">По умолчанию</button></footer></div></div>
