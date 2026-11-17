@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { TERR, terrainH } from '../world/terrain.js';
 
 /* ---------- big meshes cut into tiles ----------
    The ground layers, the street markings, the depth grid under the ground and the plain geometry of the landmarks
@@ -11,13 +12,18 @@ import * as THREE from 'three';
    their triangles without writing depth; whatever overlaps in one place therefore stays in one tile, in its old
    order, and the tiles themselves never overlap.
 
+   The shaders lift every vertex by the height of the terrain under it, so a vertex made on the edge of a tile would
+   take the lift of its own point where the old triangle had the straight line between the lifts of its corners (a
+   crease in a roof or in the deck of a bridge on a slope). Its height is set so that the two agree: the surface drawn
+   is the old one.
+
    The mesh itself stays where it was, holding its tiles as children, and is no longer drawn itself (its layers are
    emptied): code that keeps it to show or hide it still works. */
 const CHUNK = 1500, MIN_TRIS = 40000;
 // what the cut mesh keeps: a valid geometry with nothing in it (it is not drawn any more)
-const EMPTY = new THREE.BufferGeometry(); EMPTY.setAttribute('position', new THREE.Float32BufferAttribute([], 3)); EMPTY.setIndex([]);
+const IDENT = new THREE.Matrix4(), EMPTY = new THREE.BufferGeometry(); EMPTY.setAttribute('position', new THREE.Float32BufferAttribute([], 3)); EMPTY.setIndex([]);
 
-function splitGeometry(g, size) {
+function splitGeometry(g, size, lift) {
   const names = Object.keys(g.attributes), R = names.map(n => g.attributes[n].array), S = names.map(n => g.attributes[n].itemSize), NA = names.length;
   const INT = R.map(r => !(r instanceof Float32Array || r instanceof Float64Array)), PQ = names.indexOf('position');
   const idx = g.index.array, pos = R[PQ], nt = idx.length / 3;
@@ -27,8 +33,9 @@ function splitGeometry(g, size) {
   let lastK = -1, lastL = null;
   const list = (i, j) => { const k = (i + 1000) * 4096 + j + 1000; if (k === lastK) return lastL; let l = tiles.get(k); if (!l) tiles.set(k, l = []); lastK = k; return lastL = l; };
   // a vertex of a piece: its raw attribute values, one array per attribute (normalized integers stay in their own scale)
-  const vert = v => { const o = new Array(NA); for (let q = 0; q < NA; q++) { const s = S[q], r = R[q], a = new Array(s); for (let c = 0; c < s; c++) a[c] = r[v * s + c]; o[q] = a; } return o; };
-  const lerp = (p, q, f) => { const o = new Array(NA); for (let k = 0; k < NA; k++) { const a = p[k], b = q[k], m = new Array(a.length); for (let c = 0; c < a.length; c++) m[c] = a[c] + (b[c] - a[c]) * f; o[k] = m; } return o; };
+  // and, last, the terrain lift at the vertex: interpolated like the rest, it is the lift of the old surface at a new vertex
+  const vert = v => { const o = new Array(NA + 1); for (let q = 0; q < NA; q++) { const s = S[q], r = R[q], a = new Array(s); for (let c = 0; c < s; c++) a[c] = r[v * s + c]; o[q] = a; } o[NA] = [lift ? lift(pos[3 * v], pos[3 * v + 2]) : 0]; return o; };
+  const lerp = (p, q, f) => { const o = new Array(NA + 1); for (let k = 0; k <= NA; k++) { const a = p[k], b = q[k], m = new Array(a.length); for (let c = 0; c < a.length; c++) m[c] = a[c] + (b[c] - a[c]) * f; o[k] = m; } return o; };
   // Sutherland–Hodgman: keep the part of the polygon where coordinate ax (0 x, 2 z) is ≥ lo (s = 1) or ≤ lo (s = −1)
   const clip = (poly, ax, lo, s) => {
     const out = [];
@@ -66,7 +73,11 @@ function splitGeometry(g, size) {
     for (const e of l) {
       if (e >= 0) { ix[p++] = remap[idx[3 * e]]; ix[p++] = remap[idx[3 * e + 1]]; ix[p++] = remap[idx[3 * e + 2]]; continue; }
       const poly = pieces[-e - 1], base = nn;
-      for (const V of poly) { for (let q = 0; q < NA; q++) { const s = S[q], a = A[q], x = V[q]; for (let c = 0; c < s; c++) a[nn * s + c] = INT[q] ? Math.round(x[c]) : x[c]; } nn++; }
+      for (const V of poly) {
+        for (let q = 0; q < NA; q++) { const s = S[q], a = A[q], x = V[q]; for (let c = 0; c < s; c++) a[nn * s + c] = INT[q] ? Math.round(x[c]) : x[c]; }
+        if (lift) { const x = V[PQ]; A[PQ][nn * 3 + 1] = x[1] + V[NA][0] - lift(x[0], x[2]); }
+        nn++;
+      }
       for (let m = 1; m < poly.length - 1; m++) { ix[p++] = base; ix[p++] = base + m; ix[p++] = base + m + 1; }
     }
     for (const v of used) remap[v] = -1;
@@ -84,13 +95,16 @@ function splitBigMeshes(scene) {
   for (const o of scene.children) {
     if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || !o.geometry || !o.geometry.index || Array.isArray(o.material) || o.geometry.groups.length || o.geometry.morphAttributes.position || o.children.length) continue;
     if (Object.values(o.geometry.attributes).some(a => a.isInterleavedBufferAttribute)) continue;
+    o.updateMatrixWorld(); if (!o.matrixWorld.equals(IDENT)) continue;   // the tiles and the terrain lift are taken in the frame of the city
     const g = o.geometry; if (g.index.count / 3 < MIN_TRIS) continue;
     if (!g.boundingBox) g.computeBoundingBox(); const b = g.boundingBox;
     if (Math.max(b.max.x - b.min.x, b.max.z - b.min.z) < 2 * CHUNK) continue;
     todo.push(o);
   }
   for (const o of todo) {
-    for (const g of splitGeometry(o.geometry, CHUNK)) {
+    // does the material lift its vertices by the terrain (all built-in ones do, through project_vertex)?
+    const m = o.material, lifts = TERR.on && !m.userData.noTerr && (!m.isShaderMaterial || /terrainH|project_vertex/.test(m.vertexShader));
+    for (const g of splitGeometry(o.geometry, CHUNK, lifts ? terrainH : null)) {
       const c = new THREE.Mesh(g, o.material);
       c.renderOrder = o.renderOrder; c.castShadow = o.castShadow; c.receiveShadow = o.receiveShadow; c.customDepthMaterial = o.customDepthMaterial; c.customDistanceMaterial = o.customDistanceMaterial;
       c.onBeforeRender = o.onBeforeRender; c.onAfterRender = o.onAfterRender; c.userData = o.userData; c.frustumCulled = true;

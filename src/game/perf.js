@@ -40,9 +40,9 @@ function perfTick(rdt) {   // rdt: the real time of the frame, seconds
 /* ---------- dynamic resolution ---------- */
 const SLOW = 1000 / 45, FAST = 1000 / 56, GOAL = 1000 / 55;   // frame times, ms
 let dWin = 0, dN = 0, dMax = 0, dQuiet = 5, dFast = 0, dTry = null, dLowBlock = 0, dLowWait = 30, dUpBlock = 0, dUpWait = 15, dPr = 0, dQi = -1;
-const minScale = () => Math.min(1, 0.55 / renderer.getPixelRatio());
-const setScale = s => { PP.scale = Math.round(Math.min(1, Math.max(minScale(), s)) * 20) / 20; };
-const canLower = () => POST && PP.scale > minScale() + 1e-3 && dLowBlock <= 0;
+const minScale = () => Math.min(1, Math.ceil(0.55 / renderer.getPixelRatio() * 20 - 1e-6) / 20);   // a whole number of 5 % steps
+const setScale = s => { PP.scale = Math.max(minScale(), Math.min(1, Math.round(s * 20) / 20)); };
+const canLower = () => POST && PERF.dyn && PP.scale > minScale() + 1e-3 && dLowBlock <= 0;   // can the resolution still help?
 function dynTick(rdt) {
   if (!POST) return;
   if (!PERF.dyn) { PP.scale = 1; dTry = null; return; }
