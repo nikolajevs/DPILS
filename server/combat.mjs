@@ -3,6 +3,12 @@ export const RULES = {
   maxPlayers: 16, hp: 100, bodyDmg: 22, headDmg: 40, range: 160, fireGapMs: 85, respawnMs: 3000, protectMs: 2500,
   runSpeed: 11, tolerance: 0.5, headTolerance: 0.45, bodyBottom: 1.6, bodyTop: 0.05, tickHz: 15,
 };
+// the weapons (keep src/game/mp.js in step): pellets per shot, damage of a pellet to the body and to the head, range, how
+// much of the damage is lost over the range (falloff 0.6: 40 % left at the end), the least time between shots
+export const WEAPONS = [
+  { name: 'Автомат', gapMs: 85, pellets: 1, dmg: 22, head: 40, range: 160, falloff: 0 },
+  { name: 'Дробовик', gapMs: 750, pellets: 8, dmg: 9, head: 16, range: 45, falloff: 0.6 },
+];
 // closest distance between the ray (o + t·d, 0 ≤ t ≤ len, |d| = 1) and the segment a–b; returns { dist, t }
 export function rayToSegment(o, d, len, a, b) {
   const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], wx = o[0] - a[0], wy = o[1] - a[1], wz = o[2] - a[2];

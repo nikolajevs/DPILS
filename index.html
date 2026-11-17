@@ -62,6 +62,8 @@
     <dl class="keys">
       <dt>W A S D / стрелки</dt><dd>идти, Shift — бегом</dd>
       <dt>Мышь</dt><dd>смотреть по сторонам (Esc — отпустить курсор)</dd>
+      <dt>1 · 2 · колесо</dt><dd>в игре: автомат · дробовик</dd>
+      <dt>Y · U · V</dt><dd>в игре: чат всем · чат команде · рация (удерживать)</dd>
       <dt>Пробел · C</dt><dd>в игре: прыжок · присесть (удерживать)</dd>
       <dt>F</dt><dd>полёт: E / пробел — выше, Q — ниже</dd>
       <dt>V</dt><dd>открыть настоящую панораму Street View в этой точке</dd>
@@ -96,6 +98,8 @@
   <div class="mp-feed" id="mpFeed" aria-live="polite"></div>
 </div>
 <div class="mp-banner" id="mpBanner" hidden></div>
+<div class="mp-chat" id="mpChat"><div id="mpChatLog" aria-live="polite"></div><input id="mpChatIn" maxlength="140" autocomplete="off" hidden></div>
+<div class="mp-voice" id="mpVoice" data-mic="off" data-talk="0"><span class="mic">V — рация</span><small class="denied">микрофон не разрешён</small><span id="mpVoiceList"></span></div>
 <div class="mp-board" id="mpBoard" hidden><div class="panel"><h2>Счёт</h2><ol id="mpBoardList"></ol><div class="mp-cols"><span>игрок</span><b>убийств</b><i>смертей</i></div></div></div>
 <div class="mp-dead" id="mpDead" hidden><div class="panel"><h2 id="mpDeadBy">Вы погибли</h2><label class="mp-at">Возродиться<select id="mpRespawnAt"></select></label><button class="go" id="mpRespawn" disabled>…</button><button class="btn" id="mpLeave">Выйти</button></div></div>
 <div class="mp-dead" id="mpOver" hidden><div class="panel"><h2>Соединение с сервером потеряно</h2><button class="go" id="mpOverBtn">Начать заново</button></div></div>

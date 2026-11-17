@@ -206,3 +206,18 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
 .mp-at { display: grid; gap: 4px; font: 500 12px/1.2 var(--f-body); color: var(--muted); }
 .mp-at select { font: 500 14px/1.3 var(--f-body); padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-solid); color: var(--ink); }
 .cross { background: transparent !important; border: 2px solid rgba(255, 255, 255, .85); box-shadow: 0 0 0 1px rgba(0, 0, 0, .35), inset 0 0 0 1px rgba(0, 0, 0, .35); }
+.mp-chat { position: fixed; left: 14px; bottom: 190px; width: min(420px, 60vw); z-index: 7; font: 500 13px/1.3 var(--f-body); color: #fff; text-shadow: 0 1px 3px #000; pointer-events: none; display: none; }
+.mp .mp-chat { display: block; }
+#mpChatLog { max-height: 150px; overflow: hidden; display: grid; gap: 2px; }
+.mp-chat.open #mpChatLog { overflow-y: auto; background: rgba(0, 0, 0, .35); padding: 4px 6px; border-radius: 6px; max-height: 220px; }
+.mp-chat .line { transition: opacity .6s; word-break: break-word; }
+.mp-chat .line.old { opacity: 0; } .mp-chat.open .line.old { opacity: 1; }
+.mp-chat .line b.t0 { color: #ff8b80; } .mp-chat .line b.t1 { color: #86b7ff; } .mp-chat .line.team { color: #bff5c0; }
+#mpChatIn { pointer-events: auto; width: 100%; box-sizing: border-box; margin-top: 4px; font: 500 14px/1.3 var(--f-body); padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-solid); color: var(--ink); }
+.mp-voice { position: fixed; left: 14px; top: 62px; z-index: 5; display: none; gap: 8px; align-items: center; font: 600 12px/1.2 var(--f-body); color: #fff; text-shadow: 0 1px 3px #000; pointer-events: none; }
+.mp .mp-voice { display: flex; }
+.mp-voice .mic { background: rgba(0, 0, 0, .45); padding: 3px 8px; border-radius: 4px; }
+.mp-voice[data-mic="on"] .mic::before { content: "● "; color: #6c6; } .mp-voice[data-talk="1"] .mic { background: #2f9e44; }
+.mp-voice .denied { display: none; color: #ff9b8f; } .mp-voice[data-mic="denied"] .denied { display: inline; }
+.mp-voice #mpVoiceList::before { content: "🔊 "; } .mp-voice #mpVoiceList:empty::before { content: ""; }
+.mp-tag.speaking { box-shadow: 0 0 0 2px #6c6; }
