@@ -80,6 +80,15 @@
     </div>
     <button class="go" id="go" disabled>Начать прогулку</button>
     <form class="play" id="play" onsubmit="return false">
+      <h2>Тренировка с ботами · без сервера</h2>
+      <p class="hint">Играйте против ботов прямо в браузере: правила те же, что на сервере. Ник, команду и место появления задайте ниже (в арене вы появляетесь на своей базе).</p>
+      <div class="train">
+        <label>Ботов<select id="trBots"><option>2</option><option>4</option><option selected>6</option><option>8</option><option>12</option></select></label>
+        <label>Сложность<select id="trLevel"><option value="easy">лёгкая</option><option value="normal" selected>средняя</option><option value="hard">трудная</option></select></label>
+        <label>Режим<select id="trMode"><option value="team" selected>команды</option><option value="ffa">каждый сам за себя</option></select></label>
+        <label>Карта<select id="trArena"><option value="">открытый город</option><option value="center" selected>арена: Центр города</option><option value="fortress">арена: крепость</option><option value="station">арена: вокзал</option></select></label>
+      </div>
+      <button class="go" id="goTrain" disabled>Тренироваться</button>
       <h2>Играть онлайн · командный бой</h2>
       <p class="hint">Командный бой (красные против синих, по своим огонь не идёт) или каждый сам за себя: режим выбирает сервер. Мышь — прицел, левая кнопка — огонь, R — перезарядка, Tab — таблица очков.</p>
       <label>Ник<input id="mpName" maxlength="16" autocomplete="off"></label>
