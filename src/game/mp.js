@@ -20,6 +20,7 @@ import { statEvent } from './stats.js';
 import { playerKey, boardOn, setBoardOn } from './identity.js';
 import { initLeaders } from './leaders.js';
 import { $ } from '../core/env.js';
+import { crackSound, hitSound, loadSounds, shotSound } from './sfx.js';
 
 /* ---------- online shooter: deathmatch on the city map ----------
    The server (server/index.mjs) owns health, kills and respawns. This module: the connection, the other players
@@ -135,7 +136,7 @@ const gun = new THREE.Group(), models = WEAPONS.map(() => new THREE.Group());
 const flash = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), worldSpace(new THREE.MeshBasicMaterial({ color: 0xffd36a }))); flash.position.set(0, 0, -0.45); flash.visible = false; gun.add(flash);
 let actx = null;
 function ac() {   // the audio context of the game sounds, with one volume knob (the settings)
-  if (!actx) { actx = new (window.AudioContext || window.webkitAudioContext)(); actx.master = actx.createGain(); actx.master.gain.value = SET.vol; actx.master.connect(actx.master); }
+  if (!actx) { actx = new (window.AudioContext || window.webkitAudioContext)(); actx.master = actx.createGain(); actx.master.gain.value = SET.vol; const lim = actx.createDynamicsCompressor(); lim.threshold.value = -6; lim.ratio.value = 12; lim.attack.value = 0.002; lim.release.value = 0.2; actx.master.connect(lim); lim.connect(actx.destination); }   // a limiter: a burst of shots does not clip
   if (actx.state === 'suspended') actx.resume(); return actx;
 }
 onChange(() => { if (actx) actx.master.gain.value = SET.vol; if (voice) voice.setVolume(SET.voiceVol); });
@@ -147,6 +148,38 @@ function bang(vol, low) {
     const s = actx.createBufferSource(), g = actx.createGain(), f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = low ? 900 : 2400; g.gain.value = vol;
     s.buffer = buf; s.connect(f); f.connect(g); g.connect(actx.master); s.start();
   } catch (e) {}
+}
+// where a sound comes from: its distance (m) and side (-1 left … 1 right) for the camera
+const SV = new THREE.Vector3();
+function spot(x, y, z) { SV.set(x, y, z).applyMatrix4(camera.matrixWorldInverse); const d = SV.length(); return { d, pan: d > 0.5 ? 0.85 * SV.x / Math.max(0.5, Math.hypot(SV.x, SV.z)) : 0 }; }
+// the recorded shots are louder than the old synthetic bang: their own volumes, in the order of WEAPONS
+const SHOT_VOL = [0.55, 0.7, 0.75, 0.45, 0.55];
+// a bullet stopped by a wall or the ground at distance len along d from o: the sound of the hit, if it is near enough to hear
+function wallHit(o, d, len, hear = 45) {
+  const x = o[0] + d[0] * len, y = o[1] + d[1] * len, z = o[2] + d[2] * len, s = spot(x, y, z);
+  if (s.d > hear) return;
+  try { hitSound(ac(), actx.master, y - terrainH(x, z) < 0.5 ? 'ground' : 'wall', 0.7 * 4 / (4 + s.d) * (1 - s.d / hear), s.d, s.pan); } catch (e) {}
+}
+// someone else's shot: its sound (later and duller the farther it is), the hits of its bullets near you and the crack of one
+// that flies past your head
+function otherShot(m) {
+  const wf = WEAPONS[m.w] || WEAPONS[0], hear = m.w === 2 ? 600 : (wf.hear ?? FEEL.hear), s = spot(m.o[0], m.o[1], m.o[2]);
+  if (s.d < hear) {
+    let real = false; try { real = shotSound(ac(), actx.master, m.w, (SHOT_VOL[m.w] ?? 0.5) * (1 - s.d / hear) * 25 / (25 + s.d), s.d, s.pan); } catch (e) {}
+    if (!real) bang((m.w === 2 ? 0.7 : m.w === 1 ? 0.5 : (wf.vol ?? FEEL.vol) * 0.85) * (1 - s.d / hear), true);
+  }
+  let hits = 0, crack = false;
+  for (const r of m.rays) {
+    const len = r[3], who = r[4];
+    if (who === MP.id) continue;   // into you: 'hurt' plays that
+    if (hits < 2 && who) { const h = spot(m.o[0] + r[0] * len, m.o[1] + r[1] * len, m.o[2] + r[2] * len); if (h.d < 40) try { hitSound(ac(), actx.master, 'body', 0.6 * 4 / (4 + h.d) * (1 - h.d / 40), h.d, h.pan); } catch (e) {} hits++; }
+    else if (hits < 2 && len < wf.range - 0.5) { wallHit(m.o, r, len); hits++; }
+    if (crack || MP.dead) continue;
+    const t = (P.x - m.o[0]) * r[0] + (P.y - m.o[1]) * r[1] + (P.z - m.o[2]) * r[2];   // the point of the bullet's path nearest to your head
+    if (t < 6 || t > len + 1) continue;
+    const cx = m.o[0] + r[0] * t, cy = m.o[1] + r[1] * t, cz = m.o[2] + r[2] * t, near = Math.hypot(cx - P.x, cy - P.y, cz - P.z);
+    if (near < 2.5) { crack = true; try { crackSound(ac(), actx.master, 0.25 + 0.5 * (1 - near / 2.5), spot(cx, cy, cz).pan); } catch (e) {} }
+  }
 }
 function tone(f0, f1, dur, vol, type = 'sine', delay = 0) {
   try {
@@ -181,8 +214,10 @@ function fire(now) {
     }
     const len = best ? best.t : clear; rays.push([+d[0].toFixed(4), +d[1].toFixed(4), +d[2].toFixed(4), +len.toFixed(1), best ? best.id : 0]);
     tracer(o, d, len, 0xffe9a0);
+    if (!best && clear < w.range - 0.5 && i < 2) wallHit(o, d, clear);   // the bullet strikes a wall or the ground (of a shotgun's pellets, two are heard)
   }
-  bang(w.pellets > 1 ? 0.6 : w.scope ? 0.8 : (w.vol ?? FEEL.vol), true);
+  let real = false; try { real = shotSound(ac(), actx.master, MP.weapon, SHOT_VOL[MP.weapon]); } catch (e) {}
+  if (!real) bang(w.pellets > 1 ? 0.6 : w.scope ? 0.8 : (w.vol ?? FEEL.vol), true);
   MP.ws.send(JSON.stringify({ t: 'shoot', w: MP.weapon, rays }));
   if (MP.ammo[MP.weapon] <= 0) reload(now);
   updatePanel();
@@ -293,10 +328,10 @@ function onMsg(m) {
       for (const [id, r] of remotes) if (!seen.has(id) && !r.fallT) { r.group.visible = false; r.buf.length = 0; }
       break;
     }
-    case 'shot': { if (m.id === MP.id) break; const rs = remotes.get(m.id); if (rs) rs.shotAt = performance.now(); for (const r of m.rays) tracer(m.o, r, r[3], 0xffb060); const dd = Math.hypot(m.o[0] - P.x, m.o[2] - P.z); const wf = WEAPONS[m.w] || WEAPONS[0], hear = m.w === 2 ? 600 : (wf.hear ?? FEEL.hear); if (dd < hear) bang((m.w === 2 ? 0.7 : m.w === 1 ? 0.5 : (wf.vol ?? FEEL.vol) * 0.85) * (1 - dd / hear), true); break; }
-    case 'hit': statEvent('hit', m, !!MP.local); hitT = performance.now(); if (m.kill) { tone(880, 880, 0.12, 0.25, 'triangle'); tone(1320, 1320, 0.25, 0.25, 'triangle', 0.1); } else tone(m.head ? 2600 : 1700, m.head ? 2200 : 1400, 0.07, 0.2, 'square'); el('mpHit').className = m.head ? 'head' : m.kill ? 'kill' : ''; el('mpHit').hidden = false; break;
+    case 'shot': { if (m.id === MP.id) break; const rs = remotes.get(m.id); if (rs) rs.shotAt = performance.now(); for (const r of m.rays) tracer(m.o, r, r[3], 0xffb060); otherShot(m); break; }
+    case 'hit': statEvent('hit', m, !!MP.local); hitT = performance.now(); if (m.kill) { tone(880, 880, 0.12, 0.25, 'triangle'); tone(1320, 1320, 0.25, 0.25, 'triangle', 0.1); } else tone(m.head ? 2600 : 1700, m.head ? 2200 : 1400, 0.07, 0.2, 'square'); { const r = remotes.get(m.id), g = r && r.group.visible ? r.group.position : null; if (g) { const s = spot(g.x, g.y + 1.2, g.z); try { hitSound(ac(), actx.master, m.head ? 'head' : 'body', 0.75 * 6 / (6 + s.d), s.d, s.pan); } catch (e) {} } } el('mpHit').className = m.head ? 'head' : m.kill ? 'kill' : ''; el('mpHit').hidden = false; break;
     case 'hurt': {
-      statEvent('taken', { dmg: Math.max(0, MP.hp - m.hp) }, !!MP.local); MP.hp = m.hp; hurtT = performance.now(); tone(160, 60, 0.18, 0.4, 'sawtooth'); el('mpHurt').hidden = false; updatePanel();
+      statEvent('taken', { dmg: Math.max(0, MP.hp - m.hp) }, !!MP.local); MP.hp = m.hp; hurtT = performance.now(); { let real = false; try { real = hitSound(ac(), actx.master, 'body', 1); } catch (e) {} if (!real) tone(160, 60, 0.18, 0.4, 'sawtooth'); } el('mpHurt').hidden = false; updatePanel();
       const a = Math.atan2(-m.dx, -m.dz) - P.yaw; el('mpHurtDir').style.transform = 'rotate(' + (-a) + 'rad)';   // the side the shot came from
       if (m.hp <= 0) die(nameOf(m.by), m.by);
       break;
@@ -328,7 +363,7 @@ function serverUrl() {
   return u;
 }
 function showGame() {
-  firstGames(); ambStart();
+  firstGames(); ambStart(); try { loadSounds(ac()); } catch (e) {}
   STATE.mp = true; MP.on = true; STATE.started = true; P.fly = false; document.body.classList.add('mp');
   $('start').hidden = true; $('hud').hidden = false; el('mpHud').hidden = false; $('cross').hidden = false; STATE.lodTimer = 0;
   $('bFly').setAttribute('aria-pressed', false); if ($('places').hidden === false) $('places').hidden = true;
