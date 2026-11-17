@@ -197,12 +197,15 @@ function reload(now) { const w = W(); MP.scope = false; if (MP.reloadAt || MP.am
 const el = id => $(id);
 let hitT = 0, hurtT = 0;
 function updatePanel() {
-  el('mpHp').style.width = Math.max(0, MP.hp) + '%'; el('mpHpN').textContent = Math.max(0, Math.ceil(MP.hp));
-  el('mpAmmo').textContent = W().name + '  ' + (MP.reloadAt ? 'перезарядка…' : MP.ammo[MP.weapon] + ' / ' + W().mag) + '   ● ' + MP.nades;
+  el('mpHp').style.width = Math.max(0, MP.hp) + '%'; el('mpHpN').textContent = Math.max(0, Math.ceil(MP.hp)); el('mpStat').dataset.hp = MP.hp <= 25 ? 'low' : MP.hp <= 60 ? 'mid' : 'ok';
+  el('mpWeapon').textContent = W().name; el('mpAmmo').textContent = MP.reloadAt ? 'перезарядка…' : MP.ammo[MP.weapon] + ' / ' + W().mag; el('mpAmmo').dataset.empty = !MP.reloadAt && MP.ammo[MP.weapon] === 0 ? 1 : 0;
+  el('mpNades').textContent = '●'.repeat(Math.max(0, MP.nades)) || '—';
+  const sl = el('mpSlots'); if (sl.children.length !== WEAPONS.length) { sl.textContent = ''; WEAPONS.forEach((w, i) => { const d = document.createElement('span'); d.title = w.name; d.textContent = i + 1; sl.append(d); }); }
+  [...sl.children].forEach((d, i) => d.classList.toggle('on', i === MP.weapon));
   el('mpScore').textContent = MP.kills + ' · ' + MP.deaths; el('mpFps').textContent = ' · ' + PERF.fps + ' кадр/с';
   const tm = el('mpTeams'); tm.textContent = '';
-  if (MP.ffa) { const lead = [...MP.board].sort((a, b) => b.kills - a.kills)[0]; tm.textContent = 'Вы: ' + MP.kills + (lead ? ' · лидер: ' + lead.name + ' ' + lead.kills : '') + ' · до ' + MP.win; } else { const chip = (i, t) => { const e = document.createElement('b'); e.className = 't' + i; e.textContent = t; return e; };
-  const lim = document.createElement('small'); lim.textContent = ' до ' + MP.win; tm.append(chip(0, MP.teams[0] + ' ' + MP.score[0]), ' : ', chip(1, MP.score[1] + ' ' + MP.teams[1]), lim); }
+  if (MP.ffa) { const lead = [...MP.board].sort((a, b) => b.kills - a.kills)[0], me = document.createElement('b'), ld = document.createElement('b'), lim = document.createElement('small'); me.className = 'me'; me.textContent = 'Вы ' + MP.kills; ld.className = 'lead'; ld.textContent = lead ? lead.name + ' ' + lead.kills : ''; lim.textContent = 'до ' + MP.win; tm.append(me, ld, lim); } else { const chip = (i, t) => { const e = document.createElement('b'); e.className = 't' + i; e.textContent = t; return e; };
+  const lim = document.createElement('small'); lim.textContent = 'до ' + MP.win; tm.append(chip(0, MP.teams[0] + ' ' + MP.score[0]), lim, chip(1, MP.score[1] + ' ' + MP.teams[1])); }
 }
 function drawBoard() {
   const rows = [...MP.board].sort((a, b) => (MP.ffa ? 0 : a.team - b.team) || b.kills - a.kills || a.deaths - b.deaths), ol = el('mpBoardList'); ol.textContent = '';

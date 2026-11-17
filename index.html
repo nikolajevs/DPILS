@@ -100,9 +100,11 @@
       <div class="servers" id="mpServers" aria-live="polite"></div>
       <label>Адрес сервера<input id="mpServer" placeholder="wss://адрес-сервера (или выберите из списка)" autocomplete="off" spellcheck="false"></label>
       <button class="go" id="goPlay" disabled>Играть</button>
-      <button class="btn" id="bSetStart" type="button">Настройки: мышь, звук, клавиши</button>
-      <button class="btn" id="bStatsStart" type="button">Моя статистика за всё время</button>
-      <button class="btn" id="bLeadersStart" type="button">Таблица лидеров сервера</button>
+      <div class="sec-btns">
+        <button class="btn" id="bSetStart" type="button">Настройки</button>
+        <button class="btn" id="bStatsStart" type="button">Моя статистика</button>
+        <button class="btn" id="bLeadersStart" type="button">Таблица лидеров</button>
+      </div>
       <label class="chk"><input type="checkbox" id="mpNoBoard"> Не участвовать в таблице лидеров</label>
       <div class="mp-msg" id="mpMsg" role="status"></div>
     </form>
@@ -115,7 +117,13 @@
 <div class="mp-hit" id="mpHit" hidden></div>
 <div class="mp-hurt" id="mpHurt" hidden><i id="mpHurtDir"></i></div>
 <div class="mp-hud" id="mpHud" hidden>
-  <div class="mp-stat"><div class="mp-hp"><i id="mpHp"></i></div><b id="mpHpN">100</b><span id="mpAmmo">30 / 30</span><div class="mp-teams" id="mpTeams"></div><small>убийств · смертей: <span id="mpScore">0 · 0</span><span id="mpPing"></span><span id="mpFps"></span></small></div>
+  <div class="mp-top"><div class="mp-teams" id="mpTeams"></div></div>
+  <div class="mp-stat" id="mpStat">
+    <div class="mp-vitals"><span class="mp-hpn"><b id="mpHpN">100</b><i>HP</i></span><div class="mp-hp"><i id="mpHp"></i></div></div>
+    <div class="mp-gun"><span id="mpWeapon">Автомат</span><b id="mpAmmo">30 / 30</b><span class="mp-nades" id="mpNades" title="Гранаты (G)"></span></div>
+    <div class="mp-slots" id="mpSlots"></div>
+    <small>убийств · смертей: <span id="mpScore">0 · 0</span><span id="mpPing"></span><span id="mpFps"></span></small>
+  </div>
   <div class="mp-feed" id="mpFeed" aria-live="polite"></div>
 </div>
 <div class="mp-banner" id="mpBanner" hidden></div>
