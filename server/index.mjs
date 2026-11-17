@@ -4,7 +4,7 @@
    the wall. Hits are checked against fire rate, range and the target's position as the server knows it. */
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
-import { NADE, RULES as R, WEAPONS, rayToSegment } from './combat.mjs';
+import { NADE, RULES as R, WEAPONS, W_NADE, rayToSegment } from './combat.mjs';
 import { loadWorld } from './world.mjs';
 
 const SERVER_NAME = String(process.env.SERVER_NAME || 'Даугавпилс').slice(0, 40), PORT = +process.env.PORT || 8787, HX = 5200, HY = 4200;   // bounds a bit wider than the city
@@ -59,7 +59,7 @@ function explode(n) {
     const c = [v.x, v.y - 0.7, v.z], o = [n.p[0], n.p[1] + 0.3, n.p[2]], dx = c[0] - o[0], dy = c[1] - o[1], dz = c[2] - o[2], d = Math.hypot(dx, dy, dz);
     if (d >= NADE.radius || (v !== thrower && now() <= v.protectUntil)) continue;
     if (d > 0.6 && WORLD.freePath(o, [dx / d, dy / d, dz / d], d) < d - 0.7) continue;   // a wall between the blast and the player
-    hurt(thrower, v, Math.round(NADE.dmg * (1 - d / NADE.radius) * (v === thrower ? NADE.self : 1)), false, 3, n.p);
+    hurt(thrower, v, Math.round(NADE.dmg * (1 - d / NADE.radius) * (v === thrower ? NADE.self : 1)), false, W_NADE, n.p);
   }
 }
 wss.on('connection', ws => {
@@ -85,10 +85,10 @@ wss.on('connection', ws => {
       const far = Math.hypot(x - p.x, z - p.z), first = p.free && far < 80; p.free = false;   // right after a spawn the client may nudge itself off a wall or out of the water
       if (!first && far > R.runSpeed * dt * 1.6 + 3) send(p, { t: 'correct', x: p.x, y: p.y, z: p.z });   // too fast: put back
       else { p.x = x; p.z = z; p.y = y; }
-      p.yaw = num(m.yaw, 100); p.pitch = num(m.pitch, 1.6); p.eye = Math.max(0.9, Math.min(1.8, num(m.h, 1.8) || 1.7)); p.wep = m.w === 1 || m.w === 2 ? m.w : 0;
+      p.yaw = num(m.yaw, 100); p.pitch = num(m.pitch, 1.6); p.eye = Math.max(0.9, Math.min(1.8, num(m.h, 1.8) || 1.7)); p.wep = Number.isInteger(m.w) && m.w >= 0 && m.w < WEAPONS.length ? m.w : 0;
       p.hist.push([t0, p.x, p.y, p.z]); while (p.hist.length > 2 && t0 - p.hist[0][0] > 1000) p.hist.shift();
     } else if (m.t === 'shoot' && p.alive) {
-      const wi = m.w === 1 || m.w === 2 ? m.w : 0, W = WEAPONS[wi]; if (!Array.isArray(m.rays) || !m.rays.length) return;
+      const wi = Number.isInteger(m.w) && m.w >= 0 && m.w < WEAPONS.length ? m.w : 0, W = WEAPONS[wi]; if (!Array.isArray(m.rays) || !m.rays.length) return;
       if (t0 - p.lastShot < W.gapMs) return; p.lastShot = t0;
       const o = [p.x, p.y, p.z], out = [], hits = new Map(), lag = t0 - 120 - Math.min(300, p.rtt / 2);
       for (const ray of m.rays.slice(0, W.pellets)) {   // a rifle shot is one ray, a shotgun shot is up to eight pellets

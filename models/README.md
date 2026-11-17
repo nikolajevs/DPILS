@@ -5,7 +5,9 @@
 | Файл | Что | Откуда |
 |---|---|---|
 | `Soldier.glb` | солдат (шлем, бронежилет) с анимациями Idle, Walk, Run, Jump, Death, Walk_Carry и др. | [Ultimate Animated Character Pack](https://quaternius.com/packs/ultimatedanimatedcharacter.html), файл `Soldier_Male` |
-| `Rifle.glb` | автомат в руках | [Zombie Apocalypse Kit](https://quaternius.com/packs/zombieapocalypsekit.html), `Weapons/glTF/Rifle` |
+| `AK.glb` | автомат в руках | [Toon Shooter Game Kit](https://quaternius.com/packs/toonshootergamekit.html), `Guns/glTF/AK` |
+| `Pistol.glb` | пистолет | оттуда же, `Guns/glTF/Pistol` |
+| `Rifle.glb` | пулемёт (тяжёлая винтовка) | [Zombie Apocalypse Kit](https://quaternius.com/packs/zombieapocalypsekit.html), `Weapons/glTF/Rifle` |
 | `Shotgun.glb` | дробовик в руках | оттуда же, `Weapons/glTF/Shotgun` |
 | `Sniper.glb` | снайперская винтовка с оптическим прицелом | [Toon Shooter Game Kit](https://quaternius.com/packs/toonshootergamekit.html), `Guns/glTF/Sniper` |
 

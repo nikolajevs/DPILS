@@ -9,9 +9,13 @@ export const WEAPONS = [
   { name: 'Автомат', gapMs: 85, pellets: 1, dmg: 22, head: 40, range: 160, falloff: 0 },
   { name: 'Дробовик', gapMs: 750, pellets: 8, dmg: 9, head: 16, range: 45, falloff: 0.6 },
   { name: 'Снайперская', gapMs: 1300, pellets: 1, dmg: 70, head: 100, range: 400, falloff: 0 },
+  { name: 'Пистолет', gapMs: 150, pellets: 1, dmg: 20, head: 42, range: 90, falloff: 0.3 },
+  { name: 'Пулемёт', gapMs: 60, pellets: 1, dmg: 16, head: 28, range: 140, falloff: 0.25 },
 ];
 // the grenade (keep src/game/nades.js in step): thrown at `speed` along the aim lifted by `loft`, falls with `g`,
 // bounces on the ground and off walls, goes off after `fuseMs`; damage falls linearly from `dmg` at the blast to 0 at `radius`
+// the number put in a kill message for a grenade (the weapons are 0 … WEAPONS.length − 1)
+export const W_NADE = 9;
 export const NADE = { count: 2, speed: 15, loft: 0.17, g: 18, fuseMs: 2500, radius: 8, dmg: 100, cooldownMs: 900, self: 0.5 };
 // closest distance between the ray (o + t·d, 0 ≤ t ≤ len, |d| = 1) and the segment a–b; returns { dist, t }
 export function rayToSegment(o, d, len, a, b) {

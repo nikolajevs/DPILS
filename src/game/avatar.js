@@ -13,8 +13,8 @@ import { worldSpace } from '../render/world-space.js';
    along +z, the game along −z). The loader drops the dots of the bone names (Fist.R is FistR).
    The weapons in hand are ready models too (models/Rifle.glb, Shotgun.glb, Sniper.glb, CC0, by Quaternius): the muzzle along +z, the top along +y, the grip at the origin, in the units of the soldier. */
 const MODEL = {
-  file: 'models/Soldier.glb', guns: ['models/Rifle.glb', 'models/Shotgun.glb', 'models/Sniper.glb'], gunLen: [1, 1, 1], gunYaw: [0, 0, Math.PI / 2], height: 1.8, headScale: 0.8,   // one gun model for each weapon of the game; gunYaw: the sniper rifle of the file points along −x, turned to +z; the head of the file is big: a little smaller
-  tint: ['Main', 'Helmet'],   // the materials painted in the colour of the team
+  file: 'models/Soldier.glb', guns: ['models/AK.glb', 'models/Shotgun.glb', 'models/Sniper.glb', 'models/Pistol.glb', 'models/Rifle.glb'], gunLen: [1, 1, 1, 0.5, 1.1], gunYaw: [Math.PI / 2, 0, Math.PI / 2, Math.PI / 2, 0], height: 1.8, headScale: 0.8,   // one gun model for each weapon of the game (the machine gun is the heavy rifle); gunYaw: the guns of the Toon Shooter pack point along −x, turned to +z; the head of the file is big: a little smaller
+  tint: ['Helmet'], camo: ['Main', 'DarkGreen'],   // tint: painted in the colour of the team; camo: the jacket and the trousers get a camouflage pattern in its tones
   clips: { idle: 'Idle', walk: 'Walk', run: 'Run', jump: 'Jump', death: 'Death', hold: 'Walk_Carry' },   // hold: the pose of the arms with a rifle
   arms: ['ShoulderL', 'UpperArmL', 'LowerArmL', 'FistL', 'ShoulderR', 'UpperArmR', 'LowerArmR', 'FistR'], hand: 'FistR', head: 'Head',
 };
@@ -49,6 +49,28 @@ function readyGun(src, k, yaw) {
   const g = src.clone(true); g.rotation.y = yaw || 0; g.traverse(o => { if (o.isMesh) o.material = worldSpace(o.material.clone()); });
   const box = new THREE.Box3().setFromObject(g), holder = new THREE.Group(); holder.add(g); holder.scale.setScalar(asset.scale * k); holder.userData.muzzle = box.max.z * asset.scale * k; return holder;
 }
+// the camouflage: blotches of three tones of the colour of the team (a smooth noise of the position on the body at rest,
+// cut at two levels), on the material of the file; the vertex position before the skeleton moves it keeps the pattern on the body
+const CAMO_GLSL = `
+varying vec3 vCamo;
+uniform vec3 uCamoA; uniform vec3 uCamoB; uniform vec3 uCamoC;
+float camoH(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+float camoN(vec3 p) {
+  vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(camoH(i), camoH(i + vec3(1, 0, 0)), f.x), mix(camoH(i + vec3(0, 1, 0)), camoH(i + vec3(1, 1, 0)), f.x), f.y),
+             mix(mix(camoH(i + vec3(0, 0, 1)), camoH(i + vec3(1, 0, 1)), f.x), mix(camoH(i + vec3(0, 1, 1)), camoH(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}`;
+function camouflage(m, hue) {
+  const A = new THREE.Color().setHSL(hue, 0.4, 0.42), B = new THREE.Color().setHSL(hue, 0.5, 0.27), C = new THREE.Color().setHSL(hue, 0.55, 0.14), base = THREE.Material.prototype.onBeforeCompile;
+  m.onBeforeCompile = function (s) {
+    base.call(this, s);   // the lift of the page's shaders by the terrain (see world/terrain.js) stays
+    s.uniforms.uCamoA = { value: A }; s.uniforms.uCamoB = { value: B }; s.uniforms.uCamoC = { value: C };
+    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vCamo;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvCamo = position;');
+    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\n' + CAMO_GLSL).replace('#include <color_fragment>', `#include <color_fragment>
+      { float n = camoN(vCamo * 5.5) * 0.6 + camoN(vCamo * 12.0 + 3.7) * 0.4; diffuseColor.rgb = n < 0.42 ? uCamoA : n < 0.6 ? uCamoB : uCamoC; }`);
+  };
+  m.customProgramCacheKey = () => 'camo'; m.needsUpdate = true;
+}
 // one player's model: update(dt, { speed, air, dead, shot }) every frame
 function makeAvatar(hue) {
   if (!asset) return null;
@@ -57,7 +79,7 @@ function makeAvatar(hue) {
   root.traverse(o => {
     if (!o.isMesh) return; o.frustumCulled = false;   // a skinned mesh keeps the bounds of its rest pose
     o.material = worldSpace(Array.isArray(o.material) ? o.material.map(m => m.clone()) : o.material.clone());
-    for (const m of Array.isArray(o.material) ? o.material : [o.material]) if (MODEL.tint.includes(m.name)) m.color.setHSL(hue, 0.5, m.name === 'Helmet' ? 0.3 : 0.36);
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) { if (MODEL.tint.includes(m.name)) m.color.setHSL(hue, 0.5, 0.3); else if (MODEL.camo.includes(m.name)) camouflage(m, hue); }
   });
   for (const n of [C.idle, C.walk, C.run, C.jump, C.death]) if (asset.clips[n]) { act[n] = mixer.clipAction(asset.clips[n]); act[n].play(); act[n].weight = n === C.idle ? 1 : 0; }
   if (act[C.death]) { act[C.death].setLoop(THREE.LoopOnce, 1); act[C.death].clampWhenFinished = true; }
