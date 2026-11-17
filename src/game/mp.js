@@ -27,7 +27,7 @@ const WEAPONS = [
   { name: 'Дробовик', mag: 6, reloadMs: 2600, gapMs: 800, range: 45, pellets: 8, cone: 0.05, auto: false },
   { name: 'Снайперская', mag: 5, reloadMs: 2800, gapMs: 1300, range: 400, pellets: 1, cone: 0, auto: false, scope: true },   // right mouse button: the scope
 ];
-const MP = { on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, lastNade: 0, spec: 0, scope: false, zoom: 0, ammo: [30, 6, 5], reloadAt: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0 };
+const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, lastNade: 0, spec: 0, scope: false, zoom: 0, ammo: [30, 6, 5], reloadAt: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0 };
 STATE.mp = false;
 let voice = null;
 const remotes = new Map();   // id → { name, group, buf: [{ t, x, y, z, yaw, pitch }], tag }
@@ -67,8 +67,8 @@ function spreadNow() {
 /* ---------- figures of the other players ---------- */
 const GEO = { box: new THREE.BoxGeometry(1, 1, 1), head: new THREE.SphereGeometry(0.17, 12, 8) };
 const HUE = [0.0, 0.6];   // red and blue team
-function makeFigure(team) {
-  const hue = HUE[team] ?? 0.3, col = new THREE.Color().setHSL(hue, 0.65, 0.42), dark = new THREE.Color().setHSL(hue, 0.5, 0.2);
+function makeFigure(hue) {
+  const col = new THREE.Color().setHSL(hue, 0.65, 0.42), dark = new THREE.Color().setHSL(hue, 0.5, 0.2);
   const mc = new THREE.MeshLambertMaterial({ color: col }), md = new THREE.MeshLambertMaterial({ color: dark }), ms = new THREE.MeshLambertMaterial({ color: 0xe0b890 }), mg = new THREE.MeshLambertMaterial({ color: 0x25272b });
   const g = new THREE.Group(); g.rotation.order = 'YXZ'; const part = (m, sx, sy, sz, x, y, z) => { const o = new THREE.Mesh(GEO.box, m); o.scale.set(sx, sy, sz); o.position.set(x, y, z); g.add(o); return o; };
   part(md, 0.2, 0.8, 0.22, -0.12, 0.4, 0); part(md, 0.2, 0.8, 0.22, 0.12, 0.4, 0);   // legs
@@ -80,11 +80,12 @@ function makeFigure(team) {
 }
 function addRemote(id, name, team) {
   if (remotes.has(id) || id === MP.id) return remotes.get(id);
-  const group = makeFigure(team), tag = document.createElement('div'); tag.className = 'mp-tag t' + team; tag.textContent = name || '…'; group.visible = false; scene.add(group); $('mpTags').append(tag);
+  const hue = MP.ffa ? (id * 0.381966) % 1 : (HUE[team] ?? 0.3), group = makeFigure(hue), tag = document.createElement('div'); tag.className = 'mp-tag ' + (MP.ffa ? 'tf' : 't' + team); if (MP.ffa) tag.style.background = 'hsla(' + Math.round(hue * 360) + ', 55%, 32%, .78)'; tag.textContent = name || '…'; group.visible = false; scene.add(group); $('mpTags').append(tag);
   const r = { name, team, group, buf: [], tag }; remotes.set(id, r); return r;
 }
 function dropRemote(id) { const r = remotes.get(id); if (!r) return; scene.remove(r.group); r.tag.remove(); remotes.delete(id); }
 function nameOf(id) { const b = MP.board.find(e => e.id === id); return b ? b.name : '?'; }
+const isMate = r => !MP.ffa && r.team === MP.team;   // in the free-for-all nobody is a teammate
 function teamOf(id) { const b = MP.board.find(e => e.id === id); return b ? b.team : 0; }
 function pose(r, t) {
   const b = r.buf; if (!b.length) return null;
@@ -148,7 +149,7 @@ function fire(now) {
     const d = aim(P.yaw + Math.cos(ang) * rad, P.pitch + Math.sin(ang) * rad), clear = freePath(o, d, w.range);
     let best = null;
     for (const [id, r] of remotes) {
-      if (r.team === MP.team) continue;   // no friendly fire: shots pass through teammates
+      if (isMate(r)) continue;   // no friendly fire: shots pass through teammates
       const p = pose(r, t); if (!p || !r.group.visible) continue;
       const a = [p.x, p.y - (p.h || 1.7) + 0.1, p.z], b = [p.x, p.y + RULES.bodyTop, p.z], h = rayToSegment(o, d, clear, a, b);
       if (h.dist <= RULES.hitR && (!best || h.t < best.t)) best = { id, t: h.t };
@@ -174,12 +175,13 @@ function updatePanel() {
   el('mpHp').style.width = Math.max(0, MP.hp) + '%'; el('mpHpN').textContent = Math.max(0, Math.ceil(MP.hp));
   el('mpAmmo').textContent = W().name + '  ' + (MP.reloadAt ? 'перезарядка…' : MP.ammo[MP.weapon] + ' / ' + W().mag) + '   ● ' + MP.nades;
   el('mpScore').textContent = MP.kills + ' · ' + MP.deaths; el('mpFps').textContent = ' · ' + PERF.fps + ' кадр/с';
-  const tm = el('mpTeams'); tm.textContent = ''; const chip = (i, t) => { const e = document.createElement('b'); e.className = 't' + i; e.textContent = t; return e; };
-  const lim = document.createElement('small'); lim.textContent = ' до ' + MP.win; tm.append(chip(0, MP.teams[0] + ' ' + MP.score[0]), ' : ', chip(1, MP.score[1] + ' ' + MP.teams[1]), lim);
+  const tm = el('mpTeams'); tm.textContent = '';
+  if (MP.ffa) { const lead = [...MP.board].sort((a, b) => b.kills - a.kills)[0]; tm.textContent = 'Вы: ' + MP.kills + (lead ? ' · лидер: ' + lead.name + ' ' + lead.kills : '') + ' · до ' + MP.win; } else { const chip = (i, t) => { const e = document.createElement('b'); e.className = 't' + i; e.textContent = t; return e; };
+  const lim = document.createElement('small'); lim.textContent = ' до ' + MP.win; tm.append(chip(0, MP.teams[0] + ' ' + MP.score[0]), ' : ', chip(1, MP.score[1] + ' ' + MP.teams[1]), lim); }
 }
 function drawBoard() {
-  const rows = [...MP.board].sort((a, b) => a.team - b.team || b.kills - a.kills || a.deaths - b.deaths), ol = el('mpBoardList'); ol.textContent = '';
-  for (const e of rows) { const li = document.createElement('li'); li.className = 't' + e.team + (e.id === MP.id ? ' me' : ''); const n = document.createElement('span'), k = document.createElement('b'), dd = document.createElement('i'); n.textContent = e.name; k.textContent = e.kills; dd.textContent = e.deaths; li.append(n, k, dd); ol.append(li); }
+  const rows = [...MP.board].sort((a, b) => (MP.ffa ? 0 : a.team - b.team) || b.kills - a.kills || a.deaths - b.deaths), ol = el('mpBoardList'); ol.textContent = '';
+  for (const e of rows) { const li = document.createElement('li'); li.className = (MP.ffa ? 'tf' : 't' + e.team) + (e.id === MP.id ? ' me' : ''); const n = document.createElement('span'), k = document.createElement('b'), dd = document.createElement('i'); n.textContent = e.name; k.textContent = e.kills; dd.textContent = e.deaths; li.append(n, k, dd); ol.append(li); }
 }
 function feed(text, cls) {
   const f = el('mpFeed'), d = document.createElement('div'); d.textContent = text; if (cls) d.className = cls; f.prepend(d); while (f.children.length > 6) f.lastChild.remove(); setTimeout(() => d.remove(), 7000);
@@ -197,13 +199,13 @@ function spawnPoint(choice = MP.spawn) {
 // ---------- the end of a round: the table of the round and the time to the next one ----------
 let endTimer = 0;
 function showSummary(m) {
-  const mine = m.team === MP.team, title = el('mpEndTitle'); title.className = 't' + (m.team === 1 ? 1 : 0);
-  title.textContent = (mine ? 'Победа! ' : 'Поражение. ') + 'Выиграли ' + m.name.toLowerCase() + ', ' + m.score[0] + ' : ' + m.score[1];
+  const ffa = m.mode === 'ffa', mine = ffa ? m.mvp === MP.id : m.team === MP.team, title = el('mpEndTitle'); title.className = ffa ? 'tf' : 't' + (m.team === 1 ? 1 : 0);
+  title.textContent = ffa ? (mine ? 'Победа! Вы набрали ' : 'Победил ' + m.name + ': ') + (m.rows[0] ? m.rows[0].kills : '') + ' убийств' : (mine ? 'Победа! ' : 'Поражение. ') + 'Выиграли ' + m.name.toLowerCase() + ', ' + m.score[0] + ' : ' + m.score[1];
   const mvp = m.rows.find(r => r.id === m.mvp); el('mpEndMvp').textContent = mvp ? '★ Лучший игрок раунда: ' + mvp.name + ' — ' + mvp.kills + ' убийств, ' + mvp.dmg + ' урона' : '';
   const t = el('mpEndTable'); t.textContent = '';
   const row = (cells, cls) => { const r = document.createElement('div'); r.className = 'end-row ' + cls; for (const c of cells) { const s = document.createElement('span'); s.textContent = c; r.append(s); } t.append(r); };
   row(['игрок', 'убийств', 'смертей', 'в голову', 'урон', 'точность'], 'head');
-  for (const r of m.rows) row([(r.id === m.mvp ? '★ ' : '') + r.name, r.kills, r.deaths, r.heads, r.dmg, r.acc + ' %'], 't' + (r.team === 1 ? 1 : 0) + (r.id === MP.id ? ' me' : ''));
+  for (const r of m.rows) row([(r.id === m.mvp ? '★ ' : '') + r.name, r.kills, r.deaths, r.heads, r.dmg, r.acc + ' %'], (ffa ? 'tf' : 't' + (r.team === 1 ? 1 : 0)) + (r.id === MP.id ? ' me' : ''));
   el('mpEnd').hidden = false; const until = performance.now() + (m.nextMs || 10000); clearInterval(endTimer);
   const tick = () => { const left = Math.max(0, Math.ceil((until - performance.now()) / 1000)); el('mpEndNext').textContent = 'Новый раунд через ' + left + ' с'; if (!left) clearInterval(endTimer); };
   tick(); endTimer = setInterval(tick, 300);
@@ -214,7 +216,7 @@ function throwNade() {
   MP.nades--; MP.lastNade = now; const d = aim(); MP.ws.send(JSON.stringify({ t: 'throw', dx: +d[0].toFixed(4), dy: +d[1].toFixed(4), dz: +d[2].toFixed(4) }));
   tone(260, 140, 0.12, 0.2, 'triangle'); MP.kick = 0.6; updatePanel();
 }
-const specList = () => [...remotes.entries()].filter(([, r]) => r.group.visible && !r.fallT).sort((a, b) => (b[1].team === MP.team) - (a[1].team === MP.team)).map(e => e[0]);
+const specList = () => [...remotes.entries()].filter(([, r]) => r.group.visible && !r.fallT).sort((a, b) => isMate(b[1]) - isMate(a[1])).map(e => e[0]);
 function specNext(dir) {
   const l = specList(); if (!l.length) { MP.spec = 0; return; }
   const i = l.indexOf(MP.spec); MP.spec = l[i < 0 ? 0 : (i + dir + l.length) % l.length];
@@ -226,7 +228,7 @@ function spectate(now) {
   const label = el('mpSpec'); if (!r) { label.textContent = 'Некого показывать'; return; }
   const p = pose(r, now - 120); if (!p) return;
   P.yaw = p.yaw; P.pitch = -0.14; P.x = p.x + Math.sin(p.yaw) * 3.2; P.z = p.z + Math.cos(p.yaw) * 3.2; P.y = p.y + 0.6;
-  const t = 'Наблюдение: ' + r.name + (r.team === MP.team ? ' (свой)' : ' (враг)') + ' · ← → или щелчок — другой'; if (label.textContent !== t) label.textContent = t;
+  const t = 'Наблюдение: ' + r.name + (isMate(r) ? ' (свой)' : MP.ffa ? '' : ' (враг)') + ' · ← → или щелчок — другой'; if (label.textContent !== t) label.textContent = t;
 }
 function respawn() {
   if (!MP.dead || performance.now() - MP.deadAt < 3000) return;
@@ -237,7 +239,7 @@ function respawn() {
 /* ---------- messages from the server ---------- */
 function onMsg(m) {
   switch (m.t) {
-    case 'hello': rememberServer(MP.url, m.server); voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team); document.body.dataset.team = m.team; break;
+    case 'hello': MP.ffa = m.mode === 'ffa'; document.body.classList.toggle('ffa', MP.ffa); if (MP.ffa) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } rememberServer(MP.url, m.server); voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team); document.body.dataset.team = m.team; break;
     case 'spawn': {
       const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.crouch = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
@@ -327,7 +329,7 @@ window.addEventListener('keydown', e => {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;   // typing in the chat box
   if (!MP.on || e.repeat) return;
   if (e.code === SET.keys.voice && voice) { if (!voice.hasMic) { voice.enableMic().then(ok => { el('mpVoice').dataset.mic = ok ? 'on' : 'denied'; }); } else voice.talk(true); }
-  else if (!MP.dead && (e.code === SET.keys.chat || e.code === SET.keys.teamChat || e.code === 'Enter')) { e.preventDefault(); openChat(e.code === SET.keys.teamChat); }
+  else if (!MP.dead && (e.code === SET.keys.chat || e.code === SET.keys.teamChat || e.code === 'Enter')) { e.preventDefault(); openChat(e.code === SET.keys.teamChat && !MP.ffa); }
   else if (MP.dead && (e.code === 'ArrowRight' || e.code === 'KeyE')) specNext(1);
   else if (MP.dead && (e.code === 'ArrowLeft' || e.code === 'KeyQ')) specNext(-1);
   else if (e.code === SET.keys.grenade) throwNade();
@@ -411,7 +413,7 @@ function mpLabels() {
   for (const r of remotes.values()) {
     const g = r.group; if (!g.visible) { r.tag.hidden = true; continue; }
     V.set(g.position.x, g.position.y + 2.0, g.position.z).project(camera);
-    const d = Math.hypot(g.position.x - P.x, g.position.z - P.z), mate = r.team === MP.team;
+    const d = Math.hypot(g.position.x - P.x, g.position.z - P.z), mate = isMate(r);
     if (V.z > 1 || d > (mate ? 250 : 90) || MP.dead || r.fallT) { r.tag.hidden = true; continue; }   // teammates are shown through walls, enemies only in the line of sight
     if (!mate) { const dy = g.position.y + 1.6 - P.y, l = Math.hypot(d, dy) || 1, dir = [(g.position.x - P.x) / l, dy / l, (g.position.z - P.z) / l]; if (freePath([P.x, P.y, P.z], dir, l) < l - 2) { r.tag.hidden = true; continue; } }
     r.tag.hidden = false; r.tag.style.transform = 'translate(-50%,-100%) translate(' + ((V.x + 1) / 2 * w).toFixed(0) + 'px,' + ((1 - V.y) / 2 * h).toFixed(0) + 'px)';
@@ -420,7 +422,7 @@ function mpLabels() {
 // the voice chat: how audible a player is (a teammate always, an enemy within 30 m) and who is speaking now
 function voiceInfo(id) {
   const r = remotes.get(id); if (!r) return null; const p = r.buf[r.buf.length - 1];
-  return { mate: r.team === MP.team, dist: p ? Math.hypot(p.x - P.x, p.y - P.y, p.z - P.z) : 1e9 };
+  return { mate: isMate(r), dist: p ? Math.hypot(p.x - P.x, p.y - P.y, p.z - P.z) : 1e9 };
 }
 function showSpeaking(ids, me) {
   const box = el('mpVoice'); box.dataset.talk = me ? '1' : '0';
@@ -432,9 +434,9 @@ STATE.mapOverlay = (ctx, cx, cz, ppm, w, h) => {
   if (!MP.on) return; const now = performance.now();
   for (const r of remotes.values()) {
     const p = r.buf[r.buf.length - 1]; if (!p || !r.group.visible || r.fallT) continue;
-    if (r.team !== MP.team && now - (r.shotAt || 0) > 2000) continue;
+    if (!isMate(r) && now - (r.shotAt || 0) > 2000) continue;
     const x = w / 2 + (p.x - cx) * ppm, y = h / 2 + (p.z - cz) * ppm; if (x < 4 || y < 4 || x > w - 4 || y > h - 4) continue;
-    ctx.beginPath(); ctx.arc(x, y, 5, 0, 6.3); ctx.fillStyle = r.team === 1 ? '#2f78d8' : '#d8392f'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, 5, 0, 6.3); ctx.fillStyle = MP.ffa ? '#e8a317' : r.team === 1 ? '#2f78d8' : '#d8392f'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; ctx.stroke();
   }
 };
 PERF.notice = text => feed(text, 'sys');

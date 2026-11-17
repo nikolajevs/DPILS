@@ -35,7 +35,7 @@ function render() {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'srv' + (wsUrl(input.value) === r.url ? ' on' : '') + ' ' + (r.state || 'wait'); b.dataset.url = r.url;
     const n = document.createElement('b'), s = document.createElement('span'), p = document.createElement('i');
     n.textContent = (r.info && r.info.name) || r.name;
-    if (r.state === 'up') { s.textContent = r.info.players + ' / ' + r.info.max + (r.info.round === 'end' ? ' · раунд окончен' : ''); p.textContent = r.ping + ' мс'; }
+    if (r.state === 'up') { s.textContent = r.info.players + ' / ' + r.info.max + (r.info.mode === 'ffa' ? ' · каждый сам за себя' : ' · команды') + (r.info.round === 'end' ? ' · раунд окончен' : ''); p.textContent = r.ping + ' мс'; }
     else if (r.state === 'down') s.textContent = 'не отвечает'; else if (r.state === 'https') s.textContent = 'нужен wss:// (страница на https)'; else s.textContent = 'проверяю…';
     b.append(n, s, p); b.onclick = () => { input.value = r.url; render(); }; listEl.append(b);
   }
