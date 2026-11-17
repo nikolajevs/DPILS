@@ -67,6 +67,7 @@ if (!has('--linux-only')) {
   fs.copyFileSync(path.join(nd, 'node.exe'), path.join(dir, 'node.exe'));
   fs.copyFileSync(path.join(nd, 'LICENSE'), path.join(dir, 'node-LICENSE.txt'));
   fs.copyFileSync(path.join(ROOT, 'tools', 'server-kit', 'start.cmd'), path.join(dir, 'start.cmd'));
+  fs.writeFileSync(path.join(dir, 'start.cmd'), fs.readFileSync(path.join(dir, 'start.cmd'), 'utf8').replace(/\r?\n/g, '\r\n'));   // cmd wants CRLF whatever the checkout did
   fillKit(dir);
   zip(dir, path.join(OUT, 'dpils-server-windows.zip'));
 }
@@ -80,6 +81,7 @@ if (!has('--win-only')) {
   fs.copyFileSync(path.join(nd, 'bin', 'node'), path.join(dir, 'node')); fs.chmodSync(path.join(dir, 'node'), 0o755);
   fs.copyFileSync(path.join(nd, 'LICENSE'), path.join(dir, 'node-LICENSE.txt'));
   fs.copyFileSync(path.join(ROOT, 'tools', 'server-kit', 'start.sh'), path.join(dir, 'start.sh')); fs.chmodSync(path.join(dir, 'start.sh'), 0o755);
+  fs.writeFileSync(path.join(dir, 'start.sh'), fs.readFileSync(path.join(dir, 'start.sh'), 'utf8').replace(/\r\n/g, '\n'));   // sh wants LF whatever the checkout did
   fillKit(dir);
   zip(dir, path.join(OUT, 'dpils-server-linux.zip'));
 }
