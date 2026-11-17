@@ -3,9 +3,10 @@ import { bSV, updateHud } from '../ui/hud.js';
 import { big, bigC, bigPpm, closeMap, openMap } from '../ui/map.js';
 import { QUALITY, TIMES, qi, setQuality, setTime, timeI } from '../render/lighting.js';
 import { P, freeSpot, keys, setFly, teleport, touch } from './player.js';
+import { PERF } from './perf.js';
 import { PLACES } from '../ui/places.js';
 import { SPEEDS, TX, rigaNow, setClock, updateClockUI } from '../transit/transit.js';
-import { canvas } from '../render/renderer.js';
+import { camera, canvas } from '../render/renderer.js';
 import { $ } from '../core/env.js';
 
 /* ---------- input ---------- */
@@ -25,7 +26,7 @@ canvas.addEventListener('pointermove', e => {
   if (e.pointerType === 'touch') {
     if (e.pointerId === joyId) { let dx = e.clientX - jx, dy = e.clientY - jy; const l = Math.hypot(dx, dy), m = 50; if (l > m) { dx *= m / l; dy *= m / l; } touch.mx = dx / m; touch.mz = -dy / m; $('joyKnob').style.transform = `translate(${dx}px,${dy}px)`; }
     else if (e.pointerId === lookId) { look(e.clientX - lx, e.clientY - ly, 0.005); lx = e.clientX; ly = e.clientY; }
-  } else if (STATE.locked || drag) look(e.movementX || 0, e.movementY || 0, 0.0023);
+  } else if (STATE.locked || drag) look(e.movementX || 0, e.movementY || 0, 0.0023 * (STATE.mp ? camera.fov / 66 : 1));   // zoomed in (the scope) the mouse turns slower
 });
 const up = e => { if (e.pointerId === joyId) { joyId = null; touch.mx = touch.mz = 0; $('joy').hidden = true; } if (e.pointerId === lookId) lookId = null; if (e.pointerType !== 'touch') drag = false; };
 canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
@@ -53,7 +54,7 @@ $('clkBack').onclick = () => { setClock(TX.sec - 3600, false); canvas.focus(); }
 $('clkFwd').onclick = () => { setClock(TX.sec + 3600, false); canvas.focus(); };
 $('clkNow').onclick = () => { const n = rigaNow(); TX.day = n.day; TX.si = 0; setClock(n.sec, true); canvas.focus(); };
 $('clkFirst').onclick = e => { const t = +e.currentTarget.dataset.t; if (!isNaN(t)) setClock(t - 120, false); canvas.focus(); };
-$('bQuality').onclick = () => { setQuality((qi + 1) % QUALITY.length); canvas.focus(); };
+$('bQuality').onclick = () => { PERF.auto = false; setQuality((qi + 1) % QUALITY.length); canvas.focus(); };
 bSV.addEventListener('pointerdown', updateHud);
 $('bHelp').onclick = () => { if (document.pointerLockElement) document.exitPointerLock(); $('start').hidden = false; $('go').textContent = 'Продолжить'; };
 big.addEventListener('click', e => { if (e.target === big) closeMap(); });

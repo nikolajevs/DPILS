@@ -49,10 +49,11 @@ function setTime(i) {
 const QUALITY = [
   { name: 'высокая', shadow: Math.min(4096, MAXTEX), pr: 2, tree: 300, det: 700, far: 4200, msaa: 4, ao: 1, bloom: 1 },
   { name: 'средняя', shadow: 2048, pr: 1.25, tree: 170, det: 520, far: 3000, msaa: 4, ao: 1, bloom: 1 },
-  { name: 'низкая', shadow: 0, pr: 1, tree: 100, det: 360, far: 2400, msaa: 0, ao: 0, bloom: 0 }
+  { name: 'низкая', shadow: 0, pr: 1, tree: 100, det: 360, far: 2400, msaa: 0, ao: 0, bloom: 0 },
+  { name: 'минимум', shadow: 0, pr: 0.7, tree: 50, det: 200, far: 1500, msaa: 0, ao: 0, bloom: 0 }   // for weak machines: a smaller picture, near houses only
 ];
 let qi = WEAK_GPU || matchMedia('(pointer: coarse)').matches ? 1 : 0;
-try { const s = localStorage.getItem('dpils-quality2'); if (s != null) qi = Math.max(0, Math.min(2, +s)); } catch (e) {}
+try { const s = localStorage.getItem('dpils-quality2'); if (s != null) qi = Math.max(0, Math.min(QUALITY.length - 1, +s)); } catch (e) {}
 function setQuality(i) {
   qi = i; const q = QUALITY[i];
   $('bQuality').textContent = 'Графика: ' + q.name;

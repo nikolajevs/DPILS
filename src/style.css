@@ -221,3 +221,8 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
 .mp-voice .denied { display: none; color: #ff9b8f; } .mp-voice[data-mic="denied"] .denied { display: inline; }
 .mp-voice #mpVoiceList::before { content: "🔊 "; } .mp-voice #mpVoiceList:empty::before { content: ""; }
 .mp-tag.speaking { box-shadow: 0 0 0 2px #6c6; }
+.mp-scope { position: fixed; inset: 0; z-index: 4; pointer-events: none; background: radial-gradient(circle at center, transparent 0, transparent 36vmin, #000 36.4vmin); }
+.mp-scope i, .mp-scope b { position: absolute; background: rgba(0, 0, 0, .85); }
+.mp-scope i { left: 50%; top: calc(50% - 36vmin); width: 1px; height: 72vmin; }
+.mp-scope b { top: 50%; left: calc(50% - 36vmin); height: 1px; width: 72vmin; }
+.mp-scope::after { content: ""; position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%; background: #d33; }

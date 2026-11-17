@@ -64,7 +64,7 @@ wss.on('connection', ws => {
       p.yaw = num(m.yaw, 100); p.pitch = num(m.pitch, 1.6); p.eye = Math.max(0.9, Math.min(1.8, num(m.h, 1.8) || 1.7));
       p.hist.push([t0, p.x, p.y, p.z]); while (p.hist.length > 2 && t0 - p.hist[0][0] > 1000) p.hist.shift();
     } else if (m.t === 'shoot' && p.alive) {
-      const W = WEAPONS[m.w === 1 ? 1 : 0]; if (!Array.isArray(m.rays) || !m.rays.length) return;
+      const wi = m.w === 1 || m.w === 2 ? m.w : 0, W = WEAPONS[wi]; if (!Array.isArray(m.rays) || !m.rays.length) return;
       if (t0 - p.lastShot < W.gapMs) return; p.lastShot = t0;
       const o = [p.x, p.y, p.z], out = [], hits = new Map(), lag = t0 - 120 - Math.min(300, p.rtt / 2);
       for (const ray of m.rays.slice(0, W.pellets)) {   // a rifle shot is one ray, a shotgun shot is up to eight pellets
@@ -79,11 +79,11 @@ wss.on('connection', ws => {
         h.dmg += (head ? W.head : W.dmg) * k; h.head = h.head || head; hits.set(v.id, h);
       }
       if (!out.length) return;
-      all({ t: 'shot', id: p.id, w: m.w === 1 ? 1 : 0, o, rays: out });
+      all({ t: 'shot', id: p.id, w: wi, o, rays: out });
       for (const { v, dmg, head } of hits.values()) {
         v.hp -= Math.round(dmg); send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: o[0] - v.x, dz: o[2] - v.z }); send(p, { t: 'hit', id: v.id, head, kill: v.hp <= 0 });
         if (v.hp <= 0) {
-          v.alive = false; v.deaths++; p.kills++; v.diedAt = t0; teamScore[p.team]++; all({ t: 'kill', killer: p.id, victim: v.id, kn: p.name, vn: v.name, kt: p.team, vt: v.team, head, w: m.w === 1 ? 1 : 0 }); sendBoard();
+          v.alive = false; v.deaths++; p.kills++; v.diedAt = t0; teamScore[p.team]++; all({ t: 'kill', killer: p.id, victim: v.id, kn: p.name, vn: v.name, kt: p.team, vt: v.team, head, w: wi }); sendBoard();
           if (teamScore[p.team] >= WIN) endRound(p.team);
         }
       }
