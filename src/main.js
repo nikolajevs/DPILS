@@ -4,6 +4,7 @@ import { SB } from './landmarks/schools.js';
 import { SHV } from './landmarks/shops.js';
 // every module, latest first: a module is evaluated after the earlier ones it needs (see tools/check.js)
 import { frame } from './game/loop.js';
+import { PERF } from './game/perf.js';
 import { MP, enablePlay } from './game/mp.js';
 import { ambProbe, ambStatus } from './game/ambience.js';
 import { statEvent, statsOf } from './game/stats.js';
@@ -11,6 +12,7 @@ import './game/input.js';
 import './ui/hud.js';
 import './ui/map.js';
 import { PP, renderFrame, warmUp } from './render/post.js';
+import { splitBigMeshes } from './render/chunks.js';
 import { QUALITY, TIMES, qi, setQuality, setTime, timeI } from './render/lighting.js';
 import { P, setFly, teleport } from './game/player.js';
 import './ui/places.js';
@@ -68,7 +70,7 @@ import { $, C } from './core/env.js';
 /* ---------- build everything ----------
    Each step gets a share of the loading bar by its weight: about how many milliseconds it takes on a reference
    machine (the bar is timed by them, scaled to how fast this machine runs the steps). */
-const W = { materials: 1100, ground: 2800, lines: 320, houses: 1450, blocks: 110, landmarks: 650, fortress: 2750, trees: 1380, transit: 100, shaders: 1800, frame: 1500 };
+const W = { materials: 1100, ground: 2800, lines: 320, houses: 1450, blocks: 110, landmarks: 650, fortress: 2750, trees: 1380, transit: 100, split: 900, shaders: 1800, frame: 1500 };
 const WSUM = Object.values(W).reduce((a, b) => a + b, 0);
 let wDone = 0;
 const step = (text, w, reported) => {
@@ -91,6 +93,7 @@ const step = (text, w, reported) => {
     const lamps = buildLamps(); setTime(timeI);
     await step('Сажаю деревья…', W.trees); const trees = buildTrees();
     await step('Выпускаю трамваи и автобусы на линии…', W.transit); const tripsN = buildTransit();
+    await step('Делю землю и улицы на участки…', W.split); splitBigMeshes(scene);   // the meshes over the whole city, cut into tiles that can be culled (src/render/chunks.js)
     if (TERR.on) scene.traverse(o => { if (!o.isMesh || !o.frustumCulled || !o.geometry) return; const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere(); if (g.boundingSphere && !g.userData.terrGrown) { g.boundingSphere.radius += 70; g.userData.terrGrown = true; } });
     // the shaders of every material, a few at a time, then the first frame (shadow map, environment, post-processing)
     await step('Готовлю шейдеры…', W.shaders, true); await warmUp(f => loading.part(f), loading.frame);
@@ -99,6 +102,6 @@ const step = (text, w, reported) => {
     loading.done('Готово: ' + BLD.length.toLocaleString('ru') + ' зданий, ' + LINES.length.toLocaleString('ru') + ' улиц и дорожек, ' + trees.toLocaleString('ru') + ' деревьев, ' + lamps.toLocaleString('ru') + ' фонарей' + (tripsN ? ', ' + tripsN.toLocaleString('ru') + ' рейсов в расписании' : '') + '.');
     $('view').classList.add('shown');
     $('go').disabled = false; enablePlay(); $('go').focus();
-    window.__city = { ambProbe, ambStatus, statEvent, statsOf, MP, STATE, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, updateBoard, P, teleport, setFly, setTime, fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU };
+    window.__city = { PERF, ambProbe, ambStatus, statEvent, statsOf, MP, STATE, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, updateBoard, P, teleport, setFly, setTime, fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU };
   } catch (e) { console.error(e); loading.fail('Ошибка при сборке города: ' + e.message); }
 })();

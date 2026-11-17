@@ -29,11 +29,29 @@ function drawMap(ctx, w, h, cx, cz, ppm, dpr, detail) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 const mini = $('minimap'), mctx = mini.getContext('2d'); STATE.mapTimer = 0;
+/* The minimap is put together from square tiles of the map drawn once and kept: drawing the houses, areas and streets
+   of the whole window anew every 0.15 s took up to a third of the main thread in flight (thousands of houses in view).
+   Tiles are 256 CSS pixels at zoom levels half an octave apart; the level is the next finer one, scaled down to the
+   zoom of the moment, and each tile carries a 2 px margin so the scaled tiles overlap without seams. */
+const MT = { T: 256, pad: 2, max: 20, cache: new Map() };
+function miniTile(lv, i, j, dpr) {
+  const key = lv + ':' + i + ':' + j + ':' + (STATE.night ? 1 : 0) + ':' + dpr;
+  let c = MT.cache.get(key);
+  if (c) { MT.cache.delete(key); MT.cache.set(key, c); return c; }   // the cache keeps the most recently used tiles
+  const ppm = Math.pow(2, lv / 2), S = MT.T + 2 * MT.pad, size = MT.T / ppm;
+  c = document.createElement('canvas'); c.width = c.height = Math.round(S * dpr);
+  drawMap(c.getContext('2d'), S, S, (i + 0.5) * size, (j + 0.5) * size, ppm, dpr, ppm > 0.22 ? 2 : ppm > 0.07 ? 1 : 0);
+  MT.cache.set(key, c); if (MT.cache.size > MT.max) MT.cache.delete(MT.cache.keys().next().value);
+  return c;
+}
 function drawMini() {
   const css = mini.clientWidth || 190, dpr = Math.min(2, window.devicePixelRatio || 1);
   if (mini.width !== Math.round(css * dpr)) mini.width = mini.height = Math.round(css * dpr);
   const ppm = P.fly ? Math.max(0.03, css / (700 + P.y * 9)) : css / 380;
-  drawMap(mctx, css, css, P.x, P.z, ppm, dpr, ppm > 0.22 ? 2 : ppm > 0.07 ? 1 : 0);
+  const lv = Math.ceil(Math.log2(ppm) * 2 - 1e-6), s = ppm / Math.pow(2, lv / 2), size = MT.T / Math.pow(2, lv / 2), half = css / 2 / ppm, S = (MT.T + 2 * MT.pad) * s;
+  mctx.setTransform(dpr, 0, 0, dpr, 0, 0); mctx.imageSmoothingEnabled = true;
+  for (let j = Math.floor((P.z - half) / size); j <= Math.floor((P.z + half) / size); j++) for (let i = Math.floor((P.x - half) / size); i <= Math.floor((P.x + half) / size); i++)
+    mctx.drawImage(miniTile(lv, i, j, dpr), css / 2 + (i * size - P.x) * ppm - MT.pad * s, css / 2 + (j * size - P.z) * ppm - MT.pad * s, S, S);
   drawVehicles(mctx, P.x, P.z, ppm, css, css, ppm > 0.1 ? 3.5 : 2.5);
   if (STATE.mapOverlay) STATE.mapOverlay(mctx, P.x, P.z, ppm, css, css);
   arrow(mctx, css / 2, css / 2, 1);

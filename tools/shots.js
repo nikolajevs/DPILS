@@ -17,7 +17,7 @@
    and Playwright with a Chromium (npm i -D playwright && npx playwright install chromium, unless one is installed).
    WebGL runs on SwiftShader (no GPU): the city takes 3–5 minutes to build and each frame up to a few minutes; run one
    at a time (two browsers at once ran out of time), in the background, and give it time. VW and VH set the size
-   (1100 × 700). */
+   (1100 × 700). The resolution of the picture does not follow the frame rate here (PERF.dyn off): it is drawn whole. */
 'use strict';
 const { chromium } = require('playwright');
 const URL = process.env.URL || 'http://127.0.0.1:8765/index.html';
@@ -31,7 +31,7 @@ const URL = process.env.URL || 'http://127.0.0.1:8765/index.html';
   await p.addInitScript(() => { try { localStorage.setItem('dpils-quality2', '1'); } catch (e) {} });   // the high quality setting
   await p.goto(URL, { waitUntil: 'load' });
   try { await p.waitForFunction(() => window.__city, null, { timeout: 600000, polling: 500 }); } catch (e) { console.log('LOAD FAIL\n' + errs.join('\n')); await b.close(); process.exit(2); }
-  await p.evaluate(t => { document.getElementById('go').click(); const c = window.__city; c.setTime(t); c.P.fly = true; document.getElementById('hud').hidden = true; }, +t);
+  await p.evaluate(t => { document.getElementById('go').click(); const c = window.__city; c.PERF.dyn = false; c.setTime(t); c.P.fly = true; document.getElementById('hud').hidden = true; }, +t);
   for (const v of views) {
     const [name, pos, tgt, fov] = v.split(':'), [x, z, h] = pos.split(',').map(Number), [tx, tz, th] = tgt.split(',').map(Number);
     await p.evaluate(([x, z, h, tx, tz, th, fov]) => { const c = window.__city, P = c.P, g = c.terrainH(tx, tz); P.x = x; P.z = z; P.y = g + h; const dx = tx - x, dz = tz - z;

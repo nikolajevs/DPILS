@@ -1,7 +1,7 @@
 import { STATE } from '../core/state.js';
 import { resize } from '../game/loop.js';
 import { TX } from '../transit/transit.js';
-import { lampHeads, lampPools, matHeadDay, matHeadNight } from '../world/lamps.js';
+import { lampsOn } from '../world/lamps.js';
 import { lmNight } from '../landmarks/index.js';
 import { matGold } from '../world/data.js';
 import { allMats } from './materials.js';
@@ -42,7 +42,7 @@ function setTime(i) {
   // the environment of each time of day is filtered once (the GGX filter of three.js is costly on weak GPUs) and kept
   if (!ENV[i]) ENV[i] = pmrem.fromScene(envScene, 0, 0.1, 100);
   STATE.envRT = ENV[i]; scene.environment = STATE.envRT.texture;
-  if (lampHeads) { lampHeads.material = T.lamps ? matHeadNight : matHeadDay; lampPools.visible = T.lamps; }
+  lampsOn(T.lamps);
   for (const g of TX.glow) g.visible = T.lamps;
   STATE.shadowDirty = true; STATE.mapTimer = 0;
 }

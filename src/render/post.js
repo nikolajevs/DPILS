@@ -86,7 +86,9 @@ const fsCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), fsScene = new TH
 const fsQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), null); fsQuad.frustumCulled = false; fsScene.add(fsQuad);
 const fsMat = (frag, uniforms) => new THREE.ShaderMaterial({ vertexShader: FS_VERT, fragmentShader: frag, uniforms, depthTest: false, depthWrite: false });
 const PROJ = new THREE.Vector4(), PXV = new THREE.Vector2();
-const PP = { rt: null, ao: null, bl: [], w: 0, h: 0, msaa: -1 };
+// scale: the share of the drawing buffer the scene is drawn at (set by the frame rate, see src/game/perf.js); the
+// last pass draws it up to the full canvas
+const PP = { rt: null, ao: null, bl: [], w: 0, h: 0, msaa: -1, scale: 1 };
 let matAO, matBright, matDown, matFinal;
 if (POST) {
   const t = () => ({ value: null }), v2 = () => ({ value: new THREE.Vector2() });
@@ -96,6 +98,7 @@ if (POST) {
   matFinal = fsMat(FINAL_FRAG, { tDepth: t(), uProj: { value: PROJ }, tScene: t(), tAO: t(), tB1: t(), tB2: t(), tB3: t(), uAoPx: v2(), uExposure: { value: 1 }, uBloom: { value: 0 }, uAo: { value: 0 }, uSeed: { value: 0 } });
 }
 function ppTargets(w, h, msaa) {
+  w = Math.max(1, Math.round(w * PP.scale)); h = Math.max(1, Math.round(h * PP.scale));
   if (PP.rt && PP.w === w && PP.h === h && PP.msaa === msaa) return;
   for (const t of [PP.rt, PP.ao, ...PP.bl]) if (t) t.dispose();
   PP.w = w; PP.h = h; PP.msaa = msaa;

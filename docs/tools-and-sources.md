@@ -8,7 +8,6 @@
 
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
-| Claude (FPS) | `claude/fps-optimization-d9f909` | Частота кадров: отсечение деревьев и фонарей, нарезка больших мешей, мини-карта, адаптивное разрешение | `src/world/trees.js`, `src/world/lamps.js`, `src/render/post.js`, `src/render/chunks.js`, `src/render/lighting.js`, `src/game/perf.js`, `src/ui/map.js`, `src/main.js` |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
 
