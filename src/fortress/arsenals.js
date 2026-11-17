@@ -40,6 +40,12 @@ const FORT_BLD = [
     entrance: [[129.1, 0], [0, 0], 13],   // side and bay of the main door, counted from its first corner
     wings: [[0, 129.2, -18.5, 0], [0, 18.7, -53.8, -18.5]],
     roofs: [[null, 0, 129.2, -18.5, 0, 1], [null, 0, 18.7, -53.8, -18.5, 0], [[-2472.1, -395.1, -0.1440, 0.9896], 0, 93.1, 0, 18, 1]]
+  },
+  { // the artillery smithy, Imperatora iela 2 (Wikimedia Commons, "Eka Imperatora iela 2.jpg"): the same order on a
+    // single long block, pale ochre, brick chimneys along the roof. Frame and size from its outline, the eaves the lidar
+    key: 'smi', f: [-2621.7, -291.2, -0.6219, 0.7831], H: 9.4, col: [236, 214, 168],
+    outline: [[0, 0], [62.7, 0], [62.7, -13.1], [0, -13.1]], wings: [[0, 62.7, -13.1, 0]],
+    roofs: [[null, 0, 62.7, -13.1, 0, 1]]
   }
 ];
 let FB_HULLS = null;   // world outlines of the wings and annexes, for dropping cadastre buildings, trees and terrain cuts
@@ -240,21 +246,44 @@ const FORT_CLASSIC = [
       [44.9, 0, 44.9, 0.9, 0, { H: 13.2 }], [67.4, 0, 67.4, 0.9, 0, { H: 13.2 }],
       [0, -17.3, 44.9, -17.3, 11], [67.4, -17.3, 106.7, -17.3, 10], [44.9, -17.3, 67.4, -17.3, 5, { H: 13.2, floors: 3 }],
       [0, -17.3, 0, 0, 4], [106.7, -17.3, 106.7, 0, 4], [44.9, -17.3, 44.9, 0, 0, { H: 13.2, y0: 9.2 }], [67.4, -17.3, 67.4, 0, 0, { H: 13.2, y0: 9.2 }]],
-    roofs: [[0, 106.7, -17.3, 0, 9.2], [44.9, 67.4, -17.3, 0.9, 13.2]], steps: [53.1, 59.2, 0.9, 3.2] }
+    roofs: [[0, 106.7, -17.3, 0, 9.2], [44.9, 67.4, -17.3, 0.9, 13.2]], steps: [53.1, 59.2, 0.9, 3.2] },
+  // officers' houses and the officers' club in the same order (Wikimedia Commons, categories "1st Oficieru iela",
+  // "2nd Oficieru iela", "Konstantīna iela (Daugavpils)", "Hekeļa iela (Daugavpils)"): a rusticated ground floor with a
+  // keystone over each window, rendered upper floors with white surrounds, a white band and cornice, a hipped roof.
+  // Frames and sizes are the outlines in citydata.js (from OSM), the eaves the LGIA lidar (src/buildings/lidar.js)
+  ...[
+    ['of2', [-2786.6, -341.9, -0.4897, 0.8719], 68.8, 19.0, 10.2, [222, 168, 124]],                                   // 1. Oficieru iela 2
+    ['of4', [-2767.7, -342.3, 0.4923, -0.8704], 53.4, 17.0, 9.7, [224, 152, 118], { floors: 3, gz: 3.5, fh: 2.95 }],   // 1. Oficieru iela 4: three storeys, salmon
+    ['of6', [-2730.7, -407.6, 0.4973, -0.8676], 54.3, 16.3, 9.4, [226, 160, 120]],                                    // 1. Oficieru iela 6, the district engineering office
+    ['of8', [-2695.8, -460.2, 0.4858, -0.8741], 69.8, 21.7, 10.6, [222, 190, 126], { plain: 1 }],                      // 1. Oficieru iela 8: plain render, rusticated quoins
+    ['o21', [-2911.7, -423.0, 0.4915, -0.8709], 53.5, 16.8, 9.4, [228, 178, 120]],                                    // 2. Oficieru iela 1
+    ['o23', [-2862.7, -543.8, -0.4900, 0.8717], 54.5, 16.5, 9.2, [230, 174, 120]],                                    // 2. Oficieru iela 3
+    ['ko8', [-2930.4, -518.8, 0.8832, 0.4689], 39.0, 22.0, 9.0, [242, 220, 148]],                                     // Konstantīna iela 8, restored in yellow
+    ['he4', [-2967.4, -540.2, 0.4936, -0.8697], 54.5, 21.3, 9.3, [224, 178, 110]],                                    // Hekeļa iela 4, the officers' club
+    ['he6', [-2940.0, -597.9, 0.4888, -0.8724], 70.4, 17.1, 9.2, [222, 170, 118]]                                     // Hekeļa iela 6
+  ].map(([key, f, L, W, H, col, o = {}]) => {
+    const nL = Math.round(L / 3.4), nW = Math.round(W / 3.4), door = Math.floor(nL / 2);
+    return Object.assign({ key, f, H, col, wings: [[0, L, -W, 0]], roofs: [[0, L, -W, 0, H]],
+      sides: [[0, 0, L, 0, nL, { door }], [0, -W, L, -W, nL, { door }], [0, -W, 0, 0, nW], [L, -W, L, 0, nW]] }, o);
+  })
 ];
 function fortClassicSide(K, B, side, inside) {
-  const [ua, va, ub, vb, n, opt = {}] = side, { g, L } = fortSideFrame(B.f, [ua, va], [ub, vb], inside), H = opt.H || B.H, y0 = opt.y0 || 0, fl = opt.floors || 2;
-  const Y = B.col, WH = [242, 238, 228], GZ = 4.4, P = (u, v, y) => fortP(g, u, v, y), bay = L / Math.max(1, n), hG = [], hU = [], wins = [];
-  const floorY = f => f === 0 ? 0 : GZ + 0.25 + (f - 1) * 4.0;
+  const [ua, va, ub, vb, n, opt = {}] = side, { g, L } = fortSideFrame(B.f, [ua, va], [ub, vb], inside), H = opt.H || B.H, y0 = opt.y0 || 0, fl = opt.floors || B.floors || 2;
+  // the ground floor GZ high, the upper ones FH; the windows scaled down with lower storeys
+  const Y = B.col, WH = [242, 238, 228], GZ = B.gz || 4.4, FH = B.fh || 4.0, ks = Math.min(1, FH / 4.0), P = (u, v, y) => fortP(g, u, v, y), bay = L / Math.max(1, n), hG = [], hU = [], wins = [];
+  const floorY = f => f === 0 ? 0 : GZ + 0.25 + (f - 1) * FH;
   for (let k = 0; k < n; k++) {
     const c = (k + 0.5) * bay;
     if (y0 < GZ) {
       if (opt.arcade != null) { const door = k === opt.arcade; hG.push({ vc: c, w: 1.3, ys: 2.7, ya: 4.0, sh: 'round', yb: door ? 0.35 : 0.9, door, arch: 1 }); }
-      else hG.push({ vc: c, w: 0.62, ys: 3.05, ya: 3.05, sh: 'rect', yb: 1.0 });
+      else if (k === opt.door) hG.push({ vc: c, w: 0.75, ys: GZ * 0.72, ya: GZ * 0.72, sh: 'rect', yb: 0.3, door: 1 });
+      else hG.push({ vc: c, w: 0.62, ys: GZ * 0.693, ya: GZ * 0.693, sh: 'rect', yb: GZ * 0.227 });
     }
-    for (let f = 1; f < fl; f++) { const yb = floorY(f) + 0.95; if (yb > y0) hU.push({ vc: c, w: 0.6, ys: yb + (f === 2 ? 1.9 : 2.2), ya: yb + (f === 2 ? 1.9 : 2.2), sh: 'rect', yb, f }); }
+    for (let f = 1; f < fl; f++) { const yb = floorY(f) + 0.95 * ks, wh = (f === 2 ? 1.9 : 2.2) * ks; if (yb > y0) hU.push({ vc: c, w: 0.6, ys: yb + wh, ya: yb + wh, sh: 'rect', yb, f }); }
   }
-  if (y0 < GZ) fortWallPlane(K.rus, g, 0, 1, -0.02, L + 0.02, -0.3, GZ, hG, FTS[5], Y);
+  if (y0 < GZ) fortWallPlane(B.plain ? K.ren : K.rus, g, 0, 1, -0.02, L + 0.02, -0.3, GZ, hG, B.plain ? LMWS[1] : FTS[5], Y);
+  // a plain front has rusticated quoins at its ends instead (1. Oficieru iela 8)
+  if (B.plain && y0 === 0) for (const v of [0.6, L - 0.6]) fortTBox(K.rus, g, 0, 0.08, v - 0.6, v + 0.6, -0.3, H - 0.6, FTS[5], sh(Y, 1.04), 'ensw');
   // one band of wall per storey: fortWallPlane cuts one row of openings at a time
   const cuts = [Math.max(GZ, y0)]; for (let f = 2; f < fl; f++) if (floorY(f) > cuts[cuts.length - 1]) cuts.push(floorY(f)); cuts.push(H);
   for (let i = 0; i < cuts.length - 1; i++) fortWallPlane(K.ren, g, 0, 1, -0.02, L + 0.02, cuts[i], cuts[i + 1], hU.filter(o => o.yb >= cuts[i] && o.ys <= cuts[i + 1]), LMWS[1], Y);
@@ -270,11 +299,20 @@ function fortClassicSide(K, B, side, inside) {
       fortTile(K.det, g, -0.44, 1, a + 0.15, b - 0.15, o.yb, o.ys, o.door ? FTT.door : FTT.cwin);
       continue;
     }
-    fortTile(K.det, g, -0.2, 1, a, b, o.yb, top, FTT.cwin);
+    fortTile(K.det, g, -0.2, 1, a, b, o.yb, top, o.door ? FTT.door : FTT.cwin);
     for (const s of [-1, 1]) fortTBox(K.ren, g, -0.2, 0, o.vc + s * o.w, o.vc + s * o.w, o.yb, top, LMWS[1], sh(Y, 0.85), s < 0 ? 's' : 'n');
     fortTBox(K.ren, g, -0.2, 0, a, b, top, top, LMWS[1], sh(Y, 0.8), 'b');
+    if (o.door) {   // a white hood with a small pediment over the door, and a step
+      fortTBox(K.ren, g, 0, 0.35, a - 0.3, b + 0.3, top + 0.12, top + 0.3, LMWS[1], WH, 'enstb');
+      const A = P(0.3, a - 0.3, top + 0.3), B2 = P(0.3, b + 0.3, top + 0.3), T = P(0.3, o.vc, top + 0.95);
+      K.ren.q(A, B2, T, T, [g[2], 0, g[3]], [0, 0, 1, 0, 0.5, 0.4, 0.5, 0.4], WH);
+      for (const s of [-1, 1]) { const E = P(0.3, o.vc + s * (o.w + 0.3), top + 0.3), E0 = P(0, o.vc + s * (o.w + 0.3), top + 0.3), T0 = P(0, o.vc, top + 0.95);
+        K.ren.q(E, T, T0, E0, [s * -g[3] * 0.6, 0.8, s * g[2] * 0.6], [0, 0, 1, 0, 1, 0.3, 0, 0.3], sh(WH, 0.9)); }
+      fortTBox(K.gra, g, 0, 0.6, a - 0.25, b + 0.25, -0.3, 0.3, FTS[1], [168, 164, 158], 'enstw');
+      continue;
+    }
     fortTBox(K.ren, g, 0, 0.12, a - 0.08, b + 0.08, o.yb - 0.1, o.yb, LMWS[1], WH, 'etb');                     // sill
-    if (!o.f) fortTBox(K.ren, g, 0, 0.12, o.vc - 0.2, o.vc + 0.2, top, top + 0.55, LMWS[1], WH, 'enst');       // keystone in the rustication
+    if (!o.f && !B.plain) fortTBox(K.ren, g, 0, 0.12, o.vc - 0.2, o.vc + 0.2, top, top + 0.55, LMWS[1], WH, 'enst');   // keystone in the rustication
     else {                                                                                                   // white surround and a small cornice
       for (const s of [-1, 1]) fortTBox(K.ren, g, 0, 0.08, o.vc + s * (o.w + 0.09) - 0.09, o.vc + s * (o.w + 0.09) + 0.09, o.yb, top + 0.15, LMWS[1], WH, 'ens');
       fortTBox(K.ren, g, 0, 0.08, a - 0.18, b + 0.18, top, top + 0.15, LMWS[1], WH, 'ens');
