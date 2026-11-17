@@ -17,6 +17,8 @@ import { createVoice } from './voice.js';
 import { openLocal } from './local.js';
 import { ambStart, ambTick } from './ambience.js';
 import { statEvent } from './stats.js';
+import { playerKey, boardOn, setBoardOn } from './identity.js';
+import { initLeaders } from './leaders.js';
 import { $ } from '../core/env.js';
 
 /* ---------- online shooter: deathmatch on the city map ----------
@@ -335,7 +337,7 @@ function join(local) {   // local: { bots, level, mode, arena } for the game aga
   MP.spawn = +el('mpSpawn').value; MP.wantTeam = +el('mpTeam').value; MP.url = url; MP.local = local || null; loadAvatar().then(a => { if (a) { for (const r of remotes.values()) attachAvatar(r); upgradeViewmodels(); } }); msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true; el('goTrain').disabled = true;
   let ws; try { ws = local ? openLocal(local) : new WebSocket(url); } catch (e) { msg.textContent = 'Неверный адрес сервера.'; el('goPlay').disabled = false; el('goTrain').disabled = false; return; }
   MP.ws = ws; MP.started = false;
-  ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, team: MP.wantTeam, ...s })); };
+  ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, team: MP.wantTeam, key: local ? undefined : playerKey() || undefined, ...s })); };
   ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (err) { console.error(err); } };
   ws.onerror = () => { if (!MP.started) msg.textContent = 'Не удалось подключиться к ' + url; };
   ws.onclose = () => { if (MP.started) { el('mpDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; if (!msg.textContent.startsWith('На сервере') && !msg.textContent.startsWith('Не удалось')) msg.textContent = 'Соединение закрыто.'; } };
@@ -348,6 +350,7 @@ function initUi() {
   el('mpName').placeholder = 'Игрок' + (100 + Math.floor(Math.random() * 900));
   if (!el('mpName').value) el('mpName').value = el('mpName').placeholder;
   const rs = el('mpRespawnAt'); rs.textContent = ''; for (const [v, t] of [['mate', 'Рядом с товарищем'], ['rand', 'Случайное место']].concat(PLACES.map((p, i) => [i, p[0]]))) { const o = document.createElement('option'); o.value = v; o.textContent = t; rs.append(o); }
+  el('mpNoBoard').checked = !boardOn(); el('mpNoBoard').onchange = () => setBoardOn(!el('mpNoBoard').checked); initLeaders(() => (MP.on ? (MP.local ? '' : MP.url) : serverUrl()));
   el('goPlay').onclick = () => join(); el('goTrain').onclick = () => { const o = { bots: +el('trBots').value, level: el('trLevel').value, mode: el('trMode').value, arena: el('trArena').value }; try { localStorage.setItem('dpils.train', JSON.stringify(o)); } catch (e) {} join(o); };
   try { const t = JSON.parse(localStorage.getItem('dpils.train') || '{}'); for (const [k, id] of [['bots', 'trBots'], ['level', 'trLevel'], ['mode', 'trMode'], ['arena', 'trArena']]) if (t[k] != null && [...el(id).options].some(o => o.value === String(t[k]))) el(id).value = t[k]; } catch (e) {} el('mpRespawn').onclick = respawn; el('mpLeave').onclick = () => location.reload(); el('mpOverBtn').onclick = () => location.reload();
   el('bLeave').onclick = () => location.reload();
