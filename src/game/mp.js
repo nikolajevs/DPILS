@@ -21,6 +21,7 @@ import { playerKey, boardOn, setBoardOn, account } from './identity.js';
 import { initLeaders } from './leaders.js';
 import { $ } from '../core/env.js';
 import { crackSound, hitSound, loadSounds, shotSound } from './sfx.js';
+import { tracerShot, tickFx, clearFx, ejectShell, muzzleSmoke, muzzleTex } from './impacts.js';
 
 /* ---------- online shooter: deathmatch on the city map ----------
    The server (server/index.mjs) owns health, kills and respawns. This module: the connection, the other players
@@ -43,7 +44,6 @@ const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: fa
 STATE.mp = false;
 let voice = null;
 const remotes = new Map();   // id → { name, group, buf: [{ t, x, y, z, yaw, pitch }], tag }
-const tracers = [];
 const DEFAULT_SERVER = '';   // e.g. 'wss://dpils-game.example.com'; empty: ?server=…, the saved address, or localhost
 
 /* ---------- geometry ---------- */
@@ -133,7 +133,9 @@ const gun = new THREE.Group(), models = WEAPONS.map(() => new THREE.Group());
   models.forEach((m, k) => { m.visible = k === 0; gun.add(m); });
   gun.position.set(0.17, -0.19, -0.5); gun.scale.setScalar(0.8); gun.visible = false; camera.add(gun); scene.add(camera);
 })();
-const flash = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), worldSpace(new THREE.MeshBasicMaterial({ color: 0xffd36a }))); flash.position.set(0, 0, -0.45); flash.visible = false; gun.add(flash);
+const flash = new THREE.Sprite(worldSpace(new THREE.SpriteMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.95, depthWrite: false, fog: false }))); flash.scale.setScalar(0.3); flash.position.set(0, 0, -0.45); flash.visible = false; gun.add(flash);   // the star texture is attached on the first shot: module-scope calls into impacts.js can hit an import cycle
+const flashLight = new THREE.PointLight(0xffc36a, 0, 20, 2); flashLight.position.set(0, 0.05, -0.5); gun.add(flashLight);   // the flash lights the street for a moment
+const MV = new THREE.Vector3();
 let actx = null;
 function ac() {   // the audio context of the game sounds, with one volume knob (the settings)
   if (!actx) { actx = new (window.AudioContext || window.webkitAudioContext)(); actx.master = actx.createGain(); actx.master.gain.value = SET.vol; const lim = actx.createDynamicsCompressor(); lim.threshold.value = -6; lim.ratio.value = 12; lim.attack.value = 0.002; lim.release.value = 0.2; actx.master.connect(lim); lim.connect(actx.destination); }   // a limiter: a burst of shots does not clip
@@ -171,10 +173,15 @@ function otherShot(m) {
   let hits = 0, crack = false;
   for (const r of m.rays) {
     const len = r[3], who = r[4];
-    if (who === MP.id) continue;   // into you: 'hurt' plays that
-    if (hits < 2 && who) { const h = spot(m.o[0] + r[0] * len, m.o[1] + r[1] * len, m.o[2] + r[2] * len); if (h.d < 40) try { hitSound(ac(), actx.master, 'body', 0.6 * 4 / (4 + h.d) * (1 - h.d / 40), h.d, h.pan); } catch (e) {} hits++; }
-    else if (hits < 2 && len < wf.range - 0.5) { wallHit(m.o, r, len); hits++; }
-    if (crack || MP.dead) continue;
+    const kind = who === MP.id ? 'air' : who ? 'body' : (len < wf.range - 0.5 ? 'surface' : 'air');   // into you: no mark, 'hurt' speaks
+    let cb = null;
+    if (who !== MP.id && hits < 2) {   // the hits of its bullets near you are heard when they arrive
+      hits++;
+      if (who) { const h = spot(m.o[0] + r[0] * len, m.o[1] + r[1] * len, m.o[2] + r[2] * len); cb = () => { if (h.d < 40) try { hitSound(ac(), actx.master, 'body', 0.6 * 4 / (4 + h.d) * (1 - h.d / 40), h.d, h.pan); } catch (e) {} }; }
+      else if (kind === 'surface') cb = () => wallHit(m.o, r, len);
+    }
+    tracerShot(m.o, r, len, m.w, kind, 0xffb060, cb);
+    if (crack || MP.dead || who === MP.id) continue;
     const t = (P.x - m.o[0]) * r[0] + (P.y - m.o[1]) * r[1] + (P.z - m.o[2]) * r[2];   // the point of the bullet's path nearest to your head
     if (t < 6 || t > len + 1) continue;
     const cx = m.o[0] + r[0] * t, cy = m.o[1] + r[1] * t, cz = m.o[2] + r[2] * t, near = Math.hypot(cx - P.x, cy - P.y, cz - P.z);
@@ -188,11 +195,6 @@ function tone(f0, f1, dur, vol, type = 'sine', delay = 0) {
     g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur); o.connect(g); g.connect(actx.master); o.start(t); o.stop(t + dur + 0.02);
   } catch (e) {}
 }
-function tracer(o, d, len, color) {
-  const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(o[0] + d[0] * 1.2, o[1] - 0.1 + d[1] * 1.2, o[2] + d[2] * 1.2), new THREE.Vector3(o[0] + d[0] * len, o[1] + d[1] * len, o[2] + d[2] * len)]);
-  const m = worldSpace(new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9, fog: false })), l = new THREE.Line(g, m); l.frustumCulled = false; scene.add(l); tracers.push({ l, t: 0 });
-}
-
 /* ---------- shooting ---------- */
 const W = () => WEAPONS[MP.weapon];
 function fire(now) {
@@ -213,9 +215,11 @@ function fire(now) {
       if (h.dist <= RULES.hitR && (!best || h.t < best.t)) best = { id, t: h.t };
     }
     const len = best ? best.t : clear; rays.push([+d[0].toFixed(4), +d[1].toFixed(4), +d[2].toFixed(4), +len.toFixed(1), best ? best.id : 0]);
-    tracer(o, d, len, 0xffe9a0);
-    if (!best && clear < w.range - 0.5 && i < 2) wallHit(o, d, clear);   // the bullet strikes a wall or the ground (of a shotgun's pellets, two are heard)
+    const kind = best ? 'body' : (clear < w.range - 0.5 ? 'surface' : 'air');
+    tracerShot(o, d, len, MP.weapon, kind, 0xffe9a0, kind === 'surface' && i < 2 ? () => wallHit(o, d, clear) : null);   // the mark and the hit sound appear when the bullet arrives (of a shotgun's pellets, two are heard)
   }
+  flash.material.rotation = Math.random() * 6.283; flash.scale.setScalar(0.24 + Math.random() * 0.14);
+  ejectShell(); gun.updateWorldMatrix(true, false); flash.getWorldPosition(MV); muzzleSmoke(MV.x, MV.y, MV.z, aim());
   let real = false; try { real = shotSound(ac(), actx.master, MP.weapon, SHOT_VOL[MP.weapon]); } catch (e) {}
   if (!real) bang(w.pellets > 1 ? 0.6 : w.scope ? 0.8 : (w.vol ?? FEEL.vol), true);
   MP.ws.send(JSON.stringify({ t: 'shoot', w: MP.weapon, rays }));
@@ -310,7 +314,7 @@ function respawn() {
 function onMsg(m) {
   switch (m.t) {
     case 'hello': MP.ffa = m.mode === 'ffa'; document.body.classList.toggle('ffa', MP.ffa); if (MP.ffa) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } if (!MP.local) rememberServer(MP.url, m.server); voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team); document.body.dataset.team = m.team;
-      MP.arena = m.arena || null; if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
+      MP.arena = m.arena || null; clearFx(); if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
       if (MP.local) feed('Тренировка с ботами: ' + MP.board.filter(e => e.bot).length + ', уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || '') + '»', 'sys'); break;
     case 'spawn': {
       const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.crouch = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
@@ -328,7 +332,7 @@ function onMsg(m) {
       for (const [id, r] of remotes) if (!seen.has(id) && !r.fallT) { r.group.visible = false; r.buf.length = 0; }
       break;
     }
-    case 'shot': { if (m.id === MP.id) break; const rs = remotes.get(m.id); if (rs) rs.shotAt = performance.now(); for (const r of m.rays) tracer(m.o, r, r[3], 0xffb060); otherShot(m); break; }
+    case 'shot': { if (m.id === MP.id) break; const rs = remotes.get(m.id); if (rs) rs.shotAt = performance.now(); otherShot(m); break; }
     case 'hit': statEvent('hit', m, !!MP.local); hitT = performance.now(); if (m.kill) { tone(880, 880, 0.12, 0.25, 'triangle'); tone(1320, 1320, 0.25, 0.25, 'triangle', 0.1); } else tone(m.head ? 2600 : 1700, m.head ? 2200 : 1400, 0.07, 0.2, 'square'); { const r = remotes.get(m.id), g = r && r.group.visible ? r.group.position : null; if (g) { const s = spot(g.x, g.y + 1.2, g.z); try { hitSound(ac(), actx.master, m.head ? 'head' : 'body', 0.75 * 6 / (6 + s.d), s.d, s.pan); } catch (e) {} } } el('mpHit').className = m.head ? 'head' : m.kill ? 'kill' : ''; el('mpHit').hidden = false; break;
     case 'hurt': {
       statEvent('taken', { dmg: Math.max(0, MP.hp - m.hp) }, !!MP.local); MP.hp = m.hp; hurtT = performance.now(); { let real = false; try { real = hitSound(ac(), actx.master, 'body', 1); } catch (e) {} if (!real) tone(160, 60, 0.18, 0.4, 'sawtooth'); } el('mpHurt').hidden = false; updatePanel();
@@ -444,8 +448,8 @@ function mpTick(dt) {
     const p = pose(r, t); if (!p) { g.visible = false; continue; }
     remoteSteps(r, p, now); if (r.av) { if (r.gunW !== p.w) { r.gunW = p.w; r.av.setGun(p.w); } r.av.update(dt, { speed: r.speed || 0, air: !!r.air, dead: false, shot: now - (r.shotAt || 0) < 90 }); } g.visible = true; g.position.set(p.x, p.y - p.h, p.z); g.scale.y = p.h / 1.7; g.rotation.y = p.yaw; g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
   }
-  for (let i = tracers.length - 1; i >= 0; i--) { const tr = tracers[i]; tr.t += dt; tr.l.material.opacity = Math.max(0, 0.9 - tr.t * 9); if (tr.t > 0.1) { scene.remove(tr.l); tr.l.geometry.dispose(); tr.l.material.dispose(); tracers.splice(i, 1); } }
-  MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06; flash.visible = MP.kick > 0.6;
+  tickFx(dt);
+  MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06; flash.visible = MP.kick > 0.6; if (flash.visible && !flash.material.map) flash.material.map = muzzleTex(); flashLight.intensity = MP.kick > 0.6 ? 2.5 * MP.kick : 0;
   if (MP.reloadAt) gun.rotation.x = -0.5 * Math.sin(Math.min(1, (now - MP.reloadAt) / W().reloadMs) * Math.PI);
   if (hitT && now - hitT > 140) { hitT = 0; el('mpHit').hidden = true; }
   if (hurtT && now - hurtT > 600) { hurtT = 0; el('mpHurt').hidden = true; }
