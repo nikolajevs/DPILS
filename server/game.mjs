@@ -8,6 +8,7 @@
    game knows it. */
 import { NADE, RULES as R, WEAPONS, W_NADE, rayToSegment } from './combat.mjs';
 import { LEVELS, botName, createBrain } from './bots.mjs';
+import { validKey } from './leaderboard.mjs';
 
 const TEAMS = ['Красные', 'Синие'], HX = 5200, HY = 4200;   // bounds a bit wider than the city
 const num = (v, lim) => (typeof v === 'number' && isFinite(v) ? Math.max(-lim, Math.min(lim, v)) : 0);
@@ -25,11 +26,14 @@ export function createGame(opts) {
   const send = (p, m) => { if (p.conn) p.conn.send(JSON.stringify(m)); };
   const all = m => { const s = JSON.stringify(m); for (const p of players.values()) if (p.conn) p.conn.send(s); };
   const humans = () => [...players.values()].filter(p => !p.bot);
+  const nameBase = s => String(s || '').replace(/[^\p{L}\p{N} _.\-]/gu, '').trim().slice(0, 16) || 'Игрок';
+  const taken = n => [...players.values()].some(p => p.name === n);
   function cleanName(s) {
-    let n = String(s || '').replace(/[^\p{L}\p{N} _.\-]/gu, '').trim().slice(0, 16) || 'Игрок', base = n, k = 2;
-    while ([...players.values()].some(p => p.name === n)) n = base.slice(0, 13) + '#' + k++;
+    let n = nameBase(s), base = n, k = 2;
+    while (taken(n)) n = base.slice(0, 13) + '#' + k++;
     return n;
   }
+  const lb = opts.board || null;   // the leaderboard (leaderboard.mjs): only the humans who sent a key are in it
   const board = () => [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, bot: !!p.bot }));
   const sendBoard = () => all({ t: 'board', board: board(), score: FFA ? [] : teamScore });
   const count = k => [...players.values()].filter(p => p.team === k).length;
@@ -60,9 +64,10 @@ export function createGame(opts) {
   // damage dmg from attacker p to v (weapon w; from = where it came from): the hit and the hurt messages, and the kill
   function hurt(p, v, dmg, head, w, from) {
     if (!v.alive || dmg <= 0) return; const t0 = now();
-    v.hp -= dmg; if (p !== v) p.st.dmg += dmg + Math.min(0, v.hp); send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: from[0] - v.x, dz: from[2] - v.z }); if (p !== v) send(p, { t: 'hit', id: v.id, head, kill: v.hp <= 0, dmg: Math.min(dmg, dmg + Math.min(0, v.hp)) });
+    v.hp -= dmg; if (p !== v) { const d = dmg + Math.min(0, v.hp); p.st.dmg += d; if (p.prof) p.prof.add('dmg', d); } send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: from[0] - v.x, dz: from[2] - v.z }); if (p !== v) send(p, { t: 'hit', id: v.id, head, kill: v.hp <= 0, dmg: Math.min(dmg, dmg + Math.min(0, v.hp)) });
     if (v.hp > 0) return;
-    v.alive = false; v.deaths++; v.diedAt = t0; if (p !== v) { p.kills++; if (!FFA) teamScore[p.team]++; if (head) p.st.heads++; }
+    v.alive = false; v.deaths++; v.diedAt = t0; v.streak = 0; if (v.prof) v.prof.add('deaths');
+    if (p !== v) { p.kills++; if (!FFA) teamScore[p.team]++; if (head) p.st.heads++; if (p.prof) { p.prof.add('kills'); if (head) p.prof.add('heads'); p.streak = (p.streak || 0) + 1; p.prof.max('best', p.streak); } }
     all({ t: 'kill', killer: p.id, victim: v.id, kn: p.name, vn: v.name, kt: p.team, vt: v.team, head, w }); sendBoard();
     if (p !== v && (FFA ? p.kills : teamScore[p.team]) >= WIN) endRound(p.team, p);
   }
@@ -94,7 +99,7 @@ export function createGame(opts) {
       h.dmg += (head ? W.head : W.dmg) * k; h.head = h.head || head; hits.set(v.id, h);
     }
     if (!out.length) return;
-    p.st.shots++; if (hits.size) p.st.hitShots++;
+    p.st.shots++; if (hits.size) p.st.hitShots++; if (p.prof) { p.prof.add('shots'); if (hits.size) p.prof.add('hits'); }
     all({ t: 'shot', id: p.id, w: wi, o, rays: out });
     for (const { v, dmg, head } of hits.values()) hurt(p, v, Math.round(dmg), head, wi, o);
   }
@@ -107,6 +112,7 @@ export function createGame(opts) {
   // the end of a round: the table of the round goes to everybody, ten seconds later the scores are cleared and the next round starts
   function endRound(team, winner) {
     roundOver = true;
+    for (const p of players.values()) if (p.prof) { p.prof.add('rounds'); if (FFA ? p === winner : p.team === team) p.prof.add('wins'); }
     const rows = [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, heads: p.st.heads, dmg: Math.round(p.st.dmg), acc: p.st.shots ? Math.round(100 * p.st.hitShots / p.st.shots) : 0 }));
     rows.sort((a, b) => b.kills - a.kills || b.dmg - a.dmg || a.deaths - b.deaths);
     all({ t: 'win', mode: MODE, team, name: FFA ? winner.name : TEAMS[team], score: FFA ? [] : teamScore, rows, mvp: rows.length ? rows[0].id : 0, nextMs: 10000 });
@@ -135,7 +141,8 @@ export function createGame(opts) {
         if (m.t !== 'rtc' && ++p.msgs > 90) return;   // the handshake of the voice chat has its own, larger limit
         if (m.t === 'join' && !p.joined) {
           if (players.size >= MAX && !removeBot()) { send(p, { t: 'full' }); conn.close(); return; }
-          p.name = cleanName(m.name); p.team = pickTeam(m.team, p.id); p.joined = true; players.set(p.id, p);
+          if (lb && validKey(m.key) && ![...players.values()].some(q => q.key === m.key)) { p.key = m.key; const r = lb.identify(m.key, nameBase(m.name), n => !taken(n)); p.name = r.name; p.prof = r.prof; } else p.name = cleanName(m.name);
+          p.team = pickTeam(m.team, p.id); p.joined = true; players.set(p.id, p);
           send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, board: board(), score: FFA ? [] : teamScore });
           spawn(p, m.x, m.z, m.yaw); sendBoard(); all({ t: 'chat', text: p.name + (FFA ? ' в игре' : ' в игре, ' + TEAMS[p.team]) });
           return;
@@ -177,12 +184,13 @@ export function createGame(opts) {
     const list = [...players.values()].filter(p => p.alive).map(p => [p.id, +p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), +p.eye.toFixed(2), p.wep]);
     if (players.size) all({ t: 'snap', now: now(), p: list });
   }, 1000 / R.tickHz));
+  timers.push(setInterval(() => { for (const p of players.values()) if (p.prof) p.prof.add('secs'); }, 1000));   // the time played
   timers.push(setInterval(() => { const t = now(); for (const n of [...nades.values()]) { world.stepNade(n, 1 / 30, NADE.g); if (t >= n.t) explode(n); } }, 1000 / 30));
   timers.push(setInterval(() => { const t = now(), dt = Math.min(0.2, (t - last) / 1000); last = t; for (const p of [...players.values()]) if (p.bot) brain.think(p, dt); }, 50));
   return {
     attach, addBot, removeBot, players, arena, mode: MODE,
     stop() { for (const t of timers) { clearInterval(t); clearTimeout(t); } timers.length = 0; },
-    health() { return { ok: true, mode: MODE, name: NAME, players: humans().length, bots: players.size - humans().length, max: MAX, score: teamScore, win: WIN, teams: TEAMS, round: roundOver ? 'end' : 'play', arena: arena ? arena.name : null }; },
+    health() { return { ok: true, mode: MODE, name: NAME, players: humans().length, bots: players.size - humans().length, max: MAX, score: teamScore, win: WIN, teams: TEAMS, round: roundOver ? 'end' : 'play', arena: arena ? arena.name : null, leaderboard: !!lb }; },
   };
 }
 export { LEVELS };

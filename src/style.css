@@ -279,3 +279,11 @@ body.dead .mp-stat { display: none; }
 .st-w { display: grid; grid-template-columns: 110px 1fr 40px; gap: 8px; align-items: center; font: 500 13px/1.3 var(--f-body); } .st-w i { display: block; height: 8px; background: var(--brick); border-radius: 4px; min-width: 2px; } .st-w b { text-align: right; }
 .st-since { margin-top: 8px; font: 400 12px/1.3 var(--f-body); color: var(--muted); }
 @media (max-width: 560px) { .st-row { grid-template-columns: 1fr 76px 76px; font-size: 13px; } }
+
+/* leaderboard */
+.lb-tabs { display: flex; flex-wrap: wrap; gap: 6px; } .lb-tabs .btn[aria-pressed="true"] { background: var(--ink); color: var(--panel-solid); }
+.lb { display: grid; gap: 2px; } .lb-row { display: grid; grid-template-columns: 34px 1fr 46px 46px 52px 56px 46px; gap: 6px; padding: 4px 6px; border-radius: 5px; font: 500 14px/1.3 var(--f-body); align-items: center; }
+.lb-row:nth-child(even) { background: rgba(0, 0, 0, .04); } .lb-row.head { font-size: 12px; letter-spacing: .04em; color: var(--muted); text-transform: uppercase; }
+.lb-row.me { background: rgba(60, 130, 255, .18); font-weight: 700; } .lb-row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+label.chk { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); } label.chk input { width: auto; margin: 0; }
+@media (max-width: 520px) { .lb-row { grid-template-columns: 28px 1fr 38px 38px 44px 0 0; } .lb-row > :nth-child(n+6) { display: none; } }
