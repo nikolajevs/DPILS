@@ -4,6 +4,7 @@ import { FTS, FTT } from './textures.js';
 import { inBB } from './ground-height.js';
 import { FORT } from './index.js';
 import { FORT_MAG } from './magazines.js';
+import { FORT_RED } from './reduits.js';
 import { lmFlag } from '../landmarks/university.js';
 import { lmBar, lmBoxL, lmLathe } from '../landmarks/helpers.js';
 import { LMWS } from '../landmarks/tiles.js';
@@ -51,7 +52,7 @@ const FORT_BLD = [
 let FB_HULLS = null;   // world outlines of the wings and annexes, for dropping cadastre buildings, trees and terrain cuts
 function fortBldHulls() {
   if (FB_HULLS) return FB_HULLS; FB_HULLS = [];
-  for (const B of [...FORT_BLD, ...FORT_CLASSIC, ...FORT_MAG]) {
+  for (const B of [...FORT_BLD, ...FORT_CLASSIC, ...FORT_MAG, ...FORT_RED]) {
     if (B.outline) { const r = []; for (const [u, v] of B.outline) r.push(...lmW(B.f, u, v)); FB_HULLS.push({ r, bb: bbox(r) }); continue; }
     for (const [u0, u1, v0, v1] of [...B.wings, ...(B.annex || []), ...(B.ramps || []).map(r => [Math.min(r[0], r[1]), Math.max(r[0], r[1]), r[2], r[3]])]) {
       const r = []; for (const [u, v] of [[u0, v0], [u1, v0], [u1, v1], [u0, v1]]) r.push(...lmW(B.f, u, v)); FB_HULLS.push({ r, bb: bbox(r) });
