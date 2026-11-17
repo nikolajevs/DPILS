@@ -13,7 +13,7 @@ import { $ } from '../core/env.js';
    line of fire checked against terrain and buildings, and the game panels. Keep RULES and rayToSegment in step with
    server/combat.mjs. */
 const RULES = { mag: 30, reloadMs: 1800, gapMs: 100, range: 160, hitR: 0.5, headR: 0.28, bodyBottom: 1.6, bodyTop: 0.25 };
-const MP = { on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, ammo: RULES.mag, reloadAt: 0, lastShot: 0, firing: false, kills: 0, deaths: 0, board: [], spawn: 0, kick: 0, sendT: 0 };
+const MP = { on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, ammo: RULES.mag, reloadAt: 0, lastShot: 0, firing: false, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0 };
 STATE.mp = false;
 const remotes = new Map();   // id → { name, group, buf: [{ t, x, y, z, yaw, pitch }], tag }
 const tracers = [];
@@ -43,8 +43,9 @@ const aim = () => { const cp = Math.cos(P.pitch); return [-Math.sin(P.yaw) * cp,
 
 /* ---------- figures of the other players ---------- */
 const GEO = { box: new THREE.BoxGeometry(1, 1, 1), head: new THREE.SphereGeometry(0.17, 12, 8) };
-function makeFigure(id) {
-  const hue = (id * 0.381966) % 1, col = new THREE.Color().setHSL(hue, 0.55, 0.42), dark = new THREE.Color().setHSL(hue, 0.4, 0.2);
+const HUE = [0.0, 0.6];   // red and blue team
+function makeFigure(team) {
+  const hue = HUE[team] ?? 0.3, col = new THREE.Color().setHSL(hue, 0.65, 0.42), dark = new THREE.Color().setHSL(hue, 0.5, 0.2);
   const mc = new THREE.MeshLambertMaterial({ color: col }), md = new THREE.MeshLambertMaterial({ color: dark }), ms = new THREE.MeshLambertMaterial({ color: 0xe0b890 }), mg = new THREE.MeshLambertMaterial({ color: 0x25272b });
   const g = new THREE.Group(), part = (m, sx, sy, sz, x, y, z) => { const o = new THREE.Mesh(GEO.box, m); o.scale.set(sx, sy, sz); o.position.set(x, y, z); g.add(o); return o; };
   part(md, 0.2, 0.8, 0.22, -0.12, 0.4, 0); part(md, 0.2, 0.8, 0.22, 0.12, 0.4, 0);   // legs
@@ -54,13 +55,14 @@ function makeFigure(id) {
   const head = new THREE.Mesh(GEO.head, ms); head.position.set(0, 1.58, 0); g.add(head);
   g.userData.head = head; g.userData.arm = arm; return g;
 }
-function addRemote(id, name) {
+function addRemote(id, name, team) {
   if (remotes.has(id) || id === MP.id) return remotes.get(id);
-  const group = makeFigure(id), tag = document.createElement('div'); tag.className = 'mp-tag'; tag.textContent = name || '…'; group.visible = false; scene.add(group); $('mpTags').append(tag);
-  const r = { name, group, buf: [], tag }; remotes.set(id, r); return r;
+  const group = makeFigure(team), tag = document.createElement('div'); tag.className = 'mp-tag t' + team; tag.textContent = name || '…'; group.visible = false; scene.add(group); $('mpTags').append(tag);
+  const r = { name, team, group, buf: [], tag }; remotes.set(id, r); return r;
 }
 function dropRemote(id) { const r = remotes.get(id); if (!r) return; scene.remove(r.group); r.tag.remove(); remotes.delete(id); }
 function nameOf(id) { const b = MP.board.find(e => e.id === id); return b ? b.name : '?'; }
+function teamOf(id) { const b = MP.board.find(e => e.id === id); return b ? b.team : 0; }
 function pose(r, t) {
   const b = r.buf; if (!b.length) return null;
   while (b.length > 2 && b[1].t <= t) b.shift();
@@ -102,6 +104,7 @@ function fire(now) {
   const o = [P.x, P.y, P.z], d = aim(), clear = freePath(o, d, RULES.range), t = performance.now() - 120;
   let best = null;
   for (const [id, r] of remotes) {
+    if (r.team === MP.team) continue;   // no friendly fire: shots pass through teammates
     const p = pose(r, t); if (!p || !r.group.visible) continue;
     const a = [p.x, p.y - RULES.bodyBottom, p.z], b = [p.x, p.y + RULES.bodyTop, p.z], h = rayToSegment(o, d, clear, a, b);
     if (h.dist <= RULES.hitR && (!best || h.t < best.t)) best = { id, t: h.t };
@@ -121,10 +124,12 @@ function updatePanel() {
   el('mpHp').style.width = Math.max(0, MP.hp) + '%'; el('mpHpN').textContent = Math.max(0, Math.ceil(MP.hp));
   el('mpAmmo').textContent = MP.reloadAt ? 'перезарядка…' : MP.ammo + ' / ' + RULES.mag;
   el('mpScore').textContent = MP.kills + ' · ' + MP.deaths;
+  const tm = el('mpTeams'); tm.textContent = ''; const chip = (i, t) => { const e = document.createElement('b'); e.className = 't' + i; e.textContent = t; return e; };
+  const lim = document.createElement('small'); lim.textContent = ' до ' + MP.win; tm.append(chip(0, MP.teams[0] + ' ' + MP.score[0]), ' : ', chip(1, MP.score[1] + ' ' + MP.teams[1]), lim);
 }
 function drawBoard() {
-  const rows = [...MP.board].sort((a, b) => b.kills - a.kills || a.deaths - b.deaths), ol = el('mpBoardList'); ol.textContent = '';
-  for (const e of rows) { const li = document.createElement('li'); if (e.id === MP.id) li.className = 'me'; const n = document.createElement('span'), k = document.createElement('b'), dd = document.createElement('i'); n.textContent = e.name; k.textContent = e.kills; dd.textContent = e.deaths; li.append(n, k, dd); ol.append(li); }
+  const rows = [...MP.board].sort((a, b) => a.team - b.team || b.kills - a.kills || a.deaths - b.deaths), ol = el('mpBoardList'); ol.textContent = '';
+  for (const e of rows) { const li = document.createElement('li'); li.className = 't' + e.team + (e.id === MP.id ? ' me' : ''); const n = document.createElement('span'), k = document.createElement('b'), dd = document.createElement('i'); n.textContent = e.name; k.textContent = e.kills; dd.textContent = e.deaths; li.append(n, k, dd); ol.append(li); }
 }
 function feed(text, cls) {
   const f = el('mpFeed'), d = document.createElement('div'); d.textContent = text; if (cls) d.className = cls; f.prepend(d); while (f.children.length > 6) f.lastChild.remove(); setTimeout(() => d.remove(), 7000);
@@ -143,7 +148,7 @@ function respawn() { if (!MP.dead || performance.now() - MP.deadAt < 3000) retur
 /* ---------- messages from the server ---------- */
 function onMsg(m) {
   switch (m.t) {
-    case 'hello': MP.id = m.id; MP.name = m.name; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name); break;
+    case 'hello': MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team); document.body.dataset.team = m.team; break;
     case 'spawn': {
       const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
@@ -155,7 +160,7 @@ function onMsg(m) {
     case 'correct': P.x = m.x; P.z = m.z; break;
     case 'snap': {
       const t = performance.now(), seen = new Set();
-      for (const [id, x, y, z, yaw, pitch] of m.p) { if (id === MP.id) continue; seen.add(id); const r = remotes.get(id) || addRemote(id, nameOf(id)); r.buf.push({ t, x, y, z, yaw, pitch }); if (r.buf.length > 12) r.buf.shift(); }
+      for (const [id, x, y, z, yaw, pitch] of m.p) { if (id === MP.id) continue; seen.add(id); const r = remotes.get(id) || addRemote(id, nameOf(id), teamOf(id)); r.buf.push({ t, x, y, z, yaw, pitch }); if (r.buf.length > 12) r.buf.shift(); }
       for (const [id, r] of remotes) if (!seen.has(id)) { r.group.visible = false; r.buf.length = 0; }
       break;
     }
@@ -169,8 +174,9 @@ function onMsg(m) {
     }
     case 'kill': { feed(m.kn + '  ➜  ' + m.vn + (m.head ? '  (в голову)' : ''), m.killer === MP.id ? 'mine' : m.victim === MP.id ? 'dead' : ''); if (m.killer === MP.id) { MP.kills++; } if (m.victim === MP.id) { MP.deaths++; if (!MP.dead) die(m.kn); } updatePanel(); break; }
     case 'alive': { const r = remotes.get(m.id); if (r) r.buf.length = 0; break; }
-    case 'board': MP.board = m.board; for (const e of m.board) { const r = addRemote(e.id, e.name); if (r) { r.name = e.name; r.tag.textContent = e.name; } if (e.id === MP.id) { MP.kills = e.kills; MP.deaths = e.deaths; } } for (const id of [...remotes.keys()]) if (!m.board.some(e => e.id === id)) dropRemote(id); drawBoard(); updatePanel(); break;
+    case 'board': MP.board = m.board; MP.score = m.score; for (const e of m.board) { const r = addRemote(e.id, e.name, e.team); if (r) { r.name = e.name; r.tag.textContent = e.name; } if (e.id === MP.id) { MP.kills = e.kills; MP.deaths = e.deaths; } } for (const id of [...remotes.keys()]) if (!m.board.some(e => e.id === id)) dropRemote(id); drawBoard(); updatePanel(); break;
     case 'left': dropRemote(m.id); break;
+    case 'win': { const mine = m.team === MP.team; el('mpBanner').hidden = false; el('mpBanner').className = 'mp-banner t' + (m.team === 1 ? 1 : 0); el('mpBanner').textContent = (mine ? 'Победа! ' : 'Поражение. ') + 'Выиграли ' + m.name.toLowerCase() + ', ' + m.score[0] + ' : ' + m.score[1]; setTimeout(() => { el('mpBanner').hidden = true; }, 9000); break; }
     case 'chat': feed(m.text, 'sys'); break;
     case 'full': el('mpMsg').textContent = 'На сервере нет мест.'; break;
   }
@@ -191,11 +197,11 @@ function showGame() {
 function join() {
   const name = el('mpName').value.trim(), url = serverUrl(), msg = el('mpMsg');
   if (!url) { msg.textContent = 'Укажите адрес сервера (поле «Сервер»).'; return; }
-  try { localStorage.setItem('dpils.mp', JSON.stringify({ name, server: el('mpServer').value.trim(), spawn: el('mpSpawn').value })); } catch (e) {}
-  MP.spawn = +el('mpSpawn').value; msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true;
+  try { localStorage.setItem('dpils.mp', JSON.stringify({ name, server: el('mpServer').value.trim(), spawn: el('mpSpawn').value, team: el('mpTeam').value })); } catch (e) {}
+  MP.spawn = +el('mpSpawn').value; MP.wantTeam = +el('mpTeam').value; msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true;
   let ws; try { ws = new WebSocket(url); } catch (e) { msg.textContent = 'Неверный адрес сервера.'; el('goPlay').disabled = false; return; }
   MP.ws = ws; MP.started = false;
-  ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, ...s })); };
+  ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, team: MP.wantTeam, ...s })); };
   ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (err) { console.error(err); } };
   ws.onerror = () => { if (!MP.started) msg.textContent = 'Не удалось подключиться к ' + url; };
   ws.onclose = () => { if (MP.started) { el('mpDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; if (!msg.textContent.startsWith('На сервере') && !msg.textContent.startsWith('Не удалось')) msg.textContent = 'Соединение закрыто.'; } };
@@ -204,7 +210,7 @@ function initUi() {
   const sel = el('mpSpawn'); sel.textContent = '';
   PLACES.forEach((p, i) => { const o = document.createElement('option'); o.value = i; o.textContent = p[0]; sel.append(o); });
   const r = document.createElement('option'); r.value = -1; r.textContent = 'Случайное место'; sel.append(r);
-  try { const s = JSON.parse(localStorage.getItem('dpils.mp') || '{}'); if (s.name) el('mpName').value = s.name; if (s.server) el('mpServer').value = s.server; if (s.spawn != null) sel.value = s.spawn; } catch (e) {}
+  try { const s = JSON.parse(localStorage.getItem('dpils.mp') || '{}'); if (s.name) el('mpName').value = s.name; if (s.server) el('mpServer').value = s.server; if (s.spawn != null) sel.value = s.spawn; if (s.team != null) el('mpTeam').value = s.team; } catch (e) {}
   el('mpName').placeholder = 'Игрок' + (100 + Math.floor(Math.random() * 900));
   if (!el('mpName').value) el('mpName').value = el('mpName').placeholder;
   el('goPlay').onclick = join; el('mpRespawn').onclick = respawn; el('mpLeave').onclick = () => location.reload(); el('mpOverBtn').onclick = () => location.reload();
