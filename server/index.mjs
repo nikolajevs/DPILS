@@ -64,7 +64,7 @@ function explode(n) {
 }
 wss.on('connection', ws => {
   ws.since = Date.now(); ws.joined = false;
-  const p = { id: nextId++, ws, name: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, st: { shots: 0, hitShots: 0, dmg: 0, heads: 0 }, lastShot: 0, lastNade: 0, nades: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(), live: true };
+  const p = { id: nextId++, ws, name: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, st: { shots: 0, hitShots: 0, dmg: 0, heads: 0 }, wep: 0, lastShot: 0, lastNade: 0, nades: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(), live: true };
   ws.on('pong', () => { p.live = true; });
   ws.on('message', raw => {
     const t0 = now(); if (t0 - p.win > 1000) { p.win = t0; p.msgs = 0; }
@@ -85,7 +85,7 @@ wss.on('connection', ws => {
       const far = Math.hypot(x - p.x, z - p.z), first = p.free && far < 80; p.free = false;   // right after a spawn the client may nudge itself off a wall or out of the water
       if (!first && far > R.runSpeed * dt * 1.6 + 3) send(p, { t: 'correct', x: p.x, y: p.y, z: p.z });   // too fast: put back
       else { p.x = x; p.z = z; p.y = y; }
-      p.yaw = num(m.yaw, 100); p.pitch = num(m.pitch, 1.6); p.eye = Math.max(0.9, Math.min(1.8, num(m.h, 1.8) || 1.7));
+      p.yaw = num(m.yaw, 100); p.pitch = num(m.pitch, 1.6); p.eye = Math.max(0.9, Math.min(1.8, num(m.h, 1.8) || 1.7)); p.wep = m.w === 1 || m.w === 2 ? m.w : 0;
       p.hist.push([t0, p.x, p.y, p.z]); while (p.hist.length > 2 && t0 - p.hist[0][0] > 1000) p.hist.shift();
     } else if (m.t === 'shoot' && p.alive) {
       const wi = m.w === 1 || m.w === 2 ? m.w : 0, W = WEAPONS[wi]; if (!Array.isArray(m.rays) || !m.rays.length) return;
@@ -139,7 +139,7 @@ function endRound(team, winner) {
   setTimeout(() => { teamScore[0] = teamScore[1] = 0; for (const p of players.values()) { p.kills = p.deaths = 0; p.st = { shots: 0, hitShots: 0, dmg: 0, heads: 0 }; } roundOver = false; sendBoard(); all({ t: 'round' }); all({ t: 'chat', text: 'Новый раунд' }); }, 10000);
 }
 setInterval(() => {
-  const list = [...players.values()].filter(p => p.alive).map(p => [p.id, +p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), +p.eye.toFixed(2)]);
+  const list = [...players.values()].filter(p => p.alive).map(p => [p.id, +p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), +p.eye.toFixed(2), p.wep]);
   if (players.size) all({ t: 'snap', now: now(), p: list });
 }, 1000 / R.tickHz);
 setInterval(() => { const t = now(); for (const n of [...nades.values()]) { WORLD.stepNade(n, 1 / 30, NADE.g); if (t >= n.t) explode(n); } }, 1000 / 30);
