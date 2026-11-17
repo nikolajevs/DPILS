@@ -40,7 +40,11 @@ function render() {
     b.append(n, s, p); b.onclick = () => { input.value = r.url; render(); }; listEl.append(b);
   }
 }
-async function refresh() { render(); await Promise.all(rows.map(probe)); render(); }
+async function refresh() {
+  render(); await Promise.all(rows.map(probe));
+  if (!input.value.trim()) { const up = rows.find(r => r.fixed && r.state === 'up'); if (up) input.value = up.url; }   // an empty field takes the first working server of the list
+  render();
+}
 async function start() { await load(); await refresh(); clearInterval(timer); timer = setInterval(() => { if (!$('start').hidden) refresh(); }, 8000); }
 input.addEventListener('input', render); $('mpServersRefresh').onclick = () => { load().then(refresh); };
 start();

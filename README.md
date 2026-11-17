@@ -741,6 +741,8 @@ npm run server
 
 Сервер слушает порт 8787 (`PORT=…` меняет), `/health` отвечает числом игроков. Ему нужны файлы города рядом: запускать из клона репозитория. На GitHub Pages сервер не запустить: его нужно разместить отдельно за `wss://` (установка на VPS с systemd и Caddy — в [server/deploy/README.md](server/deploy/README.md)). Адрес берётся из поля «Сервер», из `?server=wss://…` или из константы `DEFAULT_SERVER` в [src/game/mp.js](src/game/mp.js); на localhost по умолчанию `ws://localhost:8787`.
 
+С `STATIC=dist` (после `npm run build`) сервер отдаёт и саму страницу: город и сервер живут на одном адресе. Так устроен **https://dvinsk.lat**: на VPS процесс pm2 `dpils` слушает порт 3000 (за ним Traefik с сертификатом), страница, `/health`, `/leaderboard` и `wss://dvinsk.lat` — с него. Сервер `wss://dvinsk.lat` записан в [servers.json](servers.json), поэтому виден в списке и на GitHub Pages; пустое поле «Сервер» само берёт первый отвечающий сервер списка. Установка и обновление — в [server/deploy/README.md](server/deploy/README.md).
+
 ## Разработка
 
 Страница — [index.html](index.html), код — ES-модули в [src/](src/), сборка — [Vite](https://vite.dev), three.js 0.187 из npm (без сборки — та же версия с jsDelivr через import map).
