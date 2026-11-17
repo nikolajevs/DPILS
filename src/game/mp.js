@@ -12,7 +12,7 @@ import { $ } from '../core/env.js';
    (simple procedural figures, drawn 120 ms in the past between two snapshots), the gun in hand, shooting with the
    line of fire checked against terrain and buildings, and the game panels. Keep RULES and rayToSegment in step with
    server/combat.mjs. */
-const RULES = { mag: 30, reloadMs: 1800, gapMs: 100, range: 160, hitR: 0.5, headR: 0.28, bodyBottom: 1.6, bodyTop: 0.25 };
+const RULES = { mag: 30, reloadMs: 1800, gapMs: 100, range: 160, hitR: 0.4, headR: 0.28, bodyBottom: 1.6, bodyTop: 0.05 };
 const MP = { on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, ammo: RULES.mag, reloadAt: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0 };
 STATE.mp = false;
 const remotes = new Map();   // id → { name, group, buf: [{ t, x, y, z, yaw, pitch }], tag }
@@ -43,7 +43,7 @@ const aim = (yaw = P.yaw, pitch = P.pitch) => { const cp = Math.cos(pitch); retu
 // how wide the shots scatter now: a little always, more when walking or running, more after each shot of a burst
 function spreadNow() {
   const moving = ['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(k => keys.has(k)), run = keys.has('ShiftLeft') || keys.has('ShiftRight');
-  return 0.002 + (moving ? (run ? 0.022 : 0.008) : 0) + MP.burst;
+  return (0.002 + (moving ? (run ? 0.022 : 0.008) : 0) + MP.burst) * (P.crouch ? 0.5 : 1) + (P.up > 0.02 ? 0.03 : 0);   // crouching steadies the aim, a jump spoils it
 }
 
 /* ---------- figures of the other players ---------- */
@@ -73,7 +73,7 @@ function pose(r, t) {
   while (b.length > 2 && b[1].t <= t) b.shift();
   const a = b[0], c = b[1] || a, k = c.t > a.t ? Math.max(0, Math.min(1, (t - a.t) / (c.t - a.t))) : 1, l = (u, v) => u + (v - u) * k;
   let dy = c.yaw - a.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
-  return { x: l(a.x, c.x), y: l(a.y, c.y), z: l(a.z, c.z), yaw: a.yaw + dy * k, pitch: l(a.pitch, c.pitch) };
+  return { x: l(a.x, c.x), y: l(a.y, c.y), z: l(a.z, c.z), yaw: a.yaw + dy * k, pitch: l(a.pitch, c.pitch), h: l(a.h || 1.7, c.h || 1.7) };
 }
 
 /* ---------- the gun in hand, tracers, sounds ---------- */
@@ -119,7 +119,7 @@ function fire(now) {
   for (const [id, r] of remotes) {
     if (r.team === MP.team) continue;   // no friendly fire: shots pass through teammates
     const p = pose(r, t); if (!p || !r.group.visible) continue;
-    const a = [p.x, p.y - RULES.bodyBottom, p.z], b = [p.x, p.y + RULES.bodyTop, p.z], h = rayToSegment(o, d, clear, a, b);
+    const a = [p.x, p.y - (p.h || 1.7) + 0.1, p.z], b = [p.x, p.y + RULES.bodyTop, p.z], h = rayToSegment(o, d, clear, a, b);
     if (h.dist <= RULES.hitR && (!best || h.t < best.t)) best = { id, t: h.t };
   }
   const len = best ? best.t : clear;
@@ -167,7 +167,7 @@ function onMsg(m) {
   switch (m.t) {
     case 'hello': MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team); document.body.dataset.team = m.team; break;
     case 'spawn': {
-      const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
+      const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.crouch = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
       MP.hp = m.hp; MP.ammo = RULES.mag; MP.reloadAt = 0; MP.dead = false; gun.visible = true; el('mpDead').hidden = true; updatePanel();
       MP.ws.send(JSON.stringify({ t: 'state', x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch }));   // the server has the point as asked: tell it where the player really stands
@@ -178,7 +178,7 @@ function onMsg(m) {
     case 'correct': P.x = m.x; P.z = m.z; break;
     case 'snap': {
       const t = performance.now(), seen = new Set();
-      for (const [id, x, y, z, yaw, pitch] of m.p) { if (id === MP.id) continue; seen.add(id); const r = remotes.get(id) || addRemote(id, nameOf(id), teamOf(id)); r.buf.push({ t, x, y, z, yaw, pitch }); if (r.buf.length > 12) r.buf.shift(); }
+      for (const [id, x, y, z, yaw, pitch, h] of m.p) { if (id === MP.id) continue; seen.add(id); const r = remotes.get(id) || addRemote(id, nameOf(id), teamOf(id)); r.buf.push({ t, x, y, z, yaw, pitch, h }); if (r.buf.length > 12) r.buf.shift(); }
       for (const [id, r] of remotes) if (!seen.has(id) && !r.fallT) { r.group.visible = false; r.buf.length = 0; }
       break;
     }
@@ -257,15 +257,15 @@ function mpTick(dt) {
   if ((MP.pingT = (MP.pingT || 0) - dt) <= 0 && MP.ws.readyState === 1) { MP.pingT = 2; MP.ws.send(JSON.stringify({ t: 'ping', c: now, rtt: MP.rtt })); }
   if (MP.firing) fire(now);
   if (MP.dead) { const left = Math.max(0, 3 - (now - MP.deadAt) / 1000); el('mpRespawn').disabled = left > 0; el('mpRespawn').textContent = left > 0 ? 'Возрождение через ' + Math.ceil(left) : 'Возродиться (пробел)'; }
-  else if ((MP.sendT -= dt) <= 0 && MP.ws.readyState === 1) { MP.sendT = 0.05; MP.ws.send(JSON.stringify({ t: 'state', x: +P.x.toFixed(2), y: +P.y.toFixed(2), z: +P.z.toFixed(2), yaw: +P.yaw.toFixed(3), pitch: +P.pitch.toFixed(3) })); }
+  else if ((MP.sendT -= dt) <= 0 && MP.ws.readyState === 1) { MP.sendT = 0.05; MP.ws.send(JSON.stringify({ t: 'state', x: +P.x.toFixed(2), y: +P.y.toFixed(2), z: +P.z.toFixed(2), yaw: +P.yaw.toFixed(3), pitch: +P.pitch.toFixed(3), h: +P.eye.toFixed(2) })); }
   for (const r of remotes.values()) {
     const g = r.group;
     if (r.fallT) {   // a killed player topples backwards and lies for three seconds
       const age = now - r.fallT; if (age > 3000) { r.fallT = 0; g.visible = false; g.rotation.x = 0; r.buf.length = 0; continue; }
-      const c = r.corpse; g.visible = true; g.position.set(c.x, c.y - 1.7 + 0.18 * Math.min(1, age / 350), c.z); g.rotation.y = c.yaw; g.rotation.x = 1.5 * Math.min(1, age / 350) * (2 - Math.min(1, age / 350)); continue;
+      const c = r.corpse; g.visible = true; g.scale.y = 1; g.position.set(c.x, c.y - (c.h || 1.7) + 0.18 * Math.min(1, age / 350), c.z); g.rotation.y = c.yaw; g.rotation.x = 1.5 * Math.min(1, age / 350) * (2 - Math.min(1, age / 350)); continue;
     }
     const p = pose(r, t); if (!p) { g.visible = false; continue; }
-    g.visible = true; g.position.set(p.x, p.y - 1.7, p.z); g.rotation.y = p.yaw; g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
+    g.visible = true; g.position.set(p.x, p.y - p.h, p.z); g.scale.y = p.h / 1.7; g.rotation.y = p.yaw; g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
   }
   for (let i = tracers.length - 1; i >= 0; i--) { const tr = tracers[i]; tr.t += dt; tr.l.material.opacity = Math.max(0, 0.9 - tr.t * 9); if (tr.t > 0.1) { scene.remove(tr.l); tr.l.geometry.dispose(); tr.l.material.dispose(); tracers.splice(i, 1); } }
   MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06; flash.visible = MP.kick > 0.6;
