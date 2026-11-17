@@ -26,3 +26,23 @@
 | `hit-ground` | пуля в землю | [Bullet impact ground (subsonic) SFX](https://freesound.org/people/modusmogulus/sounds/789388/), modusmogulus |
 
 С Freesound взяты превью (`cdn.freesound.org/previews/…-hq.mp3`, 128 кбит/с), а не исходные файлы.
+
+## Шаги, материалы попадания, взрыв (Kenney)
+
+**CC0 1.0**, [Kenney](https://kenney.nl) — наборы [Impact Sounds](https://kenney.nl/assets/impact-sounds) и [RPG Audio](https://kenney.nl/assets/rpg-audio), формат OGG (Chrome и Firefox декодируют сами; Safari — синтез).
+
+| Файлы | Что |
+|---|---|
+| `footstep_concrete_000…004.ogg` | шаги по асфальту/бетону (свои и чужие, [src/game/mp.js](../src/game/mp.js)) |
+| `footstep_grass_000…004.ogg` | шаги по траве и земле (вне дорог) |
+| `impactGeneric_light_000…004.ogg` | попадание по штукатурке/бетону |
+| `impactMining_000…004.ogg` | попадание по камню и кирпичу |
+| `impactMetal_000…004.ogg` | попадание по металлу |
+| `impactWood_medium_000…004.ogg` | попадание по дереву |
+| `impactSoft_medium_000…004.ogg` | мягкий грунт, трава |
+| `explosionCrunch_000…003.ogg` | взрыв гранаты |
+| `lowFrequency_explosion_000…001.ogg` | низкий гул под взрывом |
+
+Материал стены выбирается по стилю фасада (`b.kind`, карта `WALL_MAT` в `mp.js`). Ночной эмбиенс без сверчков: птицы, ветер, вода и транспорт остались, сверчки убраны по просьбе владельца.
+
+Если файлы не загрузились (например, страница открыта как `file://`), выстрелы, попадания, шаги и взрыв синтезируются — игра не немая.

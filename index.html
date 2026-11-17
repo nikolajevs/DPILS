@@ -96,6 +96,10 @@
       <div class="acct"><span id="acctState">Без аккаунта: результаты привязаны к этому браузеру.</span><button class="btn" id="bAuth" type="button">Войти / регистрация</button></div>
       <label>Ник<input id="mpName" maxlength="16" autocomplete="off"></label>
       <label>Команда<select id="mpTeam"><option value="-1">Любая (по балансу)</option><option value="0">Красные</option><option value="1">Синие</option></select></label>
+      <label>Персонаж<select id="mpChar"><option value="">Солдат</option><option value="m">Мужчина</option><option value="f">Женщина</option></select></label>
+      <label id="mpHairRow" hidden>Причёска<select id="mpHair"></select></label>
+      <label id="mpHairColRow" hidden>Цвет волос<select id="mpHairCol"><option value="0">тёмный</option><option value="1">каштановый</option><option value="2">русый</option><option value="3">светлый</option><option value="4">седой</option></select></label>
+      <label class="chk" id="mpBeardRow" hidden><input type="checkbox" id="mpBeard"> Борода</label>
       <label>Где появиться<select id="mpSpawn"></select></label>
       <div class="srv-head"><span>Серверы</span><button class="btn" id="mpServersRefresh" type="button">Обновить</button></div>
       <div class="servers" id="mpServers" aria-live="polite"></div>
@@ -140,6 +144,7 @@
 <div class="mp-settings" id="mpSet" hidden><div class="panel"><header><h2>Настройки</h2><button class="btn" id="mpSetClose">Закрыть</button></header><div id="mpSetBody"></div><footer><button class="btn" id="mpSetReset">По умолчанию</button></footer></div></div>
 <div id="tags" aria-hidden="true"></div>
 <div id="mpTags" aria-hidden="true"></div>
+<div id="mpFloaters" aria-hidden="true"></div>
 <div class="mp-hit" id="mpHit" hidden></div>
 <div class="mp-hurt" id="mpHurt" hidden><i id="mpHurtDir"></i></div>
 <div class="mp-hud" id="mpHud" hidden>

@@ -66,15 +66,49 @@ function addDecal(x, y, z, n, size, tint) {
   decals.push(d);
 }
 
-/* ---------- particles: dust, sparks, smoke, the puff of a body hit ---------- */
-const parts = [], PART_MAX = 240;
+/* ---------- particles: dust, sparks, smoke, the puff of a body hit ----------
+   One InstancedMesh for the whole pool (as the effects of the donor game do): a soft quad per particle, turned to the
+   camera every frame, its own colour and opacity. The opacity rides an instanced attribute aOp into the fragment —
+   three has no per-instance opacity of its own. No sprite materials are created or disposed during a firefight. */
+const PART_MAX = 240;
+const partGeo = new THREE.PlaneGeometry(1, 1);
+const partOp = new THREE.InstancedBufferAttribute(new Float32Array(PART_MAX), 1);
+partOp.setUsage(THREE.DynamicDrawUsage);
+partGeo.setAttribute('aOp', partOp);
+const partMat = worldSpace(new THREE.MeshBasicMaterial({ map: puffTex(), transparent: true, depthWrite: false }));
+{
+  const base = THREE.Material.prototype.onBeforeCompile;
+  partMat.onBeforeCompile = function (s) {
+    base.call(this, s);   // the terrain lift of the page stays (this material is worldSpace: it does not lift)
+    s.vertexShader = 'attribute float aOp;\nvarying float vOp;\n' + s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvOp = aOp;');
+    s.fragmentShader = 'varying float vOp;\n' + s.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.a *= vOp;');
+  };
+  partMat.customProgramCacheKey = () => 'part-op';
+}
+const partMesh = new THREE.InstancedMesh(partGeo, partMat, PART_MAX);
+partMesh.count = 0; partMesh.frustumCulled = false;
+partMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+partMesh.setColorAt(0, new THREE.Color(1, 1, 1));   // allocates the instanceColor buffer
+scene.add(partMesh);
+const pool = Array.from({ length: PART_MAX }, () => ({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, t: 0, life: 1, s0: 1, s1: 1, c: new THREE.Color(), op: 1, grav: 0 }));
+const free = [...pool], parts = [];
+const PM = new THREE.Matrix4(), PQ = new THREE.Quaternion(), PV = new THREE.Vector3(), PS = new THREE.Vector3();
 function puff(x, y, z, vx, vy, vz, life, s0, s1, color, op, grav) {
-  if (parts.length >= PART_MAX) { const p = parts.shift(); scene.remove(p.s); p.s.material.dispose(); }
-  const s = new THREE.Sprite(worldSpace(new THREE.SpriteMaterial({ map: puffTex(), color, transparent: true, opacity: op, depthWrite: false })));
-  s.position.set(x, y, z); s.scale.setScalar(s0); scene.add(s);
-  parts.push({ s, vx, vy, vz, t: 0, life, s0, s1, op, grav });
+  const p = free.pop() || parts.shift();   // the oldest particle gives its place to the new one
+  p.x = x; p.y = y; p.z = z; p.vx = vx; p.vy = vy; p.vz = vz; p.t = 0; p.life = life; p.s0 = s0; p.s1 = s1; p.c.setHex(color); p.op = op; p.grav = grav;
+  parts.push(p);
 }
 const rnd = (a, b) => a + Math.random() * (b - a);
+
+/* ---------- the numbers of damage over the one you hit ---------- */
+const floats = [];
+let floatBox = null;
+function dmgFloat(x, y, z, text, cls) {
+  if (!floatBox) { floatBox = document.getElementById('mpFloaters'); if (!floatBox) return; }
+  if (floats.length >= 24) floats.shift().el.remove();
+  const el = document.createElement('div'); el.className = 'mp-float' + (cls ? ' ' + cls : ''); el.textContent = text; floatBox.append(el);
+  floats.push({ x, y, z, el, t: 0 });
+}
 
 /* ---------- where exactly the bullet met the surface, and which way the surface faces ----------
    freePath steps 1.5 m, so its answer is up to that much inside the wall: bisect the last step down to ~3 mm. */
@@ -161,9 +195,29 @@ function tickFx(dt) {
   }
   for (let i = parts.length - 1; i >= 0; i--) {
     const p = parts[i]; p.t += dt;
-    if (p.t >= p.life) { scene.remove(p.s); p.s.material.dispose(); parts.splice(i, 1); continue; }
-    p.vy += p.grav * dt; p.s.position.x += p.vx * dt; p.s.position.y += p.vy * dt; p.s.position.z += p.vz * dt;
-    const k = p.t / p.life; p.s.scale.setScalar(p.s0 + (p.s1 - p.s0) * k); p.s.material.opacity = p.op * (1 - k);
+    if (p.t >= p.life) { parts.splice(i, 1); free.push(p); continue; }
+    p.vy += p.grav * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+  }
+  PQ.copy(camera.quaternion);   // every quad faces the camera
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i], k = p.t / p.life, s = p.s0 + (p.s1 - p.s0) * k;
+    PM.compose(PV.set(p.x, p.y, p.z), PQ, PS.set(s, s, s));
+    partMesh.setMatrixAt(i, PM); partMesh.setColorAt(i, p.c); partOp.setX(i, p.op * (1 - k));
+  }
+  partMesh.count = parts.length;
+  partMesh.instanceMatrix.needsUpdate = true;
+  if (partMesh.instanceColor) partMesh.instanceColor.needsUpdate = true;
+  partOp.needsUpdate = true;
+  {   // the damage numbers rise and fade over the world point of the hit
+    const w = window.innerWidth, h = window.innerHeight;
+    for (let i = floats.length - 1; i >= 0; i--) {
+      const f = floats[i]; f.t += dt;
+      if (f.t > 0.9) { f.el.remove(); floats.splice(i, 1); continue; }
+      V.set(f.x, f.y + f.t * 0.9, f.z).project(camera);
+      if (V.z > 1) { f.el.style.opacity = '0'; continue; }
+      f.el.style.transform = 'translate(-50%,-100%) translate(' + ((V.x + 1) / 2 * w).toFixed(0) + 'px,' + ((1 - V.y) / 2 * h).toFixed(0) + 'px)';
+      f.el.style.opacity = String(f.t < 0.55 ? 1 : Math.max(0, 1 - (f.t - 0.55) / 0.35));
+    }
   }
   for (let i = decals.length - 1; i >= 0; i--) {
     const d = decals[i]; d.t += dt;
@@ -181,9 +235,10 @@ function tickFx(dt) {
 }
 function clearFx() {
   for (const tr of tracers) { scene.remove(tr.l); tr.l.geometry.dispose(); tr.l.material.dispose(); } tracers.length = 0;
-  for (const p of parts) { scene.remove(p.s); p.s.material.dispose(); } parts.length = 0;
+  free.push(...parts); parts.length = 0; partMesh.count = 0;
+  for (const f of floats) f.el.remove(); floats.length = 0;
   for (const d of decals) { scene.remove(d.mesh); d.mesh.material.dispose(); } decals.length = 0;
   for (const s of shells) scene.remove(s.m); shells.length = 0;
 }
 
-export { tracerShot, tickFx, clearFx, ejectShell, muzzleSmoke, muzzleTex };
+export { tracerShot, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke, muzzleTex };

@@ -6,10 +6,11 @@ import { bandAlong, bench, fillPoly, groundMesh, groundsOf } from './school-grou
 import { GB, box, polyA } from '../core/geometry.js';
 import { area2, bbox, hash, hb, pip, reversed, sh, triangulate } from '../core/util.js';
 import { groundMaterial } from '../render/materials.js';
-import { detailTex, glowTex } from '../render/textures.js';
+import { glowTex } from '../render/textures.js';
 import { scene } from '../render/renderer.js';
 import { TERR, subTris, terrainH } from '../world/terrain.js';
 import { inBuilding, inWater, onRoad } from '../world/data.js';
+import { initFlora } from './flora.js';
 
 /* ---------- the parks and squares ----------
    From parks.js (OpenStreetMap, built by tools/parks.js): 21 parks and squares of the city with what is mapped in them.
@@ -65,6 +66,26 @@ function nearestPath(x, z, r) {
   return best;
 }
 const PAVED = /^(paving_stones|asphalt|sett|concrete|concrete:plates|fine_gravel|compacted|wood|)$/;
+// is the point on a footway (its half width and a margin)? the grass and the flowers keep off the paths
+function onPath(x, z, margin) {
+  for (const [ax, az, bx, bz, hw] of segs()) {
+    const w = (typeof hw === 'number' ? hw : hw === 'pedestrian' ? 3 : 1.5) + margin;
+    if (Math.min(ax, bx) - w > x || Math.max(ax, bx) + w < x || Math.min(az, bz) - w > z || Math.max(az, bz) + w < z) continue;
+    const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+    if (Math.hypot(x - (ax + dx * t), z - (az + dz * t)) < w) return true;
+  }
+  return false;
+}
+// the photographs of the ground (CC0, textures/): the lawn of the parks and the earth of their yards. A white pixel
+// stands in until the file has come, so the ground is never black; the texture object itself is kept, only its image swaps
+function groundTex(url) {
+  const c = document.createElement('canvas'); c.width = c.height = 1;   // a white pixel stands in until the photograph has come
+  const g = c.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, 1, 1);
+  const t = new THREE.Texture(c);   // a plain Texture: both the canvas and the loaded image upload as TexImageSource (a DataTexture would not take the image)
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.magFilter = THREE.LinearFilter; t.needsUpdate = true;
+  new THREE.TextureLoader().load(url, img => { t.image = img.image; t.needsUpdate = true; }, undefined, () => {});
+  return t;
+}
 
 // ---- park furniture
 const IRON = hb('#26292b'), GRANITE = hb('#a59b8e'), GRANITE_D = hb('#3a3b3d'), BRONZE = hb('#4a5148'), STEEL = hb('#c3c8cb');
@@ -238,7 +259,14 @@ function lmParks(K) {
   for (const [, , pts] of PD.areas) { const r = ring(pts), bb = bbox(r); NOTREE_POLY.push({ r, bb: [bb[0] - 1.5, bb[1] - 1.5, bb[2] + 1.5, bb[3] + 1.5] }); }
   for (const d of dogs) fillPoly(surf, [ring(d[2])], hb('#bfae86'));
   for (const t of bmx) { const pts = t[5], closed = pts.length > 6 && Math.hypot(pts[0] - pts[pts.length - 2], pts[1] - pts[pts.length - 1]) < 0.5; bandAlong(surf, closed ? pts.slice(0, -2) : pts, closed, 1.4, hb('#7a6146'), null); }
-  groundMesh(surf, groundMaterial(detailTex(3), 1 / 3, 0.2, 'park-ground'), -32.6);
+  groundMesh(surf, groundMaterial(groundTex('textures/ground_dirt.webp'), 1 / 5, 0.4, 'park-ground'), -32.6);
+  // the lawn under everything: above the city land (-40), below the footways (-37…-33) — the paths stay on top of it;
+  // the photograph of grass colours it (the red-channel detail of groundMaterial is switched off, the extra takes the RGB)
+  const lawn = new GB(false);
+  for (const r of PARK_RINGS) fillPoly(lawn, [r], hb('#9ab86a'));
+  groundMesh(lawn, groundMaterial(groundTex('textures/ground_grass.webp'), 1 / 6, 0, 'park-lawn',
+    'diffuseColor.rgb *= texture2D(uDetail, vWxz * 0.1667).rgb * 1.7;'), -39.5);
+  initFlora();   // the tufts of grass and the flowers of ez-tree (MIT), instanced over the lawn
   // beds, hedges, walls, reed beds, rows of trees
   PD.beds.forEach(([, pts], i) => bed(G, ring(pts), i));
   PD.fences.forEach(([kind, , pts], i) => { if (kind === 'hedge') hedge(G, pts, i); else if (kind === 'wall') lowWall(G, pts); });
@@ -285,4 +313,4 @@ function lmParks(K) {
 // at night: the light under the lamps and the lit jets
 function parksNight(n) { if (PARK_POOLS) PARK_POOLS.visible = n > 0.5; if (PARK_JETS) PARK_JETS.emissiveIntensity = n * 0.9; }
 
-export { PARK_RINGS, PARK_TREES, bbq, lmParks, parkNoTree, parksNight, picnic };
+export { PARK_RINGS, PARK_TREES, bbq, lmParks, onPath, parkNoTree, parksNight, picnic };
