@@ -90,12 +90,12 @@ function attachAvatar(r) {
   if (r.av || !avatarReady()) return; const av = makeAvatar(r.hue); if (!av) return;
   for (const c of r.group.children) c.visible = false; r.group.add(av.root); r.av = av;
 }
-// the gun in your own hands: the ready models in place of the boxes (the scope of the sniper rifle stays a box)
+// the gun in your own hands: the ready models in place of the boxes
 function upgradeViewmodels() {
   models.forEach((m, i) => {
     const g = gunModel(i); if (!g || m.userData.ready) return; m.userData.ready = true;
-    m.children.forEach((c, k) => { c.visible = i === 2 && k === 2; });   // the old boxes off, except the scope tube
-    g.rotation.y = Math.PI; g.scale.multiplyScalar(0.55); g.position.set(0.05, -0.02, 0.12); m.add(g); if (i === 0) flash.position.set(0.05, 0.0, -g.userData.muzzle * 0.55 + 0.1);
+    m.children.forEach(c => { c.visible = false; });   // the old boxes off
+    g.rotation.y = Math.PI; g.scale.multiplyScalar(i === 2 ? 0.5 : 0.55); g.position.set(0.05, -0.02, 0.12); m.add(g); if (i === 0) flash.position.set(0.05, 0.0, -g.userData.muzzle * 0.55 + 0.1);
   });
 }
 function dropRemote(id) { const r = remotes.get(id); if (!r) return; scene.remove(r.group); r.tag.remove(); remotes.delete(id); }
