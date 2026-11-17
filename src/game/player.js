@@ -15,6 +15,7 @@ function freeSpot(x, z) {
   return [x, z];
 }
 function teleport(x, z, yaw) {
+  if (STATE.mp) return;   // in the game you only appear where the server puts you
   x = Math.max(-HX + 5, Math.min(HX - 5, x)); z = Math.max(-HY + 5, Math.min(HY - 5, z));
   if (P.fly) { P.x = x; P.z = z; P.y = Math.max(P.y, terrainH(x, z) + 30); } else { [P.x, P.z] = freeSpot(x, z); P.y = 1.7 + walkLift(P.x, P.z); }
   if (yaw != null) { P.yaw = yaw; P.pitch = P.fly ? -0.45 : 0; }
@@ -52,6 +53,7 @@ function step(dt) {
   if (!P.fly) P.y = 1.7 + walkLift(P.x, P.z, P.y - 1.7);   // up the hills and ramparts, down into the moats, over the bridges
 }
 function setFly(on) {
+  if (STATE.mp && on) return;
   P.fly = on; $('bFly').setAttribute('aria-pressed', on);
   if (on) { P.y = Math.max(P.y, terrainH(P.x, P.z) + 70); P.pitch = Math.min(P.pitch, -0.35); } else { [P.x, P.z] = freeSpot(P.x, P.z); P.y = 1.7 + terrainH(P.x, P.z); P.pitch = 0; }
   STATE.hudTimer = 0; STATE.lodTimer = 0;

@@ -43,6 +43,7 @@
     <button class="btn" id="bNight" aria-pressed="false" title="День → вечер → ночь">Время: день<kbd>N</kbd></button>
     <button class="btn" id="bQuality" title="Качество графики">Графика: высокая</button>
     <button class="btn" id="bHelp">?</button>
+    <button class="btn" id="bLeave">Выйти из игры</button>
   </div>
   </div>
 </div>
@@ -72,10 +73,29 @@
       <div class="load-bar" aria-hidden="true"><i id="loadFill"></i></div>
     </div>
     <button class="go" id="go" disabled>Начать прогулку</button>
+    <form class="play" id="play" onsubmit="return false">
+      <h2>Играть онлайн · deathmatch</h2>
+      <p class="hint">Все против всех на карте города. Мышь — прицел, левая кнопка — огонь, R — перезарядка, Tab — таблица очков.</p>
+      <label>Ник<input id="mpName" maxlength="16" autocomplete="off"></label>
+      <label>Где появиться<select id="mpSpawn"></select></label>
+      <label>Сервер<input id="mpServer" placeholder="wss://адрес-сервера (по умолчанию localhost)" autocomplete="off" spellcheck="false"></label>
+      <button class="go" id="goPlay" disabled>Играть</button>
+      <div class="mp-msg" id="mpMsg" role="status"></div>
+    </form>
     <div class="credit">Карта © участники <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>. Здания: кадастр Государственной земельной службы Латвии (<a href="https://data.gov.lv/dati/lv/dataset/kadastra-informacijas-sistemas-atvertie-dati">data.gov.lv</a>, CC BY 4.0). Расписание: GTFS <a href="https://satiksme.daugavpils.lv/">Daugavpils satiksme</a>. Фасады нарисованы по материалу стен и году постройки, это не фотографии; Дом Единства, «Латгола» и храмы Церковной горки смоделированы по снимкам с Wikimedia Commons, visitdaugavpils.lv, celotajs.lv и militaryheritagetourism.info.</div>
   </div>
 </div>
 <div id="tags" aria-hidden="true"></div>
+<div id="mpTags" aria-hidden="true"></div>
+<div class="mp-hit" id="mpHit" hidden></div>
+<div class="mp-hurt" id="mpHurt" hidden><i id="mpHurtDir"></i></div>
+<div class="mp-hud" id="mpHud" hidden>
+  <div class="mp-stat"><div class="mp-hp"><i id="mpHp"></i></div><b id="mpHpN">100</b><span id="mpAmmo">30 / 30</span><small>убийств · смертей: <span id="mpScore">0 · 0</span></small></div>
+  <div class="mp-feed" id="mpFeed" aria-live="polite"></div>
+</div>
+<div class="mp-board" id="mpBoard" hidden><div class="panel"><h2>Счёт</h2><ol id="mpBoardList"></ol><div class="mp-cols"><span>игрок</span><b>убийств</b><i>смертей</i></div></div></div>
+<div class="mp-dead" id="mpDead" hidden><div class="panel"><h2 id="mpDeadBy">Вы погибли</h2><button class="go" id="mpRespawn" disabled>…</button><button class="btn" id="mpLeave">Выйти</button></div></div>
+<div class="mp-dead" id="mpOver" hidden><div class="panel"><h2>Соединение с сервером потеряно</h2><button class="go" id="mpOverBtn">Начать заново</button></div></div>
 <div class="joy" id="joy" hidden><i id="joyKnob"></i></div>
 
 <!-- three.js for the unbundled page (GitHub Pages serves the repository as it is); Vite bundles it from npm instead -->

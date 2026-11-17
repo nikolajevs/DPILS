@@ -4,6 +4,7 @@ import { SB } from './landmarks/schools.js';
 import { SHV } from './landmarks/shops.js';
 // every module, latest first: a module is evaluated after the earlier ones it needs (see tools/check.js)
 import { frame } from './game/loop.js';
+import { MP, enablePlay } from './game/mp.js';
 import './game/input.js';
 import './ui/hud.js';
 import './ui/map.js';
@@ -95,7 +96,7 @@ const step = (text, w, reported) => {
     await loading.frame();
     loading.done('Готово: ' + BLD.length.toLocaleString('ru') + ' зданий, ' + LINES.length.toLocaleString('ru') + ' улиц и дорожек, ' + trees.toLocaleString('ru') + ' деревьев, ' + lamps.toLocaleString('ru') + ' фонарей' + (tripsN ? ', ' + tripsN.toLocaleString('ru') + ' рейсов в расписании' : '') + '.');
     $('view').classList.add('shown');
-    $('go').disabled = false; $('go').focus();
-    window.__city = { SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, updateBoard, P, teleport, setFly, setTime, fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU };
+    $('go').disabled = false; enablePlay(); $('go').focus();
+    window.__city = { MP, STATE, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, updateBoard, P, teleport, setFly, setTime, fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU };
   } catch (e) { console.error(e); loading.fail('Ошибка при сборке города: ' + e.message); }
 })();

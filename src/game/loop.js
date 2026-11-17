@@ -4,6 +4,7 @@ import { big, drawMini } from '../ui/map.js';
 import { renderFrame, updateLod, updateSun } from '../render/post.js';
 import { QUALITY, qi } from '../render/lighting.js';
 import { P, step } from './player.js';
+import { MP, mpLabels, mpTick } from './mp.js';
 import { TX, updateBoard, updateClockUI, updateTags, updateTransit } from '../transit/transit.js';
 import { lmTick } from '../landmarks/index.js';
 import { sky, terrainH } from '../world/terrain.js';
@@ -17,9 +18,9 @@ let last = performance.now(), clock = 0;
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000); last = now; clock += dt;
-  if (STATE.started) { if ($('start').hidden && big.hidden) step(dt); }
+  if (STATE.started) { if ($('start').hidden && big.hidden && !(MP.on && MP.dead)) step(dt); }
   else { STATE.introT += reduceMotion ? 0 : dt; P.yaw = 0.6 + STATE.introT * 0.05; P.x = -1350 + Math.sin(P.yaw) * 420; P.z = 1250 + Math.cos(P.yaw) * 420; P.y = 150 + terrainH(P.x, P.z); P.pitch = -0.33; }
-  updateTransit(dt); lmTick();
+  mpTick(dt); updateTransit(dt); lmTick();
   if (!reduceMotion) U.time.value = clock;
   const bob = (!P.fly && STATE.started && !reduceMotion) ? Math.sin(P.walked * 2.1) * 0.035 : 0;
   camera.position.set(P.x, P.y + bob, P.z); camera.rotation.set(P.pitch, P.yaw, 0);
@@ -29,7 +30,7 @@ function frame(now) {
   updateSun();
   if ((STATE.lodTimer -= dt) <= 0) { STATE.lodTimer = 0.3; updateLod(); }
   renderFrame();
-  camera.updateMatrixWorld(); updateTags();
+  camera.updateMatrixWorld(); updateTags(); mpLabels();
   if (STATE.started) { if ((STATE.hudTimer -= dt) <= 0) { STATE.hudTimer = 0.25; updateHud(); updateClockUI(); if ((TX.boardT = (TX.boardT || 0) - 1) <= 0) { TX.boardT = 2; updateBoard(); } } if ((STATE.mapTimer -= dt) <= 0) { STATE.mapTimer = 0.15; drawMini(); } }
 }
 

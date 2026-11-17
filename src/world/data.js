@@ -17,6 +17,11 @@ function inBuilding(x, z) {
   for (const id of l) { const b = BLD[id], bb = b.bb; if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pip(x, z, b.ring)) return true; }
   return false;
 }
+function buildingAt(x, z) {   // the building whose footprint holds the point (for the line of fire), or null
+  const l = BGRID.get((Math.floor(x / 60) + 2000) * 4096 + Math.floor(z / 60) + 2000); if (!l) return null;
+  for (const id of l) { const b = BLD[id], bb = b.bb; if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pip(x, z, b.ring)) return b; }
+  return null;
+}
 function inWater(x, z) {
   for (const a of WATER) { const bb = a.bb; if (x < bb[0] || x > bb[2] || z < bb[1] || z > bb[3]) continue; if (!pip(x, z, a.rings[0])) continue; let hole = false; for (let k = 1; k < a.rings.length; k++) if (pip(x, z, a.rings[k])) { hole = true; break; } if (!hole) return true; }
   return false;
@@ -63,4 +68,4 @@ function makeMaterials() {
   M_MARK = std({ vertexColors: true, roughness: 0.8, metalness: 0, depthWrite: false }, 'mark');
 }
 
-export { AREAS, BGRID, BLD, COL, LINES, M_ASPH, M_BALLAST, M_DIRT, M_LAND, M_MARK, M_PAVE, ROAD, STREAM, TRAMLINES, WATER, WMASK, inBuilding, inWater, makeMaterials, matBank, matFac, matGold, matPlain, matRoof, onRoad, waterMask, wetTree };
+export { AREAS, BGRID, BLD, COL, LINES, M_ASPH, M_BALLAST, M_DIRT, M_LAND, M_MARK, M_PAVE, ROAD, STREAM, TRAMLINES, WATER, WMASK, buildingAt, inBuilding, inWater, makeMaterials, matBank, matFac, matGold, matPlain, matRoof, onRoad, waterMask, wetTree };
