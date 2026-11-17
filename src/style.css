@@ -287,3 +287,83 @@ body.dead .mp-stat { display: none; }
 .lb-row.me { background: rgba(60, 130, 255, .18); font-weight: 700; } .lb-row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 label.chk { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); } label.chk input { width: auto; margin: 0; }
 @media (max-width: 520px) { .lb-row { grid-template-columns: 28px 1fr 38px 38px 44px 0 0; } .lb-row > :nth-child(n+6) { display: none; } }
+
+/* ================= game interface, second pass: one look for the HUD, the windows and the start card ================= */
+:root { --glass: rgba(14, 19, 24, .62); --glass-line: rgba(255, 255, 255, .14); --red: #e0463a; --blue: #3b86e8; --good: #5fcf6a; --warn: #f0b429; --shadow: 0 10px 34px rgba(0, 0, 0, .28); }
+/* the HUD: a glass card with health, the weapon and its slots */
+.mp-hud { text-shadow: none; }
+.mp-stat { left: 18px; bottom: 74px; display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr); width: 250px; box-sizing: border-box; padding: 12px 14px 10px; border-radius: 14px; background: var(--glass); border: 1px solid var(--glass-line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: var(--shadow); }
+.mp-vitals { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; }
+.mp-hpn { display: flex; align-items: baseline; gap: 4px; } .mp-hpn b { font: 700 34px/1 var(--f-display); font-variant-numeric: tabular-nums; min-width: 2.1ch; } .mp-hpn i { font: 600 11px/1 var(--f-body); letter-spacing: .1em; opacity: .65; font-style: normal; }
+.mp-hp { height: 10px; border-radius: 6px; background: rgba(255, 255, 255, .14); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06); }
+.mp-hp i { border-radius: 6px; background: linear-gradient(90deg, #5fcf6a, #9be15d); transition: width .18s, background .3s; }
+.mp-stat[data-hp="mid"] .mp-hp i { background: linear-gradient(90deg, #f0b429, #f5d04a); }
+.mp-stat[data-hp="low"] .mp-hp i { background: linear-gradient(90deg, #e0463a, #f06a4a); } .mp-stat[data-hp="low"] .mp-hpn b { color: #ff7a6b; animation: hp-pulse 1s ease-in-out infinite; }
+@keyframes hp-pulse { 50% { opacity: .55; } }
+.mp-gun { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "w n" "a a"; align-items: end; }
+.mp-gun #mpWeapon { grid-area: w; font: 600 12px/1 var(--f-body); letter-spacing: .08em; text-transform: uppercase; opacity: .75; }
+.mp-stat .mp-gun #mpAmmo { grid-area: a; grid-column: 1 / 3; font: 700 28px/1.1 var(--f-display); font-variant-numeric: tabular-nums; } .mp-gun #mpAmmo[data-empty="1"] { color: #ff7a6b; }
+.mp-nades { grid-area: n; font: 600 13px/1 var(--f-body); letter-spacing: .15em; color: #cfe3ff; }
+.mp-nades::before { content: "Граната "; letter-spacing: 0; font-size: 11px; opacity: .6; text-transform: uppercase; }
+.mp-slots { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.mp-slots span { text-align: center; padding: 5px 0; border-radius: 6px; font: 600 12px/1 var(--f-body); background: rgba(255, 255, 255, .08); color: rgba(255, 255, 255, .55); }
+.mp-slots span.on { background: #fff; color: #111; box-shadow: 0 0 0 1px #fff, 0 2px 8px rgba(255, 255, 255, .25); }
+.mp-stat small { grid-column: auto; font: 500 11px/1.3 var(--f-body); opacity: .6; } .mp-stat .mp-hp { min-width: 0; width: 100%; }
+/* the score at the top: two team chips, or "you / leader" */
+.mp-top { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); }
+.mp-teams { display: flex; align-items: stretch; gap: 0; padding: 0; border-radius: 12px; overflow: hidden; background: var(--glass); border: 1px solid var(--glass-line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: var(--shadow); font: 700 17px/1 var(--f-display); }
+.mp-teams:empty { display: none; }
+.mp-teams b { padding: 10px 16px; font-weight: 700; font-variant-numeric: tabular-nums; } .mp-teams b.t0 { background: linear-gradient(90deg, rgba(224, 70, 58, .9), rgba(224, 70, 58, .55)); border-radius: 0; } .mp-teams b.t1 { background: linear-gradient(270deg, rgba(59, 134, 232, .9), rgba(59, 134, 232, .55)); border-radius: 0; }
+.mp-teams small { display: grid; place-items: center; padding: 0 12px; font: 600 11px/1 var(--f-body); letter-spacing: .08em; text-transform: uppercase; opacity: .75; }
+.mp-teams b.me { background: rgba(255, 255, 255, .14); } .mp-teams b.lead { background: transparent; font-weight: 600; font-size: 15px; }
+/* the kill feed */
+.mp-feed { right: 14px; top: 226px; gap: 5px; max-width: min(380px, 60vw); }   /* under the minimap: the long messages do not reach the score */
+.mp-feed div { background: var(--glass); border: 1px solid var(--glass-line); border-left: 3px solid rgba(255, 255, 255, .35); padding: 6px 10px; border-radius: 8px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); animation: feed-in .22s ease-out; }
+.mp-feed .mine { background: rgba(40, 110, 50, .72); border-left-color: var(--good); } .mp-feed .dead { background: rgba(140, 28, 28, .74); border-left-color: var(--red); } .mp-feed .sys { opacity: .8; font-weight: 500; }
+@keyframes feed-in { from { transform: translateX(14px); opacity: 0; } }
+/* the bar of buttons hides while the mouse is captured: Esc brings it back */
+body.mp .bar { transition: opacity .25s; } body.mp:has(#view.locked) .bar { opacity: 0; pointer-events: none; }
+body.mp .bar { background: var(--glass); border-color: var(--glass-line); color: #fff; backdrop-filter: blur(10px); } body.mp .bar .btn { color: #fff; border-color: var(--glass-line); } body.mp .bar .btn:hover { background: rgba(255, 255, 255, .16); } body.mp .bar kbd { color: rgba(255, 255, 255, .6); }
+.mp-chat .line b, .mp-banner { text-shadow: none; }
+/* windows: settings, statistics, leaders, keys, the round, the table of the score */
+.mp-settings, .mp-end { background: rgba(8, 12, 18, .55); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); animation: veil-in .18s ease-out; }
+@keyframes veil-in { from { opacity: 0; } } @keyframes pop-in { from { opacity: 0; transform: translateY(10px) scale(.98); } }
+.mp-settings .panel, .mp-end .panel, .mp-board .panel, .mp-dead .panel { border-radius: 16px; border: 1px solid var(--line); box-shadow: 0 24px 70px rgba(0, 0, 0, .38); animation: pop-in .2s ease-out; }
+.mp-settings .panel { width: min(680px, 100%); padding: 0 22px 18px; gap: 14px; }
+.mp-settings header { position: sticky; top: 0; z-index: 2; margin: 0 -22px; padding: 16px 22px 12px; background: var(--panel-solid); border-bottom: 1px solid var(--line); border-radius: 16px 16px 0 0; }
+.mp-settings header::after { content: ""; position: absolute; left: 22px; bottom: -1px; width: 44px; height: 3px; border-radius: 3px; background: var(--brick); }
+.mp-settings h2, .mp-end h2, .mp-board h2, .mp-dead h2 { letter-spacing: -.005em; } .mp-settings h2 { font: 700 21px/1.2 var(--f-display); }
+.mp-settings header .btn { border-radius: 999px; padding: 8px 14px; }
+.mp-settings h3 { margin: 10px 0 2px; color: var(--brick); font-weight: 600; }
+.mp-settings input[type="range"] { accent-color: var(--brick); } .mp-settings input[type="checkbox"], .play input[type="checkbox"] { accent-color: var(--brick); }
+.set-key .btn { background: var(--panel); border-radius: 7px; font-weight: 600; box-shadow: 0 2px 0 var(--line); } .set-key .btn:hover { background: var(--line); }
+.help-row kbd { box-shadow: 0 2px 0 var(--line); background: var(--panel-solid); }
+.lb-tabs .btn { border-radius: 999px; padding: 7px 14px; } .lb-tabs .btn[aria-pressed="true"] { background: var(--brick); color: var(--brick-ink); border-color: transparent; }
+.lb-row, .st-row { padding: 7px 10px; } .lb-row:nth-child(2) .nm::before { content: "🥇 "; } .lb-row:nth-child(3) .nm::before { content: "🥈 "; } .lb-row:nth-child(4) .nm::before { content: "🥉 "; }
+.lb-row.head:nth-child(1) .nm::before, .lb-row.head .nm::before { content: ""; }
+.lb-row.me { background: rgba(164, 67, 47, .16); box-shadow: inset 3px 0 0 var(--brick); }
+.st-weapons .st-w i { background: linear-gradient(90deg, var(--brick), #d8725a); }
+/* the table of the score (Tab) */
+.mp-board .panel, .mp-dead .panel { background: var(--glass); color: #fff; border: 1px solid var(--glass-line); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.mp-board .panel { min-width: 420px; padding: 18px 22px; } .mp-board li, .mp-cols { grid-template-columns: 1fr 76px 76px; }
+.mp-board li { padding: 6px 8px; border-radius: 7px; background: rgba(255, 255, 255, .06); } .mp-board li.me { background: rgba(255, 255, 255, .2); color: #fff; }
+.mp-board li.t0 span { border-left-color: var(--red); } .mp-board li.t1 span { border-left-color: var(--blue); } .mp-cols { color: rgba(255, 255, 255, .6); border-top-color: var(--glass-line); }
+/* death: a dark card with a big red caption */
+.mp-dead:not(#mpOver) .panel { background: rgba(18, 8, 8, .78); border-color: rgba(255, 90, 80, .35); } .mp-dead h2 { font: 700 20px/1.2 var(--f-display); }
+.mp-dead .mp-spec { color: rgba(255, 255, 255, .7); } .mp-at { color: rgba(255, 255, 255, .7); } .mp-at select { background: rgba(255, 255, 255, .1); color: #fff; border-color: var(--glass-line); } .mp-at select option { color: #111; }
+.mp-dead { background: radial-gradient(ellipse at center, transparent 35%, rgba(120, 0, 0, .55)); }
+.mp-dead#mpOver .panel { background: var(--panel-solid); color: var(--ink); }
+.mp-end .panel { border-radius: 16px; padding: 20px 24px; } .mp-end h2 { border-radius: 10px; letter-spacing: .01em; }
+.end-row.me { background: rgba(164, 67, 47, .18); box-shadow: inset 3px 0 0 var(--brick); }
+.mp-hints span { background: var(--glass); border: 1px solid var(--glass-line); border-radius: 7px; padding: 5px 10px; backdrop-filter: blur(8px); }
+.mp-banner { border-radius: 12px; box-shadow: var(--shadow); letter-spacing: .01em; animation: pop-in .25s ease-out; }
+/* the start card */
+.card { width: min(620px, 100%); border-radius: 18px; box-shadow: 0 24px 70px rgba(0, 0, 0, .28); }
+.play { gap: 10px; }
+.play h2 { display: flex; align-items: center; gap: 8px; color: var(--ink); font: 700 12px/1 var(--f-body); letter-spacing: .1em; margin-top: 6px; } .play h2::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.play .go { justify-self: stretch; width: 100%; padding: 15px 18px; border-radius: 11px; font-size: 17px; letter-spacing: .01em; box-shadow: 0 4px 0 rgba(0, 0, 0, .18); transition: transform .08s, box-shadow .08s, background-color .4s; } .play .go:not(:disabled):hover { filter: brightness(1.06); } .play .go:not(:disabled):active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0, 0, 0, .18); }
+.play input:focus, .play select:focus { outline: 2px solid var(--brick); outline-offset: 0; border-color: transparent; }
+.sec-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 4px; } .sec-btns .btn { justify-content: center; padding: 11px 8px; border-radius: 9px; }
+.srv { border-radius: 9px; padding: 9px 12px; transition: background .15s, border-color .15s; } .srv:hover { background: var(--line); }
+@media (max-width: 560px) { .mp-stat { width: 210px; left: 10px; bottom: 66px; } .mp-top { top: 8px; } .mp-teams b { padding: 8px 10px; font-size: 14px; } .sec-btns { grid-template-columns: 1fr; } .mp-feed { right: 10px; top: 150px; } .mp-board .panel { min-width: 0; width: 92vw; } }
+@media (prefers-reduced-motion: reduce) { .mp-settings, .mp-end, .mp-settings .panel, .mp-end .panel, .mp-board .panel, .mp-dead .panel, .mp-feed div, .mp-banner { animation: none; } .mp-stat[data-hp="low"] .mp-hpn b { animation: none; } }
