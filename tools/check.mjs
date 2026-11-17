@@ -33,6 +33,7 @@ for (const file of files) {
     if (n.type === 'ImportDeclaration') {
       if (n.source.value === 'three' || n.source.value.startsWith('three/')) continue;   // the library (three, three/addons/…)
       const to = path.resolve(path.dirname(file), n.source.value);
+      if (n.source.value.startsWith('.') && !to.startsWith(SRC + path.sep) && fs.existsSync(to)) continue;   // the game of the server (server/*.mjs), run by the page too: not part of this check
       if (!n.specifiers.length) mod.sideImports.push(to);
       for (const s of n.specifiers) mod.imports.set(s.local.name, [to, s.type === 'ImportSpecifier' ? s.imported.name : '*']);
       mod.order = (mod.order || []).concat([to]);
