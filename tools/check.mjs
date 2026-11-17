@@ -15,7 +15,7 @@ import * as walk from 'acorn-walk';
 import * as escope from 'eslint-scope';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'), SRC = path.join(ROOT, 'src'), ENTRY = path.join(SRC, 'boot.js');
-const BROWSER = new Set(['window', 'HTMLInputElement', 'HTMLSelectElement', 'RTCPeerConnection', 'MediaStream', 'Audio', 'document', 'navigator', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame', 'matchMedia', 'localStorage',
+const BROWSER = new Set(['window', 'AbortController', 'HTMLInputElement', 'HTMLSelectElement', 'RTCPeerConnection', 'MediaStream', 'Audio', 'document', 'navigator', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame', 'matchMedia', 'localStorage',
   'getComputedStyle', 'HTMLElement', 'HTMLButtonElement', 'HTMLAnchorElement', 'HTMLCanvasElement', 'Image', 'ImageData', 'OffscreenCanvas', 'Path2D',
   'devicePixelRatio', 'location', 'innerWidth', 'innerHeight', 'ResizeObserver', 'screen', 'history', 'alert', 'Event', 'KeyboardEvent', 'PointerEvent']);
 const GLOBALS = new Set([...Object.getOwnPropertyNames(globalThis), ...BROWSER]);

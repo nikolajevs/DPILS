@@ -5,6 +5,8 @@ import { PLACES } from '../ui/places.js';
 import { buildingAt, onRoad } from '../world/data.js';
 import { PERF } from './perf.js';
 import { SET, onChange } from './settings.js';
+import { firstGames } from './help.js';
+import { rememberServer } from '../ui/servers.js';
 import { addNade, boomNade, clearNades, tickNades } from './nades.js';
 import { terrainH } from '../world/terrain.js';
 import { camera, canvas, scene } from '../render/renderer.js';
@@ -192,6 +194,20 @@ function spawnPoint(choice = MP.spawn) {
   const i = choice >= 0 ? choice : Math.floor(Math.random() * PLACES.length), pl = PLACES[i], a = Math.random() * 6.283, r = 3 + Math.random() * 20;
   return { x: pl[2] + Math.cos(a) * r, z: pl[3] + Math.sin(a) * r, yaw: pl[4] || 0 };
 }
+// ---------- the end of a round: the table of the round and the time to the next one ----------
+let endTimer = 0;
+function showSummary(m) {
+  const mine = m.team === MP.team, title = el('mpEndTitle'); title.className = 't' + (m.team === 1 ? 1 : 0);
+  title.textContent = (mine ? 'Победа! ' : 'Поражение. ') + 'Выиграли ' + m.name.toLowerCase() + ', ' + m.score[0] + ' : ' + m.score[1];
+  const mvp = m.rows.find(r => r.id === m.mvp); el('mpEndMvp').textContent = mvp ? '★ Лучший игрок раунда: ' + mvp.name + ' — ' + mvp.kills + ' убийств, ' + mvp.dmg + ' урона' : '';
+  const t = el('mpEndTable'); t.textContent = '';
+  const row = (cells, cls) => { const r = document.createElement('div'); r.className = 'end-row ' + cls; for (const c of cells) { const s = document.createElement('span'); s.textContent = c; r.append(s); } t.append(r); };
+  row(['игрок', 'убийств', 'смертей', 'в голову', 'урон', 'точность'], 'head');
+  for (const r of m.rows) row([(r.id === m.mvp ? '★ ' : '') + r.name, r.kills, r.deaths, r.heads, r.dmg, r.acc + ' %'], 't' + (r.team === 1 ? 1 : 0) + (r.id === MP.id ? ' me' : ''));
+  el('mpEnd').hidden = false; const until = performance.now() + (m.nextMs || 10000); clearInterval(endTimer);
+  const tick = () => { const left = Math.max(0, Math.ceil((until - performance.now()) / 1000)); el('mpEndNext').textContent = 'Новый раунд через ' + left + ' с'; if (!left) clearInterval(endTimer); };
+  tick(); endTimer = setInterval(tick, 300);
+}
 // ---------- grenades and the dead man's view ----------
 function throwNade() {
   const now = performance.now(); if (MP.dead || MP.nades <= 0 || now - MP.lastNade < 900) return;
@@ -221,7 +237,7 @@ function respawn() {
 /* ---------- messages from the server ---------- */
 function onMsg(m) {
   switch (m.t) {
-    case 'hello': voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team); document.body.dataset.team = m.team; break;
+    case 'hello': rememberServer(MP.url, m.server); voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team); document.body.dataset.team = m.team; break;
     case 'spawn': {
       const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.crouch = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
@@ -258,7 +274,8 @@ function onMsg(m) {
     }
     case 'say': addLine(m, MP.id); if (m.id !== MP.id) tone(900, 700, 0.05, 0.08, 'sine'); break;
     case 'rtc': if (voice) voice.signal(m.from, m.d); break;
-    case 'win': { const mine = m.team === MP.team; el('mpBanner').hidden = false; el('mpBanner').className = 'mp-banner t' + (m.team === 1 ? 1 : 0); el('mpBanner').textContent = (mine ? 'Победа! ' : 'Поражение. ') + 'Выиграли ' + m.name.toLowerCase() + ', ' + m.score[0] + ' : ' + m.score[1]; setTimeout(() => { el('mpBanner').hidden = true; }, 9000); break; }
+    case 'win': showSummary(m); break;
+    case 'round': el('mpEnd').hidden = true; clearInterval(endTimer); break;
     case 'chat': feed(m.text, 'sys'); break;
     case 'full': el('mpMsg').textContent = 'На сервере нет мест.'; break;
   }
@@ -272,6 +289,7 @@ function serverUrl() {
   return u;
 }
 function showGame() {
+  firstGames();
   STATE.mp = true; MP.on = true; STATE.started = true; P.fly = false; document.body.classList.add('mp');
   $('start').hidden = true; $('hud').hidden = false; el('mpHud').hidden = false; $('cross').hidden = false; STATE.lodTimer = 0;
   $('bFly').setAttribute('aria-pressed', false); if ($('places').hidden === false) $('places').hidden = true;
@@ -280,7 +298,7 @@ function join() {
   const name = el('mpName').value.trim(), url = serverUrl(), msg = el('mpMsg');
   if (!url) { msg.textContent = 'Укажите адрес сервера (поле «Сервер»).'; return; }
   try { localStorage.setItem('dpils.mp', JSON.stringify({ name, server: el('mpServer').value.trim(), spawn: el('mpSpawn').value, team: el('mpTeam').value })); } catch (e) {}
-  MP.spawn = +el('mpSpawn').value; MP.wantTeam = +el('mpTeam').value; msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true;
+  MP.spawn = +el('mpSpawn').value; MP.wantTeam = +el('mpTeam').value; MP.url = url; msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true;
   let ws; try { ws = new WebSocket(url); } catch (e) { msg.textContent = 'Неверный адрес сервера.'; el('goPlay').disabled = false; return; }
   MP.ws = ws; MP.started = false;
   ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, team: MP.wantTeam, ...s })); };
