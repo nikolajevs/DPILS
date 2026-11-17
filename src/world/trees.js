@@ -16,6 +16,7 @@ import { treeRoom } from './tree-room.js';
 import { inParking } from '../landmarks/parking.js';
 import { std } from '../render/materials.js';
 import { R, mkCanvas } from '../render/textures.js';
+import { terrainH } from './terrain.js';
 import { U, renderer, scene, terrUniforms } from '../render/renderer.js';
 import { hash, hb, pip, rnd } from '../core/util.js';
 import { C, HX, HY, TTILE } from '../core/env.js';
@@ -286,9 +287,22 @@ function buildTrees() {
     }
   });
   const M = new THREE.Matrix4(), q = new THREE.Quaternion(), q0 = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), col = new THREE.Color(); let count = 0;
-  // instanced meshes share geometry, so culling uses one generous sphere around the tile origin
+  /* Culling. An instanced mesh is culled by a sphere of its own (InstancedMesh.boundingSphere), which three.js would
+     build from the sphere of the geometry carried through every instance matrix: the impostor quad is scaled by the
+     height of the tree, so that sphere came out kilometres wide, every tile of the city passed the frustum test and
+     all of them were drawn in every frame (some 650 draws, the largest part of the frame). Each tile gets the sphere
+     around its trees instead: crowns, heights, the rampart offset and the terrain lift the shaders add. */
   const tileSphere = new THREE.Sphere(new THREE.Vector3(0, 6, 0), TTILE * 0.75 + 20);
   hi.forEach(g => g.boundingSphere = tileSphere);
+  const box = new THREE.Box3(), bp = new THREE.Vector3();
+  const sphereOf = (l, n, cx, cz) => {
+    box.makeEmpty();
+    for (let i = 0; i < n; i++) {
+      const x = l[6 * i], z = l[6 * i + 1], g = hi[l[6 * i + 2]].userData, sc = l[6 * i + 3], sy = l[6 * i + 5], r = Math.max(g.R, g.H / 2) * sc + 1, y = fortTreeY(x, z) + terrainH(x, z);
+      box.expandByPoint(bp.set(x - cx - r, y - 1, z - cz - r)); box.expandByPoint(bp.set(x - cx + r, y + g.H * sy + 1, z - cz + r));
+    }
+    return box.getBoundingSphere(new THREE.Sphere());
+  };
   // smooth leaf edges: with multisampling on, the alpha of a leaf card becomes sample coverage
   const a2cOn = () => { if (PP.msaa > 0) gl.enable(gl.SAMPLE_ALPHA_TO_COVERAGE); }, a2cOff = () => gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE);
   const tint = v => { const f = 0.84 + v * 0.3; return col.setRGB(f * (0.94 + (v * 13 % 1) * 0.14), f, f * (0.86 + (v * 29 % 1) * 0.12)); };
@@ -296,7 +310,7 @@ function buildTrees() {
     const l = t.list, n = l.length / 6; count += n; t.hi = []; t.lo = [];
     const cx = t.x0 + TTILE / 2, cz = t.z0 + TTILE / 2;
     const fg = farGeo.clone(), types = new Float32Array(n); fg.boundingSphere = tileSphere;
-    const L = new THREE.InstancedMesh(fg, matTreeFar, n);
+    const L = new THREE.InstancedMesh(fg, matTreeFar, n), ts = sphereOf(l, n, cx, cz); L.boundingSphere = ts;
     for (let i = 0; i < n; i++) {
       const type = l[6 * i + 2], sc = l[6 * i + 3], v = l[6 * i + 4], sy = l[6 * i + 5], H = hi[type].userData.H; types[i] = type;
       M.compose(new THREE.Vector3(l[6 * i] - cx, fortTreeY(l[6 * i], l[6 * i + 1]), l[6 * i + 1] - cz), q0, new THREE.Vector3(sc * H / 2, sy * H, 1)); L.setMatrixAt(i, M); L.setColorAt(i, tint(v));
@@ -305,7 +319,7 @@ function buildTrees() {
     L.position.set(cx, 0, cz); L.instanceMatrix.needsUpdate = true; L.instanceColor.needsUpdate = true; L.onBeforeRender = a2cOn; L.onAfterRender = a2cOff; scene.add(L); t.lo.push(L);
     for (let type = 0; type < 4; type++) {
       const idx = []; for (let i = 0; i < n; i++) if (l[6 * i + 2] === type) idx.push(i); if (!idx.length) continue;
-      const Hm = new THREE.InstancedMesh(hi[type], matTree, idx.length);
+      const Hm = new THREE.InstancedMesh(hi[type], matTree, idx.length); Hm.boundingSphere = ts;
       idx.forEach((i, k) => {
         const sc = l[6 * i + 3], v = l[6 * i + 4], sy = l[6 * i + 5]; q.setFromAxisAngle(up, v * 6.283);
         M.compose(new THREE.Vector3(l[6 * i] - cx, fortTreeY(l[6 * i], l[6 * i + 1]), l[6 * i + 1] - cz), q, new THREE.Vector3(sc, sy, sc)); Hm.setMatrixAt(k, M); Hm.setColorAt(k, tint(v));
