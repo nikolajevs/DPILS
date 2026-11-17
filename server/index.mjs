@@ -4,7 +4,7 @@
    the wall. Hits are checked against fire rate, range and the target's position as the server knows it. */
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
-import { RULES as R, WEAPONS, rayToSegment } from './combat.mjs';
+import { NADE, RULES as R, WEAPONS, rayToSegment } from './combat.mjs';
 import { loadWorld } from './world.mjs';
 
 const PORT = +process.env.PORT || 8787, HX = 5200, HY = 4200;   // bounds a bit wider than the city
@@ -35,12 +35,34 @@ function poseAt(p, t) {
   return [p.x, p.y, p.z];
 }
 function spawn(p, x, z, yaw) {
-  p.x = num(x, HX); p.z = num(z, HY); p.y = 1.7; p.yaw = num(yaw, 10); p.pitch = 0; p.hp = R.hp; p.alive = true; p.protectUntil = now() + R.protectMs; p.t = now(); p.free = true; p.hist.length = 0;
-  send(p, { t: 'spawn', x: p.x, z: p.z, yaw: p.yaw, hp: p.hp }); all({ t: 'alive', id: p.id });
+  p.x = num(x, HX); p.z = num(z, HY); p.y = 1.7; p.yaw = num(yaw, 10); p.pitch = 0; p.hp = R.hp; p.alive = true; p.protectUntil = now() + R.protectMs; p.t = now(); p.free = true; p.hist.length = 0; p.nades = NADE.count;
+  send(p, { t: 'spawn', x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, nades: p.nades }); all({ t: 'alive', id: p.id });
+}
+// damage dmg from attacker p to v (weapon w; from = where it came from): the hit and the hurt messages, and the kill
+function hurt(p, v, dmg, head, w, from) {
+  if (!v.alive || dmg <= 0) return; const t0 = now();
+  v.hp -= dmg; send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: from[0] - v.x, dz: from[2] - v.z }); if (p !== v) send(p, { t: 'hit', id: v.id, head, kill: v.hp <= 0 });
+  if (v.hp > 0) return;
+  v.alive = false; v.deaths++; v.diedAt = t0; if (p !== v) { p.kills++; teamScore[p.team]++; }
+  all({ t: 'kill', killer: p.id, victim: v.id, kn: p.name, vn: v.name, kt: p.team, vt: v.team, head, w }); sendBoard();
+  if (p !== v && teamScore[p.team] >= WIN) endRound(p.team);
+}
+// grenades in the air: the server flies them (the clients draw their own copy) and decides where and when they go off
+const nades = new Map(); let nextNade = 1;
+function explode(n) {
+  nades.delete(n.id); all({ t: 'boom', id: n.id, x: n.p[0], y: n.p[1], z: n.p[2] });
+  if (roundOver) return; const thrower = players.get(n.by);
+  for (const v of players.values()) {
+    if (!v.alive || !thrower) continue; if (v.team === thrower.team && v !== thrower) continue;
+    const c = [v.x, v.y - 0.7, v.z], o = [n.p[0], n.p[1] + 0.3, n.p[2]], dx = c[0] - o[0], dy = c[1] - o[1], dz = c[2] - o[2], d = Math.hypot(dx, dy, dz);
+    if (d >= NADE.radius || (v !== thrower && now() <= v.protectUntil)) continue;
+    if (d > 0.6 && WORLD.freePath(o, [dx / d, dy / d, dz / d], d) < d - 0.7) continue;   // a wall between the blast and the player
+    hurt(thrower, v, Math.round(NADE.dmg * (1 - d / NADE.radius) * (v === thrower ? NADE.self : 1)), false, 3, n.p);
+  }
 }
 wss.on('connection', ws => {
   ws.since = Date.now(); ws.joined = false;
-  const p = { id: nextId++, ws, name: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, lastShot: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(), live: true };
+  const p = { id: nextId++, ws, name: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, lastShot: 0, lastNade: 0, nades: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(), live: true };
   ws.on('pong', () => { p.live = true; });
   ws.on('message', raw => {
     const t0 = now(); if (t0 - p.win > 1000) { p.win = t0; p.msgs = 0; }
@@ -80,13 +102,12 @@ wss.on('connection', ws => {
       }
       if (!out.length) return;
       all({ t: 'shot', id: p.id, w: wi, o, rays: out });
-      for (const { v, dmg, head } of hits.values()) {
-        v.hp -= Math.round(dmg); send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: o[0] - v.x, dz: o[2] - v.z }); send(p, { t: 'hit', id: v.id, head, kill: v.hp <= 0 });
-        if (v.hp <= 0) {
-          v.alive = false; v.deaths++; p.kills++; v.diedAt = t0; teamScore[p.team]++; all({ t: 'kill', killer: p.id, victim: v.id, kn: p.name, vn: v.name, kt: p.team, vt: v.team, head, w: wi }); sendBoard();
-          if (teamScore[p.team] >= WIN) endRound(p.team);
-        }
-      }
+      for (const { v, dmg, head } of hits.values()) hurt(p, v, Math.round(dmg), head, wi, o);
+    } else if (m.t === 'throw' && p.alive && p.nades > 0 && t0 - p.lastNade >= NADE.cooldownMs && !roundOver) {
+      const d = [num(m.dx, 1), num(m.dy, 1), num(m.dz, 1)], l = Math.hypot(...d); if (l < 0.5) return;
+      p.nades--; p.lastNade = t0; const u = d.map(x => x / l), sp = NADE.speed, id = nextNade++;
+      const n = { id, by: p.id, p: [p.x + u[0] * 0.6, p.y - 0.2 + u[1] * 0.6, p.z + u[2] * 0.6], v: [u[0] * sp, u[1] * sp + NADE.loft * sp, u[2] * sp], t: t0 + NADE.fuseMs };
+      nades.set(id, n); all({ t: 'nade', id, by: p.id, p: n.p, v: n.v, fuse: NADE.fuseMs });
     } else if (m.t === 'chat') {
       const text = String(m.text || '').replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
       if (!text || t0 - p.lastChat < 700) return; p.lastChat = t0;
@@ -114,5 +135,6 @@ setInterval(() => {
   const list = [...players.values()].filter(p => p.alive).map(p => [p.id, +p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), +p.eye.toFixed(2)]);
   if (players.size) all({ t: 'snap', now: now(), p: list });
 }, 1000 / R.tickHz);
+setInterval(() => { const t = now(); for (const n of [...nades.values()]) { WORLD.stepNade(n, 1 / 30, NADE.g); if (t >= n.t) explode(n); } }, 1000 / 30);
 setInterval(() => { for (const c of wss.clients) if (!c.joined && Date.now() - c.since > 15000) c.terminate(); for (const p of players.values()) { if (!p.live) { p.ws.terminate(); continue; } p.live = false; p.ws.ping(); } }, 15000);
 server.listen(PORT, () => console.log('Daugavpils shooter server on :' + PORT));
