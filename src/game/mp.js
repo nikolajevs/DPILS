@@ -4,6 +4,8 @@ import { P, freeSpot, keys } from './player.js';
 import { PLACES } from '../ui/places.js';
 import { buildingAt, onRoad } from '../world/data.js';
 import { PERF } from './perf.js';
+import { worldSpace } from '../render/world-space.js';
+import { loadAvatar, makeAvatar, ready as avatarReady } from './avatar.js';
 import { SET, onChange } from './settings.js';
 import { firstGames } from './help.js';
 import { rememberServer } from '../ui/servers.js';
@@ -69,7 +71,7 @@ const GEO = { box: new THREE.BoxGeometry(1, 1, 1), head: new THREE.SphereGeometr
 const HUE = [0.0, 0.6];   // red and blue team
 function makeFigure(hue) {
   const col = new THREE.Color().setHSL(hue, 0.65, 0.42), dark = new THREE.Color().setHSL(hue, 0.5, 0.2);
-  const mc = new THREE.MeshLambertMaterial({ color: col }), md = new THREE.MeshLambertMaterial({ color: dark }), ms = new THREE.MeshLambertMaterial({ color: 0xe0b890 }), mg = new THREE.MeshLambertMaterial({ color: 0x25272b });
+  const mc = worldSpace(new THREE.MeshLambertMaterial({ color: col })), md = worldSpace(new THREE.MeshLambertMaterial({ color: dark })), ms = worldSpace(new THREE.MeshLambertMaterial({ color: 0xe0b890 })), mg = worldSpace(new THREE.MeshLambertMaterial({ color: 0x25272b }));
   const g = new THREE.Group(); g.rotation.order = 'YXZ'; const part = (m, sx, sy, sz, x, y, z) => { const o = new THREE.Mesh(GEO.box, m); o.scale.set(sx, sy, sz); o.position.set(x, y, z); g.add(o); return o; };
   part(md, 0.2, 0.8, 0.22, -0.12, 0.4, 0); part(md, 0.2, 0.8, 0.22, 0.12, 0.4, 0);   // legs
   part(mc, 0.46, 0.6, 0.26, 0, 1.1, 0);   // torso
@@ -81,7 +83,12 @@ function makeFigure(hue) {
 function addRemote(id, name, team) {
   if (remotes.has(id) || id === MP.id) return remotes.get(id);
   const hue = MP.ffa ? (id * 0.381966) % 1 : (HUE[team] ?? 0.3), group = makeFigure(hue), tag = document.createElement('div'); tag.className = 'mp-tag ' + (MP.ffa ? 'tf' : 't' + team); if (MP.ffa) tag.style.background = 'hsla(' + Math.round(hue * 360) + ', 55%, 32%, .78)'; tag.textContent = name || '…'; group.visible = false; scene.add(group); $('mpTags').append(tag);
-  const r = { name, team, group, buf: [], tag }; remotes.set(id, r); return r;
+  const r = { name, team, hue, group, buf: [], tag }; remotes.set(id, r); attachAvatar(r); return r;
+}
+// the ready animated model instead of the simple figure, as soon as its file has come
+function attachAvatar(r) {
+  if (r.av || !avatarReady()) return; const av = makeAvatar(r.hue); if (!av) return;
+  for (const c of r.group.children) c.visible = false; r.group.add(av.root); r.av = av;
 }
 function dropRemote(id) { const r = remotes.get(id); if (!r) return; scene.remove(r.group); r.tag.remove(); remotes.delete(id); }
 function nameOf(id) { const b = MP.board.find(e => e.id === id); return b ? b.name : '?'; }
@@ -98,7 +105,7 @@ function pose(r, t) {
 /* ---------- the gun in hand, tracers, sounds ---------- */
 const gun = new THREE.Group(), models = [new THREE.Group(), new THREE.Group(), new THREE.Group()];
 (function () {
-  const m1 = new THREE.MeshLambertMaterial({ color: 0x2a2d31 }), m2 = new THREE.MeshLambertMaterial({ color: 0x6b4a2b }), m3 = new THREE.MeshLambertMaterial({ color: 0x555a60 });
+  const m1 = worldSpace(new THREE.MeshLambertMaterial({ color: 0x2a2d31 })), m2 = worldSpace(new THREE.MeshLambertMaterial({ color: 0x6b4a2b })), m3 = worldSpace(new THREE.MeshLambertMaterial({ color: 0x555a60 }));
   const add = (g, m, sx, sy, sz, x, y, z) => { const o = new THREE.Mesh(GEO.box, m); o.scale.set(sx, sy, sz); o.position.set(x, y, z); g.add(o); };
   const [r, s, n] = models;
   add(r, m1, 0.06, 0.09, 0.52, 0, 0, 0); add(r, m1, 0.03, 0.03, 0.18, 0, 0.0, -0.33); add(r, m2, 0.055, 0.16, 0.1, 0, -0.11, 0.14); add(r, m1, 0.045, 0.13, 0.07, 0, -0.1, -0.06);   // rifle
@@ -107,7 +114,7 @@ const gun = new THREE.Group(), models = [new THREE.Group(), new THREE.Group(), n
   s.visible = false; n.visible = false; gun.add(r, s, n);
   gun.position.set(0.17, -0.19, -0.5); gun.scale.setScalar(0.8); gun.visible = false; camera.add(gun); scene.add(camera);
 })();
-const flash = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffd36a })); flash.position.set(0, 0, -0.45); flash.visible = false; gun.add(flash);
+const flash = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), worldSpace(new THREE.MeshBasicMaterial({ color: 0xffd36a }))); flash.position.set(0, 0, -0.45); flash.visible = false; gun.add(flash);
 let actx = null;
 function ac() {   // the audio context of the game sounds, with one volume knob (the settings)
   if (!actx) { actx = new (window.AudioContext || window.webkitAudioContext)(); actx.master = actx.createGain(); actx.master.gain.value = SET.vol; actx.master.connect(actx.master); }
@@ -132,7 +139,7 @@ function tone(f0, f1, dur, vol, type = 'sine', delay = 0) {
 }
 function tracer(o, d, len, color) {
   const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(o[0] + d[0] * 1.2, o[1] - 0.1 + d[1] * 1.2, o[2] + d[2] * 1.2), new THREE.Vector3(o[0] + d[0] * len, o[1] + d[1] * len, o[2] + d[2] * len)]);
-  const m = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9, fog: false }), l = new THREE.Line(g, m); l.frustumCulled = false; scene.add(l); tracers.push({ l, t: 0 });
+  const m = worldSpace(new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9, fog: false })), l = new THREE.Line(g, m); l.frustumCulled = false; scene.add(l); tracers.push({ l, t: 0 });
 }
 
 /* ---------- shooting ---------- */
@@ -300,7 +307,7 @@ function join() {
   const name = el('mpName').value.trim(), url = serverUrl(), msg = el('mpMsg');
   if (!url) { msg.textContent = 'Укажите адрес сервера (поле «Сервер»).'; return; }
   try { localStorage.setItem('dpils.mp', JSON.stringify({ name, server: el('mpServer').value.trim(), spawn: el('mpSpawn').value, team: el('mpTeam').value })); } catch (e) {}
-  MP.spawn = +el('mpSpawn').value; MP.wantTeam = +el('mpTeam').value; MP.url = url; msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true;
+  MP.spawn = +el('mpSpawn').value; MP.wantTeam = +el('mpTeam').value; MP.url = url; loadAvatar().then(a => { if (a) for (const r of remotes.values()) attachAvatar(r); }); msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true;
   let ws; try { ws = new WebSocket(url); } catch (e) { msg.textContent = 'Неверный адрес сервера.'; el('goPlay').disabled = false; return; }
   MP.ws = ws; MP.started = false;
   ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, team: MP.wantTeam, ...s })); };
@@ -362,10 +369,11 @@ function mpTick(dt) {
     const g = r.group;
     if (r.fallT) {   // a killed player topples backwards and lies for three seconds
       const age = now - r.fallT; if (age > 3000) { r.fallT = 0; g.visible = false; g.rotation.x = 0; r.buf.length = 0; continue; }
+      if (r.av) { const c = r.corpse; g.visible = true; g.scale.y = 1; g.rotation.set(0, c.yaw, 0); g.position.set(c.x, c.y - (c.h || 1.7), c.z); r.av.update(dt, { speed: 0, air: false, dead: true }); continue; }
       const c = r.corpse; g.visible = true; g.scale.y = 1; g.position.set(c.x, c.y - (c.h || 1.7) + 0.18 * Math.min(1, age / 350), c.z); g.rotation.y = c.yaw; g.rotation.x = 1.5 * Math.min(1, age / 350) * (2 - Math.min(1, age / 350)); continue;
     }
     const p = pose(r, t); if (!p) { g.visible = false; continue; }
-    remoteSteps(r, p, now); g.visible = true; g.position.set(p.x, p.y - p.h, p.z); g.scale.y = p.h / 1.7; g.rotation.y = p.yaw; g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
+    remoteSteps(r, p, now); if (r.av) r.av.update(dt, { speed: r.speed || 0, air: !!r.air, dead: false }); g.visible = true; g.position.set(p.x, p.y - p.h, p.z); g.scale.y = p.h / 1.7; g.rotation.y = p.yaw; g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
   }
   for (let i = tracers.length - 1; i >= 0; i--) { const tr = tracers[i]; tr.t += dt; tr.l.material.opacity = Math.max(0, 0.9 - tr.t * 9); if (tr.t > 0.1) { scene.remove(tr.l); tr.l.geometry.dispose(); tr.l.material.dispose(); tracers.splice(i, 1); } }
   MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06; flash.visible = MP.kick > 0.6;
@@ -400,6 +408,7 @@ function ownSteps(dt) {
 function remoteSteps(r, p, now) {
   if (r.sx === undefined) { r.sx = p.x; r.sz = p.z; r.stride = 0; r.st = now; return; }
   const moved = Math.hypot(p.x - r.sx, p.z - r.sz), secs = Math.max(0.001, (now - r.st) / 1000); r.sx = p.x; r.sz = p.z; r.st = now;
+  const inst = moved / secs; r.speed = inst > 25 ? 0 : (r.speed || 0) + (inst - (r.speed || 0)) * 0.35; r.air = Math.abs(p.y - (r.sy ?? p.y)) / secs > 1.5;   // for the animation of the model
   if (moved / secs > 20 || moved < 0.002 || (p.h || 1.7) < 1.5 || Math.abs(p.y - (r.sy ?? p.y)) > 0.15) { r.sy = p.y; return; }   // a jump, a crouch, a teleport or standing still: no steps
   r.sy = p.y; const run = moved / secs > 6; r.stride += moved; if (r.stride < (run ? 3 : 2.1)) return; r.stride = 0;
   const dx = p.x - P.x, dz = p.z - P.z, d = Math.hypot(dx, dz); if (d > 40) return;
