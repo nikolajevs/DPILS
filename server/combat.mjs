@@ -8,6 +8,7 @@ export const RULES = {
 export const WEAPONS = [
   { name: 'Автомат', gapMs: 85, pellets: 1, dmg: 22, head: 40, range: 160, falloff: 0 },
   { name: 'Дробовик', gapMs: 750, pellets: 8, dmg: 9, head: 16, range: 45, falloff: 0.6 },
+  { name: 'Снайперская', gapMs: 1300, pellets: 1, dmg: 70, head: 100, range: 400, falloff: 0 },
 ];
 // closest distance between the ray (o + t·d, 0 ≤ t ≤ len, |d| = 1) and the segment a–b; returns { dist, t }
 export function rayToSegment(o, d, len, a, b) {

@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { STATE } from '../core/state.js';
 import { P, freeSpot, keys } from './player.js';
 import { PLACES } from '../ui/places.js';
-import { buildingAt } from '../world/data.js';
+import { buildingAt, onRoad } from '../world/data.js';
+import { PERF } from './perf.js';
 import { terrainH } from '../world/terrain.js';
 import { camera, canvas, scene } from '../render/renderer.js';
 import { CH, addLine, openChat } from './chat.js';
@@ -20,8 +21,9 @@ const RULES = { hitR: 0.4, headR: 0.28, bodyBottom: 1.6, bodyTop: 0.05 };
 const WEAPONS = [
   { name: 'Автомат', mag: 30, reloadMs: 1800, gapMs: 100, range: 160, pellets: 1, cone: 0, auto: true },
   { name: 'Дробовик', mag: 6, reloadMs: 2600, gapMs: 800, range: 45, pellets: 8, cone: 0.05, auto: false },
+  { name: 'Снайперская', mag: 5, reloadMs: 2800, gapMs: 1300, range: 400, pellets: 1, cone: 0, auto: false, scope: true },   // right mouse button: the scope
 ];
-const MP = { on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, ammo: [30, 6], reloadAt: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0 };
+const MP = { on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, scope: false, zoom: 0, ammo: [30, 6, 5], reloadAt: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0 };
 STATE.mp = false;
 let voice = null;
 const remotes = new Map();   // id → { name, group, buf: [{ t, x, y, z, yaw, pitch }], tag }
@@ -51,6 +53,7 @@ function freePath(o, d, len) {
 const aim = (yaw = P.yaw, pitch = P.pitch) => { const cp = Math.cos(pitch); return [-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp]; };
 // how wide the shots scatter now: a little always, more when walking or running, more after each shot of a burst
 function spreadNow() {
+  if (W().scope) return (MP.zoom > 0.9 ? 0.0004 : 0.04) + (['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(k => keys.has(k)) ? 0.03 : 0) + (P.up > 0.02 ? 0.04 : 0);   // steady only when scoped and still
   const moving = ['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(k => keys.has(k)), run = keys.has('ShiftLeft') || keys.has('ShiftRight');
   if (W().cone) return W().cone * (P.crouch ? 0.8 : 1) + (moving ? 0.01 : 0) + (P.up > 0.02 ? 0.03 : 0);   // the shotgun's pellets spread in a wide cone
   return (0.002 + (moving ? (run ? 0.022 : 0.008) : 0) + MP.burst) * (P.crouch ? 0.5 : 1) + (P.up > 0.02 ? 0.03 : 0);   // crouching steadies the aim, a jump spoils it
@@ -87,14 +90,15 @@ function pose(r, t) {
 }
 
 /* ---------- the gun in hand, tracers, sounds ---------- */
-const gun = new THREE.Group(), models = [new THREE.Group(), new THREE.Group()];
+const gun = new THREE.Group(), models = [new THREE.Group(), new THREE.Group(), new THREE.Group()];
 (function () {
   const m1 = new THREE.MeshLambertMaterial({ color: 0x2a2d31 }), m2 = new THREE.MeshLambertMaterial({ color: 0x6b4a2b }), m3 = new THREE.MeshLambertMaterial({ color: 0x555a60 });
   const add = (g, m, sx, sy, sz, x, y, z) => { const o = new THREE.Mesh(GEO.box, m); o.scale.set(sx, sy, sz); o.position.set(x, y, z); g.add(o); };
-  const [r, s] = models;
+  const [r, s, n] = models;
   add(r, m1, 0.06, 0.09, 0.52, 0, 0, 0); add(r, m1, 0.03, 0.03, 0.18, 0, 0.0, -0.33); add(r, m2, 0.055, 0.16, 0.1, 0, -0.11, 0.14); add(r, m1, 0.045, 0.13, 0.07, 0, -0.1, -0.06);   // rifle
   add(s, m3, 0.035, 0.035, 0.8, -0.022, 0.012, -0.12); add(s, m3, 0.035, 0.035, 0.8, 0.022, 0.012, -0.12); add(s, m2, 0.075, 0.06, 0.22, 0, -0.045, -0.3); add(s, m1, 0.07, 0.1, 0.3, 0, -0.01, 0.2); add(s, m2, 0.06, 0.16, 0.3, 0, -0.07, 0.38);   // shotgun: two barrels, pump, stock
-  s.visible = false; gun.add(r, s);
+  add(n, m1, 0.045, 0.07, 1.0, 0, 0, -0.2); add(n, m3, 0.02, 0.02, 0.45, 0, 0.0, -0.95); add(n, m1, 0.05, 0.05, 0.28, 0, 0.065, -0.15); add(n, m2, 0.06, 0.15, 0.4, 0, -0.06, 0.4); add(n, m1, 0.04, 0.12, 0.07, 0, -0.08, 0.02);   // sniper rifle: long barrel, scope, stock
+  s.visible = false; n.visible = false; gun.add(r, s, n);
   gun.position.set(0.17, -0.19, -0.5); gun.scale.setScalar(0.8); gun.visible = false; camera.add(gun); scene.add(camera);
 })();
 const flash = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffd36a })); flash.position.set(0, 0, -0.45); flash.visible = false; gun.add(flash);
@@ -127,7 +131,7 @@ function fire(now) {
   if (MP.dead || !STATE.locked || now - MP.lastShot < w.gapMs) return;
   if (MP.reloadAt) return;
   if (MP.ammo[MP.weapon] <= 0) { reload(now); return; }
-  MP.lastShot = now; MP.ammo[MP.weapon]--; MP.kick = 1; P.pitch = Math.min(1.5, P.pitch + (w.pellets > 1 ? 0.02 : 0.0035)); P.yaw += (Math.random() - 0.5) * (w.pellets > 1 ? 0.006 : 0.0016); if (w.auto) MP.burst = Math.min(0.03, MP.burst + 0.0045);
+  MP.lastShot = now; MP.ammo[MP.weapon]--; MP.kick = 1; P.pitch = Math.min(1.5, P.pitch + (w.pellets > 1 ? 0.02 : w.scope ? 0.03 : 0.0035)); P.yaw += (Math.random() - 0.5) * (w.pellets > 1 ? 0.006 : 0.0016); if (w.auto) MP.burst = Math.min(0.03, MP.burst + 0.0045);
   const o = [P.x, P.y, P.z], t = performance.now() - 120, rays = [];
   for (let i = 0; i < w.pellets; i++) {
     const sp = spreadNow(), ang = Math.random() * 6.283, rad = sp * Math.sqrt(Math.random());
@@ -142,16 +146,16 @@ function fire(now) {
     const len = best ? best.t : clear; rays.push([+d[0].toFixed(4), +d[1].toFixed(4), +d[2].toFixed(4), +len.toFixed(1), best ? best.id : 0]);
     tracer(o, d, len, 0xffe9a0);
   }
-  bang(w.pellets > 1 ? 0.6 : 0.35, true);
+  bang(w.pellets > 1 ? 0.6 : w.scope ? 0.8 : 0.35, true);
   MP.ws.send(JSON.stringify({ t: 'shoot', w: MP.weapon, rays }));
   if (MP.ammo[MP.weapon] <= 0) reload(now);
   updatePanel();
 }
 function switchWeapon(i) {
   if (MP.dead || i === MP.weapon || i < 0 || i >= WEAPONS.length) return;
-  MP.weapon = i; MP.reloadAt = 0; MP.firing = false; models.forEach((m, k) => { m.visible = k === i; }); tone(300, 200, 0.06, 0.15, 'square'); updatePanel();
+  MP.weapon = i; MP.reloadAt = 0; MP.firing = false; MP.scope = false; models.forEach((m, k) => { m.visible = k === i; }); tone(300, 200, 0.06, 0.15, 'square'); updatePanel();
 }
-function reload(now) { const w = W(); if (MP.reloadAt || MP.ammo[MP.weapon] >= w.mag || MP.dead) return; MP.reloadAt = now; updatePanel(); }
+function reload(now) { const w = W(); MP.scope = false; if (MP.reloadAt || MP.ammo[MP.weapon] >= w.mag || MP.dead) return; MP.reloadAt = now; updatePanel(); }
 
 /* ---------- panels ---------- */
 const el = id => $(id);
@@ -159,7 +163,7 @@ let hitT = 0, hurtT = 0;
 function updatePanel() {
   el('mpHp').style.width = Math.max(0, MP.hp) + '%'; el('mpHpN').textContent = Math.max(0, Math.ceil(MP.hp));
   el('mpAmmo').textContent = W().name + '  ' + (MP.reloadAt ? 'перезарядка…' : MP.ammo[MP.weapon] + ' / ' + W().mag);
-  el('mpScore').textContent = MP.kills + ' · ' + MP.deaths;
+  el('mpScore').textContent = MP.kills + ' · ' + MP.deaths; el('mpFps').textContent = ' · ' + PERF.fps + ' кадр/с';
   const tm = el('mpTeams'); tm.textContent = ''; const chip = (i, t) => { const e = document.createElement('b'); e.className = 't' + i; e.textContent = t; return e; };
   const lim = document.createElement('small'); lim.textContent = ' до ' + MP.win; tm.append(chip(0, MP.teams[0] + ' ' + MP.score[0]), ' : ', chip(1, MP.score[1] + ' ' + MP.teams[1]), lim);
 }
@@ -171,7 +175,7 @@ function feed(text, cls) {
   const f = el('mpFeed'), d = document.createElement('div'); d.textContent = text; if (cls) d.className = cls; f.prepend(d); while (f.children.length > 6) f.lastChild.remove(); setTimeout(() => d.remove(), 7000);
 }
 function die(byName) {
-  MP.dead = true; MP.deadAt = performance.now(); MP.firing = false; gun.visible = false;
+  MP.dead = true; MP.deadAt = performance.now(); MP.firing = false; MP.scope = false; gun.visible = false;
   if (document.pointerLockElement) document.exitPointerLock();
   el('mpDead').hidden = false; el('mpDeadBy').textContent = byName ? 'Вас убил ' + byName : 'Вы погибли';
 }
@@ -192,12 +196,12 @@ function onMsg(m) {
     case 'spawn': {
       const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.crouch = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
-      MP.weapon = 0; models.forEach((mm, k) => { mm.visible = k === 0; }); MP.hp = m.hp; MP.ammo = WEAPONS.map(w => w.mag); MP.reloadAt = 0; MP.dead = false; gun.visible = true; el('mpDead').hidden = true; updatePanel();
+      MP.weapon = 0; MP.scope = false; models.forEach((mm, k) => { mm.visible = k === 0; }); MP.hp = m.hp; MP.ammo = WEAPONS.map(w => w.mag); MP.reloadAt = 0; MP.dead = false; gun.visible = true; el('mpDead').hidden = true; updatePanel();
       MP.ws.send(JSON.stringify({ t: 'state', x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch }));   // the server has the point as asked: tell it where the player really stands
       if (canvas.requestPointerLock) { canvas.focus(); try { const pr = canvas.requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} }
       break;
     }
-    case 'pong': MP.rtt = Math.round(MP.rtt ? MP.rtt * 0.6 + (performance.now() - m.c) * 0.4 : performance.now() - m.c); el('mpPing').textContent = ' · пинг ' + MP.rtt + ' мс'; break;
+    case 'pong': MP.rtt = Math.round(MP.rtt ? MP.rtt * 0.6 + (performance.now() - m.c) * 0.4 : performance.now() - m.c); el('mpPing').textContent = ' · пинг ' + MP.rtt + ' мс'; updatePanel(); break;
     case 'correct': P.x = m.x; P.z = m.z; break;
     case 'snap': {
       const t = performance.now(), seen = new Set();
@@ -205,7 +209,7 @@ function onMsg(m) {
       for (const [id, r] of remotes) if (!seen.has(id) && !r.fallT) { r.group.visible = false; r.buf.length = 0; }
       break;
     }
-    case 'shot': { if (m.id === MP.id) break; const rs = remotes.get(m.id); if (rs) rs.shotAt = performance.now(); for (const r of m.rays) tracer(m.o, r, r[3], 0xffb060); const dd = Math.hypot(m.o[0] - P.x, m.o[2] - P.z); if (dd < 220) bang((m.w ? 0.5 : 0.3) * (1 - dd / 220), true); break; }
+    case 'shot': { if (m.id === MP.id) break; const rs = remotes.get(m.id); if (rs) rs.shotAt = performance.now(); for (const r of m.rays) tracer(m.o, r, r[3], 0xffb060); const dd = Math.hypot(m.o[0] - P.x, m.o[2] - P.z); const hear = m.w === 2 ? 600 : 220; if (dd < hear) bang((m.w ? (m.w === 2 ? 0.7 : 0.5) : 0.3) * (1 - dd / hear), true); break; }
     case 'hit': hitT = performance.now(); if (m.kill) { tone(880, 880, 0.12, 0.25, 'triangle'); tone(1320, 1320, 0.25, 0.25, 'triangle', 0.1); } else tone(m.head ? 2600 : 1700, m.head ? 2200 : 1400, 0.07, 0.2, 'square'); el('mpHit').className = m.head ? 'head' : m.kill ? 'kill' : ''; el('mpHit').hidden = false; break;
     case 'hurt': {
       MP.hp = m.hp; hurtT = performance.now(); tone(160, 60, 0.18, 0.4, 'sawtooth'); el('mpHurt').hidden = false; updatePanel();
@@ -263,15 +267,16 @@ function initUi() {
 
 /* ---------- input ---------- */
 canvas.addEventListener('wheel', e => { if (MP.on && !MP.dead) switchWeapon((MP.weapon + (e.deltaY > 0 ? 1 : WEAPONS.length - 1)) % WEAPONS.length); }, { passive: true });
-canvas.addEventListener('mousedown', e => { if (!MP.on || e.button !== 0) return; MP.firing = true; if (!STATE.locked && !MP.dead) return; fire(performance.now()); });
-window.addEventListener('mouseup', e => { if (e.button === 0) MP.firing = false; });
+canvas.addEventListener('contextmenu', e => { if (MP.on) e.preventDefault(); });
+canvas.addEventListener('mousedown', e => { if (MP.on && e.button === 2 && W().scope && !MP.dead && !MP.reloadAt) MP.scope = true; if (!MP.on || e.button !== 0) return; MP.firing = true; if (!STATE.locked && !MP.dead) return; fire(performance.now()); });
+window.addEventListener('mouseup', e => { if (e.button === 0) MP.firing = false; if (e.button === 2) MP.scope = false; });
 window.addEventListener('keydown', e => {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;   // typing in the chat box
   if (!MP.on || e.repeat) return;
   if (e.code === 'KeyV' && voice) { if (!voice.hasMic) { voice.enableMic().then(ok => { el('mpVoice').dataset.mic = ok ? 'on' : 'denied'; }); } else voice.talk(true); }
   else if (!MP.dead && (e.code === 'KeyY' || e.code === 'KeyU' || e.code === 'Enter')) { e.preventDefault(); openChat(e.code === 'KeyU'); }
   else if (e.code === 'KeyR') reload(performance.now());
-  else if (e.code === 'Digit1' || e.code === 'Digit2') switchWeapon(+e.code.slice(5) - 1);
+  else if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') switchWeapon(+e.code.slice(5) - 1);
   else if (e.code === 'Tab') { e.preventDefault(); el('mpBoard').hidden = false; drawBoard(); }
   else if ((e.code === 'Space' || e.code === 'Enter') && MP.dead) { e.preventDefault(); respawn(); }
 });
@@ -283,6 +288,13 @@ function mpTick(dt) {
   if (!MP.on) return;
   const now = performance.now(), t = now - 120;
   if (voice) voice.update(dt);
+  if ((MP.fpsT = (MP.fpsT || 0) - dt) <= 0) { MP.fpsT = 1; updatePanel(); }
+  // the scope: the picture closes in (the field of view 66° → 20°) and the gun goes out of sight
+  { const want = MP.scope && W().scope && !MP.dead && !MP.reloadAt ? 1 : 0; MP.zoom += (want - MP.zoom) * Math.min(1, dt * 14); if (Math.abs(MP.zoom - want) < 0.01) MP.zoom = want;
+    const fov = 66 - 46 * MP.zoom; if (Math.abs(camera.fov - fov) > 0.05) { camera.fov = fov; camera.updateProjectionMatrix(); }
+    const scoped = MP.zoom > 0.6; if (el('mpScope').hidden === scoped) { el('mpScope').hidden = !scoped; $('cross').style.visibility = scoped ? 'hidden' : ''; }
+    gun.visible = !MP.dead && MP.zoom < 0.5; }
+  ownSteps(dt);
   if (MP.reloadAt && now - MP.reloadAt >= W().reloadMs) { MP.reloadAt = 0; MP.ammo[MP.weapon] = W().mag; updatePanel(); }
   MP.burst = Math.max(0, MP.burst - dt * 0.03); { const px = Math.max(6, Math.round(spreadNow() * 1400)), cr = $('cross'); if (cr.dataset.px !== String(px)) { cr.dataset.px = px; cr.style.width = cr.style.height = px + 'px'; cr.style.margin = (-px / 2) + 'px 0 0 ' + (-px / 2) + 'px'; } }
   if ((MP.pingT = (MP.pingT || 0) - dt) <= 0 && MP.ws.readyState === 1) { MP.pingT = 2; MP.ws.send(JSON.stringify({ t: 'ping', c: now, rtt: MP.rtt })); }
@@ -296,7 +308,7 @@ function mpTick(dt) {
       const c = r.corpse; g.visible = true; g.scale.y = 1; g.position.set(c.x, c.y - (c.h || 1.7) + 0.18 * Math.min(1, age / 350), c.z); g.rotation.y = c.yaw; g.rotation.x = 1.5 * Math.min(1, age / 350) * (2 - Math.min(1, age / 350)); continue;
     }
     const p = pose(r, t); if (!p) { g.visible = false; continue; }
-    g.visible = true; g.position.set(p.x, p.y - p.h, p.z); g.scale.y = p.h / 1.7; g.rotation.y = p.yaw; g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
+    remoteSteps(r, p, now); g.visible = true; g.position.set(p.x, p.y - p.h, p.z); g.scale.y = p.h / 1.7; g.rotation.y = p.yaw; g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
   }
   for (let i = tracers.length - 1; i >= 0; i--) { const tr = tracers[i]; tr.t += dt; tr.l.material.opacity = Math.max(0, 0.9 - tr.t * 9); if (tr.t > 0.1) { scene.remove(tr.l); tr.l.geometry.dispose(); tr.l.material.dispose(); tracers.splice(i, 1); } }
   MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06; flash.visible = MP.kick > 0.6;
@@ -305,6 +317,39 @@ function mpTick(dt) {
   if (hurtT && now - hurtT > 600) { hurtT = 0; el('mpHurt').hidden = true; }
 }
 const V = new THREE.Vector3();
+// ---------- footsteps ----------
+let noise = null;
+function footstep(vol, pan, bright, low) {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume();
+    if (!noise) { const n = Math.floor(actx.sampleRate * 0.09); noise = actx.createBuffer(1, n, actx.sampleRate); const d = noise.getChannelData(0); for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 3); }
+    const s = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain(), p = actx.createStereoPanner();
+    s.buffer = noise; s.playbackRate.value = (low ? 0.55 : 0.85) + Math.random() * 0.3; f.type = 'lowpass'; f.frequency.value = (bright ? 1700 : 600) * (0.85 + Math.random() * 0.3) * (low ? 0.6 : 1); g.gain.value = vol; p.pan.value = Math.max(-1, Math.min(1, pan));
+    s.connect(f); f.connect(g); g.connect(p); p.connect(actx.destination); s.start();
+  } catch (e) {}
+}
+// your own steps (one per two metres walking, three running; crouching is silent) and the thud of a landing
+let ownX = 0, ownZ = 0, ownStride = 0, wasUp = 0;
+function ownSteps(dt) {
+  if (MP.dead) { ownX = P.x; ownZ = P.z; return; }
+  const moved = Math.hypot(P.x - ownX, P.z - ownZ); ownX = P.x; ownZ = P.z;
+  if (P.up > 0.02) { wasUp = Math.max(wasUp, P.up); return; }
+  if (wasUp > 0.05) { footstep(0.16, 0, onRoad(P.x, P.z, 1.5), true); wasUp = 0; }
+  if (moved > 2 || P.crouch) return;
+  const run = keys.has('ShiftLeft') || keys.has('ShiftRight'); ownStride += moved;
+  if (ownStride >= (run ? 3 : 2.1)) { ownStride = 0; footstep(run ? 0.1 : 0.05, 0, onRoad(P.x, P.z, 1.5)); }
+}
+// the steps of the others, by the distance they walk: heard up to 40 m (muffled behind a house), quiet when they crouch
+function remoteSteps(r, p, now) {
+  if (r.sx === undefined) { r.sx = p.x; r.sz = p.z; r.stride = 0; r.st = now; return; }
+  const moved = Math.hypot(p.x - r.sx, p.z - r.sz), secs = Math.max(0.001, (now - r.st) / 1000); r.sx = p.x; r.sz = p.z; r.st = now;
+  if (moved / secs > 20 || moved < 0.002 || (p.h || 1.7) < 1.5 || Math.abs(p.y - (r.sy ?? p.y)) > 0.15) { r.sy = p.y; return; }   // a jump, a crouch, a teleport or standing still: no steps
+  r.sy = p.y; const run = moved / secs > 6; r.stride += moved; if (r.stride < (run ? 3 : 2.1)) return; r.stride = 0;
+  const dx = p.x - P.x, dz = p.z - P.z, d = Math.hypot(dx, dz); if (d > 40) return;
+  const right = (dx * Math.cos(P.yaw) - dz * Math.sin(P.yaw)) / (d || 1);
+  const behind = (r.losT || 0) < now - 600 ? (r.losT = now, r.muffled = freePath([P.x, P.y, P.z], [dx / (d || 1), 0, dz / (d || 1)], d) < d - 1) : r.muffled;
+  footstep(0.3 * Math.pow(1 - d / 40, 2) * (run ? 1.5 : 1) * (behind ? 0.4 : 1), right, onRoad(p.x, p.z, 1.5) && !behind);
+}
 function mpLabels() {
   if (!MP.on) return;
   const w = window.innerWidth, h = window.innerHeight;
@@ -337,6 +382,7 @@ STATE.mapOverlay = (ctx, cx, cz, ppm, w, h) => {
     ctx.beginPath(); ctx.arc(x, y, 5, 0, 6.3); ctx.fillStyle = r.team === 1 ? '#2f78d8' : '#d8392f'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; ctx.stroke();
   }
 };
+PERF.notice = text => feed(text, 'sys');
 function enablePlay() { initUi(); el('goPlay').disabled = false; }
 
 export { MP, enablePlay, mpLabels, mpTick };

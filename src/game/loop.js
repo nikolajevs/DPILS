@@ -5,6 +5,7 @@ import { renderFrame, updateLod, updateSun } from '../render/post.js';
 import { QUALITY, qi } from '../render/lighting.js';
 import { P, step } from './player.js';
 import { MP, mpLabels, mpTick } from './mp.js';
+import { perfTick } from './perf.js';
 import { TX, updateBoard, updateClockUI, updateTags, updateTransit } from '../transit/transit.js';
 import { lmTick } from '../landmarks/index.js';
 import { sky, terrainH } from '../world/terrain.js';
@@ -17,7 +18,7 @@ window.addEventListener('resize', resize); resize();
 let last = performance.now(), clock = 0;
 function frame(now) {
   requestAnimationFrame(frame);
-  const dt = Math.min(0.05, (now - last) / 1000); last = now; clock += dt;
+  const dt = Math.min(0.05, (now - last) / 1000); perfTick(Math.min(5, (now - last) / 1000)); last = now; clock += dt;
   if (STATE.started) { if ($('start').hidden && big.hidden && !(MP.on && MP.dead)) step(dt); }
   else { STATE.introT += reduceMotion ? 0 : dt; P.yaw = 0.6 + STATE.introT * 0.05; P.x = -1350 + Math.sin(P.yaw) * 420; P.z = 1250 + Math.cos(P.yaw) * 420; P.y = 150 + terrainH(P.x, P.z); P.pitch = -0.33; }
   mpTick(dt); updateTransit(dt); lmTick();

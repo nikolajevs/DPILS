@@ -62,7 +62,7 @@
     <dl class="keys">
       <dt>W A S D / стрелки</dt><dd>идти, Shift — бегом</dd>
       <dt>Мышь</dt><dd>смотреть по сторонам (Esc — отпустить курсор)</dd>
-      <dt>1 · 2 · колесо</dt><dd>в игре: автомат · дробовик</dd>
+      <dt>1 · 2 · 3 · колесо</dt><dd>в игре: автомат · дробовик · снайперская (правая кнопка мыши — прицел)</dd>
       <dt>Y · U · V</dt><dd>в игре: чат всем · чат команде · рация (удерживать)</dd>
       <dt>Пробел · C</dt><dd>в игре: прыжок · присесть (удерживать)</dd>
       <dt>F</dt><dd>полёт: E / пробел — выше, Q — ниже</dd>
@@ -94,10 +94,11 @@
 <div class="mp-hit" id="mpHit" hidden></div>
 <div class="mp-hurt" id="mpHurt" hidden><i id="mpHurtDir"></i></div>
 <div class="mp-hud" id="mpHud" hidden>
-  <div class="mp-stat"><div class="mp-hp"><i id="mpHp"></i></div><b id="mpHpN">100</b><span id="mpAmmo">30 / 30</span><div class="mp-teams" id="mpTeams"></div><small>убийств · смертей: <span id="mpScore">0 · 0</span><span id="mpPing"></span></small></div>
+  <div class="mp-stat"><div class="mp-hp"><i id="mpHp"></i></div><b id="mpHpN">100</b><span id="mpAmmo">30 / 30</span><div class="mp-teams" id="mpTeams"></div><small>убийств · смертей: <span id="mpScore">0 · 0</span><span id="mpPing"></span><span id="mpFps"></span></small></div>
   <div class="mp-feed" id="mpFeed" aria-live="polite"></div>
 </div>
 <div class="mp-banner" id="mpBanner" hidden></div>
+<div class="mp-scope" id="mpScope" hidden><i></i><b></b></div>
 <div class="mp-chat" id="mpChat"><div id="mpChatLog" aria-live="polite"></div><input id="mpChatIn" maxlength="140" autocomplete="off" hidden></div>
 <div class="mp-voice" id="mpVoice" data-mic="off" data-talk="0"><span class="mic">V — рация</span><small class="denied">микрофон не разрешён</small><span id="mpVoiceList"></span></div>
 <div class="mp-board" id="mpBoard" hidden><div class="panel"><h2>Счёт</h2><ol id="mpBoardList"></ol><div class="mp-cols"><span>игрок</span><b>убийств</b><i>смертей</i></div></div></div>
