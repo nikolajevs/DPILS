@@ -7,11 +7,11 @@ import { WebSocketServer } from 'ws';
 import { NADE, RULES as R, WEAPONS, rayToSegment } from './combat.mjs';
 import { loadWorld } from './world.mjs';
 
-const PORT = +process.env.PORT || 8787, HX = 5200, HY = 4200;   // bounds a bit wider than the city
-const WORLD = loadWorld(), WIN = 30, TEAMS = ['Красные', 'Синие'], teamScore = [0, 0];
+const SERVER_NAME = String(process.env.SERVER_NAME || 'Даугавпилс').slice(0, 40), PORT = +process.env.PORT || 8787, HX = 5200, HY = 4200;   // bounds a bit wider than the city
+const WORLD = loadWorld(), WIN = +process.env.WIN_SCORE || 30, TEAMS = ['Красные', 'Синие'], teamScore = [0, 0];
 let nextId = 1, roundOver = false; const players = new Map(), now = () => Date.now();
 const server = http.createServer((req, res) => {
-  if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' }); res.end(JSON.stringify({ ok: true, players: players.size, max: R.maxPlayers })); return; }
+  if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' }); res.end(JSON.stringify({ ok: true, name: SERVER_NAME, players: players.size, max: R.maxPlayers, score: teamScore, win: WIN, teams: TEAMS, round: roundOver ? 'end' : 'play' })); return; }
   res.writeHead(404); res.end();
 });
 const wss = new WebSocketServer({ server, maxPayload: 16384 });
@@ -41,9 +41,9 @@ function spawn(p, x, z, yaw) {
 // damage dmg from attacker p to v (weapon w; from = where it came from): the hit and the hurt messages, and the kill
 function hurt(p, v, dmg, head, w, from) {
   if (!v.alive || dmg <= 0) return; const t0 = now();
-  v.hp -= dmg; send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: from[0] - v.x, dz: from[2] - v.z }); if (p !== v) send(p, { t: 'hit', id: v.id, head, kill: v.hp <= 0 });
+  v.hp -= dmg; if (p !== v) p.st.dmg += dmg + Math.min(0, v.hp); send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: from[0] - v.x, dz: from[2] - v.z }); if (p !== v) send(p, { t: 'hit', id: v.id, head, kill: v.hp <= 0 });
   if (v.hp > 0) return;
-  v.alive = false; v.deaths++; v.diedAt = t0; if (p !== v) { p.kills++; teamScore[p.team]++; }
+  v.alive = false; v.deaths++; v.diedAt = t0; if (p !== v) { p.kills++; teamScore[p.team]++; if (head) p.st.heads++; }
   all({ t: 'kill', killer: p.id, victim: v.id, kn: p.name, vn: v.name, kt: p.team, vt: v.team, head, w }); sendBoard();
   if (p !== v && teamScore[p.team] >= WIN) endRound(p.team);
 }
@@ -62,7 +62,7 @@ function explode(n) {
 }
 wss.on('connection', ws => {
   ws.since = Date.now(); ws.joined = false;
-  const p = { id: nextId++, ws, name: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, lastShot: 0, lastNade: 0, nades: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(), live: true };
+  const p = { id: nextId++, ws, name: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, st: { shots: 0, hitShots: 0, dmg: 0, heads: 0 }, lastShot: 0, lastNade: 0, nades: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(), live: true };
   ws.on('pong', () => { p.live = true; });
   ws.on('message', raw => {
     const t0 = now(); if (t0 - p.win > 1000) { p.win = t0; p.msgs = 0; }
@@ -72,7 +72,7 @@ wss.on('connection', ws => {
     if (m.t === 'join' && !p.joined) {
       if (players.size >= R.maxPlayers) { send(p, { t: 'full' }); ws.close(); return; }
       p.name = cleanName(m.name); p.team = pickTeam(m.team); p.joined = ws.joined = true; players.set(p.id, p);
-      send(p, { t: 'hello', id: p.id, name: p.name, team: p.team, teams: TEAMS, win: WIN, rules: { hp: R.hp, range: R.range }, board: board(), score: teamScore });
+      send(p, { t: 'hello', id: p.id, server: SERVER_NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, rules: { hp: R.hp, range: R.range }, board: board(), score: teamScore });
       spawn(p, m.x, m.z, m.yaw); sendBoard(); all({ t: 'chat', text: p.name + ' в игре, ' + TEAMS[p.team] });
       return;
     }
@@ -101,6 +101,7 @@ wss.on('connection', ws => {
         h.dmg += (head ? W.head : W.dmg) * k; h.head = h.head || head; hits.set(v.id, h);
       }
       if (!out.length) return;
+      p.st.shots++; if (hits.size) p.st.hitShots++;
       all({ t: 'shot', id: p.id, w: wi, o, rays: out });
       for (const { v, dmg, head } of hits.values()) hurt(p, v, Math.round(dmg), head, wi, o);
     } else if (m.t === 'throw' && p.alive && p.nades > 0 && t0 - p.lastNade >= NADE.cooldownMs && !roundOver) {
@@ -127,9 +128,13 @@ wss.on('connection', ws => {
   ws.on('close', () => { if (p.joined && players.delete(p.id)) { all({ t: 'left', id: p.id }); sendBoard(); all({ t: 'chat', text: p.name + ' вышел' }); } });
   ws.on('error', () => {});
 });
+// the end of a round: the table of the round goes to everybody, ten seconds later the scores are cleared and the next round starts
 function endRound(team) {
-  roundOver = true; all({ t: 'win', team, name: TEAMS[team], score: teamScore });
-  setTimeout(() => { teamScore[0] = teamScore[1] = 0; for (const p of players.values()) { p.kills = p.deaths = 0; } roundOver = false; sendBoard(); all({ t: 'chat', text: 'Новый раунд' }); }, 10000);
+  roundOver = true;
+  const rows = [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, heads: p.st.heads, dmg: Math.round(p.st.dmg), acc: p.st.shots ? Math.round(100 * p.st.hitShots / p.st.shots) : 0 }));
+  rows.sort((a, b) => b.kills - a.kills || b.dmg - a.dmg || a.deaths - b.deaths);
+  all({ t: 'win', team, name: TEAMS[team], score: teamScore, rows, mvp: rows.length ? rows[0].id : 0, nextMs: 10000 });
+  setTimeout(() => { teamScore[0] = teamScore[1] = 0; for (const p of players.values()) { p.kills = p.deaths = 0; p.st = { shots: 0, hitShots: 0, dmg: 0, heads: 0 }; } roundOver = false; sendBoard(); all({ t: 'round' }); all({ t: 'chat', text: 'Новый раунд' }); }, 10000);
 }
 setInterval(() => {
   const list = [...players.values()].filter(p => p.alive).map(p => [p.id, +p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3), +p.eye.toFixed(2)]);

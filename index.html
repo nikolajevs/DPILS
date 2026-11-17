@@ -43,6 +43,7 @@
     <button class="btn" id="bNight" aria-pressed="false" title="День → вечер → ночь">Время: день<kbd>N</kbd></button>
     <button class="btn" id="bQuality" title="Качество графики">Графика: высокая</button>
     <button class="btn" id="bHelp">?</button>
+    <button class="btn" id="bHint" title="Все клавиши, F1">Клавиши<kbd>F1</kbd></button>
     <button class="btn" id="bSet" title="Чувствительность, громкость, клавиши">Настройки<kbd>O</kbd></button>
     <button class="btn" id="bLeave">Выйти из игры</button>
   </div>
@@ -84,7 +85,9 @@
       <label>Ник<input id="mpName" maxlength="16" autocomplete="off"></label>
       <label>Команда<select id="mpTeam"><option value="-1">Любая (по балансу)</option><option value="0">Красные</option><option value="1">Синие</option></select></label>
       <label>Где появиться<select id="mpSpawn"></select></label>
-      <label>Сервер<input id="mpServer" placeholder="wss://адрес-сервера (по умолчанию localhost)" autocomplete="off" spellcheck="false"></label>
+      <div class="srv-head"><span>Серверы</span><button class="btn" id="mpServersRefresh" type="button">Обновить</button></div>
+      <div class="servers" id="mpServers" aria-live="polite"></div>
+      <label>Адрес сервера<input id="mpServer" placeholder="wss://адрес-сервера (или выберите из списка)" autocomplete="off" spellcheck="false"></label>
       <button class="go" id="goPlay" disabled>Играть</button>
       <button class="btn" id="bSetStart" type="button">Настройки: мышь, звук, клавиши</button>
       <div class="mp-msg" id="mpMsg" role="status"></div>
@@ -103,6 +106,9 @@
 </div>
 <div class="mp-banner" id="mpBanner" hidden></div>
 <div class="mp-flash" id="mpFlash" hidden></div>
+<div class="mp-hints" id="mpHints" hidden></div>
+<div class="mp-settings" id="mpHelp" hidden><div class="panel"><header><h2>Клавиши</h2><button class="btn" id="mpHelpClose">Закрыть</button></header><div id="mpHelpBody" class="help-grid"></div></div></div>
+<div class="mp-end" id="mpEnd" hidden><div class="panel"><h2 id="mpEndTitle"></h2><div id="mpEndMvp"></div><div class="end-table" id="mpEndTable"></div><div id="mpEndNext"></div></div></div>
 <div class="mp-scope" id="mpScope" hidden><i></i><b></b></div>
 <div class="mp-chat" id="mpChat"><div id="mpChatLog" aria-live="polite"></div><input id="mpChatIn" maxlength="140" autocomplete="off" hidden></div>
 <div class="mp-voice" id="mpVoice" data-mic="off" data-talk="0"><span class="mic">V — рация</span><small class="denied">микрофон не разрешён</small><span id="mpVoiceList"></span></div>
