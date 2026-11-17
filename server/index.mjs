@@ -1,13 +1,15 @@
-/* Daugavpils shooter: the game server. Players move on their own machines (the server limits speed and keeps them in
-   the city box); the server owns health, shots, kills, scores and respawns. Whether a wall stands between the
-   shooter and the target is decided by the shooter's client, which has the city: the server only checks that the
-   shot is plausible (fire rate, range, ray passes by the target's position as the server knows it). */
+/* Daugavpils shooter: the game server (team deathmatch, red against blue). Players move on their own machines (the server limits speed and keeps them in
+   the city box); the server owns health, shots, kills, scores and respawns. The server also reads the
+   city (server/world.mjs): a shot that would have to pass through a building does not hit, and its tracer stops at
+   the wall. Hits are checked against fire rate, range and the target's position as the server knows it. */
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
 import { RULES as R, rayToSegment } from './combat.mjs';
+import { loadWorld } from './world.mjs';
 
 const PORT = +process.env.PORT || 8787, HX = 5200, HY = 4200;   // bounds a bit wider than the city
-let nextId = 1; const players = new Map(), now = () => Date.now();
+const WORLD = loadWorld(), WIN = 30, TEAMS = ['Красные', 'Синие'], teamScore = [0, 0];
+let nextId = 1, roundOver = false; const players = new Map(), now = () => Date.now();
 const server = http.createServer((req, res) => {
   if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' }); res.end(JSON.stringify({ ok: true, players: players.size, max: R.maxPlayers })); return; }
   res.writeHead(404); res.end();
@@ -21,14 +23,17 @@ function cleanName(s) {
   while ([...players.values()].some(p => p.name === n)) n = base.slice(0, 13) + '#' + k++;
   return n;
 }
-const board = () => [...players.values()].map(p => ({ id: p.id, name: p.name, kills: p.kills, deaths: p.deaths }));
+const board = () => [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths }));
+const sendBoard = () => all({ t: 'board', board: board(), score: teamScore });
+const count = k => [...players.values()].filter(p => p.team === k).length;
+function pickTeam(want) { const a = count(0), b = count(1); if (a !== b) return a < b ? 0 : 1; return want === 0 || want === 1 ? want : Math.random() < 0.5 ? 0 : 1; }
 function spawn(p, x, z, yaw) {
   p.x = num(x, HX); p.z = num(z, HY); p.y = 1.7; p.yaw = num(yaw, 10); p.pitch = 0; p.hp = R.hp; p.alive = true; p.protectUntil = now() + R.protectMs; p.t = now(); p.free = true;
   send(p, { t: 'spawn', x: p.x, z: p.z, yaw: p.yaw, hp: p.hp }); all({ t: 'alive', id: p.id });
 }
 wss.on('connection', ws => {
   ws.since = Date.now(); ws.joined = false;
-  const p = { id: nextId++, ws, name: '', joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, lastShot: 0, diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(), live: true };
+  const p = { id: nextId++, ws, name: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, lastShot: 0, diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(), live: true };
   ws.on('pong', () => { p.live = true; });
   ws.on('message', raw => {
     const t0 = now(); if (t0 - p.win > 1000) { p.win = t0; p.msgs = 0; } if (++p.msgs > 90) return;
@@ -36,9 +41,9 @@ wss.on('connection', ws => {
     if (!m || typeof m !== 'object') return;
     if (m.t === 'join' && !p.joined) {
       if (players.size >= R.maxPlayers) { send(p, { t: 'full' }); ws.close(); return; }
-      p.name = cleanName(m.name); p.joined = ws.joined = true; players.set(p.id, p);
-      send(p, { t: 'hello', id: p.id, name: p.name, rules: { hp: R.hp, range: R.range }, board: board() });
-      spawn(p, m.x, m.z, m.yaw); all({ t: 'board', board: board() }); all({ t: 'chat', text: p.name + ' в игре' });
+      p.name = cleanName(m.name); p.team = pickTeam(m.team); p.joined = ws.joined = true; players.set(p.id, p);
+      send(p, { t: 'hello', id: p.id, name: p.name, team: p.team, teams: TEAMS, win: WIN, rules: { hp: R.hp, range: R.range }, board: board(), score: teamScore });
+      spawn(p, m.x, m.z, m.yaw); sendBoard(); all({ t: 'chat', text: p.name + ' в игре, ' + TEAMS[p.team] });
       return;
     }
     if (!p.joined) return;
@@ -52,22 +57,29 @@ wss.on('connection', ws => {
     } else if (m.t === 'shoot' && p.alive) {
       if (t0 - p.lastShot < R.fireGapMs) return; p.lastShot = t0;
       const d = [num(m.dx, 1), num(m.dy, 1), num(m.dz, 1)], l = Math.hypot(...d); if (l < 0.5) return; d.forEach((v, i) => d[i] = v / l);
-      const o = [p.x, p.y, p.z], len = Math.min(R.range, Math.max(1, num(m.len, R.range)));
+      const o = [p.x, p.y, p.z], wall = WORLD.freePath(o, d, R.range), len = Math.min(wall, Math.max(1, num(m.len, R.range)));
       all({ t: 'shot', id: p.id, o, d, len });
       const v = m.hit && players.get(+m.hit);
-      if (v && v !== p && v.alive && t0 > v.protectUntil) {
-        const a = [v.x, v.y - R.bodyBottom, v.z], b = [v.x, v.y + R.bodyTop, v.z], r = rayToSegment(o, d, len, a, b);
-        if (r.dist <= R.tolerance) {
+      if (v && v !== p && v.team !== p.team && v.alive && t0 > v.protectUntil && !roundOver) {
+        const a = [v.x, v.y - R.bodyBottom, v.z], b = [v.x, v.y + R.bodyTop, v.z], r = rayToSegment(o, d, R.range, a, b);
+        if (r.dist <= R.tolerance && r.t <= wall + 0.5) {
           const head = rayToSegment(o, d, len, [v.x, v.y - 0.1, v.z], [v.x, v.y + 0.1, v.z]).dist <= R.headTolerance, dmg = head ? R.headDmg : R.bodyDmg;
           v.hp -= dmg; send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: o[0] - v.x, dz: o[2] - v.z }); send(p, { t: 'hit', id: v.id, head, kill: v.hp <= 0 });
-          if (v.hp <= 0) { v.alive = false; v.deaths++; p.kills++; v.diedAt = t0; all({ t: 'kill', killer: p.id, victim: v.id, kn: p.name, vn: v.name, head }); all({ t: 'board', board: board() }); }
+          if (v.hp <= 0) {
+            v.alive = false; v.deaths++; p.kills++; v.diedAt = t0; teamScore[p.team]++; all({ t: 'kill', killer: p.id, victim: v.id, kn: p.name, vn: v.name, kt: p.team, vt: v.team, head }); sendBoard();
+            if (teamScore[p.team] >= WIN) endRound(p.team);
+          }
         }
       }
     } else if (m.t === 'respawn' && !p.alive && t0 - p.diedAt >= R.respawnMs) spawn(p, m.x, m.z, m.yaw);
   });
-  ws.on('close', () => { if (p.joined && players.delete(p.id)) { all({ t: 'left', id: p.id }); all({ t: 'board', board: board() }); all({ t: 'chat', text: p.name + ' вышел' }); } });
+  ws.on('close', () => { if (p.joined && players.delete(p.id)) { all({ t: 'left', id: p.id }); sendBoard(); all({ t: 'chat', text: p.name + ' вышел' }); } });
   ws.on('error', () => {});
 });
+function endRound(team) {
+  roundOver = true; all({ t: 'win', team, name: TEAMS[team], score: teamScore });
+  setTimeout(() => { teamScore[0] = teamScore[1] = 0; for (const p of players.values()) { p.kills = p.deaths = 0; } roundOver = false; sendBoard(); all({ t: 'chat', text: 'Новый раунд' }); }, 10000);
+}
 setInterval(() => {
   const list = [...players.values()].filter(p => p.alive).map(p => [p.id, +p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(3), +p.pitch.toFixed(3)]);
   if (players.size) all({ t: 'snap', now: now(), p: list });

@@ -1,0 +1,18 @@
+[Unit]
+Description=Daugavpils shooter game server
+After=network.target
+
+[Service]
+User=dpils
+WorkingDirectory=/opt/dpils
+Environment=PORT=8787
+ExecStart=/usr/bin/node server/index.mjs
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
