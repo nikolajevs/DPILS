@@ -4,6 +4,7 @@ import { big, bigC, bigPpm, closeMap, openMap } from '../ui/map.js';
 import { QUALITY, TIMES, qi, setQuality, setTime, timeI } from '../render/lighting.js';
 import { P, freeSpot, keys, setFly, teleport, touch } from './player.js';
 import { PERF } from './perf.js';
+import { SET } from './settings.js';
 import { PLACES } from '../ui/places.js';
 import { SPEEDS, TX, rigaNow, setClock, updateClockUI } from '../transit/transit.js';
 import { camera, canvas } from '../render/renderer.js';
@@ -12,21 +13,21 @@ import { $ } from '../core/env.js';
 /* ---------- input ---------- */
 function tryLock() { try { const p = canvas.requestPointerLock && canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
 document.addEventListener('pointerlockchange', () => { STATE.locked = document.pointerLockElement === canvas; canvas.classList.toggle('locked', STATE.locked); $('cross').hidden = !STATE.locked; });
-const look = (dx, dy, k) => { P.yaw -= dx * k; P.pitch = Math.max(-1.5, Math.min(1.5, P.pitch - dy * k)); };
+const look = (dx, dy, k) => { P.yaw -= dx * k; P.pitch = Math.max(-1.5, Math.min(1.5, P.pitch - dy * k * (SET.invertY ? -1 : 1))); };
 let drag = false, joyId = null, lookId = null, jx = 0, jy = 0, lx = 0, ly = 0;
 canvas.addEventListener('pointerdown', e => {
   if (!STATE.started) return; canvas.focus();
   if (e.pointerType === 'touch') {
     if (e.clientX < window.innerWidth / 2 && joyId === null) { joyId = e.pointerId; jx = e.clientX; jy = e.clientY; const j = $('joy'); j.style.left = jx + 'px'; j.style.top = jy + 'px'; j.hidden = false; $('joyKnob').style.transform = ''; }
     else if (lookId === null) { lookId = e.pointerId; lx = e.clientX; ly = e.clientY; }
-  } else { drag = true; if (!STATE.locked) tryLock(); }
+  } else { drag = true; if (!STATE.locked && !STATE.mpDead) tryLock(); }
   try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
 });
 canvas.addEventListener('pointermove', e => {
   if (e.pointerType === 'touch') {
     if (e.pointerId === joyId) { let dx = e.clientX - jx, dy = e.clientY - jy; const l = Math.hypot(dx, dy), m = 50; if (l > m) { dx *= m / l; dy *= m / l; } touch.mx = dx / m; touch.mz = -dy / m; $('joyKnob').style.transform = `translate(${dx}px,${dy}px)`; }
     else if (e.pointerId === lookId) { look(e.clientX - lx, e.clientY - ly, 0.005); lx = e.clientX; ly = e.clientY; }
-  } else if (STATE.locked || drag) look(e.movementX || 0, e.movementY || 0, 0.0023 * (STATE.mp ? camera.fov / 66 : 1));   // zoomed in (the scope) the mouse turns slower
+  } else if (STATE.locked || drag) look(e.movementX || 0, e.movementY || 0, 0.0023 * SET.sens * (STATE.mp ? camera.fov / SET.fov : 1));   // zoomed in (the scope) the mouse turns slower
 });
 const up = e => { if (e.pointerId === joyId) { joyId = null; touch.mx = touch.mz = 0; $('joy').hidden = true; } if (e.pointerId === lookId) lookId = null; if (e.pointerType !== 'touch') drag = false; };
 canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
@@ -37,7 +38,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'Escape' && !big.hidden) { closeMap(); return; }
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  if (STATE.mp && e.code === 'KeyV') return;   // in the game V is push-to-talk, not Street View
+  if (STATE.mp && e.code === SET.keys.voice) return;   // in the game V is push-to-talk, not Street View
   keys.add(e.code);
   if (e.repeat) return;
   if (e.code === 'KeyF') setFly(!P.fly); else if (e.code === 'KeyN') setTime((timeI + 1) % TIMES.length); else if (e.code === 'KeyT') { TX.si = (TX.si + 1) % SPEEDS.length; if (TX.si) TX.live = false; updateClockUI(); } else if (e.code === 'KeyM') { big.hidden ? openMap() : closeMap(); } else if (e.code === 'KeyP') togglePlaces();

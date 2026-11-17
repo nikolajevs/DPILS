@@ -1,0 +1,64 @@
+import { $ } from '../core/env.js';
+
+/* ---------- player settings ----------
+   Mouse sensitivity, field of view, the volume of the sounds and of the voices, inverted look, and the keys of the
+   game. Kept in localStorage (the page works without it). The panel opens with the "Настройки" button or O. */
+const ACTIONS = [
+  ['forward', 'Вперёд', 'KeyW'], ['back', 'Назад', 'KeyS'], ['left', 'Влево', 'KeyA'], ['right', 'Вправо', 'KeyD'], ['run', 'Бег', 'ShiftLeft'],
+  ['jump', 'Прыжок', 'Space'], ['crouch', 'Присесть', 'KeyC'], ['reload', 'Перезарядка', 'KeyR'], ['grenade', 'Граната', 'KeyG'],
+  ['w1', 'Автомат', 'Digit1'], ['w2', 'Дробовик', 'Digit2'], ['w3', 'Снайперская', 'Digit3'],
+  ['voice', 'Рация (удерживать)', 'KeyV'], ['chat', 'Чат всем', 'KeyY'], ['teamChat', 'Чат команде', 'KeyU'], ['board', 'Таблица очков', 'Tab'],
+];
+const DEFAULTS = { sens: 1, fov: 66, vol: 0.8, voiceVol: 1, invertY: false };
+const SET = { ...DEFAULTS, keys: Object.fromEntries(ACTIONS.map(a => [a[0], a[2]])) };
+const listeners = [];
+try {
+  const s = JSON.parse(localStorage.getItem('dpils.settings') || '{}'), num = (v, lo, hi, d) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
+  SET.sens = num(s.sens, 0.2, 3, 1); SET.fov = num(s.fov, 60, 100, 66); SET.vol = num(s.vol, 0, 1, 0.8); SET.voiceVol = num(s.voiceVol, 0, 1, 1); SET.invertY = s.invertY === true;
+  if (s.keys && typeof s.keys === 'object') for (const [a, , d] of ACTIONS) if (typeof s.keys[a] === 'string' && /^[A-Za-z0-9]{1,16}$/.test(s.keys[a])) SET.keys[a] = s.keys[a];
+} catch (e) {}
+function save() { try { localStorage.setItem('dpils.settings', JSON.stringify(SET)); } catch (e) {} for (const f of listeners) f(); }
+const onChange = f => { listeners.push(f); };
+const NAMES = { Space: 'Пробел', ShiftLeft: 'Shift', ShiftRight: 'Shift (прав.)', Tab: 'Tab', Enter: 'Enter', Backquote: '`', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', CapsLock: 'Caps', Backspace: '⌫' };
+const keyName = c => NAMES[c] || c.replace(/^Key/, '').replace(/^Digit/, '').replace(/^Numpad/, 'Num ');
+
+/* ---------- the panel ---------- */
+const box = $('mpSet'), body = $('mpSetBody'); let waiting = null;
+function slider(label, key, lo, hi, step, show) {
+  const row = document.createElement('label'); row.className = 'set-row'; const t = document.createElement('span'), v = document.createElement('b'), i = document.createElement('input');
+  t.textContent = label; i.type = 'range'; i.min = lo; i.max = hi; i.step = step; i.value = SET[key]; v.textContent = show(SET[key]);
+  i.oninput = () => { SET[key] = +i.value; v.textContent = show(SET[key]); save(); }; row.append(t, i, v); return row;
+}
+function build() {
+  body.textContent = '';
+  const g = document.createElement('div'); g.className = 'set-group';
+  g.append(slider('Чувствительность мыши', 'sens', 0.2, 3, 0.05, v => '×' + v.toFixed(2)), slider('Поле зрения', 'fov', 60, 100, 1, v => Math.round(v) + '°'), slider('Громкость звуков', 'vol', 0, 1, 0.05, v => Math.round(v * 100) + ' %'), slider('Громкость голосов', 'voiceVol', 0, 1, 0.05, v => Math.round(v * 100) + ' %'));
+  const inv = document.createElement('label'); inv.className = 'set-row check'; const c = document.createElement('input'); c.type = 'checkbox'; c.checked = SET.invertY; c.onchange = () => { SET.invertY = c.checked; save(); };
+  const it = document.createElement('span'); it.textContent = 'Инвертировать вертикаль мыши'; inv.append(c, it); g.append(inv); body.append(g);
+  const h = document.createElement('h3'); h.textContent = 'Клавиши (щёлкните и нажмите новую; Esc — отмена)'; body.append(h);
+  const keys = document.createElement('div'); keys.className = 'set-keys';
+  for (const [a, label] of ACTIONS) {
+    const row = document.createElement('div'), n = document.createElement('span'), b = document.createElement('button'); row.className = 'set-key'; n.textContent = label; b.className = 'btn'; b.textContent = keyName(SET.keys[a]); b.dataset.action = a;
+    b.onclick = () => { if (waiting) waiting.b.textContent = keyName(SET.keys[waiting.a]); waiting = { a, b }; b.textContent = 'нажмите клавишу…'; }; row.append(n, b); keys.append(row);
+  }
+  body.append(keys);
+}
+// the next key goes to the key being set: this listener sees it before the game does
+window.addEventListener('keydown', e => {
+  if (box.hidden) return;
+  if (e.code === 'Escape' && !waiting) { closeSettings(); e.preventDefault(); e.stopImmediatePropagation(); return; }
+  e.stopImmediatePropagation(); if (!waiting) return; e.preventDefault();
+  const { a, b } = waiting; waiting = null;
+  if (e.code === 'Escape' || /^(Control|Alt|Meta)/.test(e.code) || e.code === 'KeyO') { b.textContent = keyName(SET.keys[a]); return; }   // not these: they have their own meaning
+  const other = Object.keys(SET.keys).find(k => k !== a && SET.keys[k] === e.code); if (other) SET.keys[other] = SET.keys[a];   // a key in use swaps places
+  SET.keys[a] = e.code; save(); build();
+}, true);
+function openSettings() { if (document.pointerLockElement) document.exitPointerLock(); build(); box.hidden = false; }
+function closeSettings() { box.hidden = true; waiting = null; }
+$('mpSetClose').onclick = closeSettings;
+$('mpSetReset').onclick = () => { Object.assign(SET, DEFAULTS); SET.keys = Object.fromEntries(ACTIONS.map(a => [a[0], a[2]])); save(); build(); };
+$('bSet').onclick = openSettings; $('bSetStart').onclick = openSettings;
+window.addEventListener('keydown', e => { if (e.code === 'KeyO' && box.hidden && !(e.target instanceof HTMLInputElement) && !e.ctrlKey && !e.metaKey && !e.altKey && document.body.classList.contains('mp')) { e.preventDefault(); openSettings(); } });
+box.addEventListener('click', e => { if (e.target === box) closeSettings(); });
+
+export { ACTIONS, SET, closeSettings, keyName, onChange, openSettings };

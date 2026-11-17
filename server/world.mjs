@@ -38,6 +38,20 @@ export function loadWorld() {
     }
     return len;
   }
+  // one step of a grenade n = { p: [x, y, z], v: [vx, vy, vz] }: gravity, bounces on the ground, the roofs and the walls of houses
+  function stepNade(n, dt, g) {
+    const [px, py, pz] = n.p; n.v[1] -= g * dt;
+    let x = px + n.v[0] * dt, y = py + n.v[1] * dt, z = pz + n.v[2] * dt;
+    const b = buildingAt(x, z), gr = ground(x, z);
+    if (b) {
+      const top = gr + (b.top || 12);
+      if (py >= top - 0.05) { if (y < top + 0.1) { y = top + 0.1; if (n.v[1] < 0) n.v[1] *= -0.35; n.v[0] *= 0.8; n.v[2] *= 0.8; } }   // lands on the roof
+      else {   // hits a wall: the axis that leads into the house is turned back
+        if (!buildingAt(px, z)) { x = px; n.v[0] *= -0.4; } else if (!buildingAt(x, pz)) { z = pz; n.v[2] *= -0.4; } else { x = px; z = pz; n.v[0] *= -0.4; n.v[2] *= -0.4; }
+      }
+    } else if (y < gr + 0.12) { y = gr + 0.12; if (n.v[1] < 0) n.v[1] *= -0.4; n.v[0] *= 0.7; n.v[2] *= 0.7; if (Math.abs(n.v[1]) < 0.8) n.v[1] = 0; }   // on the ground
+    n.p = [x, y, z];
+  }
   console.log(`world: ${B.length} buildings, ${q.length} ground points, ${Date.now() - t0} ms`);
-  return { freePath, ground, buildingAt, count: B.length };
+  return { freePath, ground, buildingAt, stepNade, count: B.length };
 }

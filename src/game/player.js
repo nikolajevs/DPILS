@@ -2,6 +2,7 @@ import { STATE } from '../core/state.js';
 import { COL, inBuilding, inWater, onRoad } from '../world/data.js';
 import { terrainH, walkLift } from '../world/terrain.js';
 import { parkedAt, parkedPush } from '../landmarks/parking.js';
+import { SET } from './settings.js';
 import { $, HX, HY } from '../core/env.js';
 
 /* ---------- player ---------- */
@@ -30,11 +31,11 @@ function collide() {
 }
 function step(dt) {
   let f = 0, s = 0;
-  if (keys.has('KeyW') || keys.has('ArrowUp')) f += 1; if (keys.has('KeyS') || keys.has('ArrowDown')) f -= 1;
-  if (keys.has('KeyD')) s += 1; if (keys.has('KeyA')) s -= 1;
+  if (keys.has(SET.keys.forward) || keys.has('ArrowUp')) f += 1; if (keys.has(SET.keys.back) || keys.has('ArrowDown')) f -= 1;
+  if (keys.has(SET.keys.right)) s += 1; if (keys.has(SET.keys.left)) s -= 1;
   if (keys.has('ArrowLeft')) P.yaw += 1.9 * dt; if (keys.has('ArrowRight')) P.yaw -= 1.9 * dt;
   f += touch.mz; s += touch.mx;
-  const run = keys.has('ShiftLeft') || keys.has('ShiftRight');
+  const run = keys.has(SET.keys.run) || keys.has('ShiftRight');
   const l = Math.hypot(f, s); if (l > 1) { f /= l; s /= l; }
   const sy = Math.sin(P.yaw), cy = Math.cos(P.yaw);
   if (P.fly) {
@@ -55,8 +56,8 @@ function step(dt) {
   if (!P.fly) {
     const ground = P.y - P.eye - P.up;   // the ground under the feet at the last frame (walkLift uses it to tell bridges from what is under them)
     if (STATE.mp) {   // in the game: crouch (C, hold) and jump (space)
-      P.crouch = keys.has('KeyC') && P.up <= 0.001;
-      if (keys.has('Space') && P.up <= 0.001 && !P.crouch) P.vy = JUMP.v;
+      P.crouch = keys.has(SET.keys.crouch) && P.up <= 0.001;
+      if (keys.has(SET.keys.jump) && P.up <= 0.001 && !P.crouch) P.vy = JUMP.v;
       if (P.vy !== 0 || P.up > 0) { P.vy -= JUMP.g * dt; P.up += P.vy * dt; if (P.up <= 0) { P.up = 0; P.vy = 0; } }
       P.eye += ((P.crouch ? JUMP.eyeCrouch : JUMP.eyeStand) - P.eye) * Math.min(1, dt * 12);
     } else { P.eye = JUMP.eyeStand; P.up = 0; P.vy = 0; }

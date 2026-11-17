@@ -8,13 +8,13 @@ const ICE = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 const HEAR = 30;   // metres an enemy can be heard from
 
 function createVoice({ myId, send, info, onSpeaking }) {
-  const peers = new Map(); let track = null, ctx = null, talking = false, acc = 0;
-  const audio = () => { if (!ctx) { const A = window.AudioContext || window.webkitAudioContext; ctx = new A(); } if (ctx.state === 'suspended') ctx.resume(); return ctx; };
+  const peers = new Map(); let track = null, ctx = null, master = null, vol = 1, talking = false, acc = 0;
+  const audio = () => { if (!ctx) { const A = window.AudioContext || window.webkitAudioContext; ctx = new A(); master = ctx.createGain(); master.gain.value = vol; master.connect(ctx.destination); } if (ctx.state === 'suspended') ctx.resume(); return ctx; };
   async function offer(p) { const o = await p.pc.createOffer(); await p.pc.setLocalDescription(o); send(p.id, { sdp: { type: o.type, sdp: p.pc.localDescription.sdp } }); }
   function attach(p, stream) {
     const a = new Audio(); a.srcObject = stream; a.muted = true; a.play().catch(() => {});   // Chrome only lets a remote stream flow when an element holds it
     const c = audio(), src = c.createMediaStreamSource(stream), g = c.createGain(), an = c.createAnalyser(); an.fftSize = 256; g.gain.value = 0;
-    src.connect(an); src.connect(g); g.connect(c.destination); p.gain = g; p.an = an; p.buf = new Uint8Array(an.fftSize); p.el = a;
+    src.connect(an); src.connect(g); g.connect(master); p.gain = g; p.an = an; p.buf = new Uint8Array(an.fftSize); p.el = a;
   }
   function ensure(id) {
     let p = peers.get(id); if (p) return p;
@@ -65,7 +65,8 @@ function createVoice({ myId, send, info, onSpeaking }) {
   }
   function close() { for (const p of peers.values()) { try { p.pc.close(); } catch (e) {} } peers.clear(); if (track) track.stop(); track = null; }
   const status = () => [...peers.values()].map(p => ({ id: p.id, conn: p.pc.connectionState, ice: p.pc.iceConnectionState, signaling: p.pc.signalingState, track: !!p.gain, gain: p.gain ? +p.gain.gain.value.toFixed(2) : 0, speaking: p.speaking, ctx: ctx && ctx.state }));
-  return { close, status, enableMic, signal, setPeers, talk, update, get hasMic() { return !!track; } };
+  const setVolume = v => { vol = v; if (master) master.gain.value = v; };
+  return { close, status, setVolume, enableMic, signal, setPeers, talk, update, get hasMic() { return !!track; } };
 }
 
 export { HEAR, createVoice };
