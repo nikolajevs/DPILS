@@ -62,9 +62,8 @@ function fortProud(B2, f, up, out, Q, d, col) {
 }
 // a round window: dark glass and a ring
 function fortOculus(K, f, up, out, vc, yc, r, ringCol, ringB) {
-  const n = 14, P = (rr, a, d) => fortP(f, up + out * d, vc + rr * Math.cos(a), yc + rr * Math.sin(a)), glass = [];
-  for (let i = 0; i < n; i++) glass.push(P(r, 2 * Math.PI * i / n, 0.02));
-  polyA(K.cap, glass, hb('#2c3034'), f[2] * out, 0, f[3] * out);
+  const n = 14, P = (rr, a, d) => fortP(f, up + out * d, vc + rr * Math.cos(a), yc + rr * Math.sin(a)), C = P(0, 0, 0.02);
+  for (let i = 0; i < n; i++) polyA(K.cap, [C, P(r, 2 * Math.PI * i / n, 0.02), P(r, 2 * Math.PI * (i + 1) / n, 0.02)], hb('#2c3034'), f[2] * out, 0, f[3] * out);   // the glass, a fan
   for (let i = 0; i < n; i++) { const a0 = 2 * Math.PI * i / n, a1 = 2 * Math.PI * (i + 1) / n;
     ringB.q(P(r, a0, 0.06), P(r, a1, 0.06), P(r + 0.2, a1, 0.06), P(r + 0.2, a0, 0.06), [f[2] * out, 0, f[3] * out], [0, 0, 0.3, 0, 0.3, 0.3, 0, 0.3], ringCol); }
 }
