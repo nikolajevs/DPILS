@@ -5,7 +5,7 @@ import { PLACES } from '../ui/places.js';
 import { buildingAt, onRoad } from '../world/data.js';
 import { PERF } from './perf.js';
 import { worldSpace } from '../render/world-space.js';
-import { loadAvatar, makeAvatar, ready as avatarReady } from './avatar.js';
+import { gunModel, loadAvatar, makeAvatar, ready as avatarReady } from './avatar.js';
 import { SET, onChange } from './settings.js';
 import { firstGames } from './help.js';
 import { rememberServer } from '../ui/servers.js';
@@ -90,6 +90,14 @@ function attachAvatar(r) {
   if (r.av || !avatarReady()) return; const av = makeAvatar(r.hue); if (!av) return;
   for (const c of r.group.children) c.visible = false; r.group.add(av.root); r.av = av;
 }
+// the gun in your own hands: the ready models in place of the boxes (the scope of the sniper rifle stays a box)
+function upgradeViewmodels() {
+  models.forEach((m, i) => {
+    const g = gunModel(i); if (!g || m.userData.ready) return; m.userData.ready = true;
+    m.children.forEach((c, k) => { c.visible = i === 2 && k === 2; });   // the old boxes off, except the scope tube
+    g.rotation.y = Math.PI; g.scale.multiplyScalar(0.55); g.position.set(0.05, -0.02, 0.12); m.add(g); if (i === 0) flash.position.set(0.05, 0.0, -g.userData.muzzle * 0.55 + 0.1);
+  });
+}
 function dropRemote(id) { const r = remotes.get(id); if (!r) return; scene.remove(r.group); r.tag.remove(); remotes.delete(id); }
 function nameOf(id) { const b = MP.board.find(e => e.id === id); return b ? b.name : '?'; }
 const isMate = r => !MP.ffa && r.team === MP.team;   // in the free-for-all nobody is a teammate
@@ -99,7 +107,7 @@ function pose(r, t) {
   while (b.length > 2 && b[1].t <= t) b.shift();
   const a = b[0], c = b[1] || a, k = c.t > a.t ? Math.max(0, Math.min(1, (t - a.t) / (c.t - a.t))) : 1, l = (u, v) => u + (v - u) * k;
   let dy = c.yaw - a.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
-  return { x: l(a.x, c.x), y: l(a.y, c.y), z: l(a.z, c.z), yaw: a.yaw + dy * k, pitch: l(a.pitch, c.pitch), h: l(a.h || 1.7, c.h || 1.7) };
+  return { x: l(a.x, c.x), y: l(a.y, c.y), z: l(a.z, c.z), yaw: a.yaw + dy * k, pitch: l(a.pitch, c.pitch), h: l(a.h || 1.7, c.h || 1.7), w: c.w || 0 };
 }
 
 /* ---------- the gun in hand, tracers, sounds ---------- */
@@ -259,7 +267,7 @@ function onMsg(m) {
     case 'correct': P.x = m.x; P.z = m.z; break;
     case 'snap': {
       const t = performance.now(), seen = new Set();
-      for (const [id, x, y, z, yaw, pitch, h] of m.p) { if (id === MP.id) continue; seen.add(id); const r = remotes.get(id) || addRemote(id, nameOf(id), teamOf(id)); r.buf.push({ t, x, y, z, yaw, pitch, h }); if (r.buf.length > 12) r.buf.shift(); }
+      for (const [id, x, y, z, yaw, pitch, h, w] of m.p) { if (id === MP.id) continue; seen.add(id); const r = remotes.get(id) || addRemote(id, nameOf(id), teamOf(id)); r.buf.push({ t, x, y, z, yaw, pitch, h, w }); if (r.buf.length > 12) r.buf.shift(); }
       for (const [id, r] of remotes) if (!seen.has(id) && !r.fallT) { r.group.visible = false; r.buf.length = 0; }
       break;
     }
@@ -307,7 +315,7 @@ function join() {
   const name = el('mpName').value.trim(), url = serverUrl(), msg = el('mpMsg');
   if (!url) { msg.textContent = 'Укажите адрес сервера (поле «Сервер»).'; return; }
   try { localStorage.setItem('dpils.mp', JSON.stringify({ name, server: el('mpServer').value.trim(), spawn: el('mpSpawn').value, team: el('mpTeam').value })); } catch (e) {}
-  MP.spawn = +el('mpSpawn').value; MP.wantTeam = +el('mpTeam').value; MP.url = url; loadAvatar().then(a => { if (a) for (const r of remotes.values()) attachAvatar(r); }); msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true;
+  MP.spawn = +el('mpSpawn').value; MP.wantTeam = +el('mpTeam').value; MP.url = url; loadAvatar().then(a => { if (a) { for (const r of remotes.values()) attachAvatar(r); upgradeViewmodels(); } }); msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true;
   let ws; try { ws = new WebSocket(url); } catch (e) { msg.textContent = 'Неверный адрес сервера.'; el('goPlay').disabled = false; return; }
   MP.ws = ws; MP.started = false;
   ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, team: MP.wantTeam, ...s })); };
@@ -364,7 +372,7 @@ function mpTick(dt) {
   if ((MP.pingT = (MP.pingT || 0) - dt) <= 0 && MP.ws.readyState === 1) { MP.pingT = 2; MP.ws.send(JSON.stringify({ t: 'ping', c: now, rtt: MP.rtt })); }
   if (MP.firing && W().auto) fire(now);
   if (MP.dead) { const left = Math.max(0, 3 - (now - MP.deadAt) / 1000); el('mpRespawn').disabled = left > 0; el('mpRespawn').textContent = left > 0 ? 'Возрождение через ' + Math.ceil(left) : 'Возродиться (пробел)'; }
-  else if ((MP.sendT -= dt) <= 0 && MP.ws.readyState === 1) { MP.sendT = 0.05; MP.ws.send(JSON.stringify({ t: 'state', x: +P.x.toFixed(2), y: +P.y.toFixed(2), z: +P.z.toFixed(2), yaw: +P.yaw.toFixed(3), pitch: +P.pitch.toFixed(3), h: +P.eye.toFixed(2) })); }
+  else if ((MP.sendT -= dt) <= 0 && MP.ws.readyState === 1) { MP.sendT = 0.05; MP.ws.send(JSON.stringify({ t: 'state', x: +P.x.toFixed(2), y: +P.y.toFixed(2), z: +P.z.toFixed(2), yaw: +P.yaw.toFixed(3), pitch: +P.pitch.toFixed(3), h: +P.eye.toFixed(2), w: MP.weapon })); }
   for (const r of remotes.values()) {
     const g = r.group;
     if (r.fallT) {   // a killed player topples backwards and lies for three seconds
@@ -373,7 +381,7 @@ function mpTick(dt) {
       const c = r.corpse; g.visible = true; g.scale.y = 1; g.position.set(c.x, c.y - (c.h || 1.7) + 0.18 * Math.min(1, age / 350), c.z); g.rotation.y = c.yaw; g.rotation.x = 1.5 * Math.min(1, age / 350) * (2 - Math.min(1, age / 350)); continue;
     }
     const p = pose(r, t); if (!p) { g.visible = false; continue; }
-    remoteSteps(r, p, now); if (r.av) r.av.update(dt, { speed: r.speed || 0, air: !!r.air, dead: false }); g.visible = true; g.position.set(p.x, p.y - p.h, p.z); g.scale.y = p.h / 1.7; g.rotation.y = p.yaw; g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
+    remoteSteps(r, p, now); if (r.av) { if (r.gunW !== p.w) { r.gunW = p.w; r.av.setGun(p.w); } r.av.update(dt, { speed: r.speed || 0, air: !!r.air, dead: false, shot: now - (r.shotAt || 0) < 90 }); } g.visible = true; g.position.set(p.x, p.y - p.h, p.z); g.scale.y = p.h / 1.7; g.rotation.y = p.yaw; g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
   }
   for (let i = tracers.length - 1; i >= 0; i--) { const tr = tracers[i]; tr.t += dt; tr.l.material.opacity = Math.max(0, 0.9 - tr.t * 9); if (tr.t > 0.1) { scene.remove(tr.l); tr.l.geometry.dispose(); tr.l.material.dispose(); tracers.splice(i, 1); } }
   MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06; flash.visible = MP.kick > 0.6;
