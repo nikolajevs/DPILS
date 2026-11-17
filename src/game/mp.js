@@ -17,7 +17,7 @@ import { createVoice } from './voice.js';
 import { openLocal } from './local.js';
 import { ambStart, ambTick } from './ambience.js';
 import { statEvent } from './stats.js';
-import { playerKey, boardOn, setBoardOn } from './identity.js';
+import { playerKey, boardOn, setBoardOn, account } from './identity.js';
 import { initLeaders } from './leaders.js';
 import { $ } from '../core/env.js';
 import { crackSound, hitSound, loadSounds, shotSound } from './sfx.js';
@@ -385,6 +385,7 @@ function initUi() {
   PLACES.forEach((p, i) => { const o = document.createElement('option'); o.value = i; o.textContent = p[0]; sel.append(o); });
   const r = document.createElement('option'); r.value = -1; r.textContent = 'Случайное место'; sel.append(r);
   try { const s = JSON.parse(localStorage.getItem('dpils.mp') || '{}'); if (s.name) el('mpName').value = s.name; if (s.server) el('mpServer').value = s.server; if (s.spawn != null) sel.value = s.spawn; if (s.team != null) el('mpTeam').value = s.team; } catch (e) {}
+  const acc = account(); if (acc) el('mpName').value = acc.name;   // the account's nick belongs to its key on the server
   el('mpName').placeholder = 'Игрок' + (100 + Math.floor(Math.random() * 900));
   if (!el('mpName').value) el('mpName').value = el('mpName').placeholder;
   const rs = el('mpRespawnAt'); rs.textContent = ''; for (const [v, t] of [['mate', 'Рядом с товарищем'], ['rand', 'Случайное место']].concat(PLACES.map((p, i) => [i, p[0]]))) { const o = document.createElement('option'); o.value = v; o.textContent = t; rs.append(o); }
