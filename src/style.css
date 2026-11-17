@@ -153,3 +153,46 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
   .status .opt { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* ---------- online shooter ---------- */
+.play { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+.play h2 { margin: 0; font: 500 11px/1 var(--f-body); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+.play .hint { margin: 0; font-size: 13px; color: var(--muted); }
+.play label { display: grid; gap: 3px; font: 500 12px/1.2 var(--f-body); color: var(--muted); }
+.play input, .play select { font: 500 14px/1.3 var(--f-body); padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-solid); color: var(--ink); min-width: 0; }
+.play .mp-msg { min-height: 1.2em; font-size: 13px; color: var(--brick); }
+.start { place-items: safe center; }
+#mpTags, #mpTags .mp-tag { pointer-events: none; }
+#mpTags { position: fixed; inset: 0; overflow: hidden; z-index: 4; }
+.mp-tag { position: absolute; left: 0; top: 0; font: 600 12px/1 var(--f-body); color: #fff; background: rgba(0, 0, 0, .45); padding: 3px 6px; border-radius: 4px; white-space: nowrap; }
+.mp-hit { position: fixed; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; pointer-events: none; z-index: 6; background:
+  linear-gradient(45deg, transparent 44%, #fff 44% 56%, transparent 56%), linear-gradient(-45deg, transparent 44%, #fff 44% 56%, transparent 56%); filter: drop-shadow(0 0 1px #000); }
+.mp-hit.head { filter: drop-shadow(0 0 3px #f90); }
+.mp-hit.kill { filter: drop-shadow(0 0 3px #e22); transform: scale(1.3); }
+.mp-hurt { position: fixed; inset: 0; pointer-events: none; z-index: 5; background: radial-gradient(ellipse at center, transparent 55%, rgba(200, 0, 0, .55)); }
+.mp-hurt i { position: absolute; left: 50%; top: 50%; width: 120px; height: 120px; margin: -60px 0 0 -60px; }
+.mp-hurt i::before { content: ""; position: absolute; left: 50%; top: -90px; width: 40px; height: 14px; margin-left: -20px; background: rgba(255, 40, 40, .85); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.mp-hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; font-family: var(--f-body); color: #fff; text-shadow: 0 1px 3px #000; }
+.mp-stat { position: absolute; left: 14px; bottom: 74px; display: grid; gap: 4px; grid-template-columns: 150px auto; align-items: center; }
+.mp-stat b { font: 700 22px/1 var(--f-display); }
+.mp-stat #mpAmmo { grid-column: 1 / 3; font: 600 20px/1 var(--f-body); }
+.mp-stat small { grid-column: 1 / 3; font-size: 12px; opacity: .85; }
+.mp-hp { height: 10px; background: rgba(0, 0, 0, .45); border-radius: 5px; overflow: hidden; }
+.mp-hp i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #d33, #7c3); transition: width .15s; }
+.mp-feed { position: absolute; right: 14px; top: 14px; display: grid; gap: 4px; justify-items: end; font: 600 13px/1.2 var(--f-body); }
+.mp-feed div { background: rgba(0, 0, 0, .5); padding: 4px 8px; border-radius: 4px; }
+.mp-feed .mine { background: rgba(60, 130, 40, .75); } .mp-feed .dead { background: rgba(160, 30, 30, .75); } .mp-feed .sys { opacity: .8; font-weight: 500; }
+.mp-board, .mp-dead { position: fixed; inset: 0; display: grid; place-items: center; z-index: 8; }
+.mp-board { pointer-events: none; }
+.mp-dead { background: rgba(120, 0, 0, .35); }
+.mp-board .panel, .mp-dead .panel { padding: 16px 20px; min-width: 300px; display: grid; gap: 10px; }
+.mp-board h2, .mp-dead h2 { margin: 0; font: 500 18px/1.2 var(--f-display); }
+.mp-board ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; }
+.mp-board li, .mp-cols { display: grid; grid-template-columns: 1fr 70px 70px; gap: 8px; font: 500 14px/1.3 var(--f-body); }
+.mp-board li.me { color: var(--brick); font-weight: 700; }
+.mp-board li b, .mp-board li i, .mp-cols b, .mp-cols i { text-align: right; font-style: normal; }
+.mp-cols { color: var(--muted); font-size: 11px; text-transform: uppercase; border-top: 1px solid var(--line); padding-top: 6px; }
+.mp-dead .go { margin: 0; }
+#bLeave { display: none; }
+.mp #bLeave { display: inline-block; }
+.mp #bFly, .mp #bPlaces, .mp #places, .mp #clock, .mp #bNight, .mp #bSV, .mp #near { display: none !important; }

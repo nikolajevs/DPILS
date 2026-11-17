@@ -55,7 +55,7 @@ $('bQuality').onclick = () => { setQuality((qi + 1) % QUALITY.length); canvas.fo
 bSV.addEventListener('pointerdown', updateHud);
 $('bHelp').onclick = () => { if (document.pointerLockElement) document.exitPointerLock(); $('start').hidden = false; $('go').textContent = 'Продолжить'; };
 big.addEventListener('click', e => { if (e.target === big) closeMap(); });
-bigC.addEventListener('click', e => { const r = bigC.getBoundingClientRect(); teleport((e.clientX - r.left - r.width / 2) / bigPpm, (e.clientY - r.top - r.height / 2) / bigPpm, null); closeMap(); });
+bigC.addEventListener('click', e => { if (STATE.mp) return; const r = bigC.getBoundingClientRect(); teleport((e.clientX - r.left - r.width / 2) / bigPpm, (e.clientY - r.top - r.height / 2) / bigPpm, null); closeMap(); });
 PLACES.forEach(p => { const li = document.createElement('li'), b = document.createElement('button'), s = document.createElement('small'); b.textContent = p[0]; s.textContent = p[1]; b.append(s); b.onclick = () => { teleport(p[2], p[3], p[4]); canvas.focus(); }; li.append(b); $('placeList').append(li); });
 $('go').onclick = () => {
   $('start').hidden = true; $('hud').hidden = false;
