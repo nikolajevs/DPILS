@@ -35,6 +35,7 @@ function drawMini() {
   const ppm = P.fly ? Math.max(0.03, css / (700 + P.y * 9)) : css / 380;
   drawMap(mctx, css, css, P.x, P.z, ppm, dpr, ppm > 0.22 ? 2 : ppm > 0.07 ? 1 : 0);
   drawVehicles(mctx, P.x, P.z, ppm, css, css, ppm > 0.1 ? 3.5 : 2.5);
+  if (STATE.mapOverlay) STATE.mapOverlay(mctx, P.x, P.z, ppm, css, css);
   arrow(mctx, css / 2, css / 2, 1);
 }
 function arrow(ctx, x, y, k) {
@@ -53,6 +54,7 @@ function openMap() {
   for (const p of PLACES) { const x = w / 2 + p[2] * bigPpm, y = h / 2 + p[3] * bigPpm; ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 6.3); ctx.fillStyle = '#1d4f91'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2; ctx.stroke();
     ctx.lineWidth = 3; ctx.strokeStyle = STATE.night ? '#232b33' : '#f4f2e9'; ctx.fillStyle = STATE.night ? '#e9e6df' : '#1c2527'; const left = x > w - 150; ctx.textAlign = left ? 'right' : 'left'; ctx.strokeText(p[0], x + (left ? -7 : 7), y); ctx.fillText(p[0], x + (left ? -7 : 7), y); }
   drawVehicles(ctx, 0, 0, bigPpm, w, h, 2.5);
+  if (STATE.mapOverlay) STATE.mapOverlay(ctx, 0, 0, bigPpm, w, h);
   arrow(ctx, w / 2 + P.x * bigPpm, h / 2 + P.z * bigPpm, 1.2);
 }
 function closeMap() { big.hidden = true; canvas.focus(); }

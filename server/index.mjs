@@ -27,13 +27,20 @@ const board = () => [...players.values()].map(p => ({ id: p.id, name: p.name, te
 const sendBoard = () => all({ t: 'board', board: board(), score: teamScore });
 const count = k => [...players.values()].filter(p => p.team === k).length;
 function pickTeam(want) { const a = count(0), b = count(1); if (a !== b) return a < b ? 0 : 1; return want === 0 || want === 1 ? want : Math.random() < 0.5 ? 0 : 1; }
+// where the player stood at time t (the shooter saw the target 120 ms in the past plus half the round trip)
+function poseAt(p, t) {
+  const h = p.hist; if (!h.length || t >= h[h.length - 1][0]) return [p.x, p.y, p.z];
+  if (t <= h[0][0]) return [h[0][1], h[0][2], h[0][3]];
+  for (let i = h.length - 1; i > 0; i--) if (h[i - 1][0] <= t) { const a = h[i - 1], b = h[i], k = (t - a[0]) / Math.max(1, b[0] - a[0]); return [a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k, a[3] + (b[3] - a[3]) * k]; }
+  return [p.x, p.y, p.z];
+}
 function spawn(p, x, z, yaw) {
-  p.x = num(x, HX); p.z = num(z, HY); p.y = 1.7; p.yaw = num(yaw, 10); p.pitch = 0; p.hp = R.hp; p.alive = true; p.protectUntil = now() + R.protectMs; p.t = now(); p.free = true;
+  p.x = num(x, HX); p.z = num(z, HY); p.y = 1.7; p.yaw = num(yaw, 10); p.pitch = 0; p.hp = R.hp; p.alive = true; p.protectUntil = now() + R.protectMs; p.t = now(); p.free = true; p.hist.length = 0;
   send(p, { t: 'spawn', x: p.x, z: p.z, yaw: p.yaw, hp: p.hp }); all({ t: 'alive', id: p.id });
 }
 wss.on('connection', ws => {
   ws.since = Date.now(); ws.joined = false;
-  const p = { id: nextId++, ws, name: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, lastShot: 0, diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(), live: true };
+  const p = { id: nextId++, ws, name: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, lastShot: 0, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(), live: true };
   ws.on('pong', () => { p.live = true; });
   ws.on('message', raw => {
     const t0 = now(); if (t0 - p.win > 1000) { p.win = t0; p.msgs = 0; } if (++p.msgs > 90) return;
@@ -54,6 +61,7 @@ wss.on('connection', ws => {
       if (!first && far > R.runSpeed * dt * 1.6 + 3) send(p, { t: 'correct', x: p.x, y: p.y, z: p.z });   // too fast: put back
       else { p.x = x; p.z = z; p.y = y; }
       p.yaw = num(m.yaw, 100); p.pitch = num(m.pitch, 1.6);
+      p.hist.push([t0, p.x, p.y, p.z]); while (p.hist.length > 2 && t0 - p.hist[0][0] > 1000) p.hist.shift();
     } else if (m.t === 'shoot' && p.alive) {
       if (t0 - p.lastShot < R.fireGapMs) return; p.lastShot = t0;
       const d = [num(m.dx, 1), num(m.dy, 1), num(m.dz, 1)], l = Math.hypot(...d); if (l < 0.5) return; d.forEach((v, i) => d[i] = v / l);
@@ -61,9 +69,9 @@ wss.on('connection', ws => {
       all({ t: 'shot', id: p.id, o, d, len });
       const v = m.hit && players.get(+m.hit);
       if (v && v !== p && v.team !== p.team && v.alive && t0 > v.protectUntil && !roundOver) {
-        const a = [v.x, v.y - R.bodyBottom, v.z], b = [v.x, v.y + R.bodyTop, v.z], r = rayToSegment(o, d, R.range, a, b);
+        const [vx, vy, vz] = poseAt(v, t0 - 120 - Math.min(300, p.rtt / 2)), a = [vx, vy - R.bodyBottom, vz], b = [vx, vy + R.bodyTop, vz], r = rayToSegment(o, d, R.range, a, b);
         if (r.dist <= R.tolerance && r.t <= wall + 0.5) {
-          const head = rayToSegment(o, d, len, [v.x, v.y - 0.1, v.z], [v.x, v.y + 0.1, v.z]).dist <= R.headTolerance, dmg = head ? R.headDmg : R.bodyDmg;
+          const head = rayToSegment(o, d, len, [vx, vy - 0.1, vz], [vx, vy + 0.1, vz]).dist <= R.headTolerance, dmg = head ? R.headDmg : R.bodyDmg;
           v.hp -= dmg; send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: o[0] - v.x, dz: o[2] - v.z }); send(p, { t: 'hit', id: v.id, head, kill: v.hp <= 0 });
           if (v.hp <= 0) {
             v.alive = false; v.deaths++; p.kills++; v.diedAt = t0; teamScore[p.team]++; all({ t: 'kill', killer: p.id, victim: v.id, kn: p.name, vn: v.name, kt: p.team, vt: v.team, head }); sendBoard();
@@ -71,7 +79,12 @@ wss.on('connection', ws => {
           }
         }
       }
-    } else if (m.t === 'respawn' && !p.alive && t0 - p.diedAt >= R.respawnMs) spawn(p, m.x, m.z, m.yaw);
+    } else if (m.t === 'ping') { p.rtt = Math.max(0, Math.min(1000, num(m.rtt, 1000))); send(p, { t: 'pong', c: m.c });
+    } else if (m.t === 'respawn' && !p.alive && t0 - p.diedAt >= R.respawnMs) {
+      const mate = m.mate && [...players.values()].filter(q => q.alive && q.team === p.team && q !== p);
+      if (mate && mate.length) { const q = mate[Math.floor(Math.random() * mate.length)], a = Math.random() * 6.283, r = 6 + Math.random() * 8; spawn(p, q.x + Math.cos(a) * r, q.z + Math.sin(a) * r, q.yaw); }   // next to a teammate
+      else spawn(p, m.x, m.z, m.yaw);
+    }
   });
   ws.on('close', () => { if (p.joined && players.delete(p.id)) { all({ t: 'left', id: p.id }); sendBoard(); all({ t: 'chat', text: p.name + ' вышел' }); } });
   ws.on('error', () => {});

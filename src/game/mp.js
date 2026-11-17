@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { STATE } from '../core/state.js';
-import { P, freeSpot } from './player.js';
+import { P, freeSpot, keys } from './player.js';
 import { PLACES } from '../ui/places.js';
 import { buildingAt } from '../world/data.js';
 import { terrainH } from '../world/terrain.js';
@@ -13,7 +13,7 @@ import { $ } from '../core/env.js';
    line of fire checked against terrain and buildings, and the game panels. Keep RULES and rayToSegment in step with
    server/combat.mjs. */
 const RULES = { mag: 30, reloadMs: 1800, gapMs: 100, range: 160, hitR: 0.5, headR: 0.28, bodyBottom: 1.6, bodyTop: 0.25 };
-const MP = { on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, ammo: RULES.mag, reloadAt: 0, lastShot: 0, firing: false, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0 };
+const MP = { on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, ammo: RULES.mag, reloadAt: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0 };
 STATE.mp = false;
 const remotes = new Map();   // id → { name, group, buf: [{ t, x, y, z, yaw, pitch }], tag }
 const tracers = [];
@@ -39,7 +39,12 @@ function freePath(o, d, len) {
   }
   return len;
 }
-const aim = () => { const cp = Math.cos(P.pitch); return [-Math.sin(P.yaw) * cp, Math.sin(P.pitch), -Math.cos(P.yaw) * cp]; };
+const aim = (yaw = P.yaw, pitch = P.pitch) => { const cp = Math.cos(pitch); return [-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp]; };
+// how wide the shots scatter now: a little always, more when walking or running, more after each shot of a burst
+function spreadNow() {
+  const moving = ['KeyW', 'KeyA', 'KeyS', 'KeyD'].some(k => keys.has(k)), run = keys.has('ShiftLeft') || keys.has('ShiftRight');
+  return 0.002 + (moving ? (run ? 0.022 : 0.008) : 0) + MP.burst;
+}
 
 /* ---------- figures of the other players ---------- */
 const GEO = { box: new THREE.BoxGeometry(1, 1, 1), head: new THREE.SphereGeometry(0.17, 12, 8) };
@@ -47,7 +52,7 @@ const HUE = [0.0, 0.6];   // red and blue team
 function makeFigure(team) {
   const hue = HUE[team] ?? 0.3, col = new THREE.Color().setHSL(hue, 0.65, 0.42), dark = new THREE.Color().setHSL(hue, 0.5, 0.2);
   const mc = new THREE.MeshLambertMaterial({ color: col }), md = new THREE.MeshLambertMaterial({ color: dark }), ms = new THREE.MeshLambertMaterial({ color: 0xe0b890 }), mg = new THREE.MeshLambertMaterial({ color: 0x25272b });
-  const g = new THREE.Group(), part = (m, sx, sy, sz, x, y, z) => { const o = new THREE.Mesh(GEO.box, m); o.scale.set(sx, sy, sz); o.position.set(x, y, z); g.add(o); return o; };
+  const g = new THREE.Group(); g.rotation.order = 'YXZ'; const part = (m, sx, sy, sz, x, y, z) => { const o = new THREE.Mesh(GEO.box, m); o.scale.set(sx, sy, sz); o.position.set(x, y, z); g.add(o); return o; };
   part(md, 0.2, 0.8, 0.22, -0.12, 0.4, 0); part(md, 0.2, 0.8, 0.22, 0.12, 0.4, 0);   // legs
   part(mc, 0.46, 0.6, 0.26, 0, 1.1, 0);   // torso
   part(mc, 0.13, 0.55, 0.13, -0.3, 1.12, 0); const arm = part(mc, 0.13, 0.13, 0.55, 0.28, 1.2, -0.25);   // arms: the right one holds the gun forward
@@ -90,6 +95,13 @@ function bang(vol, low) {
     s.buffer = buf; s.connect(f); f.connect(g); g.connect(actx.destination); s.start();
   } catch (e) {}
 }
+function tone(f0, f1, dur, vol, type = 'sine', delay = 0) {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume();
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime + delay; o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur); o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + dur + 0.02);
+  } catch (e) {}
+}
 function tracer(o, d, len, color) {
   const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(o[0] + d[0] * 1.2, o[1] - 0.1 + d[1] * 1.2, o[2] + d[2] * 1.2), new THREE.Vector3(o[0] + d[0] * len, o[1] + d[1] * len, o[2] + d[2] * len)]);
   const m = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9, fog: false }), l = new THREE.Line(g, m); l.frustumCulled = false; scene.add(l); tracers.push({ l, t: 0 });
@@ -100,8 +112,9 @@ function fire(now) {
   if (MP.dead || !STATE.locked || now - MP.lastShot < RULES.gapMs) return;
   if (MP.reloadAt) return;
   if (MP.ammo <= 0) { reload(now); return; }
-  MP.lastShot = now; MP.ammo--; MP.kick = 1; P.pitch = Math.min(1.5, P.pitch + 0.0035);
-  const o = [P.x, P.y, P.z], d = aim(), clear = freePath(o, d, RULES.range), t = performance.now() - 120;
+  const sp = spreadNow(), ang = Math.random() * 6.283, rad = sp * Math.sqrt(Math.random());
+  MP.lastShot = now; MP.ammo--; MP.kick = 1; P.pitch = Math.min(1.5, P.pitch + 0.0035); P.yaw += (Math.random() - 0.5) * 0.0016; MP.burst = Math.min(0.03, MP.burst + 0.0045);
+  const o = [P.x, P.y, P.z], d = aim(P.yaw + Math.cos(ang) * rad, P.pitch + Math.sin(ang) * rad), clear = freePath(o, d, RULES.range), t = performance.now() - 120;
   let best = null;
   for (const [id, r] of remotes) {
     if (r.team === MP.team) continue;   // no friendly fire: shots pass through teammates
@@ -139,11 +152,15 @@ function die(byName) {
   if (document.pointerLockElement) document.exitPointerLock();
   el('mpDead').hidden = false; el('mpDeadBy').textContent = byName ? 'Вас убил ' + byName : 'Вы погибли';
 }
-function spawnPoint() {
-  const i = MP.spawn >= 0 ? MP.spawn : Math.floor(Math.random() * PLACES.length), pl = PLACES[i], a = Math.random() * 6.283, r = 3 + Math.random() * 20;
+function spawnPoint(choice = MP.spawn) {
+  const i = choice >= 0 ? choice : Math.floor(Math.random() * PLACES.length), pl = PLACES[i], a = Math.random() * 6.283, r = 3 + Math.random() * 20;
   return { x: pl[2] + Math.cos(a) * r, z: pl[3] + Math.sin(a) * r, yaw: pl[4] || 0 };
 }
-function respawn() { if (!MP.dead || performance.now() - MP.deadAt < 3000) return; MP.ws.send(JSON.stringify({ t: 'respawn', ...spawnPoint() })); }
+function respawn() {
+  if (!MP.dead || performance.now() - MP.deadAt < 3000) return;
+  const v = el('mpRespawnAt').value; if (v === 'mate') { MP.ws.send(JSON.stringify({ t: 'respawn', mate: true })); return; }
+  MP.ws.send(JSON.stringify({ t: 'respawn', ...spawnPoint(v === 'rand' ? -1 : +v) }));
+}
 
 /* ---------- messages from the server ---------- */
 function onMsg(m) {
@@ -157,23 +174,24 @@ function onMsg(m) {
       if (canvas.requestPointerLock) { canvas.focus(); try { const pr = canvas.requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} }
       break;
     }
+    case 'pong': MP.rtt = Math.round(MP.rtt ? MP.rtt * 0.6 + (performance.now() - m.c) * 0.4 : performance.now() - m.c); el('mpPing').textContent = ' · пинг ' + MP.rtt + ' мс'; break;
     case 'correct': P.x = m.x; P.z = m.z; break;
     case 'snap': {
       const t = performance.now(), seen = new Set();
       for (const [id, x, y, z, yaw, pitch] of m.p) { if (id === MP.id) continue; seen.add(id); const r = remotes.get(id) || addRemote(id, nameOf(id), teamOf(id)); r.buf.push({ t, x, y, z, yaw, pitch }); if (r.buf.length > 12) r.buf.shift(); }
-      for (const [id, r] of remotes) if (!seen.has(id)) { r.group.visible = false; r.buf.length = 0; }
+      for (const [id, r] of remotes) if (!seen.has(id) && !r.fallT) { r.group.visible = false; r.buf.length = 0; }
       break;
     }
-    case 'shot': { if (m.id === MP.id) break; tracer(m.o, m.d, m.len, 0xffb060); const dd = Math.hypot(m.o[0] - P.x, m.o[2] - P.z); if (dd < 220) bang(0.3 * (1 - dd / 220), true); break; }
-    case 'hit': hitT = performance.now(); el('mpHit').className = m.head ? 'head' : m.kill ? 'kill' : ''; el('mpHit').hidden = false; break;
+    case 'shot': { if (m.id === MP.id) break; const rs = remotes.get(m.id); if (rs) rs.shotAt = performance.now(); tracer(m.o, m.d, m.len, 0xffb060); const dd = Math.hypot(m.o[0] - P.x, m.o[2] - P.z); if (dd < 220) bang(0.3 * (1 - dd / 220), true); break; }
+    case 'hit': hitT = performance.now(); if (m.kill) { tone(880, 880, 0.12, 0.25, 'triangle'); tone(1320, 1320, 0.25, 0.25, 'triangle', 0.1); } else tone(m.head ? 2600 : 1700, m.head ? 2200 : 1400, 0.07, 0.2, 'square'); el('mpHit').className = m.head ? 'head' : m.kill ? 'kill' : ''; el('mpHit').hidden = false; break;
     case 'hurt': {
-      MP.hp = m.hp; hurtT = performance.now(); el('mpHurt').hidden = false; updatePanel();
+      MP.hp = m.hp; hurtT = performance.now(); tone(160, 60, 0.18, 0.4, 'sawtooth'); el('mpHurt').hidden = false; updatePanel();
       const a = Math.atan2(-m.dx, -m.dz) - P.yaw; el('mpHurtDir').style.transform = 'rotate(' + (-a) + 'rad)';   // the side the shot came from
       if (m.hp <= 0) die(nameOf(m.by));
       break;
     }
-    case 'kill': { feed(m.kn + '  ➜  ' + m.vn + (m.head ? '  (в голову)' : ''), m.killer === MP.id ? 'mine' : m.victim === MP.id ? 'dead' : ''); if (m.killer === MP.id) { MP.kills++; } if (m.victim === MP.id) { MP.deaths++; if (!MP.dead) die(m.kn); } updatePanel(); break; }
-    case 'alive': { const r = remotes.get(m.id); if (r) r.buf.length = 0; break; }
+    case 'kill': { feed(m.kn + '  ➜  ' + m.vn + (m.head ? '  (в голову)' : ''), m.killer === MP.id ? 'mine' : m.victim === MP.id ? 'dead' : ''); if (m.killer === MP.id) { MP.kills++; } if (m.victim === MP.id) { MP.deaths++; if (!MP.dead) die(m.kn); } else { const rv = remotes.get(m.victim); if (rv && rv.buf.length) { rv.fallT = performance.now(); rv.corpse = { ...rv.buf[rv.buf.length - 1] }; } } updatePanel(); break; }
+    case 'alive': { const r = remotes.get(m.id); if (r) { r.buf.length = 0; r.fallT = 0; } break; }
     case 'board': MP.board = m.board; MP.score = m.score; for (const e of m.board) { const r = addRemote(e.id, e.name, e.team); if (r) { r.name = e.name; r.tag.textContent = e.name; } if (e.id === MP.id) { MP.kills = e.kills; MP.deaths = e.deaths; } } for (const id of [...remotes.keys()]) if (!m.board.some(e => e.id === id)) dropRemote(id); drawBoard(); updatePanel(); break;
     case 'left': dropRemote(m.id); break;
     case 'win': { const mine = m.team === MP.team; el('mpBanner').hidden = false; el('mpBanner').className = 'mp-banner t' + (m.team === 1 ? 1 : 0); el('mpBanner').textContent = (mine ? 'Победа! ' : 'Поражение. ') + 'Выиграли ' + m.name.toLowerCase() + ', ' + m.score[0] + ' : ' + m.score[1]; setTimeout(() => { el('mpBanner').hidden = true; }, 9000); break; }
@@ -213,6 +231,7 @@ function initUi() {
   try { const s = JSON.parse(localStorage.getItem('dpils.mp') || '{}'); if (s.name) el('mpName').value = s.name; if (s.server) el('mpServer').value = s.server; if (s.spawn != null) sel.value = s.spawn; if (s.team != null) el('mpTeam').value = s.team; } catch (e) {}
   el('mpName').placeholder = 'Игрок' + (100 + Math.floor(Math.random() * 900));
   if (!el('mpName').value) el('mpName').value = el('mpName').placeholder;
+  const rs = el('mpRespawnAt'); rs.textContent = ''; for (const [v, t] of [['mate', 'Рядом с товарищем'], ['rand', 'Случайное место']].concat(PLACES.map((p, i) => [i, p[0]]))) { const o = document.createElement('option'); o.value = v; o.textContent = t; rs.append(o); }
   el('goPlay').onclick = join; el('mpRespawn').onclick = respawn; el('mpLeave').onclick = () => location.reload(); el('mpOverBtn').onclick = () => location.reload();
   el('bLeave').onclick = () => location.reload();
 }
@@ -234,11 +253,18 @@ function mpTick(dt) {
   if (!MP.on) return;
   const now = performance.now(), t = now - 120;
   if (MP.reloadAt && now - MP.reloadAt >= RULES.reloadMs) { MP.reloadAt = 0; MP.ammo = RULES.mag; updatePanel(); }
+  MP.burst = Math.max(0, MP.burst - dt * 0.03); { const px = Math.max(6, Math.round(spreadNow() * 1400)), cr = $('cross'); if (cr.dataset.px !== String(px)) { cr.dataset.px = px; cr.style.width = cr.style.height = px + 'px'; cr.style.margin = (-px / 2) + 'px 0 0 ' + (-px / 2) + 'px'; } }
+  if ((MP.pingT = (MP.pingT || 0) - dt) <= 0 && MP.ws.readyState === 1) { MP.pingT = 2; MP.ws.send(JSON.stringify({ t: 'ping', c: now, rtt: MP.rtt })); }
   if (MP.firing) fire(now);
   if (MP.dead) { const left = Math.max(0, 3 - (now - MP.deadAt) / 1000); el('mpRespawn').disabled = left > 0; el('mpRespawn').textContent = left > 0 ? 'Возрождение через ' + Math.ceil(left) : 'Возродиться (пробел)'; }
   else if ((MP.sendT -= dt) <= 0 && MP.ws.readyState === 1) { MP.sendT = 0.05; MP.ws.send(JSON.stringify({ t: 'state', x: +P.x.toFixed(2), y: +P.y.toFixed(2), z: +P.z.toFixed(2), yaw: +P.yaw.toFixed(3), pitch: +P.pitch.toFixed(3) })); }
   for (const r of remotes.values()) {
-    const p = pose(r, t), g = r.group; if (!p) { g.visible = false; continue; }
+    const g = r.group;
+    if (r.fallT) {   // a killed player topples backwards and lies for three seconds
+      const age = now - r.fallT; if (age > 3000) { r.fallT = 0; g.visible = false; g.rotation.x = 0; r.buf.length = 0; continue; }
+      const c = r.corpse; g.visible = true; g.position.set(c.x, c.y - 1.7 + 0.18 * Math.min(1, age / 350), c.z); g.rotation.y = c.yaw; g.rotation.x = 1.5 * Math.min(1, age / 350) * (2 - Math.min(1, age / 350)); continue;
+    }
+    const p = pose(r, t); if (!p) { g.visible = false; continue; }
     g.visible = true; g.position.set(p.x, p.y - 1.7, p.z); g.rotation.y = p.yaw; g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
   }
   for (let i = tracers.length - 1; i >= 0; i--) { const tr = tracers[i]; tr.t += dt; tr.l.material.opacity = Math.max(0, 0.9 - tr.t * 9); if (tr.t > 0.1) { scene.remove(tr.l); tr.l.geometry.dispose(); tr.l.material.dispose(); tracers.splice(i, 1); } }
@@ -254,11 +280,22 @@ function mpLabels() {
   for (const r of remotes.values()) {
     const g = r.group; if (!g.visible) { r.tag.hidden = true; continue; }
     V.set(g.position.x, g.position.y + 2.0, g.position.z).project(camera);
-    const d = Math.hypot(g.position.x - P.x, g.position.z - P.z);
-    if (V.z > 1 || d > 90 || MP.dead) { r.tag.hidden = true; continue; }
+    const d = Math.hypot(g.position.x - P.x, g.position.z - P.z), mate = r.team === MP.team;
+    if (V.z > 1 || d > (mate ? 250 : 90) || MP.dead || r.fallT) { r.tag.hidden = true; continue; }   // teammates are shown through walls, enemies only in the line of sight
+    if (!mate) { const dy = g.position.y + 1.6 - P.y, l = Math.hypot(d, dy) || 1, dir = [(g.position.x - P.x) / l, dy / l, (g.position.z - P.z) / l]; if (freePath([P.x, P.y, P.z], dir, l) < l - 2) { r.tag.hidden = true; continue; } }
     r.tag.hidden = false; r.tag.style.transform = 'translate(-50%,-100%) translate(' + ((V.x + 1) / 2 * w).toFixed(0) + 'px,' + ((1 - V.y) / 2 * h).toFixed(0) + 'px)';
   }
 }
+// teammates on the maps; an enemy shows for two seconds after it fires
+STATE.mapOverlay = (ctx, cx, cz, ppm, w, h) => {
+  if (!MP.on) return; const now = performance.now();
+  for (const r of remotes.values()) {
+    const p = r.buf[r.buf.length - 1]; if (!p || !r.group.visible || r.fallT) continue;
+    if (r.team !== MP.team && now - (r.shotAt || 0) > 2000) continue;
+    const x = w / 2 + (p.x - cx) * ppm, y = h / 2 + (p.z - cz) * ppm; if (x < 4 || y < 4 || x > w - 4 || y > h - 4) continue;
+    ctx.beginPath(); ctx.arc(x, y, 5, 0, 6.3); ctx.fillStyle = r.team === 1 ? '#2f78d8' : '#d8392f'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; ctx.stroke();
+  }
+};
 function enablePlay() { initUi(); el('goPlay').disabled = false; }
 
 export { MP, enablePlay, mpLabels, mpTick };

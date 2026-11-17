@@ -1,7 +1,7 @@
 /* Combat geometry shared in spirit with src/game/mp.js (keep the two copies in step). */
 export const RULES = {
   maxPlayers: 16, hp: 100, bodyDmg: 22, headDmg: 40, range: 160, fireGapMs: 85, respawnMs: 3000, protectMs: 2500,
-  runSpeed: 11, tolerance: 1.4, headTolerance: 0.6, bodyBottom: 1.6, bodyTop: 0.25, tickHz: 15,
+  runSpeed: 11, tolerance: 1.1, headTolerance: 0.6, bodyBottom: 1.6, bodyTop: 0.25, tickHz: 15,
 };
 // closest distance between the ray (o + t·d, 0 ≤ t ≤ len, |d| = 1) and the segment a–b; returns { dist, t }
 export function rayToSegment(o, d, len, a, b) {
