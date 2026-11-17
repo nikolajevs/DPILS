@@ -1,4 +1,4 @@
-/* Daugavpils shooter: the game server (team deathmatch, red against blue). Players move on their own machines (the server limits speed and keeps them in
+/* Daugavpils shooter: the game server (team deathmatch, red against blue, or MODE=ffa: everybody against everybody). Players move on their own machines (the server limits speed and keeps them in
    the city box); the server owns health, shots, kills, scores and respawns. The server also reads the
    city (server/world.mjs): a shot that would have to pass through a building does not hit, and its tracer stops at
    the wall. Hits are checked against fire rate, range and the target's position as the server knows it. */
@@ -8,10 +8,11 @@ import { NADE, RULES as R, WEAPONS, rayToSegment } from './combat.mjs';
 import { loadWorld } from './world.mjs';
 
 const SERVER_NAME = String(process.env.SERVER_NAME || 'Даугавпилс').slice(0, 40), PORT = +process.env.PORT || 8787, HX = 5200, HY = 4200;   // bounds a bit wider than the city
-const WORLD = loadWorld(), WIN = +process.env.WIN_SCORE || 30, TEAMS = ['Красные', 'Синие'], teamScore = [0, 0];
+const MODE = process.env.MODE === 'ffa' ? 'ffa' : 'team', FFA = MODE === 'ffa';   // in the free-for-all every player is a team of one
+const WORLD = loadWorld(), WIN = +process.env.WIN_SCORE || (FFA ? 20 : 30), TEAMS = ['Красные', 'Синие'], teamScore = [0, 0];
 let nextId = 1, roundOver = false; const players = new Map(), now = () => Date.now();
 const server = http.createServer((req, res) => {
-  if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' }); res.end(JSON.stringify({ ok: true, name: SERVER_NAME, players: players.size, max: R.maxPlayers, score: teamScore, win: WIN, teams: TEAMS, round: roundOver ? 'end' : 'play' })); return; }
+  if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' }); res.end(JSON.stringify({ ok: true, mode: MODE, name: SERVER_NAME, players: players.size, max: R.maxPlayers, score: teamScore, win: WIN, teams: TEAMS, round: roundOver ? 'end' : 'play' })); return; }
   res.writeHead(404); res.end();
 });
 const wss = new WebSocketServer({ server, maxPayload: 16384 });
@@ -24,9 +25,10 @@ function cleanName(s) {
   return n;
 }
 const board = () => [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths }));
-const sendBoard = () => all({ t: 'board', board: board(), score: teamScore });
+const sendBoard = () => all({ t: 'board', board: board(), score: FFA ? [] : teamScore });
 const count = k => [...players.values()].filter(p => p.team === k).length;
-function pickTeam(want) { const a = count(0), b = count(1); if (a !== b) return a < b ? 0 : 1; return want === 0 || want === 1 ? want : Math.random() < 0.5 ? 0 : 1; }
+function pickTeam(want, id) {
+  if (FFA) return id; const a = count(0), b = count(1); if (a !== b) return a < b ? 0 : 1; return want === 0 || want === 1 ? want : Math.random() < 0.5 ? 0 : 1; }
 // where the player stood at time t (the shooter saw the target 120 ms in the past plus half the round trip)
 function poseAt(p, t) {
   const h = p.hist; if (!h.length || t >= h[h.length - 1][0]) return [p.x, p.y, p.z];
@@ -43,9 +45,9 @@ function hurt(p, v, dmg, head, w, from) {
   if (!v.alive || dmg <= 0) return; const t0 = now();
   v.hp -= dmg; if (p !== v) p.st.dmg += dmg + Math.min(0, v.hp); send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: from[0] - v.x, dz: from[2] - v.z }); if (p !== v) send(p, { t: 'hit', id: v.id, head, kill: v.hp <= 0 });
   if (v.hp > 0) return;
-  v.alive = false; v.deaths++; v.diedAt = t0; if (p !== v) { p.kills++; teamScore[p.team]++; if (head) p.st.heads++; }
+  v.alive = false; v.deaths++; v.diedAt = t0; if (p !== v) { p.kills++; if (!FFA) teamScore[p.team]++; if (head) p.st.heads++; }
   all({ t: 'kill', killer: p.id, victim: v.id, kn: p.name, vn: v.name, kt: p.team, vt: v.team, head, w }); sendBoard();
-  if (p !== v && teamScore[p.team] >= WIN) endRound(p.team);
+  if (p !== v && (FFA ? p.kills : teamScore[p.team]) >= WIN) endRound(p.team, p);
 }
 // grenades in the air: the server flies them (the clients draw their own copy) and decides where and when they go off
 const nades = new Map(); let nextNade = 1;
@@ -71,9 +73,9 @@ wss.on('connection', ws => {
     if (m.t !== 'rtc' && ++p.msgs > 90) return;   // the handshake of the voice chat has its own, larger limit
     if (m.t === 'join' && !p.joined) {
       if (players.size >= R.maxPlayers) { send(p, { t: 'full' }); ws.close(); return; }
-      p.name = cleanName(m.name); p.team = pickTeam(m.team); p.joined = ws.joined = true; players.set(p.id, p);
-      send(p, { t: 'hello', id: p.id, server: SERVER_NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, rules: { hp: R.hp, range: R.range }, board: board(), score: teamScore });
-      spawn(p, m.x, m.z, m.yaw); sendBoard(); all({ t: 'chat', text: p.name + ' в игре, ' + TEAMS[p.team] });
+      p.name = cleanName(m.name); p.team = pickTeam(m.team, p.id); p.joined = ws.joined = true; players.set(p.id, p);
+      send(p, { t: 'hello', mode: MODE, id: p.id, server: SERVER_NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, rules: { hp: R.hp, range: R.range }, board: board(), score: FFA ? [] : teamScore });
+      spawn(p, m.x, m.z, m.yaw); sendBoard(); all({ t: 'chat', text: p.name + (FFA ? ' в игре' : ' в игре, ' + TEAMS[p.team]) });
       return;
     }
     if (!p.joined) return;
@@ -113,7 +115,7 @@ wss.on('connection', ws => {
       const text = String(m.text || '').replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
       if (!text || t0 - p.lastChat < 700) return; p.lastChat = t0;
       const say = { t: 'say', id: p.id, name: p.name, team: p.team, text, teamOnly: !!m.team };
-      if (m.team) { for (const q of players.values()) if (q.team === p.team) send(q, say); } else all(say);
+      if (m.team && !FFA) { for (const q of players.values()) if (q.team === p.team) send(q, say); } else all(say);
     } else if (m.t === 'rtc') {   // voice chat: the server only passes the WebRTC handshake between two players
       const q = players.get(+m.to); if (!q || q === p || !m.d || typeof m.d !== 'object') return;
       if (t0 - p.rwin > 1000) { p.rwin = t0; p.rmsgs = 0; } if (++p.rmsgs > 400) return;
@@ -129,11 +131,11 @@ wss.on('connection', ws => {
   ws.on('error', () => {});
 });
 // the end of a round: the table of the round goes to everybody, ten seconds later the scores are cleared and the next round starts
-function endRound(team) {
+function endRound(team, winner) {
   roundOver = true;
   const rows = [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, heads: p.st.heads, dmg: Math.round(p.st.dmg), acc: p.st.shots ? Math.round(100 * p.st.hitShots / p.st.shots) : 0 }));
   rows.sort((a, b) => b.kills - a.kills || b.dmg - a.dmg || a.deaths - b.deaths);
-  all({ t: 'win', team, name: TEAMS[team], score: teamScore, rows, mvp: rows.length ? rows[0].id : 0, nextMs: 10000 });
+  all({ t: 'win', mode: MODE, team, name: FFA ? winner.name : TEAMS[team], score: FFA ? [] : teamScore, rows, mvp: rows.length ? rows[0].id : 0, nextMs: 10000 });
   setTimeout(() => { teamScore[0] = teamScore[1] = 0; for (const p of players.values()) { p.kills = p.deaths = 0; p.st = { shots: 0, hitShots: 0, dmg: 0, heads: 0 }; } roundOver = false; sendBoard(); all({ t: 'round' }); all({ t: 'chat', text: 'Новый раунд' }); }, 10000);
 }
 setInterval(() => {
