@@ -1,7 +1,7 @@
 import { STATE } from '../core/state.js';
 import { bSV, updateHud } from '../ui/hud.js';
 import { MAP, big, closeMap, openMap } from '../ui/map.js';
-import { QUALITY, TIMES, qi, qAuto, onQuality, setQualityMode, setTime, timeI } from '../render/lighting.js';
+import { QUALITY, qi, qAuto, onQuality, setQualityMode } from '../render/lighting.js';
 import { P, freeSpot, keys, setFly, teleport, touch } from './player.js';
 import { PERF } from './perf.js';
 import { SET, onBuild, onReset } from './settings.js';
@@ -42,7 +42,7 @@ window.addEventListener('keydown', e => {
   if (STATE.mp && e.code === SET.keys.voice) return;   // in the game V is push-to-talk, not Street View
   keys.add(e.code);
   if (e.repeat) return;
-  if (e.code === 'KeyF') setFly(!P.fly); else if (e.code === 'KeyN') setTime((timeI + 1) % TIMES.length); else if (e.code === 'KeyT') { TX.si = (TX.si + 1) % SPEEDS.length; if (TX.si) TX.live = false; updateClockUI(); } else if (e.code === 'KeyM') { big.hidden ? openMap() : closeMap(); } else if (e.code === 'KeyP') togglePlaces();
+  if (e.code === 'KeyF') setFly(!P.fly); else if (e.code === 'KeyT') { TX.si = (TX.si + 1) % SPEEDS.length; if (TX.si) TX.live = false; updateClockUI(); } else if (e.code === 'KeyM') { big.hidden ? openMap() : closeMap(); } else if (e.code === 'KeyP') togglePlaces();
   else if (e.code === 'KeyV') { updateHud(); if (document.pointerLockElement) document.exitPointerLock(); keys.clear(); bSV.click(); }
 });
 window.addEventListener('keyup', e => keys.delete(e.code));
@@ -50,7 +50,7 @@ window.addEventListener('blur', () => keys.clear());
 function togglePlaces() { const el = $('places'); el.hidden = !el.hidden; $('bPlaces').setAttribute('aria-pressed', !el.hidden); }
 $('bPlaces').onclick = togglePlaces; $('bMap').onclick = openMap; $('bMapClose').onclick = closeMap; $('mini').onclick = openMap;
 $('mini').onkeydown = e => { if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); openMap(); } };
-$('bFly').onclick = () => { setFly(!P.fly); canvas.focus(); }; $('bNight').onclick = () => { setTime((timeI + 1) % TIMES.length); canvas.focus(); };
+$('bFly').onclick = () => { setFly(!P.fly); canvas.focus(); };
 $('clkSpeed').onclick = () => { TX.si = (TX.si + 1) % SPEEDS.length; if (TX.si) TX.live = false; updateClockUI(); canvas.focus(); };
 $('clkBack').onclick = () => { setClock(TX.sec - 3600, false); canvas.focus(); };
 $('clkFwd').onclick = () => { setClock(TX.sec + 3600, false); canvas.focus(); };

@@ -251,7 +251,7 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
 .mp-dead .go { margin: 0; }
 #bLeave { display: none; }
 .mp #bLeave { display: inline-block; }
-.mp #bFly, .mp #bPlaces, .mp #places, .mp #clock, .mp #bNight, .mp #bSV, .mp #near { display: none !important; }
+.mp #bFly, .mp #bPlaces, .mp #places, .mp #clock, .mp #bSV, .mp #near { display: none !important; }
 .mp-teams { grid-column: 1 / 3; font: 600 14px/1.2 var(--f-body); }
 .mp-teams small { opacity: .8; font-weight: 500; }
 .t0 { --team: #d8392f; } .t1 { --team: #2f78d8; }
@@ -477,6 +477,9 @@ body.mp .bar { background: var(--glass); border-color: var(--glass-line); color:
 .choice.main span, .choice.main::after { color: inherit; opacity: .85; }
 .choice:disabled { cursor: progress; opacity: .55; }
 .choice.main:disabled { background: var(--line); color: var(--muted); box-shadow: none; opacity: 1; }
+.time-pick { display: flex; align-items: center; justify-content: space-between; gap: 12px; font: 500 13px/1.2 var(--f-body); color: var(--muted); }
+.time-pick select { font: 500 14px/1.3 var(--f-body); padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-solid); color: var(--ink); min-width: 132px; }
+.time-pick select:focus { outline: 2px solid var(--brick); outline-offset: 0; border-color: transparent; }
 .keys-box summary, .srv-addr summary { cursor: pointer; font: 600 13px/1.4 var(--f-body); color: var(--ink); width: max-content; max-width: 100%; }
 .srv-addr summary { font-weight: 500; color: var(--muted); }
 .keys-box[open] .keys { margin-top: 10px; }
