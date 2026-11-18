@@ -13,19 +13,39 @@
 
 Руки с анимированным автоматом — вид от первого лица ([src/game/viewmodel.js](../src/game/viewmodel.js)). `AK47_static` держат обеими руками другие игроки ([src/game/avatar.js](../src/game/avatar.js)). Для скачивания с Sketchfab нужен аккаунт и его API-токен.
 
-## Солдат и остальное оружие
+## Оружие слотов 1–4 (`fp_shotgun.glb`, `fp_sniper.glb`, `fp_pistol.glb`, `fp_mg.glb`)
 
-Эти модели — **CC0 1.0** (общественное достояние), автор — Tomás Laulhé ([Quaternius](https://quaternius.com)); перед использованием в проекте автор просит рассмотреть поддержку на Patreon.
+Все четыре модели — **CC BY 4.0**, атрибуции обязательны:
+
+| Слот | Файл | Модель | Автор | Лицензия |
+|---|---|---|---|---|
+| 1 Дробовик | `fp_shotgun.glb` | [Remington 870 Shotgun](https://sketchfab.com/3d-models/none-6db0ad4764d14eee8f063eea3600071b) | Andrei Milin | [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/) |
+| 2 Снайперская | `fp_sniper.glb` | [SVD (Dragunov) *Updated*](https://sketchfab.com/3d-models/none-d4a9412275aa4974b146ad8ce9dc5fc2) | WillyG99 | [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/) |
+| 3 Пистолет | `fp_pistol.glb` | [Makarov PM](https://sketchfab.com/3d-models/none-dbf03ce95c834cb7b07edba799dcd46a) | Martin Trafas | [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/) |
+| 4 Пулемёт | `fp_mg.glb` | [LMG (FN Minimi)](https://sketchfab.com/3d-models/none-8c24d7374ea64bdab1c30f49c69d5ed8) | DJMaesen | [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/) |
+
+This work is based on the models above, each by its author, licensed under [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/).
+
+[tools/fp-weapons.mjs](../tools/fp-weapons.mjs) собирает их из скачанных с Sketchfab glTF (`node tools/fp-weapons.mjs <shotgun|sniper|pistol|mg|all> <каталог>`; каталог содержит подпапки `shotgun/`, `sniper/`, `pistol/`, `mg/` с `scene.gltf`). Конвейер:
+
+- вершины поворачиваются и переносятся **при целой иерархии** (дуло вдоль +z, верх +y, рукоять в начале координат, масштаб в метрах), и только потом удаляются лишние узлы, скининг и анимации — иначе bounding box считается по браку;
+- у SVD вершины уже в bind-pose, поэтому скин просто снимается, а не запекается; у пистолета удалены подставка, пол, патрон и глушитель;
+- текстуры переименовываются `<материал>_<слот>_<base|normal|mr|emissive>` и жмутся в WebP (1024 px, у снайперской 2048; карты metal/rough и emissive — вполовину меньше);
+- геометрия упаковывается `EXT_meshopt_compression` (декодер подключается в `avatar.js` и `viewmodel.js`).
+
+Итог: дробовик 0.19 МБ / 6.2 тыс. треугольников, снайперская 1.40 МБ / 40.4 тыс., пистолет 0.60 МБ / 12.1 тыс., пулемёт 0.63 МБ / 26.8 тыс. Модели в метрах (в отличие от старых моделей Quaternius в «единицах солдата»), поэтому у каждого слота свой коэффициент посадки в [src/game/mp.js](../src/game/mp.js) (`upgradeViewmodels`), а вспышка выстрела ставится по `userData.muzzle` — краю дула. Вид от первого лица и стволы в руках других игроков ([src/game/avatar.js](../src/game/avatar.js)) берут одни и те же файлы. Для скачивания с Sketchfab нужен аккаунт и его API-токен.
+
+## Солдат
+
+Эта модель — **CC0 1.0** (общественное достояние), автор — Tomás Laulhé ([Quaternius](https://quaternius.com)); перед использованием в проекте автор просит рассмотреть поддержку на Patreon.
 
 | Файл | Что | Откуда |
 |---|---|---|
 | `Soldier.glb` | солдат (шлем, бронежилет) с анимациями Idle, Walk, Run, Jump, Death, Walk_Carry и др. | [Ultimate Animated Character Pack](https://quaternius.com/packs/ultimatedanimatedcharacter.html), файл `Soldier_Male` |
-| `Pistol.glb` | пистолет | оттуда же, `Guns/glTF/Pistol` |
-| `Rifle.glb` | пулемёт (тяжёлая винтовка) | [Zombie Apocalypse Kit](https://quaternius.com/packs/zombieapocalypsekit.html), `Weapons/glTF/Rifle` |
-| `Shotgun.glb` | дробовик в руках | оттуда же, `Weapons/glTF/Shotgun` |
-| `Sniper.glb` | снайперская винтовка с оптическим прицелом | [Toon Shooter Game Kit](https://quaternius.com/packs/toonshootergamekit.html), `Guns/glTF/Sniper` |
 
-Файлы переданы без изменений в модели, кроме упаковки из `.gltf` в бинарный `.glb` (буфер и текстура внутри). Используются в [src/game/avatar.js](../src/game/avatar.js): материалы `Main` и `Helmet` солдата перекрашиваются в цвет команды или игрока. Чтобы взять другого персонажа, достаточно заменить файл и поправить блок `MODEL` (имена клипов, костей и материалов) в `avatar.js`.
+Используется в [src/game/avatar.js](../src/game/avatar.js): материалы `Main` и `Helmet` солдата перекрашиваются в цвет команды или игрока. Чтобы взять другого персонажа, достаточно заменить файл и поправить блок `MODEL` (имена клипов, костей и материалов) в `avatar.js`.
+
+Старые стволы Quaternius (`Pistol.glb`, `Rifle.glb`, `Shotgun.glb`, `Sniper.glb` — CC0, наборы Zombie Apocalypse Kit и Toon Shooter Game Kit) заменены моделями `fp_*` выше и больше не загружаются; файлы оставлены в репозитории как запасные.
 
 ## Люди (`humans/`)
 

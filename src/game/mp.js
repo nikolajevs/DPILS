@@ -104,15 +104,15 @@ function makeFigure(hue) {
 function addRemote(id, name, team, look) {
   if (remotes.has(id) || id === MP.id) return remotes.get(id);
   const hue = MP.ffa ? (id * 0.381966) % 1 : (HUE[team] ?? 0.3), group = makeFigure(hue), tag = document.createElement('div'); tag.className = 'mp-tag ' + (MP.ffa ? 'tf' : 't' + team); if (MP.ffa) tag.style.background = 'hsla(' + Math.round(hue * 360) + ', 55%, 32%, .78)'; tag.textContent = name || '…'; group.visible = false; scene.add(group); $('mpTags').append(tag);
-  const r = { name, team, hue, group, buf: [], tag, look: parseLook(look) ? look : '', figHead: group.userData.head, figArm: group.userData.arm }; remotes.set(id, r); attachAvatar(r); return r;
+  const r = { id, name, team, hue, group, buf: [], tag, look: parseLook(look) ? look : '', figHead: group.userData.head, figArm: group.userData.arm }; remotes.set(id, r); attachAvatar(r); return r;
 }
 // the ready animated model instead of the simple figure, as soon as its file has come; look — the chosen person
 function attachAvatar(r) {
   if (r.av) return;
   if (!akSettled()) { loadAK().then(() => { if (!r.av && remotes.has(r.id)) attachAvatar(r); }); return; }   // their AK is in the file of the arms
-  if (r.look) {   // the people's files are heavier: they come only when someone has chosen a person
-    if (!humansReady()) { loadHumans().then(h => { if (h && !r.av && remotes.has(r.id)) attachAvatar(r); }); return; }
-  } else if (!avatarReady()) return;
+  const a = avatarReady();
+  if (!a || !a.guns.length) { loadAvatar().then(x => { if (x && !r.av && remotes.has(r.id)) attachAvatar(r); }); return; }   // the guns come after the soldier: an avatar built too early would keep the box rifle forever
+  if (r.look && !humansReady()) { loadHumans().then(h => { if (h && !r.av && remotes.has(r.id)) attachAvatar(r); }); return; }   // the people's files are heavier: they come only when someone has chosen a person
   const av = makeAvatar(r.hue, r.look); if (!av) return;
   for (const c of r.group.children) c.visible = false; r.group.add(av.root); r.av = av;
   if (av.root.userData.head) { r.group.userData.head = av.root.userData.head; r.group.userData.arm = av.root.userData.arm; }   // the aim turns the proxies of the person
@@ -131,7 +131,10 @@ function upgradeViewmodels() {
     if (i === 0 && vm) return;   // the AK has the arms of viewmodel.js
     const g = gunModel(i); if (!g || m.userData.ready) return; m.userData.ready = true;
     m.children.forEach(c => { if (!c.userData.keep) c.visible = false; });   // the old boxes off (the hands stay)
-    g.rotation.y = Math.PI; g.scale.multiplyScalar([0.55, 0.55, 0.5, 0.85, 0.5][i] ?? FEEL.vm); g.position.set(0.05, i === 3 ? 0.07 : -0.02, i === 3 ? 0.02 : 0.12); m.add(g);
+    const s = [0.55, 0.29, 0.46, 0.8, 0.44][i] ?? FEEL.vm;   // the fp_* guns are in metres: these keep the on-screen size of the old boxes
+    g.rotation.y = Math.PI; g.scale.multiplyScalar(s); g.position.set(0.05, i === 3 ? 0.07 : -0.02, i === 3 ? 0.02 : 0.12); m.add(g);
+    m.userData.flashZ = g.position.z - (g.userData.muzzle || 0.5) * s; m.userData.flashY = g.position.y + (g.userData.muzzleY || 0) * s;   // the flash at the muzzle tip
+    hands[i].scale.setScalar(i === 3 ? 0.6 : 1);   // the pistol is small: its fists too
     placeHands(hands[i], HAND_REAL[i]);   // the real model's grip sits a little differently than the box's
   });
 }
@@ -175,8 +178,8 @@ const HAND_BOX = [   // [right hand, left hand] on the fallback boxes of each we
   [[0, -0.05, 0.02], [-0.06, -0.07, 0.0]], [[0, -0.06, 0.05], [0, -0.03, -0.18]],
 ];
 const HAND_REAL = [   // the same on the ready models (their grip is at the holder's origin, shifted in upgradeViewmodels)
-  [[0.05, -0.06, 0.12], [0.03, -0.03, -0.18]], [[0.05, -0.06, 0.14], [0.03, -0.02, -0.22]], [[0.05, -0.06, 0.12], [0.03, -0.02, -0.25]],
-  [[0.05, 0.02, 0.02], [0.0, 0.0, 0.0]], [[0.05, -0.06, 0.12], [0.03, -0.03, -0.16]],
+  [[0.05, -0.06, 0.12], [0.03, -0.03, -0.18]], [[0.05, -0.05, 0.13], [0.02, -0.04, 0.0]], [[0.05, -0.05, 0.12], [0.02, -0.03, -0.04]],
+  [[0.05, 0.045, 0.03], [0.02, 0.025, 0.015]], [[0.05, -0.05, 0.12], [0.02, -0.03, -0.01]],
 ];
 function makeArm(dir) {   // a fist with a wrist and a sleeve reaching toward the elbow (off the frame)
   const g = new THREE.Group(), d = new THREE.Vector3(...dir).normalize(), z = new THREE.Vector3(0, 0, 1);
@@ -192,10 +195,11 @@ const hands = models.map((m, i) => {
   hg.add(R, L); hg.userData.R = R; hg.userData.L = L; placeHands(hg, HAND_BOX[i]); m.add(hg); return hg;
 });
 // the flash of your own gun (muzzle.js): the AK of the arms has its own at its muzzle (viewmodel.js); this one serves
-// the other guns, ahead of the boxes and the small ready models. Made on the first shot (its canvases need the page)
+// the other guns, at the muzzle tip of the ready model (upgradeViewmodels keeps its place). Made on the first shot
 let fpFlash = null;
 function ownFlash() {
-  if (!fpFlash) { fpFlash = makeFlash({ size: 0.9, wrap: drawOver }); fpFlash.group.position.set(0, 0, -0.45); fpFlash.group.rotation.y = Math.PI; gun.add(fpFlash.group); }
+  if (!fpFlash) { fpFlash = makeFlash({ size: 0.9, wrap: drawOver }); fpFlash.group.rotation.y = Math.PI; gun.add(fpFlash.group); }
+  const m = models[MP.weapon]; fpFlash.group.position.set(0, m.userData.flashY ?? 0, m.userData.flashZ ?? -0.45);
   return fpFlash;
 }
 // One light for the flashes: of your own gun, or of a shot of someone near you, whichever is brighter now. A single
