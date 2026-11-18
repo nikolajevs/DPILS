@@ -44,7 +44,7 @@ function step(dt) {
     if (keys.has('KeyE') || keys.has('Space')) P.y += sp * 0.6 * dt; if (keys.has('KeyQ')) P.y -= sp * 0.6 * dt;
     P.y = Math.max(terrainH(P.x, P.z) + 2, Math.min(1500, P.y));
   } else if (l > 0.01) {
-    const sp = P.crouch ? JUMP.crouchSpeed : run ? 11 : 3.3; let dx = (-sy * f + cy * s) * sp * dt, dz = (-cy * f - sy * s) * sp * dt;
+    const sp = P.crouch ? JUMP.crouchSpeed : run ? 11 : 6; let dx = (-sy * f + cy * s) * sp * dt, dz = (-cy * f - sy * s) * sp * dt;   // 6 m/s by default: a brisk jog, the run clip plays at its own rate; Shift is the sprint
     const n = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.3)); dx /= n; dz /= n;
     for (let i = 0; i < n; i++) {
       const ox = P.x, oz = P.z; P.x += dx; P.z += dz; collide();
@@ -55,12 +55,13 @@ function step(dt) {
   P.x = Math.max(-HX, Math.min(HX, P.x)); P.z = Math.max(-HY, Math.min(HY, P.z));
   if (!P.fly) {
     const ground = P.y - P.eye - P.up;   // the ground under the feet at the last frame (walkLift uses it to tell bridges from what is under them)
-    if (STATE.mp) {   // in the game: crouch (C, hold) and jump (space)
-      P.crouch = keys.has(SET.keys.crouch) && P.up <= 0.001;
+    const ck = SET.keys.crouch, otherCtrl = ck === 'ControlLeft' ? 'ControlRight' : ck === 'ControlRight' ? 'ControlLeft' : null;
+    P.crouch = (keys.has(ck) || (otherCtrl && keys.has(otherCtrl))) && P.up <= 0.001;   // crouch: Ctrl (hold), on a walk and in the game alike; either Ctrl key does
+    if (STATE.mp) {   // in the game: jump (space) too
       if (keys.has(SET.keys.jump) && P.up <= 0.001 && !P.crouch) P.vy = JUMP.v;
       if (P.vy !== 0 || P.up > 0) { P.vy -= JUMP.g * dt; P.up += P.vy * dt; if (P.up <= 0) { P.up = 0; P.vy = 0; } }
-      P.eye += ((P.crouch ? JUMP.eyeCrouch : JUMP.eyeStand) - P.eye) * Math.min(1, dt * 12);
-    } else { P.eye = JUMP.eyeStand; P.up = 0; P.vy = 0; }
+    } else { P.up = 0; P.vy = 0; }
+    P.eye += ((P.crouch ? JUMP.eyeCrouch : JUMP.eyeStand) - P.eye) * Math.min(1, dt * 12);
     P.y = P.eye + P.up + walkLift(P.x, P.z, ground);
   }   // up the hills and ramparts, down into the moats, over the bridges
 }

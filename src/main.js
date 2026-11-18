@@ -16,12 +16,13 @@ import './ui/hud.js';
 import './ui/map.js';
 import { PP, renderFrame, warmUp } from './render/post.js';
 import { splitBigMeshes } from './render/chunks.js';
-import { QUALITY, TIMES, qi, setQuality, setTime, timeI } from './render/lighting.js';
+import { QUALITY, TIMES, qi, qAuto, setQuality, setQualityMode, setTime, timeI } from './render/lighting.js';
 import { P, setFly, teleport } from './game/player.js';
 import './ui/places.js';
 import { TX, buildTransit, setClock, updateBoard } from './transit/transit.js';
 import { LIDAR_STATS, buildTrees } from './world/trees.js';
-import { PSTAT } from './landmarks/parking.js';
+import { PSTAT, placeParkingCars } from './landmarks/parking.js';
+import { placeStaticCars } from './world/cars.js';
 import { SER_STAT } from './buildings/series.js';
 import { GUB_STAT } from './landmarks/gubisce.js';
 import { buildFortress } from './fortress/build.js';
@@ -77,7 +78,7 @@ import { $, C } from './core/env.js';
    laptop with both of its GPUs (RTX 3050 and Intel UHD: 25 and 35 s of building), the shares of the two averaged; the
    shaders are given more than a second visit takes, when the browser has them compiled already. Re-measure when a
    step changes much: a step heavier than its weight slows the bar down, a lighter one leaves it behind. */
-const W = { materials: 2100, ground: 2800, lines: 1600, houses: 3100, blocks: 300, landmarks: 4000, fortress: 2400, trees: 3500, flora: 500, transit: 3500, split: 1600, models: 1500, shaders: 2500, frame: 4000 };
+const W = { materials: 2100, ground: 2800, lines: 1600, houses: 3100, blocks: 300, landmarks: 4000, fortress: 2400, trees: 3500, flora: 500, cars: 400, transit: 3500, split: 1600, models: 1500, shaders: 2500, frame: 4000 };
 const WSUM = Object.values(W).reduce((a, b) => a + b, 0);
 let wDone = 0;
 const step = (text, w, reported) => {
@@ -90,7 +91,10 @@ const step = (text, w, reported) => {
     let modelsF = 0, modelsStep = false;
     const models = loadModels(f => { modelsF = f; if (modelsStep) loading.part(f); });
     await step('Рисую фасады и крыши…', W.materials); makeMaterials(); STATE.goldGB = new GB(false);
-    setTime(matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark' ? 2 : 0);
+    // time of day: the choice of the start card is kept in the browser; the first visit follows the theme of the page
+    let t0 = matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark' ? 2 : 0;
+    try { const s = localStorage.getItem('dpils-time'); if (s != null) { const v = +s; if (Number.isInteger(v) && v >= 0 && v < TIMES.length) t0 = v; } } catch (e) {}
+    setTime(t0);
     setQuality(qi);
     terrainInit();
     await step('Заливаю Даугаву и озёра…', W.ground); buildGround();
@@ -103,6 +107,7 @@ const step = (text, w, reported) => {
     const lamps = buildLamps(); setTime(timeI);
     await step('Сажаю деревья…', W.trees); const trees = buildTrees();
     await step('Сажаю цветы в парках…', W.flora); await plantFlora();   // their files were asked for with the parks
+    await step('Ставлю машины на парковки…', W.cars); await placeParkingCars(); await placeStaticCars();   // the BMW models were asked for on import
     await step('Выпускаю трамваи и автобусы на линии…', W.transit); const tripsN = buildTransit();
     await step('Делю землю и улицы на участки…', W.split); splitBigMeshes(scene);   // the meshes over the whole city, cut into tiles that can be culled (src/render/chunks.js)
     if (TERR.on) scene.traverse(o => { if (!o.isMesh || !o.frustumCulled || !o.geometry) return; const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere(); if (g.boundingSphere && !g.userData.terrGrown) { g.boundingSphere.radius += 70; g.userData.terrGrown = true; } });
@@ -116,6 +121,6 @@ const step = (text, w, reported) => {
     loading.done('Готово: ' + BLD.length.toLocaleString('ru') + ' зданий, ' + LINES.length.toLocaleString('ru') + ' улиц и дорожек, ' + trees.toLocaleString('ru') + ' деревьев, ' + lamps.toLocaleString('ru') + ' фонарей' + (tripsN ? ', ' + tripsN.toLocaleString('ru') + ' рейсов в расписании' : '') + '.');
     $('view').classList.add('shown');
     $('go').disabled = false; enablePlay(); $('go').focus();
-    window.__city = { PERF, peds: PEDS, ambProbe, ambStatus, statEvent, statsOf, MP, STATE, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, updateBoard, P, teleport, setFly, setTime, fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU };
+    window.__city = { PERF, peds: PEDS, ambProbe, ambStatus, statEvent, statsOf, MP, STATE, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, updateBoard, P, teleport, setFly, setTime, fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, setQualityMode, qualityMode: () => (qAuto ? 'auto' : qi), scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU };
   } catch (e) { console.error(e); loading.fail('Ошибка при сборке города: ' + e.message); }
 })();

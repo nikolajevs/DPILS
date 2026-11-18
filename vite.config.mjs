@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite';
-import { cpSync, mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 // The city data stay plain scripts that set window.CITY, window.TRANSIT, window.FORTRESS, window.TERRAIN, window.SCHOOLS, window.PARKS, window.LIDAR and window.LIDAR_TREES (written
@@ -7,9 +7,27 @@ import { dirname } from 'node:path';
 // are, with the old address of the page and the textures the page loads at run time.
 const STATIC = ['citydata.js', 'transit.js', 'fortress.js', 'terrain.js', 'schools.js', 'parks.js', 'lidar.js', 'lidar-trees.js', 'trains.js', 'intercity.js', 'parking.js', 'yards.js', 'servers.json', 'models', 'sounds', 'daugavpils.html', 'textures/water_normal.webp', 'textures/ground_grass.webp', 'textures/ground_dirt.webp'];
 
+// Incremental copy: the static city data and models weigh ~25 MB, and most builds change only src/. A file is
+// copied only when the destination is missing, differs in size, or the source was modified after the last copy
+// (a fresh copy is always newer than its source, so an unchanged file is skipped on every next build).
+let copied = 0;
+function syncStatic(src, dest) {
+  const s = statSync(src);
+  if (s.isDirectory()) {
+    mkdirSync(dest, { recursive: true });
+    for (const e of readdirSync(src)) syncStatic(src + '/' + e, dest + '/' + e);
+    return;
+  }
+  let d = null; try { d = statSync(dest); } catch (e) { /* not copied yet */ }
+  if (!d || d.size !== s.size || s.mtimeMs > d.mtimeMs) { mkdirSync(dirname(dest), { recursive: true }); copyFileSync(src, dest); copied++; }
+}
+
 export default defineConfig({
   base: './',
   publicDir: false,
-  build: { outDir: 'dist', target: 'es2020', chunkSizeWarningLimit: 1500 },
-  plugins: [{ name: 'city-data', apply: 'build', closeBundle() { for (const f of STATIC) { mkdirSync(dirname('dist/' + f), { recursive: true }); cpSync(f, 'dist/' + f, { recursive: true }); } } }],
+  // emptyOutDir off keeps the copied static data between builds; only the hashed bundle in dist/assets is cleared
+  build: { outDir: 'dist', target: 'es2020', chunkSizeWarningLimit: 1500, emptyOutDir: false },
+  plugins: [{ name: 'city-data', apply: 'build',
+    buildStart() { rmSync('dist/assets', { recursive: true, force: true }); },
+    closeBundle() { copied = 0; for (const f of STATIC) syncStatic(f, 'dist/' + f); console.log(`city-data: ${copied} changed static file(s) copied`); } }],
 });
