@@ -6,7 +6,7 @@
    city through `world` (freePath, ground, walkable, buildingAt, stepNade): a shot that would pass through a building does
    not hit, and its tracer stops at the wall. Hits are checked against fire rate, range and the target's position as the
    game knows it. */
-import { NADE, RULES as R, WEAPONS, W_NADE, rayToSegment } from './combat.mjs';
+import { INV, ITEMS, NADE, RELOAD_MS, RESERVE, RULES as R, WEAPONS, W_NADE, rayToSegment } from './combat.mjs';
 import { LEVELS, botName, createBrain } from './bots.mjs';
 
 const TEAMS = ['Красные', 'Синие'], HX = 5200, HY = 4200;   // bounds a bit wider than the city
@@ -42,7 +42,8 @@ export function createGame(opts) {
   function pickTeam(want, id) {
     if (FFA) return id; const a = count(0), b = count(1); if (a !== b) return a < b ? 0 : 1; return want === 0 || want === 1 ? want : Math.random() < 0.5 ? 0 : 1;
   }
-  const newPlayer = () => ({ id: nextId++, conn: null, bot: null, name: '', look: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, st: { shots: 0, hitShots: 0, dmg: 0, heads: 0 }, wep: 0, lastShot: 0, lastNade: 0, nades: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now() });
+  const newPlayer = () => ({ id: nextId++, conn: null, bot: null, name: '', look: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, st: { shots: 0, hitShots: 0, dmg: 0, heads: 0 }, wep: 0, lastShot: 0, lastNade: 0, nades: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(),
+    mag: WEAPONS.map(w => w.mag), reserve: RESERVE.slice(), meds: 0, reloadDone: 0, reloadW: 0, lastMed: 0 });
   // where the player stood at time t (the shooter saw the target 120 ms in the past plus half the round trip)
   function poseAt(p, t) {
     const h = p.hist; if (!h.length || t >= h[h.length - 1][0]) return [p.x, p.y, p.z];
@@ -61,7 +62,8 @@ export function createGame(opts) {
   function spawn(p, x, z, yaw) {
     if (arena) [x, z, yaw] = basePoint(p); else if (p.bot) [x, z, yaw] = areaPoint();
     p.x = num(x, HX); p.z = num(z, HY); p.y = p.bot ? world.ground(p.x, p.z) + 1.7 : 1.7; p.yaw = num(yaw, 10); p.pitch = 0; p.hp = R.hp; p.alive = true; p.protectUntil = now() + R.protectMs; p.t = now(); p.free = true; p.hist.length = 0; p.nades = NADE.count; p.eye = 1.7;
-    send(p, { t: 'spawn', x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, nades: p.nades }); all({ t: 'alive', id: p.id });
+    p.mag = WEAPONS.map(w => w.mag); p.reserve = RESERVE.slice(); p.meds = 0; p.reloadDone = 0; p.lastMed = 0;
+    send(p, { t: 'spawn', x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, nades: p.nades, mag: p.mag, reserve: p.reserve, meds: p.meds }); all({ t: 'alive', id: p.id });
   }
   // damage dmg from attacker p to v (weapon w; from = where it came from): the hit and the hurt messages, and the kill
   function hurt(p, v, dmg, head, w, from) {
@@ -84,10 +86,24 @@ export function createGame(opts) {
       hurt(thrower, v, Math.round(NADE.dmg * (1 - d / NADE.radius) * (v === thrower ? NADE.self : 1)), false, W_NADE, n.p);
     }
   }
+  // ---- the inventory: the server keeps the magazines and the reserve; a reload takes time and fills from the reserve ----
+  const invMsg = p => send(p, { t: 'inv', mag: p.mag, reserve: p.reserve, nades: p.nades, meds: p.meds });
+  function beginReload(p, wi, t0) {
+    if (!p.alive || p.reloadDone > t0 || p.mag[wi] >= WEAPONS[wi].mag || p.reserve[wi] <= 0) return false;
+    p.reloadDone = t0 + RELOAD_MS[wi]; p.reloadW = wi; return true;
+  }
+  function useMed(p, t0) {
+    if (!p.alive || p.meds <= 0 || p.hp >= R.hp || t0 - p.lastMed < INV.medGapMs) return false;
+    p.lastMed = t0; p.meds--; p.hp = Math.min(R.hp, p.hp + ITEMS.med.heal);
+    send(p, { t: 'heal', hp: p.hp, meds: p.meds }); return true;
+  }
   // a shot of p with weapon wi: rays [[dx, dy, dz, length, claimed target id], ...]; lagMs: how far back the targets are looked at (0 for a bot)
   function shoot(p, wi, rays, lagMs) {
     const W = WEAPONS[wi], t0 = now(); if (!Array.isArray(rays) || !rays.length || !p.alive) return;
-    if (t0 - p.lastShot < W.gapMs) return; p.lastShot = t0;
+    if (t0 - p.lastShot < W.gapMs) return;
+    if (t0 < p.reloadDone) return;   // still reloading
+    if (p.mag[wi] <= 0) { if (p.bot) beginReload(p, wi, t0); return; }   // a bot reloads by itself; a player asks with 'reload'
+    p.mag[wi]--; p.lastShot = t0;
     const o = [p.x, p.y, p.z], out = [], hits = new Map(), lag = t0 - lagMs;
     for (const ray of rays.slice(0, W.pellets)) {   // a rifle shot is one ray, a shotgun shot is up to eight pellets
       if (!Array.isArray(ray)) continue;
@@ -118,7 +134,7 @@ export function createGame(opts) {
     const rows = [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, heads: p.st.heads, dmg: Math.round(p.st.dmg), acc: p.st.shots ? Math.round(100 * p.st.hitShots / p.st.shots) : 0 }));
     rows.sort((a, b) => b.kills - a.kills || b.dmg - a.dmg || a.deaths - b.deaths);
     all({ t: 'win', mode: MODE, team, name: FFA ? winner.name : TEAMS[team], score: FFA ? [] : teamScore, rows, mvp: rows.length ? rows[0].id : 0, nextMs: 10000 });
-    timers.push(setTimeout(() => { teamScore[0] = teamScore[1] = 0; for (const p of players.values()) { p.kills = p.deaths = 0; p.st = { shots: 0, hitShots: 0, dmg: 0, heads: 0 }; } roundOver = false; sendBoard(); all({ t: 'round' }); all({ t: 'chat', text: 'Новый раунд' }); }, 10000));
+    timers.push(setTimeout(() => { teamScore[0] = teamScore[1] = 0; for (const p of players.values()) { p.kills = p.deaths = 0; p.st = { shots: 0, hitShots: 0, dmg: 0, heads: 0 }; } roundOver = false; sendBoard(); all({ t: 'round' }); all({ t: 'chat', text: 'Новый раунд' }); for (const it of items.values()) { it.active = true; it.respawnAt = 0; all(itemMsg(it)); } }, 10000));
   }
   // ---- bots
   const enemyBase = p => (arena ? (FFA ? arena.bases.flat()[Math.floor(Math.random() * arena.bases.flat().length)] : arena.bases[p.team === 1 ? 0 : 1][Math.floor(Math.random() * arena.bases[p.team === 1 ? 0 : 1].length)]) : null);
@@ -145,7 +161,7 @@ export function createGame(opts) {
           if (players.size >= MAX && !removeBot()) { send(p, { t: 'full' }); conn.close(); return; }
           if (lb && validKey(m.key) && ![...players.values()].some(q => q.key === m.key)) { p.key = m.key; const r = lb.identify(m.key, nameBase(m.name), n => !taken(n)); p.name = r.name; p.prof = r.prof; } else p.name = cleanName(m.name);
           p.team = pickTeam(m.team, p.id); p.look = cleanLook(m.look); p.joined = true; players.set(p.id, p);
-          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, board: board(), score: FFA ? [] : teamScore });
+          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })) });
           spawn(p, m.x, m.z, m.yaw); sendBoard(); all({ t: 'chat', text: p.name + (FFA ? ' в игре' : ' в игре, ' + TEAMS[p.team]) });
           return;
         }
@@ -161,6 +177,8 @@ export function createGame(opts) {
           p.hist.push([t0, p.x, p.y, p.z]); while (p.hist.length > 2 && t0 - p.hist[0][0] > 1000) p.hist.shift();
         } else if (m.t === 'shoot' && p.alive) shoot(p, okWeapon(m.w) ? m.w : 0, m.rays, 120 + Math.min(300, p.rtt / 2));
         else if (m.t === 'throw') { const d = [num(m.dx, 1), num(m.dy, 1), num(m.dz, 1)], l = Math.hypot(...d); if (l >= 0.5) throwNade(p, d.map(x => x / l)); }
+        else if (m.t === 'reload' && p.alive) beginReload(p, okWeapon(m.w) ? m.w : p.wep, t0);
+        else if (m.t === 'use' && m.kind === 'med') useMed(p, t0);
         else if (m.t === 'chat') {
           const text = String(m.text || '').replace(/[\u0000-\u001f\u007f​-‏‪-‮]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
           if (!text || t0 - p.lastChat < 700) return; p.lastChat = t0;
@@ -180,6 +198,45 @@ export function createGame(opts) {
     };
     return handle;
   }
+  // ---- the items on the map: ammo, grenades and med kits; picked up by walking over, back after a while ----
+  const items = new Map(); let nextItem = 1;
+  function itemSpots() {
+    const spots = [], N = INV.itemCount;
+    const add = (x, z) => { if (world.walkable(x, z) && !spots.some(s => Math.hypot(s[0] - x, s[1] - z) < 18)) spots.push([x, z]); };
+    if (arena) {
+      for (const b of arena.bases) for (const [bx, bz] of b) { const a = Math.random() * 6.283, r = 6 + Math.random() * 12; add(bx + Math.cos(a) * r, bz + Math.sin(a) * r); }
+      for (let k = 0; spots.length < N && k < 300; k++) { const a = Math.random() * 6.283, r = arena.r * (0.2 + Math.random() * 0.65); add(arena.cx + Math.cos(a) * r, arena.cz + Math.sin(a) * r); }
+    } else for (let k = 0; spots.length < N && k < 400; k++) { const a = Math.random() * 6.283, r = Math.sqrt(Math.random()) * (area.r - 25); add(area.cx + Math.cos(a) * r, area.cz + Math.sin(a) * r); }
+    return spots;
+  }
+  const itemMsg = it => ({ t: 'item', id: it.id, kind: it.kind, x: it.x, z: it.z });
+  itemSpots().forEach(([x, z], i) => { const it = { id: nextItem++, kind: ['ammo', 'nade', 'med', 'ammo'][i % 4], x, z, active: true, respawnAt: 0 }; items.set(it.id, it); });
+  function tickItems(t) {
+    for (const it of items.values()) {
+      if (!it.active) { if (t >= it.respawnAt) { it.active = true; all(itemMsg(it)); } continue; }
+      for (const p of players.values()) {
+        if (!p.alive || Math.hypot(p.x - it.x, p.z - it.z) > INV.pickR) continue;
+        let got = false;
+        if (it.kind === 'ammo') { for (let i = 0; i < WEAPONS.length; i++) { const add = Math.min(ITEMS.ammo.give[i], RESERVE[i] * INV.reserveCap - p.reserve[i]); if (add > 0) { p.reserve[i] += add; got = true; } } }
+        else if (it.kind === 'nade') { if (p.nades < INV.nadeMax) { p.nades++; got = true; } }
+        else if (it.kind === 'med') { if (p.meds < INV.medMax) { p.meds++; got = true; } }
+        if (!got) continue;   // the pockets are full: the item stays for someone else
+        it.active = false; it.respawnAt = t + ITEMS[it.kind].respawnMs;
+        all({ t: 'took', id: it.id, kind: it.kind, to: p.id });
+        if (p.conn) invMsg(p);
+        break;
+      }
+    }
+    for (const p of players.values()) {
+      if (p.bot && p.alive && p.hp < 45 && p.meds > 0) useMed(p, t);   // a bot heals itself when hurt and having a kit
+      if (p.reloadDone && t >= p.reloadDone) {   // the reload is over: fill the magazine from the reserve
+        const wi = p.reloadW, k = Math.min(WEAPONS[wi].mag - p.mag[wi], p.reserve[wi]);
+        p.mag[wi] += k; p.reserve[wi] -= k; p.reloadDone = 0;
+        if (p.conn) invMsg(p);
+      }
+    }
+  }
+  timers.push(setInterval(() => tickItems(now()), 100));
   // ---- the clock of the game: snapshots of the world, the grenades in the air, the bots
   let last = now();
   timers.push(setInterval(() => {

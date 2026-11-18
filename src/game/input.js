@@ -35,6 +35,7 @@ window.addEventListener('keydown', e => {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;   // typing in a box (the chat) is not a command
   if ((e.target instanceof HTMLButtonElement || e.target instanceof HTMLAnchorElement) && (e.code === 'Space' || e.code === 'Enter')) return;
   if (!STATE.started) return;
+  if (STATE.mp && !$('mpInv').hidden) return;   // the inventory panel is open: the keys go to it, not to the walk
   if (e.code === 'Escape' && !big.hidden) { closeMap(); return; }
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
   if (e.ctrlKey || e.metaKey || e.altKey) return;

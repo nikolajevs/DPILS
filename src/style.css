@@ -330,14 +330,31 @@ label.chk { display: flex; align-items: center; gap: 8px; font-size: 13px; color
 .mp-stat[data-hp="mid"] .mp-hp i { background: linear-gradient(90deg, #f0b429, #f5d04a); }
 .mp-stat[data-hp="low"] .mp-hp i { background: linear-gradient(90deg, #e0463a, #f06a4a); } .mp-stat[data-hp="low"] .mp-hpn b { color: #ff7a6b; animation: hp-pulse 1s ease-in-out infinite; }
 @keyframes hp-pulse { 50% { opacity: .55; } }
-.mp-gun { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "w n" "a a"; align-items: end; }
+.mp-gun { display: grid; grid-template-columns: 1fr auto auto; grid-template-areas: "w n m" "a a a"; align-items: end; column-gap: 10px; }
 .mp-gun #mpWeapon { grid-area: w; font: 600 12px/1 var(--f-body); letter-spacing: .08em; text-transform: uppercase; opacity: .75; }
-.mp-stat .mp-gun #mpAmmo { grid-area: a; grid-column: 1 / 3; font: 700 28px/1.1 var(--f-display); font-variant-numeric: tabular-nums; } .mp-gun #mpAmmo[data-empty="1"] { color: #ff7a6b; }
+.mp-stat .mp-gun #mpAmmo { grid-area: a; grid-column: 1 / 4; font: 700 28px/1.1 var(--f-display); font-variant-numeric: tabular-nums; } .mp-gun #mpAmmo[data-empty="1"] { color: #ff7a6b; }
 .mp-nades { grid-area: n; font: 600 13px/1 var(--f-body); letter-spacing: .15em; color: #cfe3ff; }
 .mp-nades::before { content: "Граната "; letter-spacing: 0; font-size: 11px; opacity: .6; text-transform: uppercase; }
+.mp-meds { grid-area: m; font: 600 13px/1 var(--f-body); letter-spacing: .15em; color: #ffd9d0; }
+.mp-meds::before { content: "Аптечка "; letter-spacing: 0; font-size: 11px; opacity: .6; text-transform: uppercase; }
 .mp-slots { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
-.mp-slots span { text-align: center; padding: 5px 0; border-radius: 6px; font: 600 12px/1 var(--f-body); background: rgba(255, 255, 255, .08); color: rgba(255, 255, 255, .55); }
+.mp-slots span { display: grid; gap: 2px; text-align: center; padding: 5px 0; border-radius: 6px; font: 600 12px/1 var(--f-body); background: rgba(255, 255, 255, .08); color: rgba(255, 255, 255, .55); }
+.mp-slots span i { font-style: normal; font-size: 10px; line-height: 1; opacity: .65; font-variant-numeric: tabular-nums; }
 .mp-slots span.on { background: #fff; color: #111; box-shadow: 0 0 0 1px #fff, 0 2px 8px rgba(255, 255, 255, .25); }
+.mp-slots span.on i { opacity: .8; }
+/* the inventory panel (I): the weapons with their magazines and reserve, the grenades and the med kits */
+.inv-rows { display: grid; gap: 6px; }
+.inv-row { display: grid; grid-template-columns: 34px 1fr auto auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 8px; background: rgba(255, 255, 255, .05); border: 1px solid transparent; text-align: left; color: inherit; font: inherit; cursor: pointer; }
+.inv-row:hover { background: rgba(255, 255, 255, .1); }
+.inv-row.on { border-color: rgba(255, 255, 255, .7); background: rgba(255, 255, 255, .12); }
+.inv-row kbd { justify-self: center; min-width: 24px; text-align: center; padding: 3px 5px; border-radius: 5px; background: rgba(255, 255, 255, .12); font: 600 11px/1 var(--f-body); }
+.inv-row b { font-variant-numeric: tabular-nums; font-weight: 700; }
+.inv-row small { opacity: .65; font-size: 12px; }
+.inv-row.inv-item { grid-template-columns: 1fr auto auto auto; cursor: default; }
+.inv-row .btn { padding: 5px 10px; font-size: 12px; }
+.inv-note { display: block; margin-top: 10px; opacity: .6; font-size: 12px; line-height: 1.4; }
+.mp-itemhint { position: fixed; left: 50%; bottom: 132px; transform: translateX(-50%); z-index: 6; background: var(--glass); border: 1px solid var(--glass-line); padding: 6px 12px; border-radius: 8px; font: 600 13px/1.3 var(--f-body); color: #fff; pointer-events: none; }
+.mp-itemhint[hidden] { display: none; }
 .mp-stat small { grid-column: auto; font: 500 11px/1.3 var(--f-body); opacity: .6; } .mp-stat .mp-hp { min-width: 0; width: 100%; }
 /* the score at the top: two team chips, or "you / leader" */
 .mp-top { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); }
