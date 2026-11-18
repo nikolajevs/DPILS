@@ -1,15 +1,17 @@
 /* Headless check of the graphics quality setting (auto / fixed). Run: node tools/queries/quality-mode-test.mjs
-   Needs the built page served at 127.0.0.1:4173 (vite preview --host 127.0.0.1). SwiftShader: ~1 fps, so every
-   wait is a waitForFunction, clicks and selects go through page.evaluate. */
-import { chromium } from 'playwright';
+   Needs the built page served at 127.0.0.1:4173 (vite preview --host 127.0.0.1).
+   This test deliberately runs on SwiftShader (software: true): it checks the auto lowering of quality and the
+   dynamic resolution under ~1 fps, which a real GPU would never produce. Every wait is a waitForFunction,
+   clicks and selects go through page.evaluate. */
+import { launchBrowser } from '../browser.js';
 
 const URL = 'http://127.0.0.1:4173/';
 const results = [];
 const ok = (name, cond, extra = '') => { results.push({ name, pass: !!cond, extra }); console.log((cond ? 'PASS' : 'FAIL') + ' ' + name + (extra ? ' — ' + extra : '')); };
 
-const browser = await chromium.launch({
-  executablePath: 'C:/Users/igors/AppData/Local/ms-playwright/chromium-1248/chrome-win64/chrome.exe',
-  args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-dev-shm-usage']
+const { browser } = await launchBrowser({
+  software: true,   // the low-fps behaviour under test needs the software renderer, not the GPU
+  args: ['--disable-dev-shm-usage']
 });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 const errors = [];
