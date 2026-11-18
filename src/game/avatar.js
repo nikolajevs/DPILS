@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { worldSpace } from '../render/world-space.js';
-import { akReady } from './viewmodel.js';
+import { HOLD, akReady, muzzleOf } from './viewmodel.js';
+import { alignHand, at, reach, relMatrix, setFrame } from './ik.js';
 import { FLASH_SIZE, makeFlash } from './muzzle.js';
 
 /* ---------- the ready model of the players ----------
@@ -14,7 +15,7 @@ import { FLASH_SIZE, makeFlash } from './muzzle.js';
    is scaled to a man's height with the feet on the ground, and turned to look where the game looks (the file looks
    along +z, the game along −z). The loader drops the dots of the bone names (Fist.R is FistR).
    The weapons in hand are ready models too (models/fp_shotgun.glb, fp_sniper.glb, fp_pistol.glb, fp_mg.glb — CC BY 4.0, from Sketchfab, credits in models/README.md): metres, the muzzle along +z, the top along +y, the grip at the origin.
-   The AK (null in MODEL.guns) is the rifle of the arms of viewmodel.js, held in both hands: see akRifle and hold below. */
+   The AK (null in MODEL.guns) is the rifle of the arms of viewmodel.js. Every gun is held in both hands: see heldGun and hold below. */
 const MODEL = {
   file: 'models/Soldier.glb', guns: [null, 'models/fp_shotgun.glb', 'models/fp_sniper.glb', 'models/fp_pistol.glb', 'models/fp_mg.glb'], gunLen: [1, 1, 1, 1.5, 1], gunYaw: [0, 0, 0, 0, 0], gunM: [false, true, true, true, true], height: 1.8, headScale: 0.8,   // one gun model for each weapon of the game; the fp_* guns are already in metres and point along +z (gunM), the pistol is a little bigger in the hand; the head of the file is big: a little smaller
   tint: ['Helmet'], camo: ['Main', 'DarkGreen'],   // tint: painted in the colour of the team; camo: the jacket and the trousers get a camouflage pattern in its tones
@@ -58,67 +59,42 @@ function readyGun(src, k, yaw, metres) {
   const s = (metres ? 1 : asset.scale) * k;
   const box = new THREE.Box3().setFromObject(g), holder = new THREE.Group(); holder.add(g); holder.scale.setScalar(s); holder.userData.muzzle = box.max.z * s; holder.userData.muzzleY = (box.min.y + box.max.y) / 2 * s; return holder;
 }
-/* ---------- the AK in both hands ----------
-   The AK does not hang on the hand like the other guns. Its stock lies against the right shoulder, it points where the
-   player looks, and both arms reach for it (two-bone IK): the right hand to the pistol grip, the left to the handguard,
-   each wrist where the arms of viewmodel.js hold the rifle, and each hand turned as they turn theirs (where the skeleton
-   has fingers to tell the turn). The holder lives in the frame of the figure's inner group: metres, +z forward, +y up,
-   the right of the figure −x; its origin is the right shoulder of the arms of the file. A dead player's rifle goes down
-   with the right hand. */
-function akRifle() {
-  const k = akReady(); if (!k || !k.gun) return boxRifle();
-  const g = k.gun.clone(true), shift = new THREE.Group(), holder = new THREE.Group(); g.traverse(o => { if (o.isMesh) o.material = worldSpace(o.material.clone()); });
-  shift.position.copy(k.shoulder).negate(); shift.add(g); holder.add(shift);   // (the node of the rifle keeps the scale of its packed geometry: it is moved by a group of its own)
-  const rel = h => h && Object.fromEntries(Object.entries(h).map(([n, v]) => [n, v.clone().sub(k.shoulder)]));
-  holder.userData = { both: true, hands: { R: rel(k.hands.R), L: rel(k.hands.L) }, flashAt: k.muzzle.clone().sub(k.shoulder) };
+/* ---------- the guns in both hands ----------
+   A gun does not hang on the hand. Its stock lies against the right shoulder, it points where the player looks, and
+   both arms reach for it (two-bone IK, ik.js): the right wrist to the grip, the left to the handguard, each where the
+   arms of viewmodel.js hold it, and each hand turned as they turn theirs (where the skeleton has fingers to tell the
+   turn). The AK sits as the arms of its file hold it; every other gun is put with its grip where the AK's grip is
+   (HOLD of viewmodel.js tells where its grip and handguard are, and how far out the pistol is held), and the left hand
+   moves to its handguard. The holder lives in the frame of the figure's inner group: metres, +z forward, +y up, the
+   right of the figure −x; its origin is the right shoulder of the arms of the file. A dead player's gun goes down with
+   the right hand. */
+const V3 = a => new THREE.Vector3(...a);
+function heldGun(i) {
+  const k = akReady(), sp = HOLD[i], src = i ? asset && asset.guns[i] : k && k.gun; if (!k || !k.gun || !src || (i && !sp)) return null;
+  const g = src.clone(true), shift = new THREE.Group(), holder = new THREE.Group(); g.traverse(o => { if (o.isMesh) o.material = worldSpace(o.material.clone()); });
+  // (the node of a packed model keeps the scale of its geometry: it is moved by a group of its own)
+  if (i) shift.position.copy(k.palm.R).add(V3(sp.shift)).sub(V3(sp.grip)).sub(k.shoulder); else shift.position.copy(k.shoulder).negate();
+  shift.add(g); holder.add(shift);
+  const dR = i ? V3(sp.shift) : new THREE.Vector3(), dL = i ? k.palm.R.clone().add(V3(sp.shift)).add(V3(sp.fore)).sub(V3(sp.grip)).sub(k.palm.L) : new THREE.Vector3();
+  const rel = (h, d) => h && Object.fromEntries(Object.entries(h).map(([n, v]) => [n, v.clone().sub(k.shoulder).add(d)]));
+  holder.userData = { both: true, hands: { R: rel(k.hands.R, dR), L: rel(k.hands.L, dL) }, flashAt: (i ? muzzleOf(src) : k.muzzle.clone()).add(shift.position) };
   return holder;
 }
 const POLE = { R: new THREE.Vector3(-0.7, -1, -0.3).normalize(), L: new THREE.Vector3(0.5, -1, -0.2).normalize() };   // where the elbows point
-const IM = new THREE.Matrix4(), MA = new THREE.Matrix4(), MB = new THREE.Matrix4(), QA = new THREE.Quaternion(), QB = new THREE.Quaternion(), QC = new THREE.Quaternion();
-const VA = new THREE.Vector3(), VB = new THREE.Vector3(), VC = new THREE.Vector3(), VD = new THREE.Vector3(), VE = new THREE.Vector3(), VF = new THREE.Vector3(), VS = new THREE.Vector3(), VT = new THREE.Vector3();
-const F = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()], FX = new THREE.Vector3(), FY = new THREE.Vector3(), FZ = new THREE.Vector3();
-// positions and turns in the frame of inner (IM: the inverse of its world matrix, set by hold)
-const at = (o, v) => v.setFromMatrixPosition(o.matrixWorld).applyMatrix4(IM);
-function turnOf(o, q) { MA.multiplyMatrices(IM, o.matrixWorld).decompose(VS, q, VT); return q; }
-function turn(o, q) {   // turn the bone o by q (in the frame of inner) about its own joint
-  turnOf(o, QB); turnOf(o.parent, QC); QB.premultiply(q);
-  o.quaternion.copy(QC.invert().multiply(QB)); o.updateMatrixWorld(true);
-}
-function reach(arm, T, pole) {   // the analytic two-bone IK: the elbow in the plane of the shoulder, the target and the pole
-  const [a, b, c] = arm, A = at(a, VA), B = at(b, VB), C = at(c, VC), l1 = A.distanceTo(B), l2 = B.distanceTo(C);
-  VD.subVectors(T, A); let d = VD.length(); if (d < 1e-5 || l1 < 1e-5 || l2 < 1e-5) return; VD.divideScalar(d);
-  d = Math.min(Math.max(d, Math.abs(l1 - l2) + 1e-4), (l1 + l2) * 0.999);
-  const ca = Math.min(1, Math.max(-1, (l1 * l1 + d * d - l2 * l2) / (2 * l1 * d))), sa = Math.sqrt(1 - ca * ca);
-  VE.copy(pole).addScaledVector(VD, -pole.dot(VD)); if (VE.lengthSq() < 1e-8) VE.set(0, -1, 0); VE.normalize();
-  VF.copy(A).addScaledVector(VD, l1 * ca).addScaledVector(VE, l1 * sa);   // the elbow
-  turn(a, QA.setFromUnitVectors(B.sub(A).normalize(), VE.subVectors(VF, A).normalize()));
-  at(b, B); at(c, C); VE.copy(A).addScaledVector(VD, d);   // the wrist
-  turn(b, QA.setFromUnitVectors(C.sub(B).normalize(), VE.sub(B).normalize()));
-}
-function basis(w, m, i, k, M) {   // a frame of a hand: y from the wrist to the middle knuckle, x across the knuckles
-  FY.subVectors(m, w).normalize(); FX.subVectors(i, k); FZ.crossVectors(FX, FY).normalize(); FX.crossVectors(FY, FZ);
-  return M.makeBasis(FX, FY, FZ);
-}
-function turnHand(hand, fingers, h, holder) {
-  at(hand, F[0]); at(fingers[0], F[1]); at(fingers[1], F[2]); at(fingers[2], F[3]); basis(F[0], F[1], F[2], F[3], MA);
-  F[0].copy(h.w).applyMatrix4(holder.matrix); F[1].copy(h.m).applyMatrix4(holder.matrix); F[2].copy(h.i).applyMatrix4(holder.matrix); F[3].copy(h.k).applyMatrix4(holder.matrix); basis(F[0], F[1], F[2], F[3], MB);
-  turn(hand, QA.setFromRotationMatrix(MB.multiply(MA.transpose())));   // a frame's transpose is its inverse
-}
+const MA = new THREE.Matrix4(), VT = new THREE.Vector3(), HP = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+function turnHand(hand, fingers, h, holder) { const m = holder.matrix; alignHand(hand, fingers, HP[0].copy(h.w).applyMatrix4(m), HP[1].copy(h.m).applyMatrix4(m), HP[2].copy(h.i).applyMatrix4(m), HP[3].copy(h.k).applyMatrix4(m)); }
 // H: { R: [upper arm, forearm, hand], L: […], fingers: { R: [middle, index, little], L: […] } | null, ofs }
 function hold(H, inner, holder, pitch) {
-  inner.updateMatrixWorld(true); IM.copy(inner.matrixWorld).invert();
+  setFrame(inner);
   at(H.R[0], holder.position).add(H.ofs); holder.rotation.set(-pitch, 0, 0); holder.scale.setScalar(1); holder.updateMatrix();
   const hs = holder.userData.hands;
   if (hs.R) reach(H.R, VT.copy(hs.R.w).applyMatrix4(holder.matrix), POLE.R);
   if (hs.L) reach(H.L, VT.copy(hs.L.w).applyMatrix4(holder.matrix), POLE.L);
   if (H.fingers) { if (hs.R) turnHand(H.R[2], H.fingers.R, hs.R, holder); if (hs.L) turnHand(H.L[2], H.fingers.L, hs.L, holder); }
 }
-// at the moment of death the rifle is tied to the right hand (rel), then carried by it
-function tieToHand(H, inner, holder) { inner.updateMatrixWorld(true); IM.copy(inner.matrixWorld).invert(); return MB.multiplyMatrices(IM, H.R[2].matrixWorld).invert().multiply(holder.matrix).clone(); }
-function carry(H, inner, holder, rel) {
-  inner.updateMatrixWorld(true); IM.copy(inner.matrixWorld).invert();
-  MA.multiplyMatrices(IM, H.R[2].matrixWorld).multiply(rel).decompose(holder.position, holder.quaternion, holder.scale);
-}
+// at the moment of death the gun is tied to the right hand (rel), then carried by it
+function tieToHand(H, inner, holder) { setFrame(inner); return relMatrix(H.R[2], new THREE.Matrix4()).invert().multiply(holder.matrix); }
+function carry(H, inner, holder, rel) { setFrame(inner); relMatrix(H.R[2], MA).multiply(rel).decompose(holder.position, holder.quaternion, holder.scale); }
 // the flash (muzzle.js) at the muzzle of the gun in hand, along its barrel: on the holder of the AK, on the hand mount of the others
 function placeFlash(gun, flash, mount) {
   const g = flash.group;
@@ -126,7 +102,7 @@ function placeFlash(gun, flash, mount) {
 }
 // a new shot (its time changed): the flash of the weapon in hand
 function shotFlash(flash, s, st) { if (s.shotAt && s.shotAt !== st.at) { st.at = s.shotAt; if (!s.dead) flash.fire(1, FLASH_SIZE[st.w] || 1); } flash.tick(st.dt); }
-const makeGun = i => i === 0 ? akRifle() : asset && asset.guns[i] ? readyGun(asset.guns[i], MODEL.gunLen[i], MODEL.gunYaw[i], MODEL.gunM[i]) : boxRifle();
+const makeGun = i => heldGun(i) || (asset && asset.guns[i] ? readyGun(asset.guns[i], MODEL.gunLen[i], MODEL.gunYaw[i], MODEL.gunM[i]) : boxRifle());
 const HOLD_OFS = { human: new THREE.Vector3(0, 0, 0), soldier: new THREE.Vector3(0, 0, 0) };   // the holder from the shoulder joint of each skeleton
 // the camouflage: blotches of three tones of the colour of the team (a smooth noise of the position on the body at rest,
 // cut at two levels), on the material of the file; the vertex position before the skeleton moves it keeps the pattern on the body
@@ -323,7 +299,9 @@ function makeAvatar(hue, look, civilian) {
   return { root: inner, update, mount, setGun, mixer, get gun() { return gun; } };
 }
 
+// the model of a weapon as its file has it (metres, the muzzle along +z, the grip at the origin): the arms of viewmodel.js hold a clone of it
+const gunSource = i => (asset && asset.guns[i]) || null;
 // a ready gun for the viewmodel of the player himself (a clone in metres, the muzzle along +z), or null before the files have come
 function gunModel(i) { return asset && asset.guns[i] ? readyGun(asset.guns[i], MODEL.gunLen[i], MODEL.gunYaw[i], MODEL.gunM[i]) : null; }
 
-export { MODEL, gunModel, loadAvatar, loadHumans, makeAvatar, parseLook, randomLook, ready, humansReady };
+export { MODEL, gunModel, gunSource, loadAvatar, loadHumans, makeAvatar, parseLook, randomLook, ready, humansReady };
