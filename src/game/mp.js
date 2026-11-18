@@ -22,6 +22,7 @@ import { openLocal } from './local.js';
 import { ambStart, ambTick } from './ambience.js';
 import { statEvent } from './stats.js';
 import { playerKey, boardOn, setBoardOn, account } from './identity.js';
+import { rayHit } from '../../server/combat.mjs';
 import { initLeaders } from './leaders.js';
 import { $ } from '../core/env.js';
 import { boomSound, crackSound, hitSound, loadSounds, shotSound, stepSound } from './sfx.js';
@@ -30,9 +31,8 @@ import { fxSamples, tracerShot, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmo
 /* ---------- online shooter: deathmatch on the city map ----------
    The server (server/index.mjs) owns health, kills and respawns. This module: the connection, the other players
    (simple procedural figures, drawn 120 ms in the past between two snapshots), the gun in hand, shooting with the
-   line of fire checked against terrain and buildings, and the game panels. Keep RULES and rayToSegment in step with
-   server/combat.mjs. */
-const RULES = { hitR: 0.4, headR: 0.28, bodyBottom: 1.6, bodyTop: 0.05 };
+   line of fire checked against terrain and buildings, and the game panels. The hitboxes are the server's own
+   (rayHit from server/combat.mjs): the page predicts a hit by exactly the geometry the server judges by. */
 // the weapons (keep server/combat.mjs in step; the server has the damage): the rifle fires bursts, the shotgun
 // throws eight pellets in a cone, one shot per click
 const WEAPONS = [
@@ -70,22 +70,19 @@ const remotes = new Map();   // id → { name, group, buf: [{ t, x, y, z, yaw, p
 const DEFAULT_SERVER = '';   // e.g. 'wss://dpils-game.example.com'; empty: ?server=…, the saved address, or localhost
 
 /* ---------- geometry ---------- */
-function rayToSegment(o, d, len, a, b) {
-  const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], wx = o[0] - a[0], wy = o[1] - a[1], wz = o[2] - a[2];
-  const A = d[0] * d[0] + d[1] * d[1] + d[2] * d[2], B = d[0] * ux + d[1] * uy + d[2] * uz, C = ux * ux + uy * uy + uz * uz;
-  const D = d[0] * wx + d[1] * wy + d[2] * wz, E = ux * wx + uy * wy + uz * wz, den = A * C - B * B;
-  let t = den > 1e-9 ? (B * E - C * D) / den : 0, s;
-  t = Math.max(0, Math.min(len, t)); s = C > 0 ? Math.max(0, Math.min(1, (B * t + E) / C)) : 0;
-  t = Math.max(0, Math.min(len, (B * s - D) / A));
-  const px = o[0] + d[0] * t, py = o[1] + d[1] * t, pz = o[2] + d[2] * t, qx = a[0] + ux * s, qy = a[1] + uy * s, qz = a[2] + uz * s;
-  return { dist: Math.hypot(px - qx, py - qy, pz - qz), t };
-}
-// how far the shot flies before the ground or a roof line stops it
+// how far the shot flies before the ground or a roof line stops it; the coarse 1.5 m scan is bisected to ~3 mm
+// (the same refinement impacts.js uses for the mark), so the tracer stops at the wall, not up to 1.5 m inside it
 function freePath(o, d, len) {
-  for (let t = 1.5; t < len; t += 1.5) {
+  const block = t => {
     const x = o[0] + d[0] * t, y = o[1] + d[1] * t, z = o[2] + d[2] * t, g = terrainH(x, z);
-    if (y < g) return t;
-    const b = buildingAt(x, z); if (b && y < g + (b.top || 12)) return t;
+    if (y < g) return true;
+    const b = buildingAt(x, z); return !!(b && y < g + (b.top || 12));
+  };
+  for (let t = 1.5; t < len; t += 1.5) {
+    if (!block(t)) continue;
+    let lo = Math.max(0.2, t - 1.5), hi = t;
+    for (let i = 0; i < 9; i++) { const m = (lo + hi) / 2; if (block(m)) hi = m; else lo = m; }
+    return hi;
   }
   return len;
 }
@@ -342,8 +339,8 @@ function fire(now) {
     for (const [id, r] of remotes) {
       if (isMate(r)) continue;   // no friendly fire: shots pass through teammates
       const p = pose(r, t); if (!p || !r.group.visible) continue;
-      const a = [p.x, p.y - (p.h || 1.7) + 0.1, p.z], b = [p.x, p.y + RULES.bodyTop, p.z], h = rayToSegment(o, d, clear, a, b);
-      if (h.dist <= RULES.hitR && (!best || h.t < best.t)) best = { id, t: h.t };
+      const h = rayHit(o, d, clear, { x: p.x, y: p.y, z: p.z, eye: p.h || 1.7, yaw: p.yaw });
+      if (h && (!best || h.t < best.t)) best = { id, t: h.t };
     }
     const len = best ? best.t : clear; rays.push([+d[0].toFixed(4), +d[1].toFixed(4), +d[2].toFixed(4), +len.toFixed(1), best ? best.id : 0]);
     const kind = best ? 'body' : (clear < w.range - 0.5 ? 'surface' : 'air');
