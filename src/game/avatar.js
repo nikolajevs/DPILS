@@ -13,10 +13,10 @@ import { FLASH_SIZE, makeFlash } from './muzzle.js';
    Everything that belongs to this one file is in MODEL: to use another character change that and nothing else. The model
    is scaled to a man's height with the feet on the ground, and turned to look where the game looks (the file looks
    along +z, the game along −z). The loader drops the dots of the bone names (Fist.R is FistR).
-   The weapons in hand are ready models too (models/Rifle.glb, Shotgun.glb, Sniper.glb, CC0, by Quaternius): the muzzle along +z, the top along +y, the grip at the origin, in the units of the soldier.
+   The weapons in hand are ready models too (models/fp_shotgun.glb, fp_sniper.glb, fp_pistol.glb, fp_mg.glb — CC BY 4.0, from Sketchfab, credits in models/README.md): metres, the muzzle along +z, the top along +y, the grip at the origin.
    The AK (null in MODEL.guns) is the rifle of the arms of viewmodel.js, held in both hands: see akRifle and hold below. */
 const MODEL = {
-  file: 'models/Soldier.glb', guns: [null, 'models/Shotgun.glb', 'models/Sniper.glb', 'models/Pistol.glb', 'models/Rifle.glb'], gunLen: [1, 1, 1, 0.5, 1.1], gunYaw: [Math.PI / 2, 0, Math.PI / 2, Math.PI / 2, 0], height: 1.8, headScale: 0.8,   // one gun model for each weapon of the game (the machine gun is the heavy rifle); gunYaw: the guns of the Toon Shooter pack point along −x, turned to +z; the head of the file is big: a little smaller
+  file: 'models/Soldier.glb', guns: [null, 'models/fp_shotgun.glb', 'models/fp_sniper.glb', 'models/fp_pistol.glb', 'models/fp_mg.glb'], gunLen: [1, 1, 1, 1.5, 1], gunYaw: [0, 0, 0, 0, 0], gunM: [false, true, true, true, true], height: 1.8, headScale: 0.8,   // one gun model for each weapon of the game; the fp_* guns are already in metres and point along +z (gunM), the pistol is a little bigger in the hand; the head of the file is big: a little smaller
   tint: ['Helmet'], camo: ['Main', 'DarkGreen'],   // tint: painted in the colour of the team; camo: the jacket and the trousers get a camouflage pattern in its tones
   clips: { idle: 'Idle', walk: 'Walk', run: 'Run', jump: 'Jump', death: 'Death', hold: 'Walk_Carry' },   // hold: the pose of the arms with a rifle
   arms: ['ShoulderL', 'UpperArmL', 'LowerArmL', 'FistL', 'ShoulderR', 'UpperArmR', 'LowerArmR', 'FistR'], hand: 'FistR', head: 'Head',
@@ -30,9 +30,13 @@ function loadAvatar() {
       const head = probe.getObjectByName(MODEL.head); if (head) head.scale.setScalar(MODEL.headScale);
       probe.updateMatrixWorld(true); const box = new THREE.Box3().setFromObject(probe, true), h = box.max.y - box.min.y || 1;
       asset = { scene: g.scene, clips, scale: MODEL.height / h, floor: -box.min.y * MODEL.height / h, guns: [] };
-      // the guns come after the soldier; without them the simple rifle is drawn
-      Promise.all([...new Set(MODEL.guns.filter(Boolean))].map(f => new Promise(r => new GLTFLoader().load(f, x => r([f, x.scene]), undefined, () => r([f, null]))))).then(list => {
-        const by = Object.fromEntries(list); asset.guns = MODEL.guns.map(f => (f && by[f]) || null); res(asset);
+      // the guns come after the soldier; without them the simple rifle is drawn. The fp_* files are packed with
+      // EXT_meshopt_compression, so their loader needs the decoder (as the AK's loader in viewmodel.js)
+      import('three/addons/libs/meshopt_decoder.module.js').then(({ MeshoptDecoder }) => {
+        const L = new GLTFLoader(); L.setMeshoptDecoder(MeshoptDecoder);
+        Promise.all([...new Set(MODEL.guns.filter(Boolean))].map(f => new Promise(r => L.load(f, x => r([f, x.scene]), undefined, () => r([f, null]))))).then(list => {
+          const by = Object.fromEntries(list); asset.guns = MODEL.guns.map(f => (f && by[f]) || null); res(asset);
+        });
       });
     }, undefined, () => res(null));
   });
@@ -47,10 +51,12 @@ function boxRifle() {
   add(M1, 0.07, 0.1, 0.62, 0, 0.02, 0.28); add(M1, 0.035, 0.035, 0.3, 0, 0.03, 0.72); add(M2, 0.06, 0.13, 0.22, 0, 0, -0.1); add(M1, 0.05, 0.16, 0.08, 0, -0.1, 0.18); add(M1, 0.045, 0.1, 0.08, 0, -0.07, 0.04);
   g.userData.muzzle = 0.92; return g;
 }
-// a ready gun in metres (its units are those of the soldier, so it is scaled like him); the flash is at the muzzle
-function readyGun(src, k, yaw) {
+// a ready gun: the fp_* models are already in metres, the old ones were in the soldier's units (scaled like him);
+// the flash is at the muzzle — its distance from the grip and its height are kept for the viewmodel
+function readyGun(src, k, yaw, metres) {
   const g = src.clone(true); g.rotation.y = yaw || 0; g.traverse(o => { if (o.isMesh) o.material = worldSpace(o.material.clone()); });
-  const box = new THREE.Box3().setFromObject(g), holder = new THREE.Group(); holder.add(g); holder.scale.setScalar(asset.scale * k); holder.userData.muzzle = box.max.z * asset.scale * k; return holder;
+  const s = (metres ? 1 : asset.scale) * k;
+  const box = new THREE.Box3().setFromObject(g), holder = new THREE.Group(); holder.add(g); holder.scale.setScalar(s); holder.userData.muzzle = box.max.z * s; holder.userData.muzzleY = (box.min.y + box.max.y) / 2 * s; return holder;
 }
 /* ---------- the AK in both hands ----------
    The AK does not hang on the hand like the other guns. Its stock lies against the right shoulder, it points where the
@@ -120,7 +126,7 @@ function placeFlash(gun, flash, mount) {
 }
 // a new shot (its time changed): the flash of the weapon in hand
 function shotFlash(flash, s, st) { if (s.shotAt && s.shotAt !== st.at) { st.at = s.shotAt; if (!s.dead) flash.fire(1, FLASH_SIZE[st.w] || 1); } flash.tick(st.dt); }
-const makeGun = i => i === 0 ? akRifle() : asset && asset.guns[i] ? readyGun(asset.guns[i], MODEL.gunLen[i], MODEL.gunYaw[i]) : boxRifle();
+const makeGun = i => i === 0 ? akRifle() : asset && asset.guns[i] ? readyGun(asset.guns[i], MODEL.gunLen[i], MODEL.gunYaw[i], MODEL.gunM[i]) : boxRifle();
 const HOLD_OFS = { human: new THREE.Vector3(0, 0, 0), soldier: new THREE.Vector3(0, 0, 0) };   // the holder from the shoulder joint of each skeleton
 // the camouflage: blotches of three tones of the colour of the team (a smooth noise of the position on the body at rest,
 // cut at two levels), on the material of the file; the vertex position before the skeleton moves it keeps the pattern on the body
@@ -318,6 +324,6 @@ function makeAvatar(hue, look, civilian) {
 }
 
 // a ready gun for the viewmodel of the player himself (a clone in metres, the muzzle along +z), or null before the files have come
-function gunModel(i) { return asset && asset.guns[i] ? readyGun(asset.guns[i], MODEL.gunLen[i], MODEL.gunYaw[i]) : null; }
+function gunModel(i) { return asset && asset.guns[i] ? readyGun(asset.guns[i], MODEL.gunLen[i], MODEL.gunYaw[i], MODEL.gunM[i]) : null; }
 
 export { MODEL, gunModel, loadAvatar, loadHumans, makeAvatar, parseLook, randomLook, ready, humansReady };
