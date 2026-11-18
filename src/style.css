@@ -615,7 +615,8 @@ body.mp .bar { background: var(--glass); border-color: var(--glass-line); color:
 .mp-it kbd { position: absolute; left: 5px; bottom: 4px; font: 700 8.5px/1 var(--f-body); color: rgba(255, 255, 255, .55); }
 .mp-it[data-empty="1"] { opacity: .45; } .mp-it[data-empty="1"] .cnt { background: rgba(255, 255, 255, .25); color: #fff; }
 /* the weapon belt above the console */
-.mp-slots { position: absolute; left: 50%; bottom: 128px; transform: translateX(-50%); display: flex; gap: 8px; align-items: flex-end; }
+.mp-slots { position: absolute; left: 50%; bottom: 128px; transform: translateX(-50%); display: flex; gap: 8px; align-items: flex-end; opacity: 0; translate: 0 12px; pointer-events: none; transition: opacity .22s ease, translate .22s ease; }   /* the belt hides itself after the choice: src/game/mp.js shows it on a switch or the wheel */
+.mp-slots.show { opacity: 1; translate: 0 0; pointer-events: auto; }
 .mp-slots span { position: relative; width: 62px; height: 60px; padding: 0; border-radius: 12px; background: rgba(13, 17, 24, .5); border: 1px solid rgba(255, 255, 255, .12); display: grid; place-items: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); transition: height .15s, background .2s, border-color .2s; }
 .mp-slots span svg { width: 40px; height: 20px; fill: rgba(255, 255, 255, .62); }
 .mp-slots span b { position: absolute; left: 6px; top: 5px; font: 700 9px/1 var(--f-body); color: rgba(255, 255, 255, .5); }
@@ -673,4 +674,4 @@ body.mp:not(:has(#view.locked)) .mp-sys { bottom: 64px; }   /* above the returne
   body.mp:not(:has(#view.locked)) .mp-chat { bottom: 352px; }
   body.mp:not(:has(#view.locked)) .mp-sys { display: none; }
 }
-@media (prefers-reduced-motion: reduce) { .mp-feed div { animation: none; } .mp-slots span { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .mp-feed div { animation: none; } .mp-slots, .mp-slots span { transition: none; } }
