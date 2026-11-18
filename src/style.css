@@ -400,7 +400,6 @@ body.mp .bar { background: var(--glass); border-color: var(--glass-line); color:
 
 /* ---------- the start card in steps (src/ui/start.js): a choice, then the settings of that choice ---------- */
 .card { box-sizing: border-box; width: min(660px, 100%); }   /* the padding inside the width: on a phone the card overflowed the screen by it */
-.card .lead { font-size: 15px; line-height: 1.5; color: var(--muted); margin: 0; max-width: 52ch; }
 .choices { display: grid; gap: 10px; }
 .choice { position: relative; display: grid; gap: 4px; text-align: left; padding: 15px 44px 15px 16px; border-radius: 12px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; font: inherit; transition: border-color .15s, background-color .4s, color .4s, transform .08s; }
 .choice b { font: 600 17px/1.2 var(--f-body); }

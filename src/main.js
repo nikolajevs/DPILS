@@ -34,6 +34,7 @@ import './fortress/index.js';
 import { buildLamps } from './world/lamps.js';
 import { buildBuildings, finishBuildings } from './buildings/buildings.js';
 import { buildLandmarks } from './landmarks/index.js';
+import { plantFlora } from './landmarks/flora.js';
 import './landmarks/unity-square.js';
 import './landmarks/air-bridge.js';
 import './landmarks/junction.js';
@@ -71,8 +72,11 @@ import { $, C } from './core/env.js';
 
 /* ---------- build everything ----------
    Each step gets a share of the loading bar by its weight: about how many milliseconds it takes on a reference
-   machine (the bar is timed by them, scaled to how fast this machine runs the steps). */
-const W = { materials: 1100, ground: 2800, lines: 320, houses: 1450, blocks: 110, landmarks: 650, fortress: 2750, trees: 1380, transit: 100, split: 900, shaders: 1800, frame: 1500 };
+   machine (the bar is timed by them, scaled to how fast this machine runs the steps). Measured 2026-11-18 on one
+   laptop with both of its GPUs (RTX 3050 and Intel UHD: 25 and 35 s of building), the shares of the two averaged; the
+   shaders are given more than a second visit takes, when the browser has them compiled already. Re-measure when a
+   step changes much: a step heavier than its weight slows the bar down, a lighter one leaves it behind. */
+const W = { materials: 2100, ground: 2800, lines: 1600, houses: 3100, blocks: 300, landmarks: 4000, fortress: 2400, trees: 3500, flora: 500, transit: 3500, split: 1600, shaders: 2500, frame: 4000 };
 const WSUM = Object.values(W).reduce((a, b) => a + b, 0);
 let wDone = 0;
 const step = (text, w, reported) => {
@@ -94,6 +98,7 @@ const step = (text, w, reported) => {
     await step('Насыпаю валы и копаю рвы крепости…', W.fortress); buildFortress();
     const lamps = buildLamps(); setTime(timeI);
     await step('Сажаю деревья…', W.trees); const trees = buildTrees();
+    await step('Сажаю цветы в парках…', W.flora); await plantFlora();   // their files were asked for with the parks
     await step('Выпускаю трамваи и автобусы на линии…', W.transit); const tripsN = buildTransit();
     await step('Делю землю и улицы на участки…', W.split); splitBigMeshes(scene);   // the meshes over the whole city, cut into tiles that can be culled (src/render/chunks.js)
     if (TERR.on) scene.traverse(o => { if (!o.isMesh || !o.frustumCulled || !o.geometry) return; const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere(); if (g.boundingSphere && !g.userData.terrGrown) { g.boundingSphere.radius += 70; g.userData.terrGrown = true; } });
