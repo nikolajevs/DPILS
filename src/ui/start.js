@@ -1,0 +1,48 @@
+import { STATE } from '../core/state.js';
+import { prepareUi } from '../game/mp.js';
+import { refreshServers } from './servers.js';
+import { $ } from '../core/env.js';
+
+/* ---------- the start card, in steps ----------
+   First a choice: a walk through the city, a training against bots, or a game on a server. Only then the settings of
+   that choice, with a way back; and within them, a setting shows only when it means something: the team not in a
+   training where everyone is for himself, the place to appear only in the open city (in an arena you appear on your
+   base), the hair only for a man or a woman (src/game/mp.js), the field for another server only when the list does not
+   have it (src/ui/servers.js). The keys are folded under «Управление». */
+const card = $('startCard'), home = $('stepHome'), form = $('play');
+const STEPS = {
+  train: { title: 'Тренировка с ботами', hint: 'Бой против ботов прямо в браузере, по правилам сервера. Выберите карту, режим и соперников.' },
+  online: { title: 'Играть онлайн', hint: 'Командный бой или каждый сам за себя — режим выбирает сервер. Выберите сервер из списка.' }
+};
+let came = null;   // the choice the card came back from, to put the focus on it again
+function showStep(step) {
+  card.dataset.step = step;
+  home.hidden = step !== 'home'; form.hidden = step === 'home';
+  for (const el of form.querySelectorAll('[data-for]')) el.hidden = !el.dataset.for.split(' ').includes(step);
+  $('mpMsg').textContent = '';
+  if (step === 'home') { if (came) came.focus(); return; }
+  prepareUi(); came = step === 'train' ? $('chTrain') : $('chOnline');
+  $('stepTitle').textContent = STEPS[step].title; $('stepHint').textContent = STEPS[step].hint;
+  follow();
+  if (step === 'online') refreshServers();
+  $('stepTitle').focus({ preventScroll: true }); $('start').scrollTop = 0;
+}
+// the settings that depend on others
+function follow() {
+  const train = card.dataset.step === 'train';
+  $('mpTeamRow').hidden = train && $('trMode').value === 'ffa';
+  $('mpSpawnRow').hidden = train && $('trArena').value !== '';
+}
+$('trMode').addEventListener('change', follow); $('trArena').addEventListener('change', follow);
+$('chTrain').onclick = () => showStep('train'); $('chOnline').onclick = () => showStep('online'); $('stepBack').onclick = () => showStep('home');
+$('chTrain').disabled = $('chOnline').disabled = false;   // the code is here: the settings can be chosen while the city is still being built
+window.addEventListener('keydown', e => { if (e.code === 'Escape' && !$('start').hidden && card.dataset.step !== 'home' && form.contains(document.activeElement)) { e.preventDefault(); showStep('home'); } });
+// the "?" button: the card again, on its first step, with the keys unfolded
+$('bHelp').onclick = () => {
+  if (document.pointerLockElement) document.exitPointerLock();
+  $('go').querySelector('b').textContent = STATE.mp ? 'Вернуться в игру' : 'Продолжить прогулку';
+  $('chTrain').hidden = $('chOnline').hidden = !!STATE.mp;   // in a game, not another game
+  showStep('home'); $('keysBox').open = true; $('start').hidden = false; $('go').focus();
+};
+
+export { showStep };

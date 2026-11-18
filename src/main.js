@@ -6,6 +6,7 @@ import { SHV } from './landmarks/shops.js';
 import { frame } from './game/loop.js';
 import { PERF } from './game/perf.js';
 import { MP, enablePlay } from './game/mp.js';
+import './ui/start.js';
 import { ambProbe, ambStatus } from './game/ambience.js';
 import { statEvent, statsOf } from './game/stats.js';
 import './game/input.js';
