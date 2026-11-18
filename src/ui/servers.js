@@ -32,6 +32,8 @@ async function probe(row) {
 }
 function render() {
   listEl.textContent = '';
+  // the field for another address opens by itself when there is nothing to choose from, or it holds an address not listed
+  const box = $('mpServerBox'); if (box && (!rows.length || (input.value.trim() && !rows.some(r => r.url === wsUrl(input.value))))) box.open = true;
   if (!rows.length) { const e = document.createElement('div'); e.className = 'srv-empty'; e.textContent = 'Список пуст: введите адрес сервера ниже.'; listEl.append(e); return; }
   for (const r of rows) {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'srv' + (wsUrl(input.value) === r.url ? ' on' : '') + ' ' + (r.state || 'wait'); b.dataset.url = r.url;
@@ -47,8 +49,10 @@ async function refresh() {
   if (!input.value.trim()) { const up = rows.find(r => r.fixed && r.state === 'up'); if (up) input.value = up.url; }   // an empty field takes the first working server of the list
   render();
 }
-async function start() { await load(); await refresh(); clearInterval(timer); timer = setInterval(() => { if (!$('start').hidden) refresh(); }, 8000); }
+async function start() { await load(); await refresh(); clearInterval(timer); timer = setInterval(() => { if (!$('start').hidden && listEl.offsetParent) refresh(); }, 8000); }   // only while the list is in sight
 input.addEventListener('input', render); $('mpServersRefresh').onclick = () => { load().then(refresh); };
 start();
 
-export { rememberServer };
+const refreshServers = () => load().then(refresh);
+
+export { refreshServers, rememberServer };

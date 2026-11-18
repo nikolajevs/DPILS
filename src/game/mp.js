@@ -413,7 +413,9 @@ function charUi() {
   (HAIR_NAMES[sex] || []).forEach((n, i) => { const o = document.createElement('option'); o.value = i; o.textContent = n; hs.append(o); });
   el('mpHairRow').hidden = el('mpHairColRow').hidden = !sex; el('mpBeardRow').hidden = sex !== 'm';
 }
-function initUi() {
+let uiReady = false;
+function initUi() {   // the fields of the player and of the training: once, when the start card first needs them (or when the city is ready)
+  if (uiReady) return; uiReady = true;
   const sel = el('mpSpawn'); sel.textContent = '';
   PLACES.forEach((p, i) => { const o = document.createElement('option'); o.value = i; o.textContent = p[0]; sel.append(o); });
   const r = document.createElement('option'); r.value = -1; r.textContent = 'Случайное место'; sel.append(r);
@@ -562,4 +564,4 @@ STATE.mapOverlay = (ctx, cx, cz, ppm, w, h) => {
 PERF.notice = text => feed(text, 'sys');
 function enablePlay() { initUi(); el('goPlay').disabled = false; el('goTrain').disabled = false; }
 
-export { MP, enablePlay, mpLabels, mpTick };
+export { MP, initUi as prepareUi, enablePlay, mpLabels, mpTick };

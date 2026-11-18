@@ -57,7 +57,6 @@ $('clkNow').onclick = () => { const n = rigaNow(); TX.day = n.day; TX.si = 0; se
 $('clkFirst').onclick = e => { const t = +e.currentTarget.dataset.t; if (!isNaN(t)) setClock(t - 120, false); canvas.focus(); };
 $('bQuality').onclick = () => { PERF.auto = false; setQuality((qi + 1) % QUALITY.length); canvas.focus(); };
 bSV.addEventListener('pointerdown', updateHud);
-$('bHelp').onclick = () => { if (document.pointerLockElement) document.exitPointerLock(); $('start').hidden = false; $('go').textContent = 'Продолжить'; };
 big.addEventListener('click', e => { if (e.target === big) closeMap(); });
 MAP.pick = (x, z) => { teleport(x, z, null); closeMap(); };
 PLACES.forEach(p => { const li = document.createElement('li'), b = document.createElement('button'), s = document.createElement('small'); b.textContent = p[0]; s.textContent = p[1]; b.append(s); b.onclick = () => { teleport(p[2], p[3], p[4]); canvas.focus(); }; li.append(b); $('placeList').append(li); });

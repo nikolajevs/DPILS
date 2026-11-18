@@ -61,10 +61,27 @@
 </div>
 
 <div class="start" id="start">
-  <div class="panel card">
+  <div class="panel card" id="startCard" data-step="home">
     <div class="eyebrow">55.87° с. ш. · 26.52° в. д. · Латгалия</div>
     <h1>Даугавпилс в 3D</h1>
-    <dl class="keys">
+    <div class="load" id="load" role="status" aria-live="polite">
+      <div class="load-row"><span class="progress" id="progress">Загружаю город…</span><b class="load-pct" id="loadPct">0&#8239;%</b></div>
+      <div class="load-bar" aria-hidden="true"><i id="loadFill"></i></div>
+    </div>
+    <div class="step-home" id="stepHome">
+      <p class="lead">Город по OpenStreetMap, кадастру и лидару: дома, улицы, транспорт по расписанию. Что будем делать?</p>
+      <div class="choices">
+        <button class="choice main" id="go" disabled><b>Начать прогулку</b><span>пешком или в полёте, по всему городу</span></button>
+        <button class="choice" id="chTrain" type="button" disabled><b>Тренировка с ботами</b><span>бой прямо в браузере, без сервера</span></button>
+        <button class="choice" id="chOnline" type="button" disabled><b>Играть онлайн</b><span>команды или каждый сам за себя на сервере</span></button>
+      </div>
+      <div class="sec-btns">
+        <button class="btn" id="bSetStart" type="button">Настройки</button>
+        <button class="btn" id="bStatsStart" type="button">Моя статистика</button>
+        <button class="btn" id="bLeadersStart" type="button">Таблица лидеров</button>
+      </div>
+      <details class="keys-box" id="keysBox"><summary>Управление</summary>
+      <dl class="keys">
       <dt>W A S D / стрелки</dt><dd>идти, Shift — бегом</dd>
       <dt>Мышь</dt><dd>смотреть по сторонам (Esc — отпустить курсор)</dd>
       <dt>1 – 5 · колесо</dt><dd>в игре: автомат · дробовик · снайперская (правая кнопка мыши — прицел) · пистолет · пулемёт</dd>
@@ -77,41 +94,42 @@
       <dt>T</dt><dd>ускорить часы транспорта: ×1, ×10, ×60</dd>
       <dt>На телефоне</dt><dd>левая половина экрана — идти, правая — смотреть</dd>
     </dl>
-    <div class="load" id="load" role="status" aria-live="polite">
-      <div class="load-row"><span class="progress" id="progress">Загружаю город…</span><b class="load-pct" id="loadPct">0&#8239;%</b></div>
-      <div class="load-bar" aria-hidden="true"><i id="loadFill"></i></div>
+      </details>
     </div>
-    <button class="go" id="go" disabled>Начать прогулку</button>
-    <form class="play" id="play" onsubmit="return false">
-      <h2>Тренировка с ботами · без сервера</h2>
-      <p class="hint">Играйте против ботов прямо в браузере: правила те же, что на сервере. Ник, команду и место появления задайте ниже (в арене вы появляетесь на своей базе).</p>
-      <div class="train">
+    <form class="play" id="play" onsubmit="return false" hidden>
+      <div class="step-head"><button class="btn back" id="stepBack" type="button" aria-label="Назад к выбору">← Назад</button><h2 id="stepTitle" tabindex="-1"></h2></div>
+      <p class="hint" id="stepHint"></p>
+      <div class="step-part" data-for="train">
+        <div class="train">
+        <label>Карта<select id="trArena"><option value="">открытый город</option><option value="center" selected>арена: Центр города</option><option value="fortress">арена: крепость</option><option value="station">арена: вокзал</option><option value="park">арена: Центральный парк</option><option value="church">арена: Церковная горка</option><option value="pond">арена: Пороховка (пруд)</option><option value="speedway">арена: спидвей</option><option value="culture">арена: Дворец культуры</option><option value="griva">арена: Грива, левый берег</option></select></label>
+        <label>Режим<select id="trMode"><option value="team" selected>команды</option><option value="ffa">каждый сам за себя</option></select></label>
         <label>Ботов<select id="trBots"><option>2</option><option>4</option><option selected>6</option><option>8</option><option>12</option></select></label>
         <label>Сложность<select id="trLevel"><option value="easy">лёгкая</option><option value="normal" selected>средняя</option><option value="hard">трудная</option></select></label>
-        <label>Режим<select id="trMode"><option value="team" selected>команды</option><option value="ffa">каждый сам за себя</option></select></label>
-        <label>Карта<select id="trArena"><option value="">открытый город</option><option value="center" selected>арена: Центр города</option><option value="fortress">арена: крепость</option><option value="station">арена: вокзал</option><option value="park">арена: Центральный парк</option><option value="church">арена: Церковная горка</option><option value="pond">арена: Пороховка (пруд)</option><option value="speedway">арена: спидвей</option><option value="culture">арена: Дворец культуры</option><option value="griva">арена: Грива, левый берег</option></select></label>
       </div>
-      <button class="go" id="goTrain" disabled>Тренироваться</button>
-      <h2>Играть онлайн · командный бой</h2>
-      <p class="hint">Командный бой (красные против синих, по своим огонь не идёт) или каждый сам за себя: режим выбирает сервер. Мышь — прицел, левая кнопка — огонь, R — перезарядка, Tab — таблица очков.</p>
-      <div class="acct"><span id="acctState">Без аккаунта: результаты привязаны к этому браузеру.</span><button class="btn" id="bAuth" type="button">Войти / регистрация</button></div>
-      <label>Ник<input id="mpName" maxlength="16" autocomplete="off"></label>
-      <label>Команда<select id="mpTeam"><option value="-1">Любая (по балансу)</option><option value="0">Красные</option><option value="1">Синие</option></select></label>
-      <label>Персонаж<select id="mpChar"><option value="">Солдат</option><option value="m">Мужчина</option><option value="f">Женщина</option></select></label>
-      <label id="mpHairRow" hidden>Причёска<select id="mpHair"></select></label>
-      <label id="mpHairColRow" hidden>Цвет волос<select id="mpHairCol"><option value="0">тёмный</option><option value="1">каштановый</option><option value="2">русый</option><option value="3">светлый</option><option value="4">седой</option></select></label>
-      <label class="chk" id="mpBeardRow" hidden><input type="checkbox" id="mpBeard"> Борода</label>
-      <label>Где появиться<select id="mpSpawn"></select></label>
-      <div class="srv-head"><span>Серверы</span><button class="btn" id="mpServersRefresh" type="button">Обновить</button></div>
-      <div class="servers" id="mpServers" aria-live="polite"></div>
-      <label>Адрес сервера<input id="mpServer" placeholder="wss://адрес-сервера (или выберите из списка)" autocomplete="off" spellcheck="false"></label>
-      <button class="go" id="goPlay" disabled>Играть</button>
-      <div class="sec-btns">
-        <button class="btn" id="bSetStart" type="button">Настройки</button>
-        <button class="btn" id="bStatsStart" type="button">Моя статистика</button>
-        <button class="btn" id="bLeadersStart" type="button">Таблица лидеров</button>
       </div>
-      <label class="chk"><input type="checkbox" id="mpNoBoard"> Не участвовать в таблице лидеров</label>
+      <div class="step-part" data-for="online">
+        <div class="acct"><span id="acctState">Без аккаунта: результаты привязаны к этому браузеру.</span><button class="btn" id="bAuth" type="button">Войти / регистрация</button></div>
+      </div>
+      <fieldset class="player step-part" data-for="train online">
+        <legend>Игрок</legend>
+        <label>Ник<input id="mpName" maxlength="16" autocomplete="off"></label>
+        <label id="mpTeamRow">Команда<select id="mpTeam"><option value="-1">Любая (по балансу)</option><option value="0">Красные</option><option value="1">Синие</option></select></label>
+        <label>Персонаж<select id="mpChar"><option value="">Солдат</option><option value="m">Мужчина</option><option value="f">Женщина</option></select></label>
+        <label id="mpHairRow" hidden>Причёска<select id="mpHair"></select></label>
+        <label id="mpHairColRow" hidden>Цвет волос<select id="mpHairCol"><option value="0">тёмный</option><option value="1">каштановый</option><option value="2">русый</option><option value="3">светлый</option><option value="4">седой</option></select></label>
+        <label class="chk" id="mpBeardRow" hidden><input type="checkbox" id="mpBeard"> Борода</label>
+        <label id="mpSpawnRow">Где появиться<select id="mpSpawn"></select></label>
+      </fieldset>
+      <div class="step-part srv-part" data-for="online">
+        <div class="srv-head"><span>Серверы</span><button class="btn" id="mpServersRefresh" type="button">Обновить</button></div>
+        <div class="servers" id="mpServers" aria-live="polite"></div>
+        <details class="srv-addr" id="mpServerBox"><summary>Другой сервер</summary>
+        <label>Адрес сервера<input id="mpServer" placeholder="wss://адрес-сервера (или выберите из списка)" autocomplete="off" spellcheck="false"></label>
+        </details>
+      </div>
+      <button class="go step-part" id="goTrain" data-for="train" disabled>Тренироваться</button>
+      <button class="go step-part" id="goPlay" data-for="online" disabled>Играть</button>
+      <div class="step-part" data-for="online"><label class="chk"><input type="checkbox" id="mpNoBoard"> Не участвовать в таблице лидеров</label></div>
       <div class="mp-msg" id="mpMsg" role="status"></div>
     </form>
     <div class="credit">Карта © участники <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>. Здания: кадастр Государственной земельной службы Латвии (<a href="https://data.gov.lv/dati/lv/dataset/kadastra-informacijas-sistemas-atvertie-dati">data.gov.lv</a>, CC BY 4.0). Расписание: GTFS <a href="https://satiksme.daugavpils.lv/">Daugavpils satiksme</a>. Фасады нарисованы по материалу стен и году постройки, это не фотографии; Дом Единства, «Латгола» и храмы Церковной горки смоделированы по снимкам с Wikimedia Commons, visitdaugavpils.lv, celotajs.lv и militaryheritagetourism.info.</div>
