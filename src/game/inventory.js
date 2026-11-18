@@ -4,7 +4,6 @@ import { P, keys } from './player.js';
 import { terrainH } from '../world/terrain.js';
 import { scene } from '../render/renderer.js';
 import { worldSpace } from '../render/world-space.js';
-import { SET, keyName } from './settings.js';
 import { $ } from '../core/env.js';
 import { prop, onProps } from './props.js';
 
@@ -76,44 +75,175 @@ function tickItems(dt, now) {
   else if (!hint.hidden) hint.hidden = true;
 }
 
-/* ---------- the panel (I) ---------- */
-const box = $('mpInv'), body = $('mpInvBody');
-let open = false, data = null;
+/* ---------- the panel (I) ----------
+   A tactical glass card in the look of the arena console: five weapon cards with silhouettes, the magazine drawn
+   round by round and the combat stats of each gun; the grenades and the med kits with their pips; the condition of
+   the player. The structure is built once per opening; renderInv repaints the values in place (it comes on every
+   state change and once a second), invTick animates the reload bar of the gun that is reloading every frame. */
+// silhouettes in the order of WEAPONS in mp.js: the AK, the shotgun, the SVD, the pistol, the machine gun
+const SLOT_SVG = [
+  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="24" y="9" width="14" height="2"/><rect x="8" y="8" width="17" height="5"/><polygon points="1,9 8,8 8,13 3,14"/><polygon points="14,13 19,13 17,19 13,19"/><polygon points="20,13 23,13 22,17 19,17"/><rect x="26" y="7" width="2" height="2"/></svg>',
+  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="14" y="9" width="24" height="2.5"/><rect x="18" y="11.5" width="7" height="3"/><polygon points="1,9 14,9 14,13 4,15"/><rect x="10" y="8.5" width="8" height="4"/></svg>',
+  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="20" y="9.5" width="18" height="1.8"/><rect x="12" y="6" width="8" height="3"/><rect x="14" y="9" width="2" height="1.5"/><rect x="8" y="9" width="14" height="4"/><polygon points="1,9 8,9 8,14 3,15"/><rect x="14" y="13" width="4" height="4"/></svg>',
+  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="10" y="7" width="18" height="5"/><polygon points="12,12 19,12 17,19 11,19"/><rect x="28" y="8" width="2" height="3"/></svg>',
+  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="6" y="8" width="20" height="6"/><rect x="26" y="9" width="12" height="2.5"/><polygon points="1,9 6,8 6,14 2,15"/><rect x="12" y="14" width="8" height="5"/><rect x="10" y="6" width="8" height="2"/><path d="M30 11l-2 7M33 11l2 7" stroke="rgba(255,255,255,.62)" stroke-width="1.4" fill="none"/></svg>',
+];
+const NADE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="14" r="7"/><path d="M10 7h4v3h-4zM14 5l3-2"/></svg>';
+const MED_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M12 10v6M9 13h6M9 6V4h6v2"/></svg>';
+const NADE_INFO = 'до 100 урона · радиус 8 м · задержка 2,5 с';   // keep server/combat.mjs NADE in step
+const AMMO_GIVE = [30, 8, 5, 12, 50];   // keep server/combat.mjs INV ammo.give in step
+const gunTag = w => (w.pellets > 1 ? w.pellets + ' дробин за выстрел' : w.scope ? 'оптический прицел' : w.auto ? 'автоматический огонь' : 'одиночный огонь');
+const fmt1 = x => (Math.round(x * 10) / 10).toString().replace('.', ',');
+const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const kbd = key => mk('kbd', '', key);
+
+const box = $('mpInv'), body = $('mpInvBody'), meChip = $('mpInvMe');
+let open = false, data = null, refs = null;
+
 function build() {
   if (!data) return;
   body.textContent = '';
-  const h = t => { const e = document.createElement('h3'); e.textContent = t; body.append(e); };
-  h('Оружие');
-  const rows = document.createElement('div'); rows.className = 'inv-rows';
+  const R = { guns: [], nade: {}, med: {}, hp: {}, kd: {} };
+  // the weapons: a card each, the click takes the gun in hand
+  const wsec = mk('section', 'inv-sec');
+  const whead = mk('div', 'inv-head');
+  whead.append(mk('h3', '', 'Оружие'), mk('small', '', 'щелчок по карточке или её клавиша — взять в руки · ' + data.reloadKey + ' — перезарядка'));
+  wsec.append(whead);
+  const guns = mk('div', 'inv-guns');
+  const maxDmg = Math.max(...data.weapons.map(w => w.dmg * w.pellets));
+  const maxRate = Math.max(...data.weapons.map(w => 60000 / w.gapMs));
+  const maxRange = Math.max(...data.weapons.map(w => w.range));
   data.weapons.forEach((w, i) => {
-    const r = document.createElement('button'); r.type = 'button'; r.className = 'inv-row' + (w.on ? ' on' : ''); r.title = 'Взять в руки (' + w.key + ')';
-    const k = document.createElement('kbd'); k.textContent = w.key;
-    const n = document.createElement('span'); n.textContent = w.name;
-    const a = document.createElement('b'); a.textContent = w.mag + ' / ' + w.magSize; a.title = 'в магазине / размер магазина';
-    const s = document.createElement('small'); s.textContent = 'запас ' + w.reserve; s.title = 'запас патронов';
-    r.append(k, n, a, s); r.onclick = () => { cb.switchWeapon(i); build(); }; rows.append(r);
+    const c = mk('button', 'inv-gun'); c.type = 'button';
+    const top = mk('span', 'inv-top'); top.append(kbd(w.key), mk('b', 'inv-hand', 'в руках'));
+    const sil = mk('span', 'inv-sil'); sil.innerHTML = SLOT_SVG[i];
+    const ammo = mk('span', 'inv-ammo');
+    const magN = mk('b', '', '0'), resN = mk('span', '', '/ 0'); ammo.append(magN, resN);
+    const mag = mk('span', 'inv-mag' + (w.magSize > 30 ? ' cont' : ''));
+    const pips = []; let fill = null;
+    if (w.magSize > 30) { fill = mk('i'); mag.append(fill); }   // the machine gun's hundred rounds: one continuous bar
+    else for (let k = 0; k < w.magSize; k++) { const p = mk('i'); mag.append(p); pips.push(p); }
+    const rl = mk('span', 'inv-rl'), rlFill = mk('i'); rl.append(rlFill);
+    const rlText = mk('small', 'inv-rlt', 'перезарядка');
+    const stats = mk('span', 'inv-stats');
+    const stat = (label, val, frac, tip) => {
+      const r = mk('span', 'inv-st'), bar = mk('span', 'inv-bar'), bf = mk('i');   // not 'bar': that class belongs to the bottom button bar
+      bf.style.width = Math.round(frac * 100) + '%'; bar.append(bf);
+      if (tip) r.title = tip;
+      r.append(mk('small', '', label), bar, mk('b', '', val)); stats.append(r);
+    };
+    stat('урон', w.pellets > 1 ? w.dmg + '×' + w.pellets : String(w.dmg), w.dmg * w.pellets / maxDmg, 'в тело ' + w.dmg + ' · в голову ' + w.head + (w.pellets > 1 ? ' — за одну дробину' : ''));
+    stat('темп', Math.round(60000 / w.gapMs) + '/мин', (60000 / w.gapMs) / maxRate);
+    stat('дальность', w.range + ' м', w.range / maxRange);
+    const foot = mk('small', 'inv-foot', 'магазин ' + w.magSize + ' · перезарядка ' + fmt1(w.reloadMs / 1000) + ' с');
+    c.append(top, sil, mk('b', 'inv-name', w.name), mk('small', 'inv-tag', gunTag(w)), ammo, mag, rl, rlText, stats, foot);
+    c.onclick = () => cb.switchWeapon(i);
+    guns.append(c);
+    R.guns.push({ c, ammo, magN, resN, pips, fill, rlFill, rlText });
   });
-  body.append(rows);
-  h('Предметы');
-  const its = document.createElement('div'); its.className = 'inv-rows';
-  const row = (name, count, max, note, btn) => {
-    const r = document.createElement('div'); r.className = 'inv-row inv-item';
-    const n = document.createElement('span'); n.textContent = name;
-    const c = document.createElement('b'); c.textContent = count + ' / ' + max;
-    const s = document.createElement('small'); s.textContent = note;
-    r.append(n, c, s); if (btn) r.append(btn); its.append(r);
+  wsec.append(guns);
+  // the items and the condition of the player
+  const low = mk('div', 'inv-low');
+  const isec = mk('section', 'inv-sec'); isec.append(mk('h3', '', 'Предметы'));
+  const items = mk('div', 'inv-items');
+  const itemCard = (svg, name) => {
+    const card = mk('div', 'inv-item'), top = mk('div', 'inv-it-top');
+    const ico = mk('span', 'inv-ico'); ico.innerHTML = svg;
+    const cnt = mk('span', 'inv-cnt', '×0');
+    top.append(ico, mk('b', '', name), cnt);
+    const pips = mk('span', 'inv-pips');
+    card.append(top, pips);
+    return { card, cnt, pips };
   };
-  row('Гранаты', data.nades, data.nadeMax, 'бросок — ' + data.nadeKey, null);
-  const use = document.createElement('button'); use.type = 'button'; use.className = 'btn'; use.textContent = 'Использовать (' + data.medKey + ')';
-  use.disabled = data.meds <= 0 || data.hp >= 100; use.onclick = () => cb.useMed();
-  row('Аптечки', data.meds, data.medMax, 'лечит 50 HP', use);
-  body.append(its);
-  const note = document.createElement('small'); note.className = 'inv-note';
-  note.textContent = 'Предметы лежат на карте и подбираются автоматически, когда проходишь мимо. Ящики и аптечки появляются снова через полминуты; запас патронов пополняется ящиками.';
-  body.append(note);
+  const nade = itemCard(NADE_SVG, 'Гранаты');
+  for (let k = 0; k < data.nadeMax; k++) nade.pips.append(mk('i'));
+  nade.card.append(mk('small', '', data.nadeKey + ' — прицельный бросок: мышь целится, ЛКМ заряжает силу'), mk('small', 'inv-dim', NADE_INFO));
+  R.nade = nade;
+  const med = itemCard(MED_SVG, 'Аптечки');
+  for (let k = 0; k < data.medMax; k++) med.pips.append(mk('i'));
+  const use = mk('button', 'btn inv-use'); use.type = 'button'; use.append(document.createTextNode('Использовать '), kbd(data.medKey));
+  use.onclick = () => { cb.useMed(); cb.beep('med'); };
+  const mnote = mk('small', 'inv-dim', 'лечит 50 HP');
+  med.card.append(use, mnote);
+  R.med = { ...med, use, note: mnote };
+  items.append(nade.card, med.card);
+  isec.append(items);
+  const ssec = mk('section', 'inv-sec'); ssec.append(mk('h3', '', 'Состояние'));
+  const state = mk('div', 'inv-item inv-state');
+  state.append(mk('small', 'inv-dim', 'здоровье'));
+  const hpRow = mk('div', 'inv-hp'), hpN = mk('b', '', '100'), hpBar = mk('span', 'inv-hpbar'), hpFill = mk('i');
+  hpBar.append(hpFill); hpRow.append(hpN, hpBar); state.append(hpRow);
+  const kd = mk('div', 'inv-kd');
+  const kdCell = (label) => { const s = mk('span'), b = mk('b', '', '0'); s.append(b, mk('small', '', label)); kd.append(s); return b; };
+  const killsN = kdCell('убийств'), deathsN = kdCell('смертей');
+  state.append(kd);
+  const total = mk('div', 'inv-total'), totalN = mk('b', '', '0');
+  total.append(mk('small', '', 'боезапас'), totalN, mk('small', '', 'патронов'));
+  state.append(total);
+  R.hp = { row: state, n: hpN, fill: hpFill }; R.kd = { k: killsN, d: deathsN }; R.total = totalN;
+  ssec.append(state);
+  low.append(isec, ssec);
+  const note = mk('small', 'inv-note');
+  note.textContent = 'Предметы на карте подбираются автоматически — просто пройдите мимо. Ящик патронов даёт +' + AMMO_GIVE.join(' / +') + ' к запасу каждого ствола и возвращается через 25 с, граната — через 30 с, аптечка — через 35 с. Бой продолжается, пока панель открыта.';
+  body.append(wsec, low, note);
+  refs = R;
 }
-function renderInv(d) { data = d; if (open) build(); }
-function openInv() { if (open || !data) return; open = true; if (document.pointerLockElement) document.exitPointerLock(); keys.clear(); build(); box.hidden = false; }
+
+function paint() {
+  if (!data || !refs) return;
+  const R = refs;
+  data.weapons.forEach((w, i) => {
+    const g = R.guns[i];
+    g.c.classList.toggle('on', w.on);
+    g.c.setAttribute('aria-pressed', w.on ? 'true' : 'false');
+    g.c.title = w.on ? w.name + ' — в руках' : 'Взять в руки (' + w.key + ')';
+    g.magN.textContent = w.mag;
+    g.resN.textContent = '/ ' + w.reserve;
+    g.ammo.dataset.empty = w.mag === 0 ? 1 : 0;
+    g.ammo.dataset.low = w.mag > 0 && w.mag <= w.magSize * 0.25 ? 1 : 0;
+    if (g.fill) g.fill.style.width = (w.mag / w.magSize * 100).toFixed(1) + '%';
+    else g.pips.forEach((p, k) => p.classList.toggle('full', k < w.mag));
+    g.c.classList.toggle('reloading', data.reloadW === i);
+  });
+  R.nade.cnt.textContent = '×' + data.nades + ' / ' + data.nadeMax;
+  R.nade.card.dataset.empty = data.nades > 0 ? 0 : 1;
+  [...R.nade.pips.children].forEach((p, k) => p.classList.toggle('full', k < data.nades));
+  R.med.cnt.textContent = '×' + data.meds + ' / ' + data.medMax;
+  R.med.card.dataset.empty = data.meds > 0 ? 0 : 1;
+  [...R.med.pips.children].forEach((p, k) => p.classList.toggle('full', k < data.meds));
+  const none = data.meds <= 0, full = data.hp >= 100;
+  R.med.use.disabled = none || full;
+  R.med.note.textContent = none ? 'нет аптечек — ищите белые ящики на карте' : full ? 'здоровье полное — беречь не нужно' : 'лечит 50 HP';
+  const hp = Math.max(0, Math.ceil(data.hp));
+  R.hp.n.textContent = hp;
+  R.hp.fill.style.width = Math.max(0, data.hp) + '%';
+  R.hp.row.dataset.hp = data.hp <= 25 ? 'low' : data.hp <= 60 ? 'mid' : 'ok';
+  R.kd.k.textContent = data.kills; R.kd.d.textContent = data.deaths;
+  R.total.textContent = data.weapons.reduce((s, w) => s + w.mag + w.reserve, 0);
+  meChip.textContent = '';
+  meChip.append(mk('i', 'dot ' + (data.ffa ? 'tf' : 't' + data.team)), mk('b', '', data.name || 'Вы'), mk('span', 'kd', data.kills + ' · ' + data.deaths));
+}
+
+function renderInv(d) { data = d; if (open) paint(); }
+// the reload bar of the gun that is reloading, every frame while the panel is open
+function invTick(now) {
+  if (!open || !data || !refs || data.reloadW < 0) return;
+  const g = refs.guns[data.reloadW], ms = data.weapons[data.reloadW].reloadMs;
+  if (!g) return;
+  const p = Math.min(1, Math.max(0, (now - data.reloadAt) / ms));
+  g.rlFill.style.width = (p * 100).toFixed(1) + '%';
+  const t = 'перезарядка · ' + fmt1(Math.max(0, (ms - (now - data.reloadAt)) / 1000)) + ' с';
+  if (g.rlText.textContent !== t) g.rlText.textContent = t;
+}
+function openInv() {
+  if (open || !data) return;
+  open = true;
+  if (document.pointerLockElement) document.exitPointerLock();
+  keys.clear();
+  build(); paint();
+  box.hidden = false;
+  box.querySelector('.panel').focus({ preventScroll: true });
+}
 function closeInv() { if (!open) return; open = false; box.hidden = true; }
 const toggleInv = () => (open ? closeInv() : openInv());
 const invOpen = () => open;
@@ -121,4 +251,4 @@ window.addEventListener('keydown', e => { if (e.code === 'Escape' && open) { clo
 $('mpInvClose').onclick = closeInv;
 box.addEventListener('click', e => { if (e.target === box) closeInv(); });
 
-export { KINDS, bindInv, setItems, itemBack, itemTook, clearItems, tickItems, renderInv, openInv, closeInv, toggleInv, invOpen };
+export { KINDS, SLOT_SVG, bindInv, setItems, itemBack, itemTook, clearItems, tickItems, renderInv, invTick, openInv, closeInv, toggleInv, invOpen };

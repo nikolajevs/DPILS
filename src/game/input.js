@@ -38,10 +38,7 @@ window.addEventListener('keydown', e => {
   if (STATE.mp && !$('mpInv').hidden) return;   // the inventory panel is open: the keys go to it, not to the walk
   if (e.code === 'Escape' && !big.hidden) { closeMap(); return; }
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
-  if (e.metaKey || e.altKey) return;
-  const crouchCtrl = SET.keys.crouch === 'ControlLeft' || SET.keys.crouch === 'ControlRight';
-  if (e.ctrlKey && !crouchCtrl) return;
-  if (e.ctrlKey) { keys.add(e.code); e.preventDefault(); return; }   // Ctrl is crouch: the key itself and, while it is held, the walk keys; browser shortcuts are suppressed where the page can
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (STATE.mp && e.code === SET.keys.voice) return;   // in the game V is push-to-talk, not Street View
   keys.add(e.code);
   if (e.repeat) return;

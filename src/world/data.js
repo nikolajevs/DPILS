@@ -30,21 +30,22 @@ function inWater(x, z) {
    points at once; by a shore the polygons are tested exactly with a metre of margin, streams by their drawn width */
 let WMASK = null;
 function waterMask() {
-  const S = 4, X0 = -HX - 8, Z0 = -HY - 8, NX = Math.ceil((2 * HX + 16) / S), NZ = Math.ceil((2 * HY + 16) / S), m = new Uint8Array(NX * NZ);
+  const S = 4, X0 = -HX - 8, Z0 = -HY - 8, NX = Math.ceil((2 * HX + 16) / S), NZ = Math.ceil((2 * HY + 16) / S), m = new Uint8Array(NX * NZ), o = new Uint8Array(NX * NZ);
   for (const a of WATER) {
     const bb = a.bb, j0 = Math.max(0, Math.floor((bb[1] - Z0) / S)), j1 = Math.min(NZ - 1, Math.floor((bb[3] - Z0) / S));
     for (let j = j0; j <= j1; j++) {
       const z = Z0 + (j + 0.5) * S, xs = [];
       for (const r of a.rings) { const n = r.length >> 1; for (let i = 0, k = n - 1; i < n; k = i++) { const zi = r[2 * i + 1], zk = r[2 * k + 1]; if ((zi > z) !== (zk > z)) xs.push(r[2 * i] + (r[2 * k] - r[2 * i]) * (z - zi) / (zk - zi)); } }
       xs.sort((p, q) => p - q);
-      for (let q = 0; q + 1 < xs.length; q += 2) { const i0 = Math.max(0, Math.ceil((xs[q] - X0) / S - 0.5)), i1 = Math.min(NX - 1, Math.floor((xs[q + 1] - X0) / S - 0.5)); for (let i = i0; i <= i1; i++) m[j * NX + i] = 1; }
+      for (let q = 0; q + 1 < xs.length; q += 2) { const i0 = Math.max(0, Math.ceil((xs[q] - X0) / S - 0.5)), i1 = Math.min(NX - 1, Math.floor((xs[q + 1] - X0) / S - 0.5)); for (let i = i0; i <= i1; i++) m[j * NX + i] = o[j * NX + i] = 1; }
     }
   }
   for (const a of WATER) for (const r of a.rings) { const n = r.length >> 1; for (let i = 0, k = n - 1; i < n; k = i++) {
     const x1 = r[2 * k], z1 = r[2 * k + 1], x2 = r[2 * i], z2 = r[2 * i + 1], steps = Math.max(1, Math.ceil(Math.hypot(x2 - x1, z2 - z1) / 1.5));
     for (let s = 0; s <= steps; s++) { const ci = Math.floor((x1 + (x2 - x1) * s / steps - X0) / S), cj = Math.floor((z1 + (z2 - z1) * s / steps - Z0) / S);
+      if (ci >= 0 && cj >= 0 && ci < NX && cj < NZ) o[cj * NX + ci] = 1;
       for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = ci + di, jj = cj + dj; if (ii >= 0 && jj >= 0 && ii < NX && jj < NZ) m[jj * NX + ii] = 2; } } } }
-  WMASK = { m, S, X0, Z0, NX, NZ };
+  WMASK = { m, o, S, X0, Z0, NX, NZ };   // o: the cells water touches, without the margin of m (the depth grids, src/world/ground.js)
 }
 function wetTree(x, z) {
   if (!WMASK) waterMask();

@@ -5,16 +5,17 @@ import { PLACES } from '../ui/places.js';
 import { buildingAt, onRoad } from '../world/data.js';
 import { PERF } from './perf.js';
 import { worldSpace } from '../render/world-space.js';
-import { gunModel, gunSource, loadAvatar, loadHumans, makeAvatar, parseLook, ready as avatarReady, humansReady } from './avatar.js';
-import { akSettled, drawOver, loadAK, makeViewmodel } from './viewmodel.js';
+import { gunModel, gunSource, loadAvatar, loadHumans, makeAvatar, parseLook, humansReady } from './avatar.js';
+import { drawOver, loadAK, makeViewmodel } from './viewmodel.js';
+import { onProps, prop } from './props.js';
 import { FLASH_SIZE, makeFlash } from './muzzle.js';
 import { SET, keyName, onChange } from './settings.js';
 import { firstGames } from './help.js';
 import { rememberServer } from '../ui/servers.js';
-import { addNade, boomNade, clearNades, tickNades, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
-import { KINDS, bindInv, setItems, itemBack, itemTook, tickItems, renderInv, closeInv, toggleInv } from './inventory.js';
+import { addNade, boomNade, clearNades, nadeSamples, tickNades, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
+import { KINDS, SLOT_SVG, bindInv, setItems, itemBack, itemTook, tickItems, renderInv, invTick, closeInv, toggleInv } from './inventory.js';
 import { terrainH } from '../world/terrain.js';
-import { camera, canvas, scene } from '../render/renderer.js';
+import { camera, canvas, renderer, scene } from '../render/renderer.js';
 import { CH, addLine, openChat } from './chat.js';
 import { createVoice } from './voice.js';
 import { openLocal } from './local.js';
@@ -24,7 +25,7 @@ import { playerKey, boardOn, setBoardOn, account } from './identity.js';
 import { initLeaders } from './leaders.js';
 import { $ } from '../core/env.js';
 import { boomSound, crackSound, hitSound, loadSounds, shotSound, stepSound } from './sfx.js';
-import { tracerShot, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke } from './impacts.js';
+import { fxSamples, tracerShot, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke } from './impacts.js';
 
 /* ---------- online shooter: deathmatch on the city map ----------
    The server (server/index.mjs) owns health, kills and respawns. This module: the connection, the other players
@@ -43,6 +44,14 @@ const WEAPONS = [
 ];
 // what the weapons of the table do not say themselves: the kick of one shot, how loud, how far it is heard, the size of the gun in your hands
 const FEEL = { kick: 0.0035, vol: 0.35, hear: 220, vm: 0.55 };
+// the damage of one pellet to the body and to the head (keep server/combat.mjs in step); the inventory panel shows it
+const DMG = [
+  { dmg: 22, head: 40 },
+  { dmg: 9, head: 16 },
+  { dmg: 70, head: 100 },
+  { dmg: 20, head: 42 },
+  { dmg: 16, head: 28 },
+];
 const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, lastNade: 0, spec: 0, scope: false, zoom: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0 };
 // the pockets (keep server/combat.mjs in step: RESERVE and INV): the server owns them, the page only shows and predicts
 const RESERVE = [90, 24, 15, 36, 200], NADE_MAX = 3, MED_MAX = 2;
@@ -108,14 +117,42 @@ function addRemote(id, name, team, look) {
   const hue = MP.ffa ? (id * 0.381966) % 1 : (HUE[team] ?? 0.3), group = makeFigure(hue), tag = document.createElement('div'); tag.className = 'mp-tag ' + (MP.ffa ? 'tf' : 't' + team); if (MP.ffa) tag.style.background = 'hsla(' + Math.round(hue * 360) + ', 55%, 32%, .78)'; tag.textContent = name || '…'; group.visible = false; scene.add(group); $('mpTags').append(tag);
   const r = { id, name, team, hue, group, buf: [], tag, look: parseLook(look) ? look : '', figHead: group.userData.head, figArm: group.userData.arm }; remotes.set(id, r); attachAvatar(r); return r;
 }
-// the ready animated model instead of the simple figure, as soon as its file has come; look — the chosen person
+/* ---------- the models of the game, loaded with the city ----------
+   The arms with the AK (viewmodel.js, their file also has the AK of the others), the soldier and the guns, the people
+   (avatar.js; the bots put them on at random) and the items of the map (props.js) are loaded while the city is built
+   (src/main.js), and the arms are put on the camera. One player of each look, with every gun, one of each item and one
+   of each mark of a firefight join the scene for the warm-up of the city's shaders (render/post.js warmUp), their
+   textures sent to the GPU. So a game starts with the
+   ready models from its first frame, without a pause at the first player or the first shot. The samples leave the
+   scene after the first frame; their materials are not disposed, so the programs stay compiled for the players and
+   the people of the streets to come. The boxes of makeFigure and of the gun in hand remain for a file that did not come. */
+let modelsP = null, modelsDone = false, samples = null;
+const SAMPLE_LOOKS = ['', 'm.0.0.1', 'm.1.1', 'm.2.2', 'f.0.3', 'f.1.4', 'f.2.0'];   // the soldier, every haircut (and the beard)
+// onPart(f): the share of the files that have come (the loading bar)
+function loadModels(onPart) {
+  if (modelsP) return modelsP;
+  const files = [loadAK(), loadAvatar(), loadHumans(), new Promise(r => onProps(r))]; let n = 0;
+  if (onPart) for (const f of files) f.then(() => onPart(++n / files.length));
+  modelsP = Promise.all(files).then(([k, a]) => {
+    if (k) upgradeAK(); if (a) upgradeViewmodels();
+    samples = new THREE.Group(); samples.visible = false;
+    for (const look of SAMPLE_LOOKS) { const av = makeAvatar(HUE[0], look); if (av) samples.add(av.root); }
+    for (const o of [...fxSamples(), ...nadeSamples(), prop('ammo'), prop('med')]) if (o) samples.add(o);
+  }).catch(e => console.error(e)).finally(() => { modelsDone = true; });
+  return modelsP;
+}
+// on: the samples into the scene just before its warm-up, their textures (and those of the arms) to the GPU; off: out again
+function warmSamples(on) {
+  if (!samples) return;
+  if (!on) { scene.remove(samples); samples = null; return; }
+  scene.add(samples);
+  for (const root of [samples, camera]) root.traverse(o => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const v of Object.values(m)) if (v && v.isTexture) renderer.initTexture(v); });
+}
+// the ready animated model instead of the simple figure; look — the chosen person (the soldier if the people's files did not come)
 function attachAvatar(r) {
   if (r.av) return;
-  if (!akSettled()) { loadAK().then(() => { if (!r.av && remotes.has(r.id)) attachAvatar(r); }); return; }   // their AK is in the file of the arms
-  const a = avatarReady();
-  if (!a || !a.guns.length) { loadAvatar().then(x => { if (x && !r.av && remotes.has(r.id)) attachAvatar(r); }); return; }   // the guns come after the soldier: an avatar built too early would keep the box rifle forever
-  if (r.look && !humansReady()) { loadHumans().then(h => { if (h && !r.av && remotes.has(r.id)) attachAvatar(r); }); return; }   // the people's files are heavier: they come only when someone has chosen a person
-  const av = makeAvatar(r.hue, r.look); if (!av) return;
+  if (!modelsDone) { loadModels().then(() => { if (!r.av && remotes.has(r.id)) attachAvatar(r); }); return; }   // only if the city was ready before the files
+  const av = makeAvatar(r.hue, humansReady() ? r.look : ''); if (!av) return;
   for (const c of r.group.children) c.visible = false; r.group.add(av.root); r.av = av;
   if (av.root.userData.head) { r.group.userData.head = av.root.userData.head; r.group.userData.arm = av.root.userData.arm; }   // the aim turns the proxies of the person
 }
@@ -216,8 +253,12 @@ function ownFlash() {
   return fpFlash;
 }
 // One light for the flashes: of your own gun, or of a shot of someone near you, whichever is brighter now. A single
-// light keeps the number of lights, and with it the shaders of the whole city, as they are.
-const flashLight = new THREE.PointLight(0xffb868, 0, 22, 2); flashLight.position.set(0, 0.05, -0.5); gun.add(flashLight);
+// light keeps the number of lights, and with it the shaders of the whole city, as they are. It stands in the scene itself
+// (in world coordinates), not in the gun's group, and is always there, dark between the shots and in the walk: three
+// counts only the lights that are shown, and a light that came and went with the gun — at the start of a game, at each
+// death, with the scope up — changed the number of lights of every material, so all the shaders of the city were compiled
+// again at the start of a game. The warm-up of the city (render/post.js) takes the lights among the scene's own children.
+const flashLight = new THREE.PointLight(0xffb868, 0, 22, 2); scene.add(flashLight);
 const near = { x: 0, y: 0, z: 0, t: 9, pow: 0 };   // the last flash of another player within 60 m
 const MV = new THREE.Vector3();
 let actx = null;
@@ -317,10 +358,11 @@ function fire(now) {
   if (MP.ammo[MP.weapon] <= 0) reload(now);
   updatePanel();
 }
+let slotsT = 0;   // the weapon belt stays visible until this moment: a switch (keys, wheel, inventory) or a spawn shows it, then it fades away
 function switchWeapon(i) {
   nadeCancel();
   if (MP.dead || i === MP.weapon || i < 0 || i >= WEAPONS.length) return;
-  MP.weapon = i; MP.firing = false; MP.scope = false; crossGap = CROSS[i].ring ? 20 : CROSS[i].gap; models.forEach((m, k) => { m.visible = k === i; }); if (vm) { vm.setWeapon(i); vm.equip(); } tone(300, 200, 0.06, 0.15, 'square'); updatePanel();   // the reload keeps running: the server locks every weapon until it ends (server/game.mjs shoot)
+  MP.weapon = i; MP.firing = false; MP.scope = false; crossGap = CROSS[i].ring ? 20 : CROSS[i].gap; models.forEach((m, k) => { m.visible = k === i; }); if (vm) { vm.setWeapon(i); vm.equip(); } tone(300, 200, 0.06, 0.15, 'square'); slotsT = performance.now() + 1600; updatePanel();   // the reload keeps running: the server locks every weapon until it ends (server/game.mjs shoot)
 }
 function reload(now) {
   const w = W(); MP.scope = false;
@@ -331,14 +373,6 @@ function reload(now) {
 
 /* ---------- panels ---------- */
 const el = id => $(id);
-// silhouettes for the weapon belt, in the order of WEAPONS: the AK, the shotgun, the SVD, the pistol, the machine gun
-const SLOT_SVG = [
-  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="24" y="9" width="14" height="2"/><rect x="8" y="8" width="17" height="5"/><polygon points="1,9 8,8 8,13 3,14"/><polygon points="14,13 19,13 17,19 13,19"/><polygon points="20,13 23,13 22,17 19,17"/><rect x="26" y="7" width="2" height="2"/></svg>',
-  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="14" y="9" width="24" height="2.5"/><rect x="18" y="11.5" width="7" height="3"/><polygon points="1,9 14,9 14,13 4,15"/><rect x="10" y="8.5" width="8" height="4"/></svg>',
-  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="20" y="9.5" width="18" height="1.8"/><rect x="12" y="6" width="8" height="3"/><rect x="14" y="9" width="2" height="1.5"/><rect x="8" y="9" width="14" height="4"/><polygon points="1,9 8,9 8,14 3,15"/><rect x="14" y="13" width="4" height="4"/></svg>',
-  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="10" y="7" width="18" height="5"/><polygon points="12,12 19,12 17,19 11,19"/><rect x="28" y="8" width="2" height="3"/></svg>',
-  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="6" y="8" width="20" height="6"/><rect x="26" y="9" width="12" height="2.5"/><polygon points="1,9 6,8 6,14 2,15"/><rect x="12" y="14" width="8" height="5"/><rect x="10" y="6" width="8" height="2"/><path d="M30 11l-2 7M33 11l2 7" stroke="rgba(255,255,255,.62)" stroke-width="1.4" fill="none"/></svg>',
-];
 let hitT = 0, hurtT = 0;
 function updatePanel() {
   el('mpHp').style.width = Math.max(0, MP.hp) + '%'; el('mpHpN').textContent = Math.max(0, Math.ceil(MP.hp)); el('mpStat').dataset.hp = MP.hp <= 25 ? 'low' : MP.hp <= 60 ? 'mid' : 'ok';
@@ -348,7 +382,7 @@ function updatePanel() {
   el('mpMeds').textContent = '×' + Math.max(0, MP.meds); el('mpMedsBox').dataset.empty = MP.meds > 0 ? 0 : 1; el('mpMedsBox').title = 'Аптечки (' + mk + ')'; el('mpMedKey').textContent = mk;
   const sl = el('mpSlots'); if (sl.children.length !== WEAPONS.length) { sl.textContent = ''; WEAPONS.forEach((w, i) => { const d = document.createElement('span'), b = document.createElement('b'), r = document.createElement('i'); d.title = w.name; d.innerHTML = SLOT_SVG[i]; b.textContent = i + 1; d.append(b, r); sl.append(d); }); }
   [...sl.children].forEach((d, i) => { d.classList.toggle('on', i === MP.weapon); d.querySelector('i').textContent = MP.reserve[i]; d.title = WEAPONS[i].name + ' · запас ' + MP.reserve[i]; });
-  renderInv({ weapons: WEAPONS.map((w, i) => ({ name: w.name, mag: MP.ammo[i], magSize: w.mag, reserve: MP.reserve[i], on: i === MP.weapon, key: keyName(SET.keys['w' + (i + 1)]) })), nades: MP.nades, nadeMax: NADE_MAX, meds: MP.meds, medMax: MED_MAX, hp: MP.hp, medKey: keyName(SET.keys.med), nadeKey: keyName(SET.keys.grenade) });
+  renderInv({ weapons: WEAPONS.map((w, i) => ({ name: w.name, mag: MP.ammo[i], magSize: w.mag, reserve: MP.reserve[i], on: i === MP.weapon, key: keyName(SET.keys['w' + (i + 1)]), dmg: DMG[i].dmg, head: DMG[i].head, pellets: w.pellets, gapMs: w.gapMs, range: w.range, reloadMs: w.reloadMs, auto: w.auto, scope: !!w.scope })), nades: MP.nades, nadeMax: NADE_MAX, meds: MP.meds, medMax: MED_MAX, hp: MP.hp, medKey: keyName(SET.keys.med), nadeKey: keyName(SET.keys.grenade), reloadKey: keyName(SET.keys.reload), reloadW: MP.reloadAt ? MP.reloadW : -1, reloadAt: MP.reloadAt, name: MP.name, team: MP.team, ffa: MP.ffa, kills: MP.kills, deaths: MP.deaths });
   el('mpScore').textContent = MP.kills + ' · ' + MP.deaths; el('mpFps').textContent = PERF.fps + ' кадр/с' + (PERF.scale < 1 ? ' · разрешение ' + Math.round(PERF.scale * 100) + ' %' : '');
   el('mpMeName').textContent = MP.name || 'Вы'; el('mpMeDot').className = 'dot ' + (MP.ffa ? 'tf' : 't' + MP.team);
   const tm = el('mpTeams'); tm.textContent = '';
@@ -465,7 +499,7 @@ function onMsg(m) {
       nadeCancel();
       const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.crouch = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
-      MP.weapon = 0; MP.scope = false; models.forEach((mm, k) => { mm.visible = k === 0; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; clearNades(); gun.visible = true; if (vm) { vm.setWeapon(0); vm.equip(); } el('mpDead').hidden = true; updatePanel();
+      MP.weapon = 0; MP.scope = false; models.forEach((mm, k) => { mm.visible = k === 0; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; clearNades(); gun.visible = true; if (vm) { vm.setWeapon(0); vm.equip(); } el('mpDead').hidden = true; slotsT = performance.now() + 2600; updatePanel();   // the belt greets the spawn, then hides
       MP.ws.send(JSON.stringify({ t: 'state', x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch }));   // the server has the point as asked: tell it where the player really stands
       if (canvas.requestPointerLock) { canvas.focus(); try { const pr = canvas.requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} }
       break;
@@ -527,7 +561,7 @@ function join(local) {   // local: { bots, level, mode, arena } for the game aga
   if (!url) { msg.textContent = 'Укажите адрес сервера (поле «Сервер»).'; return; }
   const look = uiLook();
   try { localStorage.setItem('dpils.mp', JSON.stringify({ name, server: el('mpServer').value.trim(), spawn: el('mpSpawn').value, team: el('mpTeam').value, look })); } catch (e) {}
-  MP.spawn = +el('mpSpawn').value; MP.wantTeam = +el('mpTeam').value; MP.url = url; MP.local = local || null; loadAK().then(k => { if (k) upgradeAK(); loadAvatar().then(a => { if (a) { for (const r of remotes.values()) attachAvatar(r); upgradeViewmodels(); } }); }); if (look) loadHumans(); msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true; el('goTrain').disabled = true;
+  MP.spawn = +el('mpSpawn').value; MP.wantTeam = +el('mpTeam').value; MP.url = url; MP.local = local || null; loadModels(); msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true; el('goTrain').disabled = true;
   let ws; try { ws = local ? openLocal(local) : new WebSocket(url); } catch (e) { msg.textContent = 'Неверный адрес сервера.'; el('goPlay').disabled = false; el('goTrain').disabled = false; return; }
   MP.ws = ws; MP.started = false;
   ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, team: MP.wantTeam, look: look || undefined, key: local ? undefined : playerKey() || undefined, ...s })); };
@@ -589,8 +623,8 @@ window.addEventListener('keydown', e => {
   else if (MP.dead && (e.code === 'ArrowLeft' || e.code === 'KeyQ')) specNext(-1);
   else if (e.code === SET.keys.inv) { if (!MP.dead) { nadeCancel(); toggleInv(); } }
   else if (e.code === SET.keys.med) useMed();
-  else if (e.code === SET.keys.grenade) nadePrep();
-  else if (e.code === SET.keys.reload) { nadeCancel(); reload(performance.now()); }
+  else if (e.code === SET.keys.grenade) { closeInv(); nadePrep(); }
+  else if (e.code === SET.keys.reload) { closeInv(); nadeCancel(); reload(performance.now()); }
   else if (e.code === SET.keys.w1) switchWeapon(0); else if (e.code === SET.keys.w2) switchWeapon(1); else if (e.code === SET.keys.w3) switchWeapon(2); else if (e.code === SET.keys.w4) switchWeapon(3); else if (e.code === SET.keys.w5) switchWeapon(4);
   else if (e.code === SET.keys.board) { e.preventDefault(); el('mpBoard').hidden = false; drawBoard(); }
   else if ((e.code === 'Space' || e.code === 'Enter') && MP.dead) { e.preventDefault(); respawn(); }
@@ -639,6 +673,8 @@ function mpTick(dt) {
   if (MP.arena && !MP.dead) { const A = MP.arena, dx = P.x - A.cx, dz = P.z - A.cz, d = Math.hypot(dx, dz); if (d > A.r - 1) { P.x = A.cx + dx / d * (A.r - 1); P.z = A.cz + dz / d * (A.r - 1); edgeNotice(); } }   // the edge of the arena
   if ((MP.fpsT = (MP.fpsT || 0) - dt) <= 0) { MP.fpsT = 1; updatePanel(); }
   el('mpReloadFill').style.width = (MP.reloadAt ? Math.min(1, (now - MP.reloadAt) / WEAPONS[MP.reloadW].reloadMs) * 100 : 0).toFixed(1) + '%';   // the reload bar under the rounds, every frame (the crosshair ring keeps its own)
+  invTick(now);   // the reload bar of the inventory panel, if it is open
+  el('mpSlots').classList.toggle('show', now < slotsT);   // the belt of weapons: shown by a switch or the wheel, hidden once the choice settles
   // the scope: the picture closes in (the field of view 66° → 20°) and the gun goes out of sight
   { const want = MP.scope && W().scope && !MP.dead && !MP.reloadAt ? 1 : 0; MP.zoom += (want - MP.zoom) * Math.min(1, dt * 14); if (Math.abs(MP.zoom - want) < 0.01) MP.zoom = want;
     const fov = SET.fov - (SET.fov - 20) * MP.zoom; if (Math.abs(camera.fov - fov) > 0.05) { camera.fov = fov; camera.updateProjectionMatrix(); }
@@ -681,8 +717,8 @@ function flashLit(dt) {
   const own = Math.max(fpFlash ? fpFlash.tick(dt) : 0, vm ? vm.glow : 0);
   near.t += dt; const other = near.pow * Math.max(0, 1 - near.t / 0.06) ** 2;
   gun.updateWorldMatrix(true, false);
-  if (own >= other) { if (own > 0) { if (vm && vm.has(MP.weapon)) vm.muzzle(MV); else fpFlash.group.getWorldPosition(MV); gun.worldToLocal(flashLight.position.copy(MV)).z -= 0.8; } }   // a little ahead of the muzzle: it lights the street and tints the hands, it does not burn them white
-  else gun.worldToLocal(flashLight.position.set(near.x, near.y, near.z));
+  if (own >= other) { if (own > 0) { if (vm && vm.has(MP.weapon)) vm.muzzle(MV); else fpFlash.group.getWorldPosition(MV); const L = gun.worldToLocal(flashLight.position.copy(MV)); L.z -= 0.8; gun.localToWorld(L); } }   // a little ahead of the muzzle (along the gun): it lights the street and tints the hands, it does not burn them white
+  else flashLight.position.set(near.x, near.y, near.z);
   flashLight.intensity = 4.5 * Math.max(own, other);
 }
 // ---------- footsteps ----------
@@ -760,4 +796,4 @@ STATE.mapOverlay = (ctx, cx, cz, ppm, w, h) => {
 PERF.notice = text => feed(text, 'sys');
 function enablePlay() { initUi(); el('goPlay').disabled = false; el('goTrain').disabled = false; }
 
-export { MP, initUi as prepareUi, enablePlay, mpLabels, mpTick };
+export { MP, initUi as prepareUi, enablePlay, loadModels, mpLabels, mpTick, warmSamples };

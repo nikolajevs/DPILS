@@ -43,10 +43,11 @@ function puffTex() {   // a soft round blob: dust, smoke, sparks
 /* ---------- bullet marks ---------- */
 const decals = [], DECAL_MAX = 140, DECAL_LIFE = 30;
 const decalGeo = new THREE.PlaneGeometry(1, 1);
+const decalMat = () => worldSpace(new THREE.MeshBasicMaterial({ map: holeTex(), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
 function addDecal(x, y, z, n, size, tint) {
   let d;
   if (decals.length >= DECAL_MAX) d = decals.shift();   // the oldest mark gives its place to the new one
-  else { d = { mesh: new THREE.Mesh(decalGeo, worldSpace(new THREE.MeshBasicMaterial({ map: holeTex(), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }))), t: 0 }; scene.add(d.mesh); }
+  else { d = { mesh: new THREE.Mesh(decalGeo, decalMat()), t: 0 }; scene.add(d.mesh); }
   d.t = 0; d.mesh.material.color.setHex(tint); d.mesh.material.opacity = 1;
   d.mesh.position.set(x + n[0] * 0.03, y + n[1] * 0.03, z + n[2] * 0.03);
   V.set(x + n[0], y + n[1], z + n[2]); d.mesh.lookAt(V); d.mesh.rotateZ(Math.random() * 6.283);
@@ -142,10 +143,11 @@ function bodyImpact(o, d, len) {
 
 /* ---------- tracers that fly ---------- */
 const tracers = [], SPEED = [560, 380, 820, 430, 560];   // m/s by weapon, for the eye (the hit itself is judged at once)
+const tracerMat = color => worldSpace(new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85, fog: false }));
 function tracerShot(o, d, len, w, kind, color, onArrive) {
   if (tracers.length > 80) { const tr = tracers.shift(); scene.remove(tr.l); tr.l.geometry.dispose(); tr.l.material.dispose(); }
   const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
-  const l = new THREE.Line(g, worldSpace(new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85, fog: false })));
+  const l = new THREE.Line(g, tracerMat(color));
   l.frustumCulled = false; scene.add(l);
   tracers.push({ l, o, d, len, w, kind, onArrive, t: 0, speed: SPEED[w] ?? 560, trail: w === 1 ? 2.5 : 7, start: 0.9, done: false, fade: 0 });
 }
@@ -229,4 +231,8 @@ function clearFx() {
   for (const s of shells) scene.remove(s.m); shells.length = 0;
 }
 
-export { tracerShot, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke };
+// one of each mark that is made only in a firefight (a hole, a tracer, a shell), out of the scene: the game's models put them
+// into the warm-up of the city (mp.js loadModels), so the first shot does not wait for their shaders and textures
+const fxSamples = () => [new THREE.Mesh(decalGeo, decalMat()), new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -1)]), tracerMat(0xffe9a0)), new THREE.Mesh(shellGeo, shellMat)];
+
+export { fxSamples, tracerShot, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke };

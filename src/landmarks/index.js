@@ -6,7 +6,7 @@ import { lmShops } from './shops.js';
 import { lmParking, parkTick } from './parking.js';
 import { lmYards } from './yards.js';
 import { gubTick, lmGubisce } from './gubisce.js';
-import { lmSubstation } from './substation.js';
+import { lmSubstation, SS_POOLS } from './substation.js';
 import { lmHospital } from './hospital.js';
 import { lmParks, parksNight } from './parks.js';
 import { TX, rigaNow } from '../transit/transit.js';
@@ -49,6 +49,7 @@ function lmNight(n) {
   if (LMM.shDet) LMM.shDet.emissiveIntensity = n * 1.05;   // supermarkets: shop windows and boards
   parksNight(n);   // the parks: the light under the lamps, the lit fountains
   if (LMM.fuLamp) { LMM.fuLamp.emissiveIntensity = n * 2.6; LMM.fuTxt.emissiveIntensity = n * 1.6; LMM.fuFascia.userData.glow.value = 0.28 + n * 0.45; } if (FUEL_POOLS) FUEL_POOLS.visible = n > 0.5;   // fuel stations
+  if (SS_POOLS) SS_POOLS.visible = n > 0.5;   // the 330 kV switchyard: floodlight spill on the gravel
 }
 function lmTick() {
   const now = TX.ok ? TX : rigaNow(); parkTick(now.day, now.sec); gubTick();   // the cars in the car parks by the time of day, the reeds of Gubiščes ezers by the distance
