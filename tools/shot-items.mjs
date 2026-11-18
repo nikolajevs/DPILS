@@ -74,7 +74,7 @@ await page.evaluate(() => {
   window.__city.P.pitch = -0.15; window.__city.STATE.locked = true;
   window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyG' }));
   window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyG' }));
-  window.dispatchEvent(new MouseEvent('mousedown', { button: 0 }));
+  document.querySelector('canvas').dispatchEvent(new MouseEvent('mousedown', { button: 0 }));   // слушатель заряда — на canvas
 });
 await page.waitForFunction(() => document.getElementById('nadeFill').style.width === '100%', null, { timeout: 60000, polling: 250 });
 await page.evaluate(() => window.dispatchEvent(new MouseEvent('mouseup', { button: 0 })));
