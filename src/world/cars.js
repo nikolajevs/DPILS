@@ -29,19 +29,20 @@ const carMat = std({ vertexColors: true, roughness: 0.5, metalness: 0.2 }, 'bmwc
   s.vertexShader = out;
 });
 
-// The tyres and rims bake as achromatic grey (the sedan's whole wheel is light grey, the hatch / SUV rims silver), so
-// they read as bare metal rather than rubber. Paint them black. A wheel vertex sits low (y < 0.8 m), outboard
-// (|z| > 0.5 m) and within the wheelbase (0.8 < |x| < 2.25 m), and is grey: pure-white body paint, the blue-grey glass,
-// the police band and the red lamps are white or chromatic, so the not-white + achromatic test leaves them their colour.
+// The wheels bake light: the sedan / police rim and tyre sidewall are pure white, the hatch / SUV rims silver, so they
+// read as bare metal rather than rubber. Paint the whole wheel black. A wheel is a circle of radius ~0.3 m in the x-y
+// plane about the axle (|x| ~ 1.55 m, y ~ 0.3 m), outboard at |z| > 0.55 m; everything inside that circle is wheel
+// (tyre, sidewall, rim) whatever its baked colour. The body arch sits just outside it (radius >= 0.4 m) and stays paint.
+// Chromatic non-white parts that dip into the circle — the police band, lamps, glass — keep their colour.
 function blackenWheels(g) {
   const p = g.attributes.position, c = g.attributes.color; if (!p || !c) return;
   const BLACK = 12 / 255;
   for (let i = 0; i < p.count; i++) {
-    const y = p.getY(i); if (y >= 0.8) continue;
-    if (Math.abs(p.getZ(i)) <= 0.5) continue;
-    const ax = Math.abs(p.getX(i)); if (ax <= 0.8 || ax >= 2.25) continue;
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    if (y > 0.7 || Math.abs(z) < 0.55) continue;
+    if (Math.hypot(Math.abs(x) - 1.55, y - 0.30) > 0.34) continue;
     const r = c.getX(i), gg = c.getY(i), b = c.getZ(i), mx = Math.max(r, gg, b), mn = Math.min(r, gg, b);
-    if (mx >= 250 / 255 || mx - mn >= 0.06) continue;
+    if (mx < 250 / 255 && mx - mn >= 0.06) continue;
     c.setXYZ(i, BLACK, BLACK, BLACK);
   }
 }
