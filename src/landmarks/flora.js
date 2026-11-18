@@ -10,22 +10,26 @@ import { scene } from '../render/renderer.js';
    the quarters behind the camera are culled whole. They keep off the footways, the beds, the playgrounds, the water
    and the roads. The flowers of the file are in centimetres and are scaled by a hundredth. They stand at y = 0: the
    terrain lift of the page raises them after the instance matrix, so no height is baked in. */
-let started = false;
+let models = null;   // the flowers of the files, once loaded (null: not asked for)
 const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
+/* The files are asked for early (while the landmarks are built); the flowers are planted by plantFlora, a step of its
+   own in the build (src/main.js), so that the work is on the loading bar and never falls into another step, nor after
+   the city is ready. */
 function initFlora() {
-  if (started || !PARK_RINGS.length) return; started = true;
+  if (models || !PARK_RINGS.length) return;
   const L = new GLTFLoader(), grab = f => new Promise(r => L.load(f, g => r(g.scene), undefined, () => r(null)));
-  Promise.all([grab('models/ez-tree/flower_blue.glb'), grab('models/ez-tree/flower_white.glb'), grab('models/ez-tree/flower_yellow.glb')])
-    .then(flowers => build(flowers.filter(Boolean)));
+  models = Promise.all([grab('models/ez-tree/flower_blue.glb'), grab('models/ez-tree/flower_white.glb'), grab('models/ez-tree/flower_yellow.glb')]);
 }
-// the places of a park where a flower may stand: a jittered grid, kept off everything that is not lawn
-function spots(r) {
+async function plantFlora() { if (models) build((await models).filter(Boolean)); }
+// the places of a park where a flower may stand: a jittered grid, kept off everything that is not lawn; the first
+// `need` of them are enough (the flowers take the places of the grid in its order, see build)
+function spots(r, need) {
   const bb = bbox(r), out = [], step = 1.7;
   for (let x = bb[0] + 0.5; x < bb[2]; x += step) for (let z = bb[1] + 0.5; z < bb[3]; z += step) {
     const px = x + (hash(x * 3.7 + z * 9.1) - 0.5) * step * 0.9, pz = z + (hash(x * 7.3 + z * 1.9) - 0.5) * step * 0.9;
     if (!pip(px, pz, r) || parkNoTree(px, pz) || onPath(px, pz, 0.4) || inWater(px, pz) || inBuilding(px, pz) || onRoad(px, pz, 0.6)) continue;
     if (hash(px * 13.7 + pz * 5.3) > 0.55) continue;
-    out.push([px, pz]);
+    out.push([px, pz]); if (out.length >= need) return out;
   }
   return out;
 }
@@ -40,9 +44,11 @@ function build(flowers) {
   }).filter(Boolean);
   let flowerN = 0;
   for (const r of PARK_RINGS) {
-    const pts = spots(r), area = Math.abs(area2(r)) / 2;
-    // a few flowers on the lawn: every twelfth place of the grid, at most forty per park and five hundred in the city
-    const fn = Math.min(40, Math.round(area * 0.004));
+    if (flowerN >= 500 || !fsets.length) break;
+    // a few flowers on the lawn: every twelfth place of the grid, at most forty per park and five hundred in the city.
+    // Only the places they take are looked for: the first 12·(n − 1) + 6 of the grid (the same as from the whole grid)
+    const area = Math.abs(area2(r)) / 2, fn = Math.min(40, Math.round(area * 0.004)); if (!fn) continue;
+    const pts = spots(r, 12 * (fn - 1) + 6);
     for (let i = 0; i < fn && flowerN < 500 && fsets.length; i++) {
       const p = pts[(i * 12 + 5) % pts.length]; if (!p) break;
       const set = fsets[i % fsets.length], h = hash(p[0] * 3.1 + p[1] * 7.7), s = 0.007 + h * 0.004;
@@ -67,4 +73,4 @@ function build(flowers) {
     }
   }
 }
-export { initFlora };
+export { initFlora, plantFlora };
