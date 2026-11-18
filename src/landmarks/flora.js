@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PARK_RINGS, onPath, parkNoTree } from './parks.js';
+import { due, pause } from '../core/pause.js';
 import { area2, bbox, hash, pip } from '../core/util.js';
 import { inBuilding, inWater, onRoad } from '../world/data.js';
 import { scene } from '../render/renderer.js';
@@ -20,20 +21,23 @@ function initFlora() {
   const L = new GLTFLoader(), grab = f => new Promise(r => L.load(f, g => r(g.scene), undefined, () => r(null)));
   models = Promise.all([grab('models/ez-tree/flower_blue.glb'), grab('models/ez-tree/flower_white.glb'), grab('models/ez-tree/flower_yellow.glb')]);
 }
-async function plantFlora() { if (models) build((await models).filter(Boolean)); }
+async function plantFlora() { if (models) await build((await models).filter(Boolean)); }
 // the places of a park where a flower may stand: a jittered grid, kept off everything that is not lawn; the first
 // `need` of them are enough (the flowers take the places of the grid in its order, see build)
-function spots(r, need) {
+async function spots(r, need) {
   const bb = bbox(r), out = [], step = 1.7;
-  for (let x = bb[0] + 0.5; x < bb[2]; x += step) for (let z = bb[1] + 0.5; z < bb[3]; z += step) {
-    const px = x + (hash(x * 3.7 + z * 9.1) - 0.5) * step * 0.9, pz = z + (hash(x * 7.3 + z * 1.9) - 0.5) * step * 0.9;
-    if (!pip(px, pz, r) || parkNoTree(px, pz) || onPath(px, pz, 0.4) || inWater(px, pz) || inBuilding(px, pz) || onRoad(px, pz, 0.6)) continue;
-    if (hash(px * 13.7 + pz * 5.3) > 0.55) continue;
-    out.push([px, pz]); if (out.length >= need) return out;
+  for (let x = bb[0] + 0.5; x < bb[2]; x += step) {
+    if (due()) await pause();
+    for (let z = bb[1] + 0.5; z < bb[3]; z += step) {
+      const px = x + (hash(x * 3.7 + z * 9.1) - 0.5) * step * 0.9, pz = z + (hash(x * 7.3 + z * 1.9) - 0.5) * step * 0.9;
+      if (!pip(px, pz, r) || parkNoTree(px, pz) || onPath(px, pz, 0.4) || inWater(px, pz) || inBuilding(px, pz) || onRoad(px, pz, 0.6)) continue;
+      if (hash(px * 13.7 + pz * 5.3) > 0.55) continue;
+      out.push([px, pz]); if (out.length >= need) return out;
+    }
   }
   return out;
 }
-function build(flowers) {
+async function build(flowers) {
   // a flower of the file is several meshes (petals, leaves, the stem — one material each): every part becomes its own
   // InstancedMesh, and all the parts of a kind share one buffer of matrices, so the whole flower stands together
   const fsets = flowers.map(f => {
@@ -48,7 +52,7 @@ function build(flowers) {
     // a few flowers on the lawn: every twelfth place of the grid, at most forty per park and five hundred in the city.
     // Only the places they take are looked for: the first 12·(n − 1) + 6 of the grid (the same as from the whole grid)
     const area = Math.abs(area2(r)) / 2, fn = Math.min(40, Math.round(area * 0.004)); if (!fn) continue;
-    const pts = spots(r, 12 * (fn - 1) + 6);
+    const pts = await spots(r, 12 * (fn - 1) + 6);
     for (let i = 0; i < fn && flowerN < 500 && fsets.length; i++) {
       const p = pts[(i * 12 + 5) % pts.length]; if (!p) break;
       const set = fsets[i % fsets.length], h = hash(p[0] * 3.1 + p[1] * 7.7), s = 0.007 + h * 0.004;

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { STATE } from '../core/state.js';
+import { rest } from '../core/pause.js';
 import { seriesAtlas, seriesMaterial } from '../buildings/series.js';
 import { facadeMaterial, groundMaterial, roofMaterial, std } from '../render/materials.js';
 import { detailTex, facadeAtlas, roofAtlas } from '../render/textures.js';
@@ -57,10 +58,10 @@ function wetTree(x, z) {
 function onRoad(x, z, margin) { let ok = false; ROAD.near(x, z, 14, (id, d) => { if (d < ROAD.s[id * 6 + 4] + margin) ok = true; }); return ok; }
 
 let matFac, matRoof, matPlain, matGold, matBank, M_LAND, M_PAVE, M_DIRT, M_BALLAST, M_ASPH, M_MARK;   // the water's material: src/world/water.js
-function makeMaterials() {
-  [STATE.facTex, STATE.facMask] = facadeAtlas(); STATE.roofTex = roofAtlas();
-  const dGrass = detailTex(0), dAsph = detailTex(1), dPave = detailTex(2), dGravel = detailTex(3);
-  matFac = facadeMaterial(); matRoof = roofMaterial(); [STATE.serTex, STATE.serMask] = seriesAtlas(); STATE.matSer = seriesMaterial();
+async function makeMaterials() {
+  [STATE.facTex, STATE.facMask] = facadeAtlas(); await rest(); STATE.roofTex = roofAtlas(); await rest();
+  const dGrass = detailTex(0), dAsph = detailTex(1), dPave = detailTex(2), dGravel = detailTex(3); await rest();
+  matFac = facadeMaterial(); matRoof = roofMaterial(); [STATE.serTex, STATE.serMask] = seriesAtlas(); await rest(); STATE.matSer = seriesMaterial();
   matPlain = std({ vertexColors: true, roughness: 0.85, metalness: 0 }, 'plain');
   matGold = hook(new THREE.MeshStandardMaterial({ color: lin('#e0b048'), metalness: 1, roughness: 0.25 }));
   matBank = std({ vertexColors: true, roughness: 1, metalness: 0, side: THREE.DoubleSide }, 'bank');

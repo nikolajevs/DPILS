@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { STATE } from '../core/state.js';
+import { due, pause, rest } from '../core/pause.js';
 import { TIMES, timeI } from '../render/lighting.js';
 import { P } from '../game/player.js';
 import { vbGround } from '../world/bridge-vienibas.js';
@@ -100,7 +101,7 @@ function glide(D, T, t, acc) {
    the pair is misread), and its turns are rounded over ±7 m; a tram stays on the track. Per route the points every
    2–2.5 m with their distance along (cum), and per vertex of the shape its distance along the route (vu). */
 const ROUTE_OPT = [{ reach: 30, maxTurn: 75 * Math.PI / 180, keepRight: true, max: 8 }, { reach: 40, maxTurn: 150 * Math.PI / 180, side: true, uturn: 40, max: 6 }];
-function buildRoutes() {
+async function buildRoutes() {
   const tw = [], bw = [], bInfo = [];
   for (const l of LINES) {
     if (l.cls === 9) tw.push({ pts: l.pts });
@@ -114,7 +115,9 @@ function buildRoutes() {
   }
   const nets = [buildNet(tw), buildNet(bw, { cross: true })], aoWay = bw.findIndex(w => w.back === false);
   TX.routes = TX.shapes.map(() => null); TX.stopAt = TX.shapes.map(() => null);
-  TX.pats.forEach(p => { const kind = p.kind ? 1 : 0, si = p.shape; if (TX.routes[si]) return;
+  for (const p of TX.pats) {
+    if (due()) await pause();
+    const kind = p.kind ? 1 : 0, si = p.shape; if (TX.routes[si]) continue;
     /* the stop of the bus station lies on the buses' own driveway along the platform: a coach's vertex there may only be
        laid on it (else the shortest way out north takes the other driveway, away from the platform) */
     const opt = p.coach && aoWay >= 0 ? { ...ROUTE_OPT[kind], allow: (x, z, q) => Math.hypot(x - AO.stopXZ[0], z - AO.stopXZ[1]) > 12 || net.E[q.d >> 1].way === aoWay } : ROUTE_OPT[kind];
@@ -128,7 +131,7 @@ function buildRoutes() {
     // where each vertex (a stop, almost always) lies on the network: the point on the road's middle or the track, which
     // way the vehicle goes there and the half width of the road
     TX.stopAt[si] = m.place.map(q => { if (!q) return null; const [dx, dz] = dDir(net, q.d), [x, z] = drawn(q.d, q.x, q.z); return { x, z, dx, dz, hw: kind ? bInfo[wayOf(q.d)].hw : 0 }; });
-  });
+  }
   TX.pats.forEach(p => { const sh = TX.shapes[p.shape], R = TX.routes[p.shape]; p.alongU = p.along.map(a => shapeToRoute(sh, R, a)); });
   /* at the bus station the coaches stand end to end along the platform, at three bays: in the order they are there, one
      bay after the other (by the first time each pattern is there), so that the next one does not stand in the same place */
@@ -197,9 +200,9 @@ function shadowBlobTex() {
   return toTex(cv, false, false);
 }
 const VCAP = [80, 140, 40];
-function buildTransit() {
+async function buildTransit() {
   if (!TR) return 0;
-  prepTransit(); const t0 = performance.now(); buildRoutes(); TX.routeMs = performance.now() - t0;
+  prepTransit(); await rest(); const t0 = performance.now(); await buildRoutes(); await rest(); TX.routeMs = performance.now() - t0;
   const bodyMat = std({ vertexColors: true, roughness: 0.4, metalness: 0.15 }, 'vehicle');
   const glowMat = new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(1.15, 1.15, 1.15), toneMapped: true });
   const blobMat = new THREE.MeshBasicMaterial({ map: shadowBlobTex(), color: 0x000000, transparent: true, depthWrite: false, opacity: 0.7 });
@@ -211,9 +214,9 @@ function buildTransit() {
     b.receiveShadow = true; s.renderOrder = 3; TX.glow.push(g);
     return { b, g, s };
   });
-  TX.trainTrips = buildTrains(); TX.glow.push(...TRN.glow);   // the passenger trains through the station (trains.js)
+  await rest(); TX.trainTrips = buildTrains(); TX.glow.push(...TRN.glow);   // the passenger trains through the station (trains.js)
   for (const g of TX.glow) g.visible = TIMES[timeI].lamps;
-  buildStops();
+  await rest(); buildStops(); await rest();
   scanActive();
   return TR.trips.length + TX.trainTrips;
 }

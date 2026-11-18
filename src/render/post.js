@@ -145,8 +145,10 @@ async function warmUp(report, nextFrame) {
     finally { scene.children = all; renderer.setRenderTarget(null); }
     report(i / objs.length); await nextFrame();
   }
-  // the passes after the scene, each into the kind of target it draws into (the output encoding is part of a program)
-  if (POST) { target(); for (const [m, t] of [[matAO, PP.ao], [matBright, PP.bl[0]], [matDown, PP.bl[1]], [matFinal, null]]) { fsQuad.material = m; renderer.setRenderTarget(t); renderer.compile(fsScene, fsCam); } renderer.setRenderTarget(null); }
+  // the passes after the scene, each into the kind of target it draws into (the output encoding is part of a program),
+  // one a frame
+  if (POST) { target(); renderer.setRenderTarget(null);
+    for (const [m, t] of [[matAO, PP.ao], [matBright, PP.bl[0]], [matDown, PP.bl[1]], [matFinal, null]]) { fsQuad.material = m; renderer.setRenderTarget(t); renderer.compile(fsScene, fsCam); renderer.setRenderTarget(null); await nextFrame(); } }
 }
 let shadowHalf = 0;
 const LX = new THREE.Vector3(), LY = new THREE.Vector3(), UPV = new THREE.Vector3(0, 1, 0), TGT = new THREE.Vector3();

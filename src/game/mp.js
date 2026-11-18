@@ -23,6 +23,7 @@ import { ambStart, ambTick } from './ambience.js';
 import { statEvent } from './stats.js';
 import { playerKey, boardOn, setBoardOn, account } from './identity.js';
 import { initLeaders } from './leaders.js';
+import { rest } from '../core/pause.js';
 import { $ } from '../core/env.js';
 import { boomSound, crackSound, hitSound, loadSounds, shotSound, stepSound } from './sfx.js';
 import { fxSamples, tracerShot, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke } from './impacts.js';
@@ -141,12 +142,15 @@ function loadModels(onPart) {
   }).catch(e => console.error(e)).finally(() => { modelsDone = true; });
   return modelsP;
 }
-// on: the samples into the scene just before its warm-up, their textures (and those of the arms) to the GPU; off: out again
-function warmSamples(on) {
+// on: the samples into the scene just before its warm-up, their textures (and those of the arms) to the GPU, one at a
+// time with a pause between them when the slice is used up (src/core/pause.js); off: out again
+async function warmSamples(on) {
   if (!samples) return;
   if (!on) { scene.remove(samples); samples = null; return; }
   scene.add(samples);
-  for (const root of [samples, camera]) root.traverse(o => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const v of Object.values(m)) if (v && v.isTexture) renderer.initTexture(v); });
+  const tex = new Set();
+  for (const root of [samples, camera]) root.traverse(o => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const v of Object.values(m)) if (v && v.isTexture) tex.add(v); });
+  for (const t of tex) { await rest(); renderer.initTexture(t); }
 }
 // the ready animated model instead of the simple figure; look — the chosen person (the soldier if the people's files did not come)
 function attachAvatar(r) {

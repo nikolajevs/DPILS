@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/pine-sway | Медленнее качание и дрожь кроны деревьев | src/world/trees.js |
+| Claude | claude/adoring-davinci-33gpsx | Меню не зависает при загрузке: паузы внутри шагов сборки, шрифт вывесок заранее | src/core/pause.js, src/boot.js, src/main.js, циклы шагов сборки (world/, landmarks/, fortress/, transit/, render/chunks.js, render/post.js, game/mp.js warmSamples) |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
 

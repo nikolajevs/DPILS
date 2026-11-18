@@ -1,4 +1,5 @@
 import { STATE } from '../core/state.js';
+import { due, pause } from '../core/pause.js';
 import { FORT_PAL, fortDrops, fortIn } from '../fortress/index.js';
 import { fuelDrops } from '../landmarks/fuel.js';
 import { spwDrops } from '../landmarks/speedway.js';
@@ -18,8 +19,9 @@ import { box, lathe, polyA } from '../core/geometry.js';
 import { area2, bbox, dec, edgeN, hb, insetOk, obb, offsetRing, pick, reversed, rnd, sh } from '../core/util.js';
 import { C, NAMES } from '../core/env.js';
 
-function buildBuildings(from, to) {
+async function buildBuildings(from, to) {
   for (let id = from; id < to; id++) {
+    if (due()) await pause();
     const rec = C.b[id], style = rec[0], mh = rec[2] / 10, flags = rec[6]; let h = rec[1] / 10, floors = Math.max(1, rec[5]);
     const rings = []; for (let k = 7; k < rec.length; k++) { let r = dec(rec[k]); if (r.length < 6) continue; const A = area2(r); if ((k === 7) !== (A > 0)) r = reversed(r); rings.push(r); }
     if (!rings.length) continue;
