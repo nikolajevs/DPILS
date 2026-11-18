@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/pine-sway | Медленнее качание и дрожь кроны деревьев | src/world/trees.js |
-| Chatbox | chatbox/gpu-headless | Headless-проверки на GPU (SwiftShader — фолбэк) | tools/browser.js, tools/shots.js, tools/shot-items.mjs, tools/queries/quality-mode-test.mjs, docs/tools-and-sources.md |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
 
