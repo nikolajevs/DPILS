@@ -1,6 +1,6 @@
 import { STATE } from '../core/state.js';
 import { PP } from '../render/post.js';
-import { QUALITY, qi, setQuality } from '../render/lighting.js';
+import { QUALITY, qi, qAuto, setQuality } from '../render/lighting.js';
 import { POST, renderer } from '../render/renderer.js';
 
 /* ---------- frame rate ----------
@@ -15,26 +15,33 @@ import { POST, renderer } from '../render/renderer.js';
    of one second; the first seconds, those after a change of the graphics and windows with a stall (shaders, loading)
    are left out.
 
-   In the game the graphics are lowered by themselves, one level at a time, when the page stays under 28 frames a
-   second for two checks in a row (4 s each) and the resolution cannot help any more. The first seconds after the
-   start and after each change are not counted: shaders compile then. A press on the "Графика" button hands the
-   choice to the player and switches this off. */
+   The quality mode is the player's choice (the "Графика" button cycles авто → высокая → … → минимум → авто, the
+   same choice is in the settings panel). In 'auto' the game graphics are lowered by themselves, one level at a time,
+   when the page stays under 28 frames a second for two checks in a row (4 s each) and the resolution cannot help any
+   more; when four checks in a row hold 55 frames a second or more at the full resolution, the level goes back up.
+   The first seconds after the start and after each change are not counted: shaders compile then. A fixed level
+   switches all of this off and keeps the resolution whole. */
 // scale: the share of the resolution the scene is drawn at; dyn: whether it follows the frame rate (tools/shots.js
 // switches it off: its frames take minutes, and a check of the picture wants it whole)
-const PERF = { fps: 60, scale: 1, dyn: true, auto: true, lowered: 0, notice: null };
-let frames = 0, span = 0, slow = 0, quiet = 6, fpsFrames = 0, fpsSpan = 0;
+const PERF = { fps: 60, scale: 1, dyn: true, lowered: 0, notice: null };
+let frames = 0, span = 0, slow = 0, fast = 0, quiet = 6, fpsFrames = 0, fpsSpan = 0;
 function perfTick(rdt) {   // rdt: the real time of the frame, seconds
   fpsFrames++; fpsSpan += rdt; if (fpsSpan >= 1) { PERF.fps = Math.round(fpsFrames / fpsSpan); fpsFrames = 0; fpsSpan = 0; }
   dynTick(rdt); PERF.scale = PP.scale;
-  if (!STATE.mp || !PERF.auto) return;
-  if (quiet > 0) { quiet -= rdt; frames = span = 0; return; }
+  if (!STATE.mp || !qAuto) return;
+  if (quiet > 0) { quiet -= rdt; frames = span = 0; slow = fast = 0; return; }
   frames++; span += rdt;
   if (span < 4) return;
   const fps = frames / span; frames = span = 0;
-  if (fps >= 28 || canLower()) { slow = 0; return; }
-  if (++slow < 2) return;
+  if (fps < 28 && !canLower()) {   // the resolution cannot help any more: lower the level
+    fast = 0;
+    if (++slow >= 2) { slow = 0; if (qi < QUALITY.length - 1) { setQuality(qi + 1); PERF.lowered++; quiet = 6; if (PERF.notice) PERF.notice('Графика снижена до «' + QUALITY[qi].name + '»: ' + Math.round(fps) + ' кадров в секунду'); } }
+    return;
+  }
   slow = 0;
-  if (qi < QUALITY.length - 1) { setQuality(qi + 1); PERF.lowered++; quiet = 6; if (PERF.notice) PERF.notice('Графика снижена до «' + QUALITY[qi].name + '»: ' + Math.round(fps) + ' кадров в секунду'); }
+  if (fps >= 55 && qi > 0 && PP.scale >= 1 - 1e-3) {   // headroom at the full resolution: try the next level up
+    if (++fast >= 4) { fast = 0; setQuality(qi - 1); quiet = 6; if (PERF.notice) PERF.notice('Графика повышена до «' + QUALITY[qi].name + '»: ' + Math.round(fps) + ' кадров в секунду, есть запас'); }
+  } else fast = 0;
 }
 
 /* ---------- dynamic resolution ---------- */
@@ -45,7 +52,7 @@ const setScale = s => { PP.scale = Math.max(minScale(), Math.min(1, Math.round(s
 const canLower = () => POST && PERF.dyn && PP.scale > minScale() + 1e-3 && dLowBlock <= 0;   // can the resolution still help?
 function dynTick(rdt) {
   if (!POST) return;
-  if (!PERF.dyn) { PP.scale = 1; dTry = null; return; }
+  if (!PERF.dyn || !qAuto) { PP.scale = 1; dTry = null; return; }   // a fixed quality keeps the picture whole
   // another quality level or pixel ratio: start again from the full resolution
   if (renderer.getPixelRatio() !== dPr || qi !== dQi) { dPr = renderer.getPixelRatio(); dQi = qi; PP.scale = 1; dTry = null; dFast = 0; dQuiet = 5; }
   dLowBlock -= rdt; dUpBlock -= rdt;
