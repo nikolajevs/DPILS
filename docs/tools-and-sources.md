@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/pine-sway | Медленнее качание и дрожь кроны деревьев | src/world/trees.js |
+| Chatbox | chatbox/dev-speed | Ускорение цикла: тёплый браузер, инкрементальная сборка, сжатие текстур моделей | vite.config.mjs, tools/warm.mjs, tools/shots.js, tools/shrink-models.mjs, models/*.glb, docs/tools-and-sources.md |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
 
@@ -26,6 +27,24 @@ node tools/shots.js shots 0 square:-1440,1300,25:-1487,1263,0 bridge:-1760,1640,
 - WebGL запускается **на GPU, если он доступен** (общий хелпер [tools/browser.js](../tools/browser.js): пробует аппаратный рендер, проверяет реальный рендерер WebGL и только при его отсутствии переходит на SwiftShader). На GPU город строится за десятки секунд; на программном SwiftShader (CI без видеокарты) — 3–5 минут, каждый кадр до нескольких минут, тогда запускайте один браузер за раз и в фоне. `DPILS_GPU=0` принудительно включает SwiftShader, `CHROME_PATH=` задаёт путь к браузеру.
 - Нужен Playwright с Chromium. В облачных сессиях Claude они уже стоят; в другом окружении: `npm i -D playwright` и `npx playwright install chromium`.
 - Страница сама даёт отладке `window.__city`: игрок `P`, `camera`, `terrainH(x, z)`, `setTime`, `teleport` и др. (см. конец [src/main.js](../src/main.js)).
+- Если поднят тёплый браузер (`tools/warm.mjs`), `shots.js` сам берёт кадры из него за секунды, без загрузки города заново.
+
+## Тёплый браузер для проверок: `tools/warm.mjs`
+
+Держит город загруженным в headless-браузере (GPU через [tools/browser.js](../tools/browser.js)): загрузка один раз, дальше каждый прогон `tools/shots.js` только двигает камеру и снимает — секунды вместо полной загрузки. Сам раздаёт репозиторий, отдельный статический сервер не нужен.
+
+```bash
+node tools/warm.mjs          # порт 8771 (WARM_PORT=), viewport VW/VH; ждёт «warm: ready»
+node tools/shots.js shots 0 square:-1440,1300,25:-1487,1263,0   # автоматически через тёплый (WARM= адрес)
+```
+
+- После правок данных или `src/` обновите страницу: `curl -X POST http://127.0.0.1:8771/__warm/reload` (или Invoke-RestMethod).
+- Состояние между кадрами сохраняется (время, камера, режим); `/__warm/reload` возвращает чистую прогулку. Произвольный код в странице — `POST /__warm/eval` (тело — JS-выражение, ответ JSON). Ошибки консоли копятся и выдаются `/__warm/errs` (shots.js печатает их сам).
+- Один браузер — один кадр за раз: запросы выстраиваются в очередь. Останавливайте процесс, когда проверки больше не нужны.
+
+## Инкрементальная сборка
+
+`vite build` копирует статику (данные города, `models/`, звуки, текстуры — ~25 МБ) в `dist/` **только при изменениях**: файл копируется, если его нет в `dist/`, отличается размер или источник новее копии. Сборка после правок только в `src/` не перекапирует модели; в конце печатается `city-data: N changed static file(s) copied`.
 
 ## Предметы без экрана: `tools/shot-items.mjs`
 
@@ -38,6 +57,18 @@ node tools/shot-items.mjs
 ## Сборка моделей предметов: `tools/items.mjs`
 
 Из распакованных архивов Sketchfab (подпапки `ammo-soviet/`, `nade-m67/`, `med-tedium/`, внутри `x/scene.gltf`; источник по умолчанию — `.claude/items-src`, переопределяется `SRC=`) собирает `models/item_{ammo,nade,med}.glb`: запекание мировых матриц, слияние по материалу, центровка дном в y=0, нормировка габарита в метры, WebP-текстуры и meshopt (`COMPRESS=0` — без сжатия). Авторы и лицензии (CC-BY-4.0) — в [models/README.md](../models/README.md). Зависимости ставятся `npm i --no-save`, в репозиторий не входят.
+
+## Сжатие текстур моделей: `tools/shrink-models.mjs`
+
+Геометрия моделей уже упакована meshopt; оставшийся вес — текстуры (у `fp_ak47.glb` четыре изображения 2048×2048). Инструмент перекодирует встроенные текстуры в WebP (`Q=80`, по умолчанию без потери разрешения; `MAX=1024` дополнительно уменьшает сторону) и перезаписывает GLB только если файл стал заметно меньше; изображение заменяется лишь при выигрыше >20 %. Анимации, скины и материалы сохраняются (gltf-transform round-trip).
+
+```bash
+npm i --no-save @gltf-transform/core@4 @gltf-transform/extensions@4 @gltf-transform/functions@4 sharp meshoptimizer
+node tools/shrink-models.mjs              # все models/*.glb
+node tools/shrink-models.mjs fp_ak47.glb  # только указанные
+```
+
+После сжатия проверьте вид оружия в бою без экрана: `node tools/shot-items.mjs` (снимки с автоматом в руках).
 
 ## Координаты LKS-92: `tools/lks92.js`
 

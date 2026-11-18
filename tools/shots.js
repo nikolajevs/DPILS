@@ -13,8 +13,11 @@
    From the latitude and longitude the page shows in the corner: x = (lon − 26.54) · 62438.48, z = (55.8825 − lat) · 111292.73,
    and a heading c (degrees, 0 north, 90 east) looks along (sin c, −cos c) in x, z.
 
-   It needs a static server at the root of the repository (python3 -m http.server 8765 --bind 127.0.0.1, or set URL)
-   and Playwright with a Chromium (npm i -D playwright && npx playwright install chromium, unless one is installed).
+   If a warm browser (tools/warm.mjs, WARM= its address, http://127.0.0.1:8771 by default) is running and ready, the
+   views are taken from its already loaded city — seconds per run, no reload; after changed data/src POST its
+   /__warm/reload first. Otherwise it needs a static server at the root of the repository (python3 -m http.server
+   8765 --bind 127.0.0.1, or set URL) and Playwright with a Chromium (npm i -D playwright && npx playwright install
+   chromium, unless one is installed).
    WebGL runs on the GPU when one is available (tools/browser.js probes the renderer and falls back to SwiftShader
    on machines without a GPU, e.g. CI). On SwiftShader the city takes 3–5 minutes to build and each frame up to a
    few minutes: run one at a time, in the background, and give it time; on the GPU it is tens of seconds. VW and VH
@@ -23,10 +26,32 @@
 'use strict';
 const { launchBrowser } = require('./browser.js');
 const URL = process.env.URL || 'http://127.0.0.1:8765/index.html';
+const WARM = process.env.WARM || 'http://127.0.0.1:8771';
+
+// the warm path: a tools/warm.mjs daemon keeps the city loaded; we only ask it for pictures
+async function warmRun(out, t, views) {
+  let st = null;
+  try { const r = await fetch(WARM + '/__warm/status', { signal: AbortSignal.timeout(1500) }); if (r.ok) st = await r.json(); } catch (e) { /* no warm server */ }
+  if (!st || !st.ready) return false;
+  await fetch(WARM + '/__warm/errs');   // drop the errors of previous runs
+  const w = +(process.env.VW || 1100), vh = +(process.env.VH || 700);
+  for (const v of views) {
+    const [name, pos, tgt, fov] = v.split(':'), [x, z, h] = pos.split(',').map(Number), [tx, tz, th] = tgt.split(',').map(Number);
+    const q = new URLSearchParams({ t, x, z, h, tx, tz, th, fov: +fov || 60, w, vh });
+    const r = await fetch(WARM + '/__warm/shot?' + q, { signal: AbortSignal.timeout(600000) });
+    if (!r.ok) { console.log('WARM SHOT FAIL ' + name + ': ' + (await r.text()).slice(0, 300)); process.exit(2); }
+    require('fs').writeFileSync(`${out}/${name}.jpg`, Buffer.from(await r.arrayBuffer())); console.log('shot', name, '(warm)');
+  }
+  const errs = await (await fetch(WARM + '/__warm/errs')).json();
+  if (errs.length) console.log('CONSOLE:\n' + [...new Set(errs)].slice(0, 20).join('\n'));
+  return true;
+}
+
 (async () => {
   const [out, t, ...views] = process.argv.slice(2);
   if (!out || t === undefined || !views.length) { console.error('usage: node tools/shots.js <out dir> <time 0|1|2> name:x,z,h:tx,tz,th[:fov] …'); process.exit(1); }
   require('fs').mkdirSync(out, { recursive: true });
+  if (await warmRun(out, +t, views)) return;
   const { browser: b } = await launchBrowser();
   const p = await b.newPage({ viewport: { width: +(process.env.VW || 1100), height: +(process.env.VH || 700) } });
   const errs = []; p.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') errs.push(m.type() + ': ' + m.text().slice(0, 300)); }); p.on('pageerror', e => errs.push('PAGEERROR ' + String(e.stack || e).slice(0, 600)));
