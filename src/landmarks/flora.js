@@ -5,23 +5,20 @@ import { area2, bbox, hash, pip } from '../core/util.js';
 import { inBuilding, inWater, onRoad } from '../world/data.js';
 import { scene } from '../render/renderer.js';
 
-/* ---------- the grass and the flowers of the parks (ez-tree, MIT, models/ez-tree/) ----------
-   Tufts of tall grass and three kinds of flowers, instanced over the lawn of every park: one InstancedMesh of grass per
-   park (the frustum culls the far parks whole); the flowers are gathered by the quarter of the city they stand in, so
-   the quarters behind the camera are culled whole as well. They keep off the footways,
-   the beds, the playgrounds, the water and the roads. The grass of the file is two metres tall — it is scaled down to
-   knee height; the flowers are in centimetres and are scaled by a hundredth. They stand at y = 0: the terrain lift of
-   the page raises them after the instance matrix, so no height is baked in. The grass is alpha-tested, not blended:
-   eight thousand tufts must not sort themselves against one another. */
+/* ---------- the flowers of the parks (ez-tree, MIT, models/ez-tree/) ----------
+   Three kinds of flowers instanced over the lawn of every park, gathered by the quarter of the city they stand in, so
+   the quarters behind the camera are culled whole. They keep off the footways, the beds, the playgrounds, the water
+   and the roads. The flowers of the file are in centimetres and are scaled by a hundredth. They stand at y = 0: the
+   terrain lift of the page raises them after the instance matrix, so no height is baked in. */
 let started = false;
-const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(), C = new THREE.Color(), UP = new THREE.Vector3(0, 1, 0);
+const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
 function initFlora() {
   if (started || !PARK_RINGS.length) return; started = true;
   const L = new GLTFLoader(), grab = f => new Promise(r => L.load(f, g => r(g.scene), undefined, () => r(null)));
-  Promise.all([grab('models/ez-tree/grass.glb'), grab('models/ez-tree/flower_blue.glb'), grab('models/ez-tree/flower_white.glb'), grab('models/ez-tree/flower_yellow.glb')])
-    .then(([grass, ...flowers]) => { if (grass) build(grass, flowers.filter(Boolean)); });
+  Promise.all([grab('models/ez-tree/flower_blue.glb'), grab('models/ez-tree/flower_white.glb'), grab('models/ez-tree/flower_yellow.glb')])
+    .then(flowers => build(flowers.filter(Boolean)));
 }
-// the places of a park where a tuft may stand: a jittered grid, kept off everything that is not lawn
+// the places of a park where a flower may stand: a jittered grid, kept off everything that is not lawn
 function spots(r) {
   const bb = bbox(r), out = [], step = 1.7;
   for (let x = bb[0] + 0.5; x < bb[2]; x += step) for (let z = bb[1] + 0.5; z < bb[3]; z += step) {
@@ -32,11 +29,7 @@ function spots(r) {
   }
   return out;
 }
-function build(grass, flowers) {
-  let gm = null, gg = null;
-  grass.traverse(o => { if (o.isMesh && !gm) { gm = o.material; gg = o.geometry; } });
-  if (!gm) return;
-  const gmat = gm.clone(); gmat.alphaTest = 0.45; gmat.transparent = false; gmat.depthWrite = true; gmat.side = THREE.DoubleSide; gmat.roughness = 1;
+function build(flowers) {
   // a flower of the file is several meshes (petals, leaves, the stem — one material each): every part becomes its own
   // InstancedMesh, and all the parts of a kind share one buffer of matrices, so the whole flower stands together
   const fsets = flowers.map(f => {
@@ -48,19 +41,7 @@ function build(grass, flowers) {
   let flowerN = 0;
   for (const r of PARK_RINGS) {
     const pts = spots(r), area = Math.abs(area2(r)) / 2;
-    const cap = Math.min(pts.length, Math.max(40, Math.round(area * 0.05)));
-    const keep = pts.filter((_, i) => hash(i * 7.7 + area) < cap / pts.length);
-    if (keep.length) {
-      const im = new THREE.InstancedMesh(gg, gmat, keep.length);
-      keep.forEach(([x, z], i) => {
-        const h1 = hash(x * 5.1 + z * 3.3), h2 = hash(x * 9.7 + z * 1.1), s = 0.13 + h1 * 0.15;
-        Q.setFromAxisAngle(UP, h2 * Math.PI * 2); M.compose(V.set(x, 0, z), Q, S.set(s, s, s)); im.setMatrixAt(i, M);
-        im.setColorAt(i, C.setRGB(0.8 + h1 * 0.4, 0.85 + h2 * 0.3, 0.7 + h1 * 0.25));
-      });
-      im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
-      im.computeBoundingSphere(); im.castShadow = false; im.receiveShadow = false; scene.add(im);
-    }
-    // a few flowers among the grass: every twelfth tuft's place, at most forty per park and five hundred in the city
+    // a few flowers on the lawn: every twelfth place of the grid, at most forty per park and five hundred in the city
     const fn = Math.min(40, Math.round(area * 0.004));
     for (let i = 0; i < fn && flowerN < 500 && fsets.length; i++) {
       const p = pts[(i * 12 + 5) % pts.length]; if (!p) break;
