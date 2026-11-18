@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/pine-sway | Медленнее качание и дрожь кроны деревьев | src/world/trees.js |
+| Claude | claude/optimistic-babbage-y7tcvz | Не видно сквозь склоны и стены вблизи (сетка глубины под землёй, ближняя плоскость камеры) | src/world/ground.js, src/game/loop.js |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
 

@@ -6,7 +6,7 @@ import { AREA_HEX, AREA_ORDER } from './palette.js';
 import { groundMaterial } from '../render/materials.js';
 import { detailTex } from '../render/textures.js';
 import { PATCH, TERR, densify, inPatch, subTris, terrainH, waterLevel } from './terrain.js';
-import { cutFloor } from './cutting.js';
+import { CUT, cutFloor, cutInward, cutTouches } from './cutting.js';
 import { scene } from '../render/renderer.js';
 import { GB, polyA } from '../core/geometry.js';
 import { bbox, dec, hb, rnd, sh, triangulate } from '../core/util.js';
@@ -14,8 +14,9 @@ import { C, HX, HY, WL } from '../core/env.js';
 
 /* ---------- ground: land use, water in its bed ---------- */
 /* The ground layers are drawn first without writing depth; a hill must still hide what lies behind it. A grid on the
-   height grid, at least 0.5 m under the ground, writes depth first (and casts the shadows of the hills). It leaves out the
-   water, which lies lower, and the fortress, which has its own ground and depth mask. */
+   height grid, at least 0.5 m under the ground, writes depth first (and casts the shadows of the hills); a second one,
+   just under the ground, writes it after them for everything else. Both leave out the water, which lies lower, and the
+   fortress, which has its own ground and depth mask. */
 function terrainDepth() {
   if (!WMASK) waterMask();
   // on every node of the height grid, each 0.5 m under the lowest of its neighbours: the plane of a triangle then never
@@ -27,6 +28,15 @@ function terrainDepth() {
     m = Math.min(m, cutFloor(TERR.x0 + i * s, TERR.z0 + j * s) * 10);   // beside the retaining walls of the Latgales cutting
     g.vert(TERR.x0 + i * s, (m - q[j * nx + i]) * 0.1 - 0.5, TERR.z0 + j * s, 0, 1, 0, C0);
   }
+  /* That grid lies too deep to hide what stands behind a hill: on a slope the lowest neighbour is metres down, so the
+     people, trees and houses beyond a crest showed through the ground in front of them (most of all looking up a slope,
+     and a player on a hilltop through the hill). Once the ground layers are drawn a second grid writes depth close under
+     them: on the nodes, TOP_GAP under the ground, each cell cut along the diagonal that keeps both its triangles under
+     the bilinear heights (along the other one the twist of the cell would lift the plane over the ground). Only what is
+     drawn after the ground meets it, never the ground itself. It leaves out what the deep grid leaves out, and the road
+     of the Latgales cutting, which runs under the grid (cutY). */
+  const TOP_GAP = 0.25, top = new GB(false); top.ensure(nx * nz);
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) top.vert(TERR.x0 + i * s, -TOP_GAP, TERR.z0 + j * s, 0, 1, 0, C0);
   const wet = (x, z) => { const W = WMASK, i = Math.floor((x - W.X0) / W.S), j = Math.floor((z - W.Z0) / W.S); return i >= 0 && j >= 0 && i < W.NX && j < W.NZ && W.m[j * W.NX + i] !== 0; };
   for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
     const x = TERR.x0 + i * s, z = TERR.z0 + j * s;
@@ -34,7 +44,11 @@ function terrainDepth() {
     let w = false; for (let a = 0; a <= s && !w; a += s / 4) for (let b = 0; b <= s && !w; b += s / 4) w = wet(x + a, z + b); if (w) continue;
     if (inPatch(x, z, x + s, z + s)) continue;   // the fine patch has a depth grid of its own, below
     const k = j * nx + i; g.triUp(k, k + nx, k + 1); g.triUp(k + 1, k + nx, k + nx + 1);
+    if (cutTouches([x, z, x + s, z + s]) && cutInward(x + s / 2, z + s / 2)[2] < CUT.BLEND + s) continue;
+    if (q[k] - q[k + 1] - q[k + nx] + q[k + nx + 1] > 0) { top.triUp(k, k + 1, k + nx); top.triUp(k + 1, k + nx + 1, k + nx); }
+    else { top.triUp(k, k + 1, k + nx + 1); top.triUp(k, k + nx + 1, k + nx); }
   }
+  const tm = top.mesh(new THREE.MeshBasicMaterial({ colorWrite: false })); if (tm) { tm.renderOrder = -29; tm.frustumCulled = false; scene.add(tm); }   // after every ground layer (the last at -30)
   /* over the fine patch (src/world/underpass.js) a 2 m grid, each node 0.5 m under the lowest ground around it, over
      the cells of the coarse grid it replaces; the water left out as there */
   if (PATCH.on) {
