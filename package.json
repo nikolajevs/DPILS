@@ -8,7 +8,8 @@
     "preview": "vite preview",
     "check": "node tools/check.mjs",
     "test": "node tools/combat-test.mjs",
-    "server": "node server/index.mjs"
+    "server": "node server/index.mjs",
+    "loop": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/improve-loop.ps1"
   },
   "dependencies": {
     "three": "0.187.0",
