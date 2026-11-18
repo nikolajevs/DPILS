@@ -5,7 +5,10 @@ import { LMF, LMWHITE, lmL, lmW } from './core.js';
 import { lmRegisterOutline } from './tv-tower.js';
 import { flatPlain } from '../buildings/walls.js';
 import { polyA } from '../core/geometry.js';
-import { area2, hb, sh } from '../core/util.js';
+import { area2, hb, offsetRing, pip, sh } from '../core/util.js';
+import * as THREE from 'three';
+import { glowTex } from '../render/textures.js';
+import { scene } from '../render/renderer.js';
 
 /* ---- Substation "Daugavpils" 330/110 kV and the transformer substations of Ķīmiķu ciemats ----
    The 330/110 kV substation "Daugavpils" (OSM way 115788081, ref 30, operator Augstsprieguma tīkls,
@@ -28,11 +31,28 @@ import { area2, hb, sh } from '../core/util.js';
    yellow warning triangle. Frame ss: origin in the middle of the yard, u towards the 290/291 portals,
    v towards the 110 kV line-entry towers. Heights are relative to the ground; the terrain shader lifts
    every vertex, so the yard follows the DEM. */
+// the two switchyard outlines in the local frame of LMF.ss; kept at module scope so the tree planter can
+// test them without waiting for the landmark build (same lazy pattern as fuelNoTree / spwNoTree)
+const SS_RING = [-116.4, -84.9, -134, -71.3, -137.3, -68.8, -35.6, 62.8, -32.1, 63.2, 78.1, -22.7, 78.3, -25.2, 67.4, -41.2, 106.9, -72, 108.5, -74.7, 107.3, -77.7, 91.4, -98.3, 180.1, -166.6, 183.6, -186.7, 112.7, -278.3, 63, -239.3, 75.6, -222.5, 21.8, -180.3, 12, -172.7, 5.8, -180.6, -27.5, -155.4, -113.9, -86.9];
+const SS_RINGB = [493.6, -205.7, 484, -198.8, 481.3, -196.8, 473.3, -191, 492.2, -164.9, 504.8, -174, 512.5, -179.6];
+let SS_RINGS = null;
+let SS_POOLS = null;
+function ssNoTree(x, z) {
+  if (!SS_RINGS) { const f = LMF.ss, mk = r => { const w = []; let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9;
+    for (let i = 0; i < r.length; i += 2) { const p = lmW(f, r[i], r[i + 1]); w.push(p[0], p[1]); x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); z0 = Math.min(z0, p[1]); z1 = Math.max(z1, p[1]); }
+    return { ring: w, bb: [x0, z0, x1, z1] }; }; SS_RINGS = [mk(SS_RING), mk(SS_RINGB)]; }
+  for (const r of SS_RINGS) if (x >= r.bb[0] && x <= r.bb[2] && z >= r.bb[1] && z <= r.bb[3] && pip(x, z, r.ring)) return true;
+  return false;
+}
+
 function lmSubstation(K) {
   const f = LMF.ss, G = K.plain, Gl = K.globe;
+  // a sub-frame of the yard frame, centred at local (u,v) and turned by ang (for rotated equipment boxes)
+  const fr = (u, v, ang) => { const w = lmW(f, u, v), c = Math.cos(ang), s = Math.sin(ang); return [w[0], w[1], f[2] * c - f[3] * s, f[3] * c + f[2] * s]; };
   const at = (u, v, y) => { const w = lmW(f, u, v); return [w[0], y, w[1]]; };
+  const pools = [];   // floodlight spill on the gravel, shown at night
   const STEEL = hb('#9aa2a6'), STEEL_D = hb('#7c8488'), CON = hb('#a8a6a0'), PORC = hb('#6b5d4f'),
-    TR = hb('#7d8471'), GRAVEL = hb('#8d8b83'), FENCE = hb('#b5b2aa'), WALL = hb('#e8e6e0'),
+    TR = hb('#7d8471'), GRAVEL = hb('#7c7a72'), FENCE = hb('#b5b2aa'), WALL = hb('#e8e6e0'),
     ROOF = hb('#55575a'), BRK = hb('#b0846a'), PAN = hb('#c9c6bd'), YEL = hb('#e8c832');
   STATE.GBC = null;
   // a box in world coordinates
@@ -93,43 +113,87 @@ function lmSubstation(K) {
     }
     return pts;
   };
-  // post insulator stack
-  const ins = (x, z, y0, h, col = PORC) => { lmLathe(G, x, z, y0, [[0.09, 0], [0.09, h]], 6, col);
-    const n = Math.max(2, Math.round(h / 0.45)); for (let k = 0; k < n; k++) lmLathe(G, x, z, y0 + h * (k + 0.5) / n, [[0.2, 0], [0.2, 0.04]], 8, col); };
-  // oil circuit breaker: three tanks on a frame, bushings on top
-  const breaker = (u, v, ang) => {
-    const du = Math.cos(ang), dv = Math.sin(ang);
-    lmBoxL(G, f, u - 2.2, u + 2.2, v - 1.2, v + 1.2, 0.15, 1.1, STEEL_D, false);
-    for (const s of [-1.5, 0, 1.5]) { const w = lmW(f, u + du * s, v + dv * s);
-      lmLathe(G, w[0], w[1], 1.1, [[0.5, 0], [0.5, 1.7], [0.42, 1.85], [0.42, 2.0]], 10, TR);
-      ins(w[0], w[1], 2.9, 1.2); ins(w[0] + 0.3, w[1], 2.9, 0.9); }
-    lmBar(G, at(u - 2.2, v, 2.0), at(u + 2.2, v, 2.0), 0.1, STEEL);
+  // post insulator stack: porcelain core, sheds, steel cap
+  const ins = (x, z, y0, h, col = PORC) => { lmLathe(G, x, z, y0, [[0.085, 0], [0.085, h]], 6, col);
+    const n = Math.max(2, Math.round(h / 0.4)); for (let k = 0; k < n; k++) lmLathe(G, x, z, y0 + h * (k + 0.5) / n - 0.02, [[0.19, 0], [0.19, 0.05], [0.085, 0.07]], 8, col);
+    lmLathe(G, x, z, y0 + h, [[0.11, 0], [0.11, 0.1]], 6, STEEL); };
+  // shedded bushing, brown porcelain; r grows with voltage
+  const bush = (x, z, y0, h, r) => { lmLathe(G, x, z, y0, [[r * 0.45, 0], [r * 0.45, h]], 6, PORC);
+    const n = Math.max(3, Math.round(h / 0.26)); for (let k = 0; k < n; k++) lmLathe(G, x, z, y0 + h * (k + 0.5) / n - 0.025, [[r, 0], [r, 0.045], [r * 0.45, 0.065]], 8, PORC);
+    lmLathe(G, x, z, y0 + h, [[r * 0.5, 0], [r * 0.5, 0.12]], 6, STEEL); };
+  // oil circuit breaker: concrete raft, steel frame, control cabinet, three domed tanks with paired bushings
+  const breaker = (u, v, ang, k = 1) => {
+    const ff = fr(u, v, ang), bh = 1.2 * k;
+    lmBoxL(G, ff, -2.2, 2.2, -1.1, 1.1, 0, 0.22, CON, false);
+    lmBoxL(G, ff, -2.0, 2.0, -0.9, 0.9, 0.22, 1.0, STEEL_D, false);
+    lmBoxL(G, ff, 1.4, 2.1, -0.8, 0.8, 1.0, 1.95, sh(STEEL, 0.92), false);
+    lmBoxL(G, ff, 1.55, 1.95, -0.82, -0.78, 1.15, 1.75, sh(CON, 0.8), false);
+    for (const s of [-1.4, 0, 1.4]) { const w = lmW(ff, s, 0);
+      lmLathe(G, w[0], w[1], 1.0, [[0.46, 0], [0.5, 0.12], [0.5, 1.55 * k], [0.34, 1.68 * k], [0.14, 1.72 * k]], 10, TR);
+      const b1 = lmW(ff, s, -0.26), b2 = lmW(ff, s, 0.26);
+      bush(b1[0], b1[1], 1.0 + 1.66 * k, bh, 0.16 * k); bush(b2[0], b2[1], 1.0 + 1.66 * k, bh, 0.16 * k); }
+    const t0 = lmW(ff, -1.4, 0), t1 = lmW(ff, 1.4, 0), ty = 1.0 + 1.72 * k + 0.1;
+    lmBar(G, [t0[0], ty, t0[1]], [t1[0], ty, t1[1]], 0.07, STEEL);
   };
-  // disconnector: three posts with blades
+  // disconnector: concrete base, three phases of twin posts with blades, operating mechanism and rods
   const disco = (u, v, ang) => {
-    const du = Math.cos(ang), dv = Math.sin(ang);
-    for (const s of [-1.6, 0, 1.6]) { const w = lmW(f, u + du * s, v + dv * s);
-      ins(w[0], w[1], 0.2, 2.2); ins(w[0] + 0.9, w[1], 0.2, 2.2);
-      lmBar(G, [w[0], 2.5, w[1]], [w[0] + 0.9, 2.7, w[1]], 0.06, STEEL); }
-    lmBoxL(G, f, u - 2.4, u + 2.4, v - 0.8, v + 0.8, 0, 0.2, CON, false);
+    const ff = fr(u, v, ang);
+    lmBoxL(G, ff, -2.5, 2.5, -0.6, 0.6, 0, 0.2, CON, false);
+    lmBoxL(G, ff, -2.4, 2.4, -0.14, 0.14, 0.2, 0.5, STEEL_D, false);
+    lmBoxL(G, ff, -0.35, 0.35, -0.5, 0.5, 0.2, 1.05, sh(STEEL, 0.9), false);
+    for (const s of [-1.6, 0, 1.6]) { const a = lmW(ff, s - 0.45, 0), b = lmW(ff, s + 0.45, 0);
+      ins(a[0], a[1], 0.5, 2.1); ins(b[0], b[1], 0.5, 2.1);
+      lmBar(G, [a[0], 2.72, a[1]], [b[0], 2.72, b[1]], 0.06, STEEL);
+      lmBar(G, [b[0], 2.72, b[1]], [b[0], 3.05, b[1]], 0.05, STEEL);
+      const m = lmW(ff, s, 0); lmBar(G, [m[0], 0.5, m[1]], [m[0], 2.6, m[1]], 0.04, STEEL_D); }
   };
-  // current transformer: a tank on a tall insulator
-  const ct = (u, v) => { const w = lmW(f, u, v); ins(w[0], w[1], 0.2, 2.4);
-    lmLathe(G, w[0], w[1], 2.6, [[0.35, 0], [0.35, 0.7], [0.28, 0.85]], 10, TR); ins(w[0], w[1], 3.45, 0.5); };
-  // power transformer: tank with radiators, conservator, bushings
+  // current transformer: tall insulator, finned tank, top bushing, secondary terminal box
+  const ct = (u, v) => { const w = lmW(f, u, v);
+    box2(w[0], w[1], 0, 0.25, 0.5, CON);
+    ins(w[0], w[1], 0.25, 2.3);
+    lmLathe(G, w[0], w[1], 2.55, [[0.34, 0], [0.36, 0.1], [0.36, 0.6], [0.22, 0.72]], 10, TR);
+    for (let k = 0; k < 4; k++) lmBar(G, [w[0] + 0.36, 2.65 + k * 0.13, w[1] - 0.2], [w[0] + 0.36, 2.65 + k * 0.13, w[1] + 0.2], 0.03, sh(TR, 0.85));
+    bush(w[0], w[1], 3.27, 0.5, 0.12);
+    box2(w[0] + 0.45, w[1], 0.25, 0.8, 0.16, sh(STEEL, 0.9)); lmBar(G, [w[0] + 0.45, 0.25, w[1]], [w[0] + 0.45, 0.02, w[1]], 0.04, STEEL_D); };
+  // capacitor voltage transformer: insulator base, stacked capacitor cans, electromagnetic unit
+  const cvt = (u, v) => { const w = lmW(f, u, v);
+    box2(w[0], w[1], 0, 0.25, 0.45, CON); ins(w[0], w[1], 0.25, 1.4);
+    let y = 1.65; for (let k = 0; k < 3; k++) { lmLathe(G, w[0], w[1], y, [[0.24, 0], [0.24, 0.55], [0.2, 0.6]], 8, sh(PORC, 1.06)); y += 0.62; }
+    lmLathe(G, w[0], w[1], y, [[0.3, 0], [0.3, 0.4]], 8, TR); bush(w[0], w[1], y + 0.4, 0.45, 0.12);
+    box2(w[0] + 0.38, w[1], 0.25, 0.7, 0.15, sh(STEEL, 0.9)); };
+  // surge arrester: insulator base, shedded porcelain housing, earth lead and counter
+  const arrester = (u, v) => { const w = lmW(f, u, v);
+    box2(w[0], w[1], 0, 0.2, 0.3, CON); ins(w[0], w[1], 0.2, 0.9);
+    lmLathe(G, w[0], w[1], 1.1, [[0.16, 0], [0.16, 1.7]], 6, sh(PORC, 0.95));
+    for (let k = 0; k < 7; k++) lmLathe(G, w[0], w[1], 1.1 + 1.7 * (k + 0.5) / 7 - 0.025, [[0.22, 0], [0.22, 0.045], [0.16, 0.065]], 8, sh(PORC, 0.95));
+    lmLathe(G, w[0], w[1], 2.8, [[0.1, 0], [0.1, 0.15]], 6, STEEL); lmBar(G, [w[0], 2.95, w[1]], [w[0], 3.15, w[1]], 0.04, STEEL);
+    lmBar(G, [w[0] + 0.16, 1.2, w[1]], [w[0] + 0.32, 0.05, w[1]], 0.03, STEEL_D); box2(w[0] + 0.32, w[1], 0, 0.3, 0.1, sh(STEEL, 0.8)); };
+  // power transformer: oil pit, rails, tank, radiator banks, conservator, HV/LV bushings, tap changer, nameplate
   const trafo = (u, v, ang, big = true) => {
-    const du = Math.cos(ang), dv = Math.sin(ang), L = big ? 4.6 : 3.2, W = big ? 2.6 : 2.0, H = big ? 3.4 : 2.6;
-    const c = lmW(f, u, v); box2(c[0], c[1], 0.05, 0.35, Math.max(L, W) * 0.62, CON);
-    const P = (s, t, y) => at(u + du * s - dv * t, v + dv * s + du * t, y);
-    lmBoxL(G, f, u - L / 2, u + L / 2, v - W / 2, v + W / 2, 0.35, 0.35 + H, TR, false);
-    for (const sgn of [-1, 1]) for (let k = 0; k < (big ? 7 : 5); k++) {
-      const s = -L / 2 + 0.5 + k * (L - 1) / (big ? 6 : 4), t = sgn * (W / 2 + 0.28);
-      lmBar(G, P(s, t, 0.7), P(s, t, 0.35 + H - 0.4), 0.16, sh(TR, 0.92)); }
-    const cv = P(0, W / 2 + 0.55, 0.35 + H + 0.55);
-    lmBar(G, P(-L / 4, W / 2, 0.35 + H), cv, 0.12, STEEL_D); lmBar(G, P(L / 4, W / 2, 0.35 + H), cv, 0.12, STEEL_D);
-    lmLathe(G, cv[0], cv[2], cv[1], [[0.32, 0], [0.32, L * 0.62], [0.26, L * 0.62 + 0.15]], 10, sh(TR, 1.05));
-    for (const s of [-L / 3, 0, L / 3]) { const p = P(s, -W / 4, 0.35 + H); ins(p[0], p[2], p[1], big ? 1.9 : 1.3); }
-    for (const s of [-L / 3, L / 3]) { const p = P(s, W / 4, 0.35 + H); ins(p[0], p[2], p[1], 0.8); }
+    const ff = fr(u, v, ang), L = big ? 5.0 : 3.4, W = big ? 2.8 : 2.1, H = big ? 3.4 : 2.5;
+    const P = (s, t, y) => at(u + Math.cos(ang) * s - Math.sin(ang) * t, v + Math.sin(ang) * s + Math.cos(ang) * t, y);
+    lmBoxL(G, ff, -L / 2 - 1.1, L / 2 + 1.1, -W / 2 - 1.1, W / 2 + 1.1, 0, 0.1, sh(GRAVEL, 0.88), false);
+    for (const [a, b, c, d] of [[-L / 2 - 1.1, L / 2 + 1.1, -W / 2 - 1.1, -W / 2 - 0.8], [-L / 2 - 1.1, L / 2 + 1.1, W / 2 + 0.8, W / 2 + 1.1], [-L / 2 - 1.1, -L / 2 - 0.8, -W / 2 - 1.1, W / 2 + 1.1], [L / 2 + 0.8, L / 2 + 1.1, -W / 2 - 1.1, W / 2 + 1.1]])
+      lmBoxL(G, ff, a, b, c, d, 0.1, 0.5, CON, false);
+    lmBoxL(G, ff, -L / 2, L / 2, -W / 2 + 0.25, -W / 2 + 0.45, 0.1, 0.22, sh(STEEL, 0.7), false);
+    lmBoxL(G, ff, -L / 2, L / 2, W / 2 - 0.45, W / 2 - 0.25, 0.1, 0.22, sh(STEEL, 0.7), false);
+    lmBoxL(G, ff, -L / 2, L / 2, -W / 2, W / 2, 0.35, 0.5, CON, false);
+    lmBoxL(G, ff, -L / 2, L / 2, -W / 2, W / 2, 0.5, 0.5 + H, TR, false);
+    lmBoxL(G, ff, -L / 2, L / 2, -W / 2, W / 2, 0.5 + H, 0.66 + H, sh(TR, 1.08), false);
+    const nr = big ? 8 : 5;
+    for (let k = 0; k < nr; k++) { const s = -L / 2 + 0.45 + k * (L - 0.9) / (nr - 1);
+      lmBoxL(G, ff, s - 0.11, s + 0.11, -W / 2 - 0.5, -W / 2 - 0.04, 0.8, 0.45 + H, sh(TR, 0.82), false);
+      lmBoxL(G, ff, s - 0.11, s + 0.11, W / 2 + 0.04, W / 2 + 0.5, 0.8, 0.45 + H, sh(TR, 0.82), false); }
+    const cy = 0.66 + H + 0.62, ca = P(-L / 2 + 0.7, 0, cy), cb = P(L / 2 - 1.5, 0, cy);
+    lmBar(G, ca, cb, 0.62, sh(TR, 1.05));
+    lmLathe(G, ca[0], ca[2], cy - 0.31, [[0.31, 0], [0.31, 0.62]], 8, sh(TR, 1.05));
+    lmBoxL(G, ff, -L / 2 + 0.6, -L / 2 + 0.8, -0.08, 0.08, 0.66 + H, cy - 0.28, STEEL_D, false);
+    lmBoxL(G, ff, L / 2 - 1.6, L / 2 - 1.4, -0.08, 0.08, 0.66 + H, cy - 0.28, STEEL_D, false);
+    for (const s of [-L / 3, 0, L / 3]) { const p = P(s, -W / 4, 0.66 + H); bush(p[0], p[2], p[1], big ? 2.1 : 1.3, big ? 0.2 : 0.14); }
+    for (const s of [-L / 3, 0, L / 3]) { const p = P(s, W / 4, 0.66 + H); bush(p[0], p[2], p[1], big ? 0.85 : 0.6, 0.12); }
+    const tc = P(L / 2 + 0.32, 0, 0);
+    lmLathe(G, tc[0], tc[2], 0.5 + H * 0.35, [[0.3, 0], [0.3, H * 0.5]], 8, sh(TR, 0.9));
+    lmBoxL(G, ff, -0.3, 0.3, -W / 2 - 0.03, -W / 2, 1.3, 1.7, LMWHITE, false);
   };
   // busbar tubes on post insulators behind the portal row
   const busbar = (u0, v0, u1, v1, y) => {
@@ -178,18 +242,47 @@ function lmSubstation(K) {
     }
     return prev;
   };
-  // aviation light on a tall tower
-  const light = (x, z, y) => { const t = LMT.tvRed; K.det.q([x - 0.2, y, z], [x + 0.2, y, z], [x + 0.2, y + 0.4, z], [x - 0.2, y + 0.4, z], [0, 0, 1], [t.u0, t.v0, t.u1, t.v0, t.u1, t.v1, t.u0, t.v1], LMWHITE, 0); };
-  // lightning mast with a floodlight head
-  const mast = (u, v, h = 24) => { const w = lmW(f, u, v);
-    lmLathe(G, w[0], w[1], 0, [[0.5, 0], [0.5, 0.6], [0.22, 0.6], [0.16, h], [0.05, h + 1.2]], 8, STEEL);
-    lmBar(G, [w[0] - 0.7, h - 0.6, w[1]], [w[0] + 0.7, h - 0.6, w[1]], 0.1, STEEL_D);
-    lmLathe(Gl, w[0], w[1], h - 0.75, [[0.16, 0], [0.2, 0.1], [0.16, 0.2]], 8, hb('#f4f1e8')); };
+  // aviation light on a tall tower (glows at night through LMM.det)
+  const light = (x, z, y) => { const t = LMT.tvRed; K.det.q([x - 0.2, y, z], [x + 0.2, y, z], [x + 0.2, y + 0.4, z], [x - 0.2, y + 0.4, z], [0, 0, 1], [t.u0, t.v0, t.u1, t.v0, t.u1, t.v1, t.u0, t.v1], LMWHITE, 1); };
+  // floodlight mast: concrete foot, tapered pole, braced crossarm, four heads with glowing lenses
+  const mast = (u, v, h = 24) => { const w = lmW(f, u, v), x = w[0], z = w[1]; pools.push([x, z, 16]);
+    box2(x, z, 0, 0.4, 0.55, CON);
+    lmLathe(G, x, z, 0.4, [[0.3, 0], [0.13, h]], 8, STEEL);
+    lmBar(G, [x - 0.95, h + 0.3, z], [x + 0.95, h + 0.3, z], 0.1, STEEL_D);
+    lmBar(G, [x, h - 1.2, z], [x - 0.95, h + 0.3, z], 0.06, STEEL_D); lmBar(G, [x, h - 1.2, z], [x + 0.95, h + 0.3, z], 0.06, STEEL_D);
+    for (const dx of [-0.8, -0.28, 0.28, 0.8]) { const hx = x + dx;
+      lmLathe(G, hx, z, h + 0.02, [[0.15, 0], [0.19, 0.26], [0.15, 0.3]], 6, sh(STEEL, 0.82));
+      polyA(Gl, [[hx - 0.15, h + 0.04, z - 0.15], [hx + 0.15, h + 0.04, z - 0.15], [hx + 0.15, h + 0.04, z + 0.15], [hx - 0.15, h + 0.04, z + 0.15]], LMWHITE, 0, -1, 0); }
+    light(x, z, h + 0.5); };
+  // a concrete service road strip along a local line
+  const road = (u0, v0, u1, v1, w = 3.2) => {
+    const dx = u1 - u0, dv = v1 - v0, L = Math.hypot(dx, dv) || 1, nx = -dv / L * w / 2, nv = dx / L * w / 2;
+    const P = [[u0 + nx, v0 + nv], [u1 + nx, v1 + nv], [u1 - nx, v1 - nv], [u0 - nx, v0 - nv]].map(p => { const q = lmW(f, p[0], p[1]); return [q[0], 0.12, q[1]]; });
+    polyA(G, P, sh(CON, 0.9), 0, 1, 0); };
+  // a cable trench with concrete cover slabs along a local line
+  const trench = (u0, v0, u1, v1) => {
+    const dx = u1 - u0, dv = v1 - v0, L = Math.hypot(dx, dv) || 1, nx = -dv / L * 0.32, nv = dx / L * 0.32;
+    const P = [[u0 + nx, v0 + nv], [u1 + nx, v1 + nv], [u1 - nx, v1 - nv], [u0 - nx, v0 - nv]].map(p => { const q = lmW(f, p[0], p[1]); return [q[0], 0.16, q[1]]; });
+    polyA(G, P, sh(CON, 1.06), 0, 1, 0);
+    const n = Math.max(1, Math.round(L / 1.2));
+    for (let k = 1; k < n; k++) { const t = k / n, cx = u0 + dx * t, cz = v0 + dv * t, a = lmW(f, cx + nx, cz + nv), b = lmW(f, cx - nx, cz - nv);
+      lmBar(G, [a[0], 0.17, a[1]], [b[0], 0.17, b[1]], 0.03, sh(CON, 0.78)); } };
+  // a concrete fire wall between transformers
+  const fireWall = (u, v, ang, len, h) => { const ff = fr(u, v, ang);
+    lmBoxL(G, ff, -len / 2, len / 2, -0.18, 0.18, 0, h, CON, false);
+    lmBoxL(G, ff, -len / 2, len / 2, -0.24, 0.24, h, h + 0.14, sh(CON, 1.05), false); };
+  // jumper drops from a portal's three string feet down to the bay breaker bushings
+  const drops = (pts, bu, bv, ang, k = 1) => { if (!pts) return; const ff = fr(bu, bv, ang), ty = 1.0 + 1.66 * k + 1.2 * k + 0.12;
+    for (let i = 0; i < Math.min(3, pts.length); i++) { const w = lmW(ff, (i - 1) * 1.4, 0); wire(pts[i], [w[0], ty, w[1]], 0.08); } };
 
   /* ---- the yard ---- */
-  const ring = [-116.4, -84.9, -134, -71.3, -137.3, -68.8, -35.6, 62.8, -32.1, 63.2, 78.1, -22.7, 78.3, -25.2, 67.4, -41.2, 106.9, -72, 108.5, -74.7, 107.3, -77.7, 91.4, -98.3, 180.1, -166.6, 183.6, -186.7, 112.7, -278.3, 63, -239.3, 75.6, -222.5, 21.8, -180.3, 12, -172.7, 5.8, -180.6, -27.5, -155.4, -113.9, -86.9];
+  const ring = SS_RING;
   const ringPts = []; for (let i = 0; i < ring.length; i += 2) ringPts.push([ring[i], ring[i + 1]]);
-  flatPlain(G, [ring], 0.05, GRAVEL);
+  // flatPlain draws in WORLD xz, so the local outline must be carried through the frame first
+  const toWorld = r => { const o = []; for (let i = 0; i < r.length; i += 2) o.push(...lmW(f, r[i], r[i + 1])); return o; };
+  const ringW = toWorld(ring);
+  flatPlain(G, [ringW], 0.08, GRAVEL);
+  flatPlain(G, [toWorld(offsetRing(ring, -3))], 0.09, sh(GRAVEL, 1.05));   // a slightly lighter gravel heart
   lmRegisterOutline(f, ringPts, 6, false);
   fenceLine(ring);
   // the outer fence along the south-west side (way 837198920)
@@ -206,13 +299,19 @@ function lmSubstation(K) {
     p136 = portal(57.6, -46.3, -0.5), p291 = portal(70.2, -56.2, 0.78), p290 = portal(89.2, -70.7, 0.66);
   busbar(-22, 8.5, 92, -76.5, 6.5); busbar(-22, 5.5, 92, -79.5, 6.5);
   for (const [u, v] of [[-18.3, 12.2], [-5.7, 2.4], [19.6, -17.1], [44.9, -36.6], [70.2, -56.2]]) {
-    breaker(u - 4, v - 8, 0.9); disco(u - 8, v - 12, 0.9); ct(u - 1, v - 11); }
+    breaker(u - 4, v - 8, 0.9); disco(u - 8, v - 12, 0.9); ct(u - 1, v - 11); cvt(u + 2, v - 12); arrester(u + 4, v - 7); }
+  // cable trenches along the bay rows and service roads behind the portal lines
+  trench(-26, 2, 78, -64); trench(-26, -2, 78, -68);
+  road(-30, 16, 92, -72, 3.4); road(-44, -22, 82, -104, 3.4);
+  drops(p131, -22.3, 4.2, 0.9); drops(p631, -9.7, -5.6, 0.9); drops(p632, 15.6, -25.1, 0.9); drops(p137, 40.9, -44.6, 0.9); drops(p291, 66.2, -64.2, 0.9);
   /* ---- transformers ---- */
   trafo(0.3, -95.3, 0.9, true); trafo(-34, -94.4, 0.9, true); trafo(-66.7, -105.4, 0.9, true);
   trafo(-85.3, -91.1, 0.9, false); trafo(-27.5, -155.4, 0.9, true); trafo(28.5, -134.7, 0.9, true);
   trafo(54.7, -126, 0.9, false); trafo(-55.4, -231.5, 0.9, false);
-  for (const [u, v] of [[0.3, -95.3], [-34, -94.4], [-66.7, -105.4], [-27.5, -155.4], [28.5, -134.7]]) {
-    const w = lmW(f, u, v); box2(w[0], w[1], 0.05, 0.13, 4.2, sh(CON, 0.95)); }
+  // concrete fire walls between the adjacent oil-filled transformers
+  for (const [a, b] of [[[0.3, -95.3], [-34, -94.4]], [[-34, -94.4], [-66.7, -105.4]], [[-27.5, -155.4], [28.5, -134.7]]]) {
+    fireWall((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, Math.atan2(b[1] - a[1], b[0] - a[0]) + Math.PI / 2, 6.5, 4.6); }
+  road(-90, -80, 60, -150, 3.6); trench(-70, -88, 40, -140);
   /* ---- 330 kV portal row ---- */
   const p313 = portal(85.3, -237.9, 0.95, 20, 6.5), p314 = portal(128.6, -182.4, 0.95, 20, 6.5);
   portal(97.4, -222.4, 0.95, 20, 6.5); portal(68.1, -193.5, 0.95, 20, 6.5);
@@ -220,8 +319,11 @@ function lmSubstation(K) {
   portal(138.6, -169.5, 0.95, 20, 6.5); portal(118, -197.1, 0.95, 20, 6.5);
   portal(-17.4, -285.3, 0.33, 20, 6.5);
   busbar(60, -245, 145, -160, 11); busbar(60, -249, 145, -164, 11);
-  for (const [u, v] of [[85.3, -237.9], [128.6, -182.4], [106.3, -144.8]]) { breaker(u - 6, v - 10, 2.5); disco(u - 12, v - 16, 2.5); ct(u - 2, v - 14); }
+  for (const [u, v] of [[85.3, -237.9], [128.6, -182.4], [106.3, -144.8]]) { breaker(u - 6, v - 10, 2.5, 1.6); disco(u - 12, v - 16, 2.5); ct(u - 2, v - 14); cvt(u + 3, v - 15); arrester(u + 6, v - 9); }
+  trench(60, -240, 145, -156); road(50, -256, 152, -150, 3.6);
+  drops(p313, 79.3, -247.9, 2.5, 1.6); drops(p314, 122.6, -192.4, 2.5, 1.6);
   mast(-40, -60); mast(60, -120); mast(120, -200); mast(-100, -200);
+  mast(20, -30, 20); mast(-70, -150, 22); mast(100, -262, 22); mast(-112, -120, 20);
 
   /* ---- service buildings (heights from the cadastre) ---- */
   const bld = (poly, top, rows, lit = 1) => {
@@ -271,9 +373,9 @@ function lmSubstation(K) {
   for (const k of [0, 2, 4]) { wire(p313[k / 2], c313[k], 0.14); wire(p314[k / 2], c314[k], 0.14); }
 
   /* ---- substation "Daugavpils B" 110/10 kV (way 1066909952) ---- */
-  const ringB = [493.6, -205.7, 484, -198.8, 481.3, -196.8, 473.3, -191, 492.2, -164.9, 504.8, -174, 512.5, -179.6];
+  const ringB = SS_RINGB;
   const ringBPts = []; for (let i = 0; i < ringB.length; i += 2) ringBPts.push([ringB[i], ringB[i + 1]]);
-  flatPlain(G, [ringB], 0.05, GRAVEL);
+  flatPlain(G, [toWorld(ringB)], 0.08, GRAVEL);
   lmRegisterOutline(f, ringBPts, 6, false);
   fenceLine(ringB, 2.2);
   gate(481.3, -196.8, 484, -198.8, 2.2);
@@ -318,6 +420,13 @@ function lmSubstation(K) {
   tp([[1267.9, -1669.4], [1267.2, -1671.8], [1273.8, -1673.8], [1274.5, -1671.3]], PAN, 2.7);
   tp([[-253.6, -2468.9], [-257.8, -2462.6], [-263, -2466.1], [-258.7, -2472.4]]);               // Piekrastes 47B
   tp([[-60.1, -1289.5], [-45.7, -1277.6], [-49.5, -1273.2], [-63.6, -1285.4]], PAN, 3.6);
+
+  /* ---- pools of floodlight on the gravel, lit only at night (same recipe as the fuel stations) ---- */
+  { const pos = [], uv = [], idx = [];
+    for (const [x, z, h] of pools) { const k = pos.length / 3; pos.push(x - h, 0.14, z - h, x + h, 0.14, z - h, x + h, 0.14, z + h, x - h, 0.14, z + h); uv.push(0, 0, 1, 0, 1, 1, 0, 1); idx.push(k, k + 2, k + 1, k, k + 3, k + 2); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx);
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: glowTex(), color: new THREE.Color(0.82, 0.88, 1.0), transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    m.renderOrder = 5; m.frustumCulled = false; m.visible = false; scene.add(m); SS_POOLS = m; }
 }
 
-export { lmSubstation };
+export { lmSubstation, ssNoTree, SS_POOLS };
