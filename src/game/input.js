@@ -1,6 +1,6 @@
 import { STATE } from '../core/state.js';
 import { bSV, updateHud } from '../ui/hud.js';
-import { big, bigC, bigPpm, closeMap, openMap } from '../ui/map.js';
+import { MAP, big, closeMap, openMap } from '../ui/map.js';
 import { QUALITY, TIMES, qi, setQuality, setTime, timeI } from '../render/lighting.js';
 import { P, freeSpot, keys, setFly, teleport, touch } from './player.js';
 import { PERF } from './perf.js';
@@ -59,7 +59,7 @@ $('bQuality').onclick = () => { PERF.auto = false; setQuality((qi + 1) % QUALITY
 bSV.addEventListener('pointerdown', updateHud);
 $('bHelp').onclick = () => { if (document.pointerLockElement) document.exitPointerLock(); $('start').hidden = false; $('go').textContent = 'Продолжить'; };
 big.addEventListener('click', e => { if (e.target === big) closeMap(); });
-bigC.addEventListener('click', e => { if (STATE.mp) return; const r = bigC.getBoundingClientRect(); teleport((e.clientX - r.left - r.width / 2) / bigPpm, (e.clientY - r.top - r.height / 2) / bigPpm, null); closeMap(); });
+MAP.pick = (x, z) => { teleport(x, z, null); closeMap(); };
 PLACES.forEach(p => { const li = document.createElement('li'), b = document.createElement('button'), s = document.createElement('small'); b.textContent = p[0]; s.textContent = p[1]; b.append(s); b.onclick = () => { teleport(p[2], p[3], p[4]); canvas.focus(); }; li.append(b); $('placeList').append(li); });
 $('go').onclick = () => {
   $('start').hidden = true; $('hud').hidden = false;
