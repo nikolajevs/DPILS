@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/pine-sway | Медленнее качание и дрожь кроны деревьев | src/world/trees.js |
+| Claude | claude/wizardly-ramanujan-gtjve8 | Земля следует буграм внутри больших треугольников (`subTris`) | src/world/terrain.js, src/world/ground.js |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
 

@@ -66,11 +66,13 @@ function buildGround() {
   const far = new GB(false), FN = 41; for (let j = 0; j < FN; j++) for (let i = 0; i < FN; i++) far.vert(-30000 + i * 1500, -0.4, -30000 + j * 1500, 0, 1, 0, bc);
   for (let j = 0; j < FN - 1; j++) for (let i = 0; i < FN - 1; i++) { const k = j * FN + i; far.triUp(k, k + FN, k + 1); far.triUp(k + 1, k + FN, k + FN + 1); }
   const fm = far.mesh(matBase); fm.renderOrder = -51; fm.frustumCulled = false; fm.receiveShadow = true; scene.add(fm);
-  // the base ground over the city: a grid of 400 m squares split where the terrain bends, like the other layers
+  /* the base ground over the city: a grid of 400 m squares split where the terrain bends, like the other layers. The base
+     ground and the land use lie on the ground to within 0.35 m (the test of subTris is exact: about as many triangles as
+     the midpoints of the sides gave at 0.25 m, which let them run metres off it), the water to within 0.4 m */
   const base = new GB(false), BX = Math.ceil(2 * HX / 400), BZ = Math.ceil(2 * HY / 400), bf = [], bt = [];
   for (let j = 0; j <= BZ; j++) for (let i = 0; i <= BX; i++) bf.push(-HX + i * 2 * HX / BX, -HY + j * 2 * HY / BZ);
   for (let j = 0; j < BZ; j++) for (let i = 0; i < BX; i++) { const k = j * (BX + 1) + i; bt.push(k, k + BX + 1, k + 1, k + 1, k + BX + 1, k + BX + 2); }
-  const bs = TERR.on ? subTris(bf, bt, 0.25) : { flat: bf, tris: bt };
+  const bs = TERR.on ? subTris(bf, bt, 0.35) : { flat: bf, tris: bt };
   base.ensure(bs.flat.length / 2); for (let i = 0; i < bs.flat.length; i += 2) base.vert(bs.flat[i], 0, bs.flat[i + 1], 0, 1, 0, bc);
   for (let t = 0; t < bs.tris.length; t += 3) base.triUp(bs.tris[t], bs.tris[t + 1], bs.tris[t + 2]);
   const gm0 = base.mesh(matBase); gm0.renderOrder = -50; gm0.frustumCulled = false; gm0.receiveShadow = true; scene.add(gm0);
@@ -79,7 +81,7 @@ function buildGround() {
   const colors = {}; for (const k in AREA_HEX) colors[k] = hb(AREA_HEX[k]);
   const land = new GB(false), wet = [[[], []], [[], []]], bank = new GB(false);   // the water: [positions, indices] with the field of src/world/water.js, then the small ponds
   AREAS.forEach((a, n) => {
-    const tr0 = triangulate(a.rings), { flat, tris } = TERR.on ? subTris(tr0.flat, tr0.tris, a.cls === 0 ? 0.4 : 0.25) : tr0;
+    const tr0 = triangulate(a.rings), { flat, tris } = TERR.on ? subTris(tr0.flat, tr0.tris, a.cls === 0 ? 0.4 : 0.35) : tr0;
     if (a.cls === 0) {
       const [wp, wi] = wet[waterDeep(a) ? 0 : 1], v0 = wp.length / 3; for (let i = 0; i < flat.length; i += 2) wp.push(flat[i], TERR.on ? waterLevel(flat[i], flat[i + 1]) - 0.1 - terrainH(flat[i], flat[i + 1]) : WL, flat[i + 1]);
       for (let i = 0; i < tris.length; i += 3) { const A = v0 + tris[i], B = v0 + tris[i + 1], Cc = v0 + tris[i + 2]; const s = (wp[3 * B + 2] - wp[3 * A + 2]) * (wp[3 * Cc] - wp[3 * A]) - (wp[3 * B] - wp[3 * A]) * (wp[3 * Cc + 2] - wp[3 * A + 2]); if (s >= 0) wi.push(A, B, Cc); else wi.push(A, Cc, B); }
