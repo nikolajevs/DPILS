@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/pine-sway | Медленнее качание и дрожь кроны деревьев | src/world/trees.js |
+| Chatbox | chatbox/car-wheels | Машины не висят над землёй (двойной terrainH), колёса чёрные | src/world/cars.js, src/landmarks/parking.js |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
 

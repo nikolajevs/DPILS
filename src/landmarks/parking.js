@@ -4,7 +4,7 @@ import { AREAS, COL, M_ASPH, M_DIRT, M_LAND, M_PAVE, ROAD, inBuilding } from '..
 import { carGeo, carMat, carsReady } from '../world/cars.js';
 import { LAMPS } from '../world/streets.js';
 import { CARROAD } from '../transit/transit.js';
-import { TERR, subTris, terrainH } from '../world/terrain.js';
+import { TERR, subTris } from '../world/terrain.js';
 import { camera, scene } from '../render/renderer.js';
 import { GB, SegGrid, box, lathe, polyA } from '../core/geometry.js';
 import { area2, bbox, edgeN, hash, hb, obb, pip, reversed, sh, triangulate } from '../core/util.js';
@@ -232,7 +232,7 @@ function lmParking(K) {
   LOTS.forEach((L, li) => { ST.prof[li] = L.prof; ST.f[li] = 0.85 + 0.3 * L.seed; L.li = li; });
   const tiles = new Map();
   for (let s = 0; s < n; s++) { if (!keep[s]) continue; const [R, L, face, par] = S[s], k = ST.n++, h1 = hash(s * 2654435761 + 11), h2 = hash(s * 40503 + 7);
-    const dx = R[2] * face, dz = R[3] * face; ST.x[k] = R[0]; ST.z[k] = R[1]; ST.y[k] = terrainH(R[0], R[1]); ST.a[k] = Math.atan2(-dz, dx); ST.kind[k] = par ? (h1 < 0.7 ? 1 : 0) : h1 < 0.5 ? 0 : h1 < 0.82 ? 1 : 2; ST.col[k] = Math.floor(h2 * COLS.length); ST.u[k] = hash(s * 7919 + 3); ST.lot[k] = L.li;
+    const dx = R[2] * face, dz = R[3] * face; ST.x[k] = R[0]; ST.z[k] = R[1]; ST.y[k] = 0;   // the vertex shader lifts the car by the terrain under it; baking terrainH here would double it and leave the car floating ST.a[k] = Math.atan2(-dz, dx); ST.kind[k] = par ? (h1 < 0.7 ? 1 : 0) : h1 < 0.5 ? 0 : h1 < 0.82 ? 1 : 2; ST.col[k] = Math.floor(h2 * COLS.length); ST.u[k] = hash(s * 7919 + 3); ST.lot[k] = L.li;
     const hl = ST.kind[k] === 2 ? 1.55 : ST.kind[k] === 1 ? 1.15 : 1.4; PCOL.add(R[0] - R[2] * hl, R[1] - R[3] * hl, R[0] + R[2] * hl, R[1] + R[3] * hl, k, 0);
     const key = Math.floor(R[0] / 1000) * 100 + Math.floor(R[1] / 1000); let t = tiles.get(key); if (!t) tiles.set(key, t = { cx: (Math.floor(R[0] / 1000) + 0.5) * 1000, cz: (Math.floor(R[1] / 1000) + 0.5) * 1000, s: [[], [], []] }); t.s[ST.kind[k]].push(k); }
   for (const t of tiles.values()) { t.m = null; TILES.push(t); }   // the BMW meshes are made by placeParkingCars once the files are in
