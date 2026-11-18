@@ -291,7 +291,7 @@ function fire(now) {
 }
 function switchWeapon(i) {
   if (MP.dead || i === MP.weapon || i < 0 || i >= WEAPONS.length) return;
-  MP.weapon = i; MP.firing = false; MP.scope = false; models.forEach((m, k) => { m.visible = k === i; }); if (vm && i === 0) vm.equip(); tone(300, 200, 0.06, 0.15, 'square'); updatePanel();   // the reload keeps running: the server locks every weapon until it ends (server/game.mjs shoot)
+  MP.weapon = i; MP.firing = false; MP.scope = false; crossGap = CROSS[i].ring ? 20 : CROSS[i].gap; models.forEach((m, k) => { m.visible = k === i; }); if (vm && i === 0) vm.equip(); tone(300, 200, 0.06, 0.15, 'square'); updatePanel();   // the reload keeps running: the server locks every weapon until it ends (server/game.mjs shoot)
 }
 function reload(now) {
   const w = W(); MP.scope = false;
@@ -512,6 +512,40 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => { if (e.code === SET.keys.board) el('mpBoard').hidden = true; if (e.code === SET.keys.voice && voice) voice.talk(false); });
 
+/* ---------- the crosshair ----------
+   Four lines and a dot (a ring for the shotgun) whose gap follows the real angular spread of the shots, projected to
+   screen pixels through the current field of view. The colour warns about the magazine: amber when it runs low or a
+   reload is on, red when it is empty; a ring around the cross counts the reload down. */
+const CROSS = [
+  { gap: 5, len: 9, th: 2 },        // rifle
+  { ring: true, gap: 12, th: 2 },   // shotgun: the ring is the pellet cone
+  { gap: 12, len: 7, th: 1.5 },     // sniper, from the hip
+  { gap: 4, len: 7, th: 2 },        // pistol
+  { gap: 8, len: 10, th: 2.5 } ];   // machine gun
+const crossEl = $('cross'), crossRe = crossEl.querySelector('.c-re circle');
+let crossGap = 6, crossKey = '';
+function crossTick(dt, now) {
+  const cfg = CROSS[MP.weapon], w = W();
+  const show = !MP.dead && MP.zoom <= 0.6;
+  const vis = show ? '' : 'hidden'; if (crossEl.style.visibility !== vis) crossEl.style.visibility = vis;
+  if (show && crossEl.hidden) crossEl.hidden = false;   // whatever hid it (a lock release), the fight crosshair comes back
+  if (!show) return;
+  const K = canvas.clientHeight / (2 * Math.tan(camera.fov * Math.PI / 360));   // screen pixels per radian at this fov
+  const target = cfg.ring ? Math.max(10, spreadNow() * K) : Math.min(70, cfg.gap + (SET.crossDyn ? spreadNow() * K : 0));
+  crossGap += (target - crossGap) * Math.min(1, dt * 14);
+  const mag = MP.ammo[MP.weapon];
+  const col = MP.reloadAt ? '#ffc24d' : mag === 0 ? '#ff5a4d' : mag <= w.mag * 0.25 ? '#ffc24d' : SET.crossCol;
+  const g = Math.round(crossGap * 2) / 2, key = MP.weapon + '|' + g + '|' + col + '|' + SET.crossDot;
+  if (key !== crossKey) {
+    crossKey = key;
+    crossEl.classList.toggle('ring', !!cfg.ring); crossEl.classList.toggle('nodot', !SET.crossDot);
+    crossEl.style.setProperty('--gap', g + 'px'); crossEl.style.setProperty('--len', (cfg.len || 0) + 'px');
+    crossEl.style.setProperty('--th', cfg.th + 'px'); crossEl.style.setProperty('--col', col);
+  }
+  if (MP.reloadAt) { const p = Math.min(1, (now - MP.reloadAt) / WEAPONS[MP.reloadW].reloadMs); crossRe.style.strokeDashoffset = (106.81 * (1 - p)).toFixed(1); crossEl.classList.add('reloading'); }
+  else crossEl.classList.remove('reloading');
+}
+
 /* ---------- every frame ---------- */
 function mpTick(dt) {
   if (!MP.on) return;
@@ -522,14 +556,14 @@ function mpTick(dt) {
   // the scope: the picture closes in (the field of view 66° → 20°) and the gun goes out of sight
   { const want = MP.scope && W().scope && !MP.dead && !MP.reloadAt ? 1 : 0; MP.zoom += (want - MP.zoom) * Math.min(1, dt * 14); if (Math.abs(MP.zoom - want) < 0.01) MP.zoom = want;
     const fov = SET.fov - (SET.fov - 20) * MP.zoom; if (Math.abs(camera.fov - fov) > 0.05) { camera.fov = fov; camera.updateProjectionMatrix(); }
-    const scoped = MP.zoom > 0.6; if (el('mpScope').hidden === scoped) { el('mpScope').hidden = !scoped; $('cross').style.visibility = scoped ? 'hidden' : ''; }
+    const scoped = MP.zoom > 0.6; if (el('mpScope').hidden === scoped) el('mpScope').hidden = !scoped;   // the crosshair hides itself in crossTick
     gun.visible = !MP.dead && MP.zoom < 0.5; }
   ownSteps(dt); tickNades(dt); tickItems(dt, now); spectate(now);
   if (MP.reloadAt && now - MP.reloadAt >= WEAPONS[MP.reloadW].reloadMs) {   // the local picture of the reload; the server's 'inv' message is the truth. It finishes on the weapon that started it, even if another is in hand now
     const rw = MP.reloadW; MP.reloadAt = 0; const k = Math.min(WEAPONS[rw].mag - MP.ammo[rw], MP.reserve[rw]);
     MP.ammo[rw] += k; MP.reserve[rw] -= k; updatePanel();
   }
-  MP.burst = Math.max(0, MP.burst - dt * 0.03); { const px = Math.max(6, Math.round(spreadNow() * 1400)), cr = $('cross'); if (cr.dataset.px !== String(px)) { cr.dataset.px = px; cr.style.width = cr.style.height = px + 'px'; cr.style.margin = (-px / 2) + 'px 0 0 ' + (-px / 2) + 'px'; } }
+  MP.burst = Math.max(0, MP.burst - dt * 0.03); crossTick(dt, now);
   if ((MP.pingT = (MP.pingT || 0) - dt) <= 0 && MP.ws.readyState === 1) { MP.pingT = 2; MP.ws.send(JSON.stringify({ t: 'ping', c: now, rtt: MP.rtt })); }
   if (MP.firing && W().auto) fire(now);
   if (MP.dead) { const left = Math.max(0, 3 - (now - MP.deadAt) / 1000); el('mpRespawn').disabled = left > 0; el('mpRespawn').textContent = left > 0 ? 'Возрождение через ' + Math.ceil(left) : 'Возродиться (пробел)'; }

@@ -10,12 +10,14 @@ const ACTIONS = [
   ['inv', 'Инвентарь', 'KeyI'], ['med', 'Аптечка (использовать)', 'KeyH'],
   ['voice', 'Рация (удерживать)', 'KeyV'], ['chat', 'Чат всем', 'KeyY'], ['teamChat', 'Чат команде', 'KeyU'], ['board', 'Таблица очков', 'Tab'],
 ];
-const DEFAULTS = { sens: 1, fov: 66, vol: 0.8, voiceVol: 1, ambVol: 0.6, invertY: false };
+const DEFAULTS = { sens: 1, fov: 66, vol: 0.8, voiceVol: 1, ambVol: 0.6, invertY: false, crossCol: '#ffffff', crossDot: true, crossDyn: true };
+const CROSS_COLS = ['#ffffff', '#8dff7a', '#5ad7ff', '#ffd75a', '#ff6a5a', '#ff7ad9'];
 const SET = { ...DEFAULTS, keys: Object.fromEntries(ACTIONS.map(a => [a[0], a[2]])) };
 const listeners = [];
 try {
   const s = JSON.parse(localStorage.getItem('dpils.settings') || '{}'), num = (v, lo, hi, d) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
   SET.sens = num(s.sens, 0.2, 3, 1); SET.fov = num(s.fov, 60, 100, 66); SET.vol = num(s.vol, 0, 1, 0.8); SET.voiceVol = num(s.voiceVol, 0, 1, 1); SET.ambVol = num(s.ambVol, 0, 1, 0.6); SET.invertY = s.invertY === true;
+  SET.crossCol = CROSS_COLS.includes(s.crossCol) ? s.crossCol : '#ffffff'; SET.crossDot = s.crossDot !== false; SET.crossDyn = s.crossDyn !== false;
   if (s.keys && typeof s.keys === 'object') for (const [a, , d] of ACTIONS) if (typeof s.keys[a] === 'string' && /^[A-Za-z0-9]{1,16}$/.test(s.keys[a])) SET.keys[a] = s.keys[a];
 } catch (e) {}
 function save() { try { localStorage.setItem('dpils.settings', JSON.stringify(SET)); } catch (e) {} for (const f of listeners) f(); }
@@ -30,12 +32,20 @@ function slider(label, key, lo, hi, step, show) {
   t.textContent = label; i.type = 'range'; i.min = lo; i.max = hi; i.step = step; i.value = SET[key]; v.textContent = show(SET[key]);
   i.oninput = () => { SET[key] = +i.value; v.textContent = show(SET[key]); save(); }; row.append(t, i, v); return row;
 }
+function check(label, key) {
+  const row = document.createElement('label'); row.className = 'set-row check'; const c = document.createElement('input'); c.type = 'checkbox'; c.checked = SET[key]; c.onchange = () => { SET[key] = c.checked; save(); };
+  const t = document.createElement('span'); t.textContent = label; row.append(c, t); return row;
+}
 function build() {
   body.textContent = '';
   const g = document.createElement('div'); g.className = 'set-group';
   g.append(slider('Чувствительность мыши', 'sens', 0.2, 3, 0.05, v => '×' + v.toFixed(2)), slider('Поле зрения', 'fov', 60, 100, 1, v => Math.round(v) + '°'), slider('Громкость звуков', 'vol', 0, 1, 0.05, v => Math.round(v * 100) + ' %'), slider('Громкость голосов', 'voiceVol', 0, 1, 0.05, v => Math.round(v * 100) + ' %'), slider('Громкость окружения', 'ambVol', 0, 1, 0.05, v => Math.round(v * 100) + ' %'));
-  const inv = document.createElement('label'); inv.className = 'set-row check'; const c = document.createElement('input'); c.type = 'checkbox'; c.checked = SET.invertY; c.onchange = () => { SET.invertY = c.checked; save(); };
-  const it = document.createElement('span'); it.textContent = 'Инвертировать вертикаль мыши'; inv.append(c, it); g.append(inv); body.append(g);
+  g.append(check('Инвертировать вертикаль мыши', 'invertY')); body.append(g);
+  const hc = document.createElement('h3'); hc.textContent = 'Прицел'; body.append(hc);
+  const gc = document.createElement('div'); gc.className = 'set-group';
+  const cr = document.createElement('div'); cr.className = 'set-row swatches'; const ct = document.createElement('span'); ct.textContent = 'Цвет прицела'; const sw = document.createElement('div'); sw.className = 'sw-row';
+  for (const c of CROSS_COLS) { const b = document.createElement('button'); b.className = 'sw'; b.style.background = c; b.title = c; b.setAttribute('aria-pressed', String(SET.crossCol === c)); b.onclick = () => { SET.crossCol = c; save(); build(); }; sw.append(b); }
+  cr.append(ct, sw); gc.append(cr, check('Точка в центре', 'crossDot'), check('Показывать разброс (динамический прицел)', 'crossDyn')); body.append(gc);
   const h = document.createElement('h3'); h.textContent = 'Клавиши (щёлкните и нажмите новую; Esc — отмена)'; body.append(h);
   const keys = document.createElement('div'); keys.className = 'set-keys';
   for (const [a, label] of ACTIONS) {
