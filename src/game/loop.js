@@ -16,6 +16,17 @@ import { $, reduceMotion } from '../core/env.js';
 /* ---------- frame loop ---------- */
 function resize() { const w = window.innerWidth, h = window.innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 window.addEventListener('resize', resize); resize();
+/* The near plane cuts away whatever is closer to the eye. Its corners lie farther out than its centre, the more so the
+   wider the field of view (up to 100° in the game) and the screen: at 0.3 m they reached 0.5–0.8 m, past the 0.45 m the
+   player keeps from a wall (collide in player.js), and a look along a wall or up a wall cut into it and showed the rooms
+   and streets behind. So the plane comes in until its farthest corner is 0.22 m from the eye; high in flight (and over the city
+   before the start) it goes out again for the depth precision of the far city. */
+const NEAR_REACH = 0.22;
+function nearPlane() {
+  const t = Math.tan(camera.fov * Math.PI / 360), corner = Math.sqrt(1 + t * t * (1 + camera.aspect * camera.aspect));
+  const n = Math.min(0.3, NEAR_REACH / corner);
+  return P.fly || !STATE.started ? Math.max(n, Math.min(1, (P.y - terrainH(P.x, P.z)) * 0.01)) : n;
+}
 let last = performance.now(), clock = 0;
 function frame(now) {
   requestAnimationFrame(frame);
@@ -29,7 +40,8 @@ function frame(now) {
   const bob = (!P.fly && STATE.started && !reduceMotion) ? Math.sin(P.walked * 2.1) * 0.035 : 0;
   camera.position.set(P.x, P.y + bob, P.z); camera.rotation.set(P.pitch, P.yaw, 0);
   const far = QUALITY[qi].far + Math.max(0, P.y - 2) * 9; scene.fog.far = far;
-  if (Math.abs(camera.far - (far + 100)) > 20) { camera.far = far + 100; camera.updateProjectionMatrix(); }
+  const near = nearPlane();
+  if (Math.abs(camera.far - (far + 100)) > 20 || Math.abs(camera.near - near) > near * 0.05) { camera.far = far + 100; camera.near = near; camera.updateProjectionMatrix(); }
   sky.position.copy(camera.position);
   updateSun();
   if ((STATE.lodTimer -= dt) <= 0) { STATE.lodTimer = 0.3; updateLod(); }
