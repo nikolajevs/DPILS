@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/pine-sway | Медленнее качание и дрожь кроны деревьев | src/world/trees.js |
-| Chatbox | chatbox/dev-speed | Ускорение цикла: тёплый браузер, инкрементальная сборка, сжатие текстур моделей | vite.config.mjs, tools/warm.mjs, tools/shots.js, tools/shrink-models.mjs, models/*.glb, docs/tools-and-sources.md |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
 
