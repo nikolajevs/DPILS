@@ -60,7 +60,7 @@ import './world/tram-wires.js';
 import './world/overpass.js';
 import './world/bridge-vienibas.js';
 import { buildLines } from './world/streets.js';
-import { buildGround, waterGuard } from './world/ground.js';
+import { buildGround, groundDepth } from './world/ground.js';
 import { BLD, LINES, makeMaterials } from './world/data.js';
 import './world/palette.js';
 import './render/materials.js';
@@ -97,7 +97,7 @@ const step = (text, w, reported) => {
     await step('Собираю кварталы…', W.blocks); finishBuildings();
     await step('Строю Дом Единства, «Латголу», университет и школы…', W.landmarks); buildLandmarks();
     await step('Насыпаю валы и копаю рвы крепости…', W.fortress); buildFortress();
-    waterGuard();   // streets over water areas write depth where they lie, so the water is not drawn over them (src/world/ground.js)
+    groundDepth();   // the depth grids under the ground layers, now that all of them are drawn (src/world/ground.js)
     const lamps = buildLamps(); setTime(timeI);
     await step('Сажаю деревья…', W.trees); const trees = buildTrees();
     await step('Сажаю цветы в парках…', W.flora); await plantFlora();   // their files were asked for with the parks
