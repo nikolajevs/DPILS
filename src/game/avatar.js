@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { worldSpace } from '../render/world-space.js';
+import { akReady } from './viewmodel.js';
+import { FLASH_SIZE, makeFlash } from './muzzle.js';
 
 /* ---------- the ready model of the players ----------
    models/Soldier.glb (CC0, see models/README.md): a soldier with the animations Idle, Walk, Run, Jump, Death and the
@@ -11,9 +13,10 @@ import { worldSpace } from '../render/world-space.js';
    Everything that belongs to this one file is in MODEL: to use another character change that and nothing else. The model
    is scaled to a man's height with the feet on the ground, and turned to look where the game looks (the file looks
    along +z, the game along −z). The loader drops the dots of the bone names (Fist.R is FistR).
-   The weapons in hand are ready models too (models/Rifle.glb, Shotgun.glb, Sniper.glb, CC0, by Quaternius): the muzzle along +z, the top along +y, the grip at the origin, in the units of the soldier. */
+   The weapons in hand are ready models too (models/Rifle.glb, Shotgun.glb, Sniper.glb, CC0, by Quaternius): the muzzle along +z, the top along +y, the grip at the origin, in the units of the soldier.
+   The AK (null in MODEL.guns) is the rifle of the arms of viewmodel.js, held in both hands: see akRifle and hold below. */
 const MODEL = {
-  file: 'models/Soldier.glb', guns: ['models/AK.glb', 'models/Shotgun.glb', 'models/Sniper.glb', 'models/Pistol.glb', 'models/Rifle.glb'], gunLen: [1, 1, 1, 0.5, 1.1], gunYaw: [Math.PI / 2, 0, Math.PI / 2, Math.PI / 2, 0], height: 1.8, headScale: 0.8,   // one gun model for each weapon of the game (the machine gun is the heavy rifle); gunYaw: the guns of the Toon Shooter pack point along −x, turned to +z; the head of the file is big: a little smaller
+  file: 'models/Soldier.glb', guns: [null, 'models/Shotgun.glb', 'models/Sniper.glb', 'models/Pistol.glb', 'models/Rifle.glb'], gunLen: [1, 1, 1, 0.5, 1.1], gunYaw: [Math.PI / 2, 0, Math.PI / 2, Math.PI / 2, 0], height: 1.8, headScale: 0.8,   // one gun model for each weapon of the game (the machine gun is the heavy rifle); gunYaw: the guns of the Toon Shooter pack point along −x, turned to +z; the head of the file is big: a little smaller
   tint: ['Helmet'], camo: ['Main', 'DarkGreen'],   // tint: painted in the colour of the team; camo: the jacket and the trousers get a camouflage pattern in its tones
   clips: { idle: 'Idle', walk: 'Walk', run: 'Run', jump: 'Jump', death: 'Death', hold: 'Walk_Carry' },   // hold: the pose of the arms with a rifle
   arms: ['ShoulderL', 'UpperArmL', 'LowerArmL', 'FistL', 'ShoulderR', 'UpperArmR', 'LowerArmR', 'FistR'], hand: 'FistR', head: 'Head',
@@ -28,8 +31,8 @@ function loadAvatar() {
       probe.updateMatrixWorld(true); const box = new THREE.Box3().setFromObject(probe, true), h = box.max.y - box.min.y || 1;
       asset = { scene: g.scene, clips, scale: MODEL.height / h, floor: -box.min.y * MODEL.height / h, guns: [] };
       // the guns come after the soldier; without them the simple rifle is drawn
-      Promise.all([...new Set(MODEL.guns)].map(f => new Promise(r => new GLTFLoader().load(f, x => r([f, x.scene]), undefined, () => r([f, null]))))).then(list => {
-        const by = Object.fromEntries(list); asset.guns = MODEL.guns.map(f => by[f] || null); res(asset);
+      Promise.all([...new Set(MODEL.guns.filter(Boolean))].map(f => new Promise(r => new GLTFLoader().load(f, x => r([f, x.scene]), undefined, () => r([f, null]))))).then(list => {
+        const by = Object.fromEntries(list); asset.guns = MODEL.guns.map(f => (f && by[f]) || null); res(asset);
       });
     }, undefined, () => res(null));
   });
@@ -38,7 +41,7 @@ function loadAvatar() {
 const ready = () => asset;
 
 // the fallback rifle of boxes, the muzzle along +z, the grip at the origin, in metres
-const GEO = new THREE.BoxGeometry(1, 1, 1), M1 = worldSpace(new THREE.MeshLambertMaterial({ color: 0x2a2d31 })), M2 = worldSpace(new THREE.MeshLambertMaterial({ color: 0x6b4a2b })), MF = worldSpace(new THREE.MeshBasicMaterial({ color: 0xffd36a, fog: false }));
+const GEO = new THREE.BoxGeometry(1, 1, 1), M1 = worldSpace(new THREE.MeshLambertMaterial({ color: 0x2a2d31 })), M2 = worldSpace(new THREE.MeshLambertMaterial({ color: 0x6b4a2b }));
 function boxRifle() {
   const g = new THREE.Group(), add = (m, sx, sy, sz, x, y, z) => { const o = new THREE.Mesh(GEO, m); o.scale.set(sx, sy, sz); o.position.set(x, y, z); g.add(o); return o; };
   add(M1, 0.07, 0.1, 0.62, 0, 0.02, 0.28); add(M1, 0.035, 0.035, 0.3, 0, 0.03, 0.72); add(M2, 0.06, 0.13, 0.22, 0, 0, -0.1); add(M1, 0.05, 0.16, 0.08, 0, -0.1, 0.18); add(M1, 0.045, 0.1, 0.08, 0, -0.07, 0.04);
@@ -49,6 +52,76 @@ function readyGun(src, k, yaw) {
   const g = src.clone(true); g.rotation.y = yaw || 0; g.traverse(o => { if (o.isMesh) o.material = worldSpace(o.material.clone()); });
   const box = new THREE.Box3().setFromObject(g), holder = new THREE.Group(); holder.add(g); holder.scale.setScalar(asset.scale * k); holder.userData.muzzle = box.max.z * asset.scale * k; return holder;
 }
+/* ---------- the AK in both hands ----------
+   The AK does not hang on the hand like the other guns. Its stock lies against the right shoulder, it points where the
+   player looks, and both arms reach for it (two-bone IK): the right hand to the pistol grip, the left to the handguard,
+   each wrist where the arms of viewmodel.js hold the rifle, and each hand turned as they turn theirs (where the skeleton
+   has fingers to tell the turn). The holder lives in the frame of the figure's inner group: metres, +z forward, +y up,
+   the right of the figure −x; its origin is the right shoulder of the arms of the file. A dead player's rifle goes down
+   with the right hand. */
+function akRifle() {
+  const k = akReady(); if (!k || !k.gun) return boxRifle();
+  const g = k.gun.clone(true), shift = new THREE.Group(), holder = new THREE.Group(); g.traverse(o => { if (o.isMesh) o.material = worldSpace(o.material.clone()); });
+  shift.position.copy(k.shoulder).negate(); shift.add(g); holder.add(shift);   // (the node of the rifle keeps the scale of its packed geometry: it is moved by a group of its own)
+  const rel = h => h && Object.fromEntries(Object.entries(h).map(([n, v]) => [n, v.clone().sub(k.shoulder)]));
+  holder.userData = { both: true, hands: { R: rel(k.hands.R), L: rel(k.hands.L) }, flashAt: k.muzzle.clone().sub(k.shoulder) };
+  return holder;
+}
+const POLE = { R: new THREE.Vector3(-0.7, -1, -0.3).normalize(), L: new THREE.Vector3(0.5, -1, -0.2).normalize() };   // where the elbows point
+const IM = new THREE.Matrix4(), MA = new THREE.Matrix4(), MB = new THREE.Matrix4(), QA = new THREE.Quaternion(), QB = new THREE.Quaternion(), QC = new THREE.Quaternion();
+const VA = new THREE.Vector3(), VB = new THREE.Vector3(), VC = new THREE.Vector3(), VD = new THREE.Vector3(), VE = new THREE.Vector3(), VF = new THREE.Vector3(), VS = new THREE.Vector3(), VT = new THREE.Vector3();
+const F = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()], FX = new THREE.Vector3(), FY = new THREE.Vector3(), FZ = new THREE.Vector3();
+// positions and turns in the frame of inner (IM: the inverse of its world matrix, set by hold)
+const at = (o, v) => v.setFromMatrixPosition(o.matrixWorld).applyMatrix4(IM);
+function turnOf(o, q) { MA.multiplyMatrices(IM, o.matrixWorld).decompose(VS, q, VT); return q; }
+function turn(o, q) {   // turn the bone o by q (in the frame of inner) about its own joint
+  turnOf(o, QB); turnOf(o.parent, QC); QB.premultiply(q);
+  o.quaternion.copy(QC.invert().multiply(QB)); o.updateMatrixWorld(true);
+}
+function reach(arm, T, pole) {   // the analytic two-bone IK: the elbow in the plane of the shoulder, the target and the pole
+  const [a, b, c] = arm, A = at(a, VA), B = at(b, VB), C = at(c, VC), l1 = A.distanceTo(B), l2 = B.distanceTo(C);
+  VD.subVectors(T, A); let d = VD.length(); if (d < 1e-5 || l1 < 1e-5 || l2 < 1e-5) return; VD.divideScalar(d);
+  d = Math.min(Math.max(d, Math.abs(l1 - l2) + 1e-4), (l1 + l2) * 0.999);
+  const ca = Math.min(1, Math.max(-1, (l1 * l1 + d * d - l2 * l2) / (2 * l1 * d))), sa = Math.sqrt(1 - ca * ca);
+  VE.copy(pole).addScaledVector(VD, -pole.dot(VD)); if (VE.lengthSq() < 1e-8) VE.set(0, -1, 0); VE.normalize();
+  VF.copy(A).addScaledVector(VD, l1 * ca).addScaledVector(VE, l1 * sa);   // the elbow
+  turn(a, QA.setFromUnitVectors(B.sub(A).normalize(), VE.subVectors(VF, A).normalize()));
+  at(b, B); at(c, C); VE.copy(A).addScaledVector(VD, d);   // the wrist
+  turn(b, QA.setFromUnitVectors(C.sub(B).normalize(), VE.sub(B).normalize()));
+}
+function basis(w, m, i, k, M) {   // a frame of a hand: y from the wrist to the middle knuckle, x across the knuckles
+  FY.subVectors(m, w).normalize(); FX.subVectors(i, k); FZ.crossVectors(FX, FY).normalize(); FX.crossVectors(FY, FZ);
+  return M.makeBasis(FX, FY, FZ);
+}
+function turnHand(hand, fingers, h, holder) {
+  at(hand, F[0]); at(fingers[0], F[1]); at(fingers[1], F[2]); at(fingers[2], F[3]); basis(F[0], F[1], F[2], F[3], MA);
+  F[0].copy(h.w).applyMatrix4(holder.matrix); F[1].copy(h.m).applyMatrix4(holder.matrix); F[2].copy(h.i).applyMatrix4(holder.matrix); F[3].copy(h.k).applyMatrix4(holder.matrix); basis(F[0], F[1], F[2], F[3], MB);
+  turn(hand, QA.setFromRotationMatrix(MB.multiply(MA.transpose())));   // a frame's transpose is its inverse
+}
+// H: { R: [upper arm, forearm, hand], L: […], fingers: { R: [middle, index, little], L: […] } | null, ofs }
+function hold(H, inner, holder, pitch) {
+  inner.updateMatrixWorld(true); IM.copy(inner.matrixWorld).invert();
+  at(H.R[0], holder.position).add(H.ofs); holder.rotation.set(-pitch, 0, 0); holder.scale.setScalar(1); holder.updateMatrix();
+  const hs = holder.userData.hands;
+  if (hs.R) reach(H.R, VT.copy(hs.R.w).applyMatrix4(holder.matrix), POLE.R);
+  if (hs.L) reach(H.L, VT.copy(hs.L.w).applyMatrix4(holder.matrix), POLE.L);
+  if (H.fingers) { if (hs.R) turnHand(H.R[2], H.fingers.R, hs.R, holder); if (hs.L) turnHand(H.L[2], H.fingers.L, hs.L, holder); }
+}
+// at the moment of death the rifle is tied to the right hand (rel), then carried by it
+function tieToHand(H, inner, holder) { inner.updateMatrixWorld(true); IM.copy(inner.matrixWorld).invert(); return MB.multiplyMatrices(IM, H.R[2].matrixWorld).invert().multiply(holder.matrix).clone(); }
+function carry(H, inner, holder, rel) {
+  inner.updateMatrixWorld(true); IM.copy(inner.matrixWorld).invert();
+  MA.multiplyMatrices(IM, H.R[2].matrixWorld).multiply(rel).decompose(holder.position, holder.quaternion, holder.scale);
+}
+// the flash (muzzle.js) at the muzzle of the gun in hand, along its barrel: on the holder of the AK, on the hand mount of the others
+function placeFlash(gun, flash, mount) {
+  const g = flash.group;
+  if (gun.userData.both) { gun.add(g); g.position.copy(gun.userData.flashAt); } else { mount.add(g); g.position.set(0, 0.04, gun.userData.muzzle); }
+}
+// a new shot (its time changed): the flash of the weapon in hand
+function shotFlash(flash, s, st) { if (s.shotAt && s.shotAt !== st.at) { st.at = s.shotAt; if (!s.dead) flash.fire(1, FLASH_SIZE[st.w] || 1); } flash.tick(st.dt); }
+const makeGun = i => i === 0 ? akRifle() : asset && asset.guns[i] ? readyGun(asset.guns[i], MODEL.gunLen[i], MODEL.gunYaw[i]) : boxRifle();
+const HOLD_OFS = { human: new THREE.Vector3(0, 0, 0), soldier: new THREE.Vector3(0, 0, 0) };   // the holder from the shoulder joint of each skeleton
 // the camouflage: blotches of three tones of the colour of the team (a smooth noise of the position on the body at rest,
 // cut at two levels), on the material of the file; the vertex position before the skeleton moves it keeps the pattern on the body
 const CAMO_GLSL = `
@@ -164,10 +237,10 @@ function makeHuman(hue, L, civilian) {
   for (const k of keys) { const clip = civilian ? humans.full[k] : humans.clips[k]; if (clip) { act[k] = mixer.clipAction(clip); act[k].play(); act[k].weight = k === 'idle' || k === 'hold' ? 1 : 0; } }
   if (act.death) { act.death.setLoop(THREE.LoopOnce, 1); act.death.clampWhenFinished = true; }
   const headProxy = new THREE.Object3D(), armProxy = new THREE.Object3D();   // mp.js turns these as the soldier's head and arm
-  let deadT = -1, flashT = 0, flash = null;
+  let deadT = -1, flash = null, H = null, tied = null; const shot = { at: 0, w: 0, dt: 0 };
   function update(dt, s) {
     const loco = s.dead ? null : s.speed > 5 ? 'run' : s.speed > 0.5 ? 'walk' : 'idle';
-    if (s.dead && deadT < 0) { deadT = 0; if (act.death) { act.death.reset(); act.death.play(); } } else if (!s.dead) deadT = -1;
+    if (s.dead && deadT < 0) { deadT = 0; if (act.death) { act.death.reset(); act.death.play(); } tied = H && gun && gun.userData.both ? tieToHand(H, inner, gun) : null; } else if (!s.dead) deadT = -1;
     for (const k in act) { const t = s.dead ? (k === 'death' ? 1 : 0) : (k === loco || k === 'hold' ? 1 : 0); act[k].weight += (t - act[k].weight) * Math.min(1, dt * 10); }
     if (act.walk) act.walk.timeScale = Math.max(0.6, Math.min(1.8, s.speed / 1.7));
     if (act.run) act.run.timeScale = Math.max(0.7, Math.min(1.6, s.speed / 6));
@@ -176,24 +249,28 @@ function makeHuman(hue, L, civilian) {
       if (bones.Head) bones.Head.quaternion.multiply(QP.setFromAxisAngle(XA, -headProxy.rotation.x));
       if (bones.spine_03) bones.spine_03.quaternion.multiply(QP.setFromAxisAngle(XA, -armProxy.rotation.x * 0.5));
     }
-    if (flash) { if (s.shot) flashT = 0.07; flashT = Math.max(0, flashT - dt); flash.visible = flashT > 0; }
+    if (H && gun && gun.userData.both) { if (!s.dead) hold(H, inner, gun, headProxy.rotation.x); else if (tied) carry(H, inner, gun, tied); }
+    if (flash) { shot.dt = dt; shotFlash(flash, s, shot); }
   }
   let mount = null, gun = null, setGun = () => {};
   if (!civilian) {   // the gun in the right hand: the fingers of the rig point along +Y, the back of the hand along +X
     const hand = bones.hand_r; mount = new THREE.Group();
-    const guns = MODEL.guns.map((f, i) => asset && asset.guns[i] ? readyGun(asset.guns[i], MODEL.gunLen[i], MODEL.gunYaw[i]) : boxRifle());
-    flash = new THREE.Mesh(GEO, MF); flash.scale.setScalar(0.09); flash.visible = false; gun = guns[0];
+    const guns = MODEL.guns.map((f, i) => makeGun(i));
+    flash = makeFlash(); gun = guns[0];
     if (hand) { inner.updateMatrixWorld(true); const k = hand.getWorldScale(new THREE.Vector3()).x || 1; mount.scale.setScalar(1 / k); hand.add(mount); }
     mount.rotation.set(-Math.PI / 2, 0, -Math.PI / 2); mount.position.set(-0.01, 0.09, 0.015);   // the muzzle along the fingers, the slide to the back of the hand
-    guns.forEach((g, i) => { g.visible = i === 0; mount.add(g); }); mount.add(flash);
-    setGun = i => { i = Math.max(0, Math.min(guns.length - 1, i | 0)); guns.forEach((g, k) => { g.visible = k === i; }); gun = guns[i]; flash.position.set(0, 0.04, gun.userData.muzzle + 0.05); };
+    guns.forEach((g, i) => { g.visible = i === 0; (g.userData.both ? inner : mount).add(g); });
+    setGun = i => { i = Math.max(0, Math.min(guns.length - 1, i | 0)); guns.forEach((g, k) => { g.visible = k === i; }); gun = guns[i]; shot.w = i; placeFlash(gun, flash, mount); };
+    const B = n => bones[n], all = a => a.every(Boolean) ? a : null;
+    const R = all(['upperarm_r', 'lowerarm_r', 'hand_r'].map(B)), L = all(['upperarm_l', 'lowerarm_l', 'hand_l'].map(B)), fR = all(['middle_01_r', 'index_01_r', 'pinky_01_r'].map(B)), fL = all(['middle_01_l', 'index_01_l', 'pinky_01_l'].map(B));
+    if (R && L) H = { R, L, fingers: fR && fL ? { R: fR, L: fL } : null, ofs: HOLD_OFS.human };
     setGun(0);
     inner.userData.head = headProxy; inner.userData.arm = armProxy;
   }
   return { root: inner, update, mount, setGun, mixer, get gun() { return gun; } };
 }
 
-// one player's model: update(dt, { speed, air, dead, shot }) every frame; look — the chosen person ('' = the soldier);
+// one player's model: update(dt, { speed, air, dead, shotAt }) every frame (shotAt: the time of the last shot, a new one flashes); look — the chosen person ('' = the soldier);
 // civilian: a person of the streets — the whole walk clip, no gun and no team gear
 function makeAvatar(hue, look, civilian) {
   const L = look ? parseLook(look) : null;
@@ -212,26 +289,30 @@ function makeAvatar(hue, look, civilian) {
   const armBones = MODEL.arms.map(n => root.getObjectByName(n)).filter(o => o && o.isBone), head = root.getObjectByName(MODEL.head);
   const holdMixer = new THREE.AnimationMixer(root); if (asset.clips[C.hold]) { const a = holdMixer.clipAction(asset.clips[C.hold]); a.play(); holdMixer.update(0.001); }
   const armQ = armBones.map(o => o.quaternion.clone()); holdMixer.stopAllAction(); holdMixer.uncacheRoot(root);
-  let deadT = -1, flashT = 0;
+  let deadT = -1, tied = null; const shot = { at: 0, w: 0, dt: 0 };
   const want = s => s.dead ? { [C.death]: 1 } : s.air ? { [C.jump]: 1 } : s.speed > 5 ? { [C.run]: 1 } : s.speed > 0.5 ? { [C.walk]: 1 } : { [C.idle]: 1 };
   function update(dt, s) {
     const w = want(s);
-    if (s.dead && deadT < 0) { deadT = 0; if (act[C.death]) { act[C.death].reset(); act[C.death].play(); } } else if (!s.dead) deadT = -1;
+    if (s.dead && deadT < 0) { deadT = 0; if (act[C.death]) { act[C.death].reset(); act[C.death].play(); } tied = H && gun.userData.both ? tieToHand(H, inner, gun) : null; } else if (!s.dead) deadT = -1;
     for (const n in act) { const t = w[n] || 0; act[n].weight += (t - act[n].weight) * Math.min(1, dt * 10); }
     if (act[C.walk]) act[C.walk].timeScale = Math.max(0.6, Math.min(1.8, s.speed / 1.7));
     if (act[C.run]) act[C.run].timeScale = Math.max(0.7, Math.min(1.6, s.speed / 6));
     mixer.update(dt);
     if (!s.dead) armBones.forEach((o, i) => o.quaternion.copy(armQ[i]));
     if (head) head.scale.setScalar(MODEL.headScale);
-    if (s.shot) flashT = 0.07; flashT = Math.max(0, flashT - dt); flash.visible = flashT > 0;
+    if (H && gun.userData.both) { if (!s.dead) hold(H, inner, gun, headProxy.rotation.x); else if (tied) carry(H, inner, gun, tied); }
+    shot.dt = dt; shotFlash(flash, s, shot);
   }
   // a mount on the hand in metres: the skeleton of the file is in other units, so the mount is scaled back
-  const hand = root.getObjectByName(MODEL.hand), mount = new THREE.Group(), guns = MODEL.guns.map((f, i) => asset.guns[i] ? readyGun(asset.guns[i], MODEL.gunLen[i], MODEL.gunYaw[i]) : boxRifle());
-  const flash = new THREE.Mesh(GEO, MF); flash.scale.setScalar(0.09); flash.visible = false; let gun = guns[0];
+  const hand = root.getObjectByName(MODEL.hand), mount = new THREE.Group(), guns = MODEL.guns.map((f, i) => makeGun(i));
+  const flash = makeFlash(); let gun = guns[0];
   if (hand) { inner.updateMatrixWorld(true); const k = hand.getWorldScale(new THREE.Vector3()).x || 1; mount.scale.setScalar(1 / k); hand.add(mount); }
   mount.quaternion.setFromAxisAngle(new THREE.Vector3(1, 1, 1).normalize(), Math.PI * 2 / 3);   // the axes of the fist: x forward, z up; the gun's muzzle is z, its top y
-  guns.forEach((g, i) => { g.visible = i === 0; mount.add(g); }); mount.add(flash);
-  function setGun(i) { i = Math.max(0, Math.min(guns.length - 1, i | 0)); guns.forEach((g, k) => { g.visible = k === i; }); gun = guns[i]; flash.position.set(0, 0.04, gun.userData.muzzle + 0.05); }
+  guns.forEach((g, i) => { g.visible = i === 0; (g.userData.both ? inner : mount).add(g); });
+  function setGun(i) { i = Math.max(0, Math.min(guns.length - 1, i | 0)); guns.forEach((g, k) => { g.visible = k === i; }); gun = guns[i]; shot.w = i; placeFlash(gun, flash, mount); }
+  const arm = n => MODEL.arms.slice(n, n + 4).map(b => root.getObjectByName(b)), aL = arm(0), aR = arm(4);   // [shoulder, upper arm, forearm, fist]
+  const H = aL.every(Boolean) && aR.every(Boolean) ? { R: aR.slice(1), L: aL.slice(1), fingers: null, ofs: HOLD_OFS.soldier } : null;
+  const headProxy = new THREE.Object3D(), armProxy = new THREE.Object3D(); inner.userData.head = headProxy; inner.userData.arm = armProxy;   // mp.js turns these with the aim
   setGun(0);
   return { root: inner, update, mount, setGun, mixer, get gun() { return gun; } };
 }

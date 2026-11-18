@@ -6,6 +6,8 @@ import { buildingAt, onRoad } from '../world/data.js';
 import { PERF } from './perf.js';
 import { worldSpace } from '../render/world-space.js';
 import { gunModel, loadAvatar, loadHumans, makeAvatar, parseLook, ready as avatarReady, humansReady } from './avatar.js';
+import { akSettled, drawOver, loadAK, makeViewmodel } from './viewmodel.js';
+import { FLASH_SIZE, makeFlash } from './muzzle.js';
 import { SET, keyName, onChange } from './settings.js';
 import { firstGames } from './help.js';
 import { rememberServer } from '../ui/servers.js';
@@ -22,7 +24,7 @@ import { playerKey, boardOn, setBoardOn, account } from './identity.js';
 import { initLeaders } from './leaders.js';
 import { $ } from '../core/env.js';
 import { boomSound, crackSound, hitSound, loadSounds, shotSound, stepSound } from './sfx.js';
-import { tracerShot, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke, muzzleTex } from './impacts.js';
+import { tracerShot, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke } from './impacts.js';
 
 /* ---------- online shooter: deathmatch on the city map ----------
    The server (server/index.mjs) owns health, kills and respawns. This module: the connection, the other players
@@ -107,6 +109,7 @@ function addRemote(id, name, team, look) {
 // the ready animated model instead of the simple figure, as soon as its file has come; look — the chosen person
 function attachAvatar(r) {
   if (r.av) return;
+  if (!akSettled()) { loadAK().then(() => { if (!r.av && remotes.has(r.id)) attachAvatar(r); }); return; }   // their AK is in the file of the arms
   if (r.look) {   // the people's files are heavier: they come only when someone has chosen a person
     if (!humansReady()) { loadHumans().then(h => { if (h && !r.av && remotes.has(r.id)) attachAvatar(r); }); return; }
   } else if (!avatarReady()) return;
@@ -125,11 +128,19 @@ function rebuildAvatar(r) {   // the look changed on the board: the old model of
 // the gun in your own hands: the ready models in place of the boxes
 function upgradeViewmodels() {
   models.forEach((m, i) => {
+    if (i === 0 && vm) return;   // the AK has the arms of viewmodel.js
     const g = gunModel(i); if (!g || m.userData.ready) return; m.userData.ready = true;
     m.children.forEach(c => { if (!c.userData.keep) c.visible = false; });   // the old boxes off (the hands stay)
-    g.rotation.y = Math.PI; g.scale.multiplyScalar([0.55, 0.55, 0.5, 0.85, 0.5][i] ?? FEEL.vm); g.position.set(0.05, i === 3 ? 0.07 : -0.02, i === 3 ? 0.02 : 0.12); m.add(g); if (i === 0) flash.position.set(0.05, 0.0, -g.userData.muzzle * 0.55 + 0.1);
+    g.rotation.y = Math.PI; g.scale.multiplyScalar([0.55, 0.55, 0.5, 0.85, 0.5][i] ?? FEEL.vm); g.position.set(0.05, i === 3 ? 0.07 : -0.02, i === 3 ? 0.02 : 0.12); m.add(g);
     placeHands(hands[i], HAND_REAL[i]);   // the real model's grip sits a little differently than the box's
   });
+}
+// the AK in your own hands: the arms of the soldier with their clips (viewmodel.js) in place of the boxes. Its file
+// comes before the avatars: they take their AK from it
+let vm = null, vmX = 0, vmZ = 0, vmSpeed = 0;
+function upgradeAK() {
+  if (vm) return; vm = makeViewmodel(camera); if (!vm) return;
+  models[0].clear(); MP.vm = vm; if (MP.weapon === 0 && !MP.dead) vm.equip();
 }
 function dropRemote(id) { const r = remotes.get(id); if (!r) return; scene.remove(r.group); r.tag.remove(); remotes.delete(id); }
 function nameOf(id) { const b = MP.board.find(e => e.id === id); return b ? b.name : '?'; }
@@ -180,8 +191,17 @@ const hands = models.map((m, i) => {
   const R = makeArm([0.16, -0.30, 0.10]), L = makeArm([-0.20, -0.30, 0.12]);   // right elbow to the bottom-right, left to the bottom-left
   hg.add(R, L); hg.userData.R = R; hg.userData.L = L; placeHands(hg, HAND_BOX[i]); m.add(hg); return hg;
 });
-const flash = new THREE.Sprite(worldSpace(new THREE.SpriteMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.95, depthWrite: false, fog: false }))); flash.scale.setScalar(0.3); flash.position.set(0, 0, -0.45); flash.visible = false; gun.add(flash);   // the star texture is attached on the first shot: module-scope calls into impacts.js can hit an import cycle
-const flashLight = new THREE.PointLight(0xffc36a, 0, 20, 2); flashLight.position.set(0, 0.05, -0.5); gun.add(flashLight);   // the flash lights the street for a moment
+// the flash of your own gun (muzzle.js): the AK of the arms has its own at its muzzle (viewmodel.js); this one serves
+// the other guns, ahead of the boxes and the small ready models. Made on the first shot (its canvases need the page)
+let fpFlash = null;
+function ownFlash() {
+  if (!fpFlash) { fpFlash = makeFlash({ size: 0.9, wrap: drawOver }); fpFlash.group.position.set(0, 0, -0.45); fpFlash.group.rotation.y = Math.PI; gun.add(fpFlash.group); }
+  return fpFlash;
+}
+// One light for the flashes: of your own gun, or of a shot of someone near you, whichever is brighter now. A single
+// light keeps the number of lights, and with it the shaders of the whole city, as they are.
+const flashLight = new THREE.PointLight(0xffb868, 0, 22, 2); flashLight.position.set(0, 0.05, -0.5); gun.add(flashLight);
+const near = { x: 0, y: 0, z: 0, t: 9, pow: 0 };   // the last flash of another player within 60 m
 const MV = new THREE.Vector3();
 let actx = null;
 function ac() {   // the audio context of the game sounds, with one volume knob (the settings)
@@ -217,6 +237,7 @@ function wallHit(o, d, len, hear = 45) {
 // that flies past your head
 function otherShot(m) {
   const wf = WEAPONS[m.w] || WEAPONS[0], hear = m.w === 2 ? 600 : (wf.hear ?? FEEL.hear), s = spot(m.o[0], m.o[1], m.o[2]);
+  if (s.d < 60 && m.rays && m.rays[0]) { const d = m.rays[0]; near.x = m.o[0] + d[0] * 0.9; near.y = m.o[1] - 0.15 + d[1] * 0.9; near.z = m.o[2] + d[2] * 0.9; near.t = 0; near.pow = 0.8 * (1 - s.d / 60); }   // its flash lights the street
   if (s.d < hear) {
     let real = false; try { real = shotSound(ac(), actx.master, m.w, (SHOT_VOL[m.w] ?? 0.5) * (1 - s.d / hear) * 25 / (25 + s.d), s.d, s.pan); } catch (e) {}
     if (!real) bang((m.w === 2 ? 0.7 : m.w === 1 ? 0.5 : (wf.vol ?? FEEL.vol) * 0.85) * (1 - s.d / hear), true);
@@ -270,8 +291,9 @@ function fire(now) {
     tracerShot(o, d, len, MP.weapon, kind, 0xffe9a0, kind === 'surface' && i < 2 ? () => wallHit(o, d, clear) : null);   // the mark and the hit sound appear when the bullet arrives (of a shotgun's pellets, two are heard)
   }
   P.pitch = Math.min(1.5, P.pitch + (w.pellets > 1 ? 0.02 : w.scope ? 0.03 : (w.kick ?? FEEL.kick))); P.yaw += (Math.random() - 0.5) * (w.pellets > 1 ? 0.006 : 0.0016); if (w.auto) MP.burst = Math.min(w.cap ?? 0.03, MP.burst + (w.burst ?? 0.0045));
-  flash.material.rotation = Math.random() * 6.283; flash.scale.setScalar(0.24 + Math.random() * 0.14);
-  ejectShell(); gun.updateWorldMatrix(true, false); flash.getWorldPosition(MV); muzzleSmoke(MV.x, MV.y, MV.z, aim());
+  if (vm && MP.weapon === 0) { vm.fire(FLASH_SIZE[0]); vm.muzzle(MV); }
+  else { const f = ownFlash(); f.fire(1, FLASH_SIZE[MP.weapon]); gun.updateWorldMatrix(true, false); f.group.getWorldPosition(MV); }
+  ejectShell(); muzzleSmoke(MV.x, MV.y, MV.z, aim());
   let real = false; try { real = shotSound(ac(), actx.master, MP.weapon, SHOT_VOL[MP.weapon]); } catch (e) {}
   if (!real) bang(w.pellets > 1 ? 0.6 : w.scope ? 0.8 : (w.vol ?? FEEL.vol), true);
   MP.ws.send(JSON.stringify({ t: 'shoot', w: MP.weapon, rays }));
@@ -280,7 +302,7 @@ function fire(now) {
 }
 function switchWeapon(i) {
   if (MP.dead || i === MP.weapon || i < 0 || i >= WEAPONS.length) return;
-  MP.weapon = i; MP.firing = false; MP.scope = false; models.forEach((m, k) => { m.visible = k === i; }); tone(300, 200, 0.06, 0.15, 'square'); updatePanel();   // the reload keeps running: the server locks every weapon until it ends (server/game.mjs shoot)
+  MP.weapon = i; MP.firing = false; MP.scope = false; crossGap = CROSS[i].ring ? 20 : CROSS[i].gap; models.forEach((m, k) => { m.visible = k === i; }); if (vm && i === 0) vm.equip(); tone(300, 200, 0.06, 0.15, 'square'); updatePanel();   // the reload keeps running: the server locks every weapon until it ends (server/game.mjs shoot)
 }
 function reload(now) {
   const w = W(); MP.scope = false;
@@ -378,7 +400,7 @@ function onMsg(m) {
     case 'spawn': {
       const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.crouch = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
-      MP.weapon = 0; MP.scope = false; models.forEach((mm, k) => { mm.visible = k === 0; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; clearNades(); gun.visible = true; el('mpDead').hidden = true; updatePanel();
+      MP.weapon = 0; MP.scope = false; models.forEach((mm, k) => { mm.visible = k === 0; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; clearNades(); gun.visible = true; if (vm) vm.equip(); el('mpDead').hidden = true; updatePanel();
       MP.ws.send(JSON.stringify({ t: 'state', x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch }));   // the server has the point as asked: tell it where the player really stands
       if (canvas.requestPointerLock) { canvas.focus(); try { const pr = canvas.requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} }
       break;
@@ -440,7 +462,7 @@ function join(local) {   // local: { bots, level, mode, arena } for the game aga
   if (!url) { msg.textContent = 'Укажите адрес сервера (поле «Сервер»).'; return; }
   const look = uiLook();
   try { localStorage.setItem('dpils.mp', JSON.stringify({ name, server: el('mpServer').value.trim(), spawn: el('mpSpawn').value, team: el('mpTeam').value, look })); } catch (e) {}
-  MP.spawn = +el('mpSpawn').value; MP.wantTeam = +el('mpTeam').value; MP.url = url; MP.local = local || null; loadAvatar().then(a => { if (a) { for (const r of remotes.values()) attachAvatar(r); upgradeViewmodels(); } }); if (look) loadHumans(); msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true; el('goTrain').disabled = true;
+  MP.spawn = +el('mpSpawn').value; MP.wantTeam = +el('mpTeam').value; MP.url = url; MP.local = local || null; loadAK().then(k => { if (k) upgradeAK(); loadAvatar().then(a => { if (a) { for (const r of remotes.values()) attachAvatar(r); upgradeViewmodels(); } }); }); if (look) loadHumans(); msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true; el('goTrain').disabled = true;
   let ws; try { ws = local ? openLocal(local) : new WebSocket(url); } catch (e) { msg.textContent = 'Неверный адрес сервера.'; el('goPlay').disabled = false; el('goTrain').disabled = false; return; }
   MP.ws = ws; MP.started = false;
   ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, team: MP.wantTeam, look: look || undefined, key: local ? undefined : playerKey() || undefined, ...s })); };
@@ -501,6 +523,40 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => { if (e.code === SET.keys.board) el('mpBoard').hidden = true; if (e.code === SET.keys.voice && voice) voice.talk(false); });
 
+/* ---------- the crosshair ----------
+   Four lines and a dot (a ring for the shotgun) whose gap follows the real angular spread of the shots, projected to
+   screen pixels through the current field of view. The colour warns about the magazine: amber when it runs low or a
+   reload is on, red when it is empty; a ring around the cross counts the reload down. */
+const CROSS = [
+  { gap: 5, len: 9, th: 2 },        // rifle
+  { ring: true, gap: 12, th: 2 },   // shotgun: the ring is the pellet cone
+  { gap: 12, len: 7, th: 1.5 },     // sniper, from the hip
+  { gap: 4, len: 7, th: 2 },        // pistol
+  { gap: 8, len: 10, th: 2.5 } ];   // machine gun
+const crossEl = $('cross'), crossRe = crossEl.querySelector('.c-re circle');
+let crossGap = 6, crossKey = '';
+function crossTick(dt, now) {
+  const cfg = CROSS[MP.weapon], w = W();
+  const show = !MP.dead && MP.zoom <= 0.6;
+  const vis = show ? '' : 'hidden'; if (crossEl.style.visibility !== vis) crossEl.style.visibility = vis;
+  if (show && crossEl.hidden) crossEl.hidden = false;   // whatever hid it (a lock release), the fight crosshair comes back
+  if (!show) return;
+  const K = canvas.clientHeight / (2 * Math.tan(camera.fov * Math.PI / 360));   // screen pixels per radian at this fov
+  const target = cfg.ring ? Math.max(10, spreadNow() * K) : Math.min(70, cfg.gap + (SET.crossDyn ? spreadNow() * K : 0));
+  crossGap += (target - crossGap) * Math.min(1, dt * 14);
+  const mag = MP.ammo[MP.weapon];
+  const col = MP.reloadAt ? '#ffc24d' : mag === 0 ? '#ff5a4d' : mag <= w.mag * 0.25 ? '#ffc24d' : SET.crossCol;
+  const g = Math.round(crossGap * 2) / 2, key = MP.weapon + '|' + g + '|' + col + '|' + SET.crossDot;
+  if (key !== crossKey) {
+    crossKey = key;
+    crossEl.classList.toggle('ring', !!cfg.ring); crossEl.classList.toggle('nodot', !SET.crossDot);
+    crossEl.style.setProperty('--gap', g + 'px'); crossEl.style.setProperty('--len', (cfg.len || 0) + 'px');
+    crossEl.style.setProperty('--th', cfg.th + 'px'); crossEl.style.setProperty('--col', col);
+  }
+  if (MP.reloadAt) { const p = Math.min(1, (now - MP.reloadAt) / WEAPONS[MP.reloadW].reloadMs); crossRe.style.strokeDashoffset = (106.81 * (1 - p)).toFixed(1); crossEl.classList.add('reloading'); }
+  else crossEl.classList.remove('reloading');
+}
+
 /* ---------- every frame ---------- */
 function mpTick(dt) {
   if (!MP.on) return;
@@ -511,14 +567,14 @@ function mpTick(dt) {
   // the scope: the picture closes in (the field of view 66° → 20°) and the gun goes out of sight
   { const want = MP.scope && W().scope && !MP.dead && !MP.reloadAt ? 1 : 0; MP.zoom += (want - MP.zoom) * Math.min(1, dt * 14); if (Math.abs(MP.zoom - want) < 0.01) MP.zoom = want;
     const fov = SET.fov - (SET.fov - 20) * MP.zoom; if (Math.abs(camera.fov - fov) > 0.05) { camera.fov = fov; camera.updateProjectionMatrix(); }
-    const scoped = MP.zoom > 0.6; if (el('mpScope').hidden === scoped) { el('mpScope').hidden = !scoped; $('cross').style.visibility = scoped ? 'hidden' : ''; }
+    const scoped = MP.zoom > 0.6; if (el('mpScope').hidden === scoped) el('mpScope').hidden = !scoped;   // the crosshair hides itself in crossTick
     gun.visible = !MP.dead && MP.zoom < 0.5; }
   ownSteps(dt); tickNades(dt); tickItems(dt, now); spectate(now);
   if (MP.reloadAt && now - MP.reloadAt >= WEAPONS[MP.reloadW].reloadMs) {   // the local picture of the reload; the server's 'inv' message is the truth. It finishes on the weapon that started it, even if another is in hand now
     const rw = MP.reloadW; MP.reloadAt = 0; const k = Math.min(WEAPONS[rw].mag - MP.ammo[rw], MP.reserve[rw]);
     MP.ammo[rw] += k; MP.reserve[rw] -= k; updatePanel();
   }
-  MP.burst = Math.max(0, MP.burst - dt * 0.03); { const px = Math.max(6, Math.round(spreadNow() * 1400)), cr = $('cross'); if (cr.dataset.px !== String(px)) { cr.dataset.px = px; cr.style.width = cr.style.height = px + 'px'; cr.style.margin = (-px / 2) + 'px 0 0 ' + (-px / 2) + 'px'; } }
+  MP.burst = Math.max(0, MP.burst - dt * 0.03); crossTick(dt, now);
   if ((MP.pingT = (MP.pingT || 0) - dt) <= 0 && MP.ws.readyState === 1) { MP.pingT = 2; MP.ws.send(JSON.stringify({ t: 'ping', c: now, rtt: MP.rtt })); }
   if (MP.firing && W().auto) fire(now);
   if (MP.dead) { const left = Math.max(0, 3 - (now - MP.deadAt) / 1000); el('mpRespawn').disabled = left > 0; el('mpRespawn').textContent = left > 0 ? 'Возрождение через ' + Math.ceil(left) : 'Возродиться (пробел)'; }
@@ -531,15 +587,29 @@ function mpTick(dt) {
       const c = r.corpse; g.visible = true; g.scale.y = 1; g.position.set(c.x, c.y - (c.h || 1.7) + 0.18 * Math.min(1, age / 350), c.z); g.rotation.y = c.yaw; g.rotation.x = 1.5 * Math.min(1, age / 350) * (2 - Math.min(1, age / 350)); continue;
     }
     const p = pose(r, t); if (!p) { g.visible = false; continue; }
-    remoteSteps(r, p, now); if (r.av) { if (r.gunW !== p.w) { r.gunW = p.w; r.av.setGun(p.w); } r.av.update(dt, { speed: r.speed || 0, air: !!r.air, dead: false, shot: now - (r.shotAt || 0) < 90 }); } g.visible = true; g.position.set(p.x, p.y - p.h, p.z); g.scale.y = p.h / 1.7; g.rotation.y = p.yaw; g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
+    remoteSteps(r, p, now); if (r.av) { if (r.gunW !== p.w) { r.gunW = p.w; r.av.setGun(p.w); } r.av.update(dt, { speed: r.speed || 0, air: !!r.air, dead: false, shotAt: r.shotAt || 0 }); } g.visible = true; g.position.set(p.x, p.y - p.h, p.z); g.scale.y = p.h / 1.7; g.rotation.y = p.yaw; g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
   }
   tickFx(dt);
-  MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06; flash.visible = MP.kick > 0.6; if (flash.visible && !flash.material.map) flash.material.map = muzzleTex(); flashLight.intensity = MP.kick > 0.6 ? 2.5 * MP.kick : 0;
+  MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06;
   if (MP.reloadAt) gun.rotation.x = -0.5 * Math.sin(Math.min(1, (now - MP.reloadAt) / WEAPONS[MP.reloadW].reloadMs) * Math.PI);
+  if (vm) {   // the arms with the AK: your speed over the ground chooses the clip of the steps; the reload follows its progress
+    vmSpeed += (Math.hypot(P.x - vmX, P.z - vmZ) / Math.max(dt, 1e-3) - vmSpeed) * Math.min(1, dt * 8); vmX = P.x; vmZ = P.z; if (vmSpeed > 40) vmSpeed = 0;
+    vm.update(dt, { show: gun.visible && MP.weapon === 0, speed: vmSpeed, reload: MP.reloadAt && MP.reloadW === 0 ? (now - MP.reloadAt) / WEAPONS[0].reloadMs : -1, yaw: P.yaw, pitch: P.pitch, kick: MP.kick });
+  }
+  flashLit(dt);
   if (hitT && now - hitT > 140) { hitT = 0; el('mpHit').hidden = true; }
   if (hurtT && now - hurtT > 600) { hurtT = 0; el('mpHurt').hidden = true; }
 }
 const V = new THREE.Vector3();
+// the light of the flashes: at the muzzle in your hands while your flash shines, else at the shot of someone near
+function flashLit(dt) {
+  const own = Math.max(fpFlash ? fpFlash.tick(dt) : 0, vm ? vm.glow : 0);
+  near.t += dt; const other = near.pow * Math.max(0, 1 - near.t / 0.06) ** 2;
+  gun.updateWorldMatrix(true, false);
+  if (own >= other) { if (own > 0) { if (vm && MP.weapon === 0) vm.muzzle(MV); else fpFlash.group.getWorldPosition(MV); gun.worldToLocal(flashLight.position.copy(MV)).z -= 0.8; } }   // a little ahead of the muzzle: it lights the street and tints the hands, it does not burn them white
+  else gun.worldToLocal(flashLight.position.set(near.x, near.y, near.z));
+  flashLight.intensity = 4.5 * Math.max(own, other);
+}
 // ---------- footsteps ----------
 let noise = null;
 function footstep(vol, pan, bright, low) {

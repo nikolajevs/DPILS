@@ -12,7 +12,7 @@ import { $ } from '../core/env.js';
 
 /* ---------- input ---------- */
 function tryLock() { try { const p = canvas.requestPointerLock && canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
-document.addEventListener('pointerlockchange', () => { STATE.locked = document.pointerLockElement === canvas; canvas.classList.toggle('locked', STATE.locked); $('cross').hidden = !STATE.locked; });
+document.addEventListener('pointerlockchange', () => { STATE.locked = document.pointerLockElement === canvas; canvas.classList.toggle('locked', STATE.locked); if (!STATE.mp) $('cross').hidden = !STATE.locked; });   // in the game the crosshair belongs to crossTick: settings and chat release the lock, but the fight goes on
 const look = (dx, dy, k) => { P.yaw -= dx * k; P.pitch = Math.max(-1.5, Math.min(1.5, P.pitch - dy * k * (SET.invertY ? -1 : 1))); };
 let drag = false, joyId = null, lookId = null, jx = 0, jy = 0, lx = 0, ly = 0;
 canvas.addEventListener('pointerdown', e => {
