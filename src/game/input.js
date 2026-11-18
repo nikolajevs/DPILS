@@ -1,10 +1,10 @@
 import { STATE } from '../core/state.js';
 import { bSV, updateHud } from '../ui/hud.js';
 import { MAP, big, closeMap, openMap } from '../ui/map.js';
-import { QUALITY, TIMES, qi, setQuality, setTime, timeI } from '../render/lighting.js';
+import { QUALITY, qi, qAuto, onQuality, setQualityMode } from '../render/lighting.js';
 import { P, freeSpot, keys, setFly, teleport, touch } from './player.js';
 import { PERF } from './perf.js';
-import { SET } from './settings.js';
+import { SET, onBuild, onReset } from './settings.js';
 import { PLACES } from '../ui/places.js';
 import { SPEEDS, TX, rigaNow, setClock, updateClockUI } from '../transit/transit.js';
 import { camera, canvas } from '../render/renderer.js';
@@ -42,7 +42,7 @@ window.addEventListener('keydown', e => {
   if (STATE.mp && e.code === SET.keys.voice) return;   // in the game V is push-to-talk, not Street View
   keys.add(e.code);
   if (e.repeat) return;
-  if (e.code === 'KeyF') setFly(!P.fly); else if (e.code === 'KeyN') setTime((timeI + 1) % TIMES.length); else if (e.code === 'KeyT') { TX.si = (TX.si + 1) % SPEEDS.length; if (TX.si) TX.live = false; updateClockUI(); } else if (e.code === 'KeyM') { big.hidden ? openMap() : closeMap(); } else if (e.code === 'KeyP') togglePlaces();
+  if (e.code === 'KeyF') setFly(!P.fly); else if (e.code === 'KeyT') { TX.si = (TX.si + 1) % SPEEDS.length; if (TX.si) TX.live = false; updateClockUI(); } else if (e.code === 'KeyM') { big.hidden ? openMap() : closeMap(); } else if (e.code === 'KeyP') togglePlaces();
   else if (e.code === 'KeyV') { updateHud(); if (document.pointerLockElement) document.exitPointerLock(); keys.clear(); bSV.click(); }
 });
 window.addEventListener('keyup', e => keys.delete(e.code));
@@ -50,13 +50,35 @@ window.addEventListener('blur', () => keys.clear());
 function togglePlaces() { const el = $('places'); el.hidden = !el.hidden; $('bPlaces').setAttribute('aria-pressed', !el.hidden); }
 $('bPlaces').onclick = togglePlaces; $('bMap').onclick = openMap; $('bMapClose').onclick = closeMap; $('mini').onclick = openMap;
 $('mini').onkeydown = e => { if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); openMap(); } };
-$('bFly').onclick = () => { setFly(!P.fly); canvas.focus(); }; $('bNight').onclick = () => { setTime((timeI + 1) % TIMES.length); canvas.focus(); };
+$('bFly').onclick = () => { setFly(!P.fly); canvas.focus(); };
 $('clkSpeed').onclick = () => { TX.si = (TX.si + 1) % SPEEDS.length; if (TX.si) TX.live = false; updateClockUI(); canvas.focus(); };
 $('clkBack').onclick = () => { setClock(TX.sec - 3600, false); canvas.focus(); };
 $('clkFwd').onclick = () => { setClock(TX.sec + 3600, false); canvas.focus(); };
 $('clkNow').onclick = () => { const n = rigaNow(); TX.day = n.day; TX.si = 0; setClock(n.sec, true); canvas.focus(); };
 $('clkFirst').onclick = e => { const t = +e.currentTarget.dataset.t; if (!isNaN(t)) setClock(t - 120, false); canvas.focus(); };
-$('bQuality').onclick = () => { PERF.auto = false; setQuality((qi + 1) % QUALITY.length); canvas.focus(); };
+/* Graphics quality: auto or a fixed level. The button cycles авто → высокая → средняя → низкая → минимум → авто;
+   the same choice lives in the settings panel — the group is added here through onBuild. */
+$('bQuality').onclick = () => { setQualityMode(qAuto ? 0 : qi + 1 < QUALITY.length ? qi + 1 : 'auto'); canvas.focus(); };
+let qSel = null, qCur = null;
+const qShow = () => { if (qSel) qSel.value = qAuto ? 'auto' : String(qi); if (qCur) qCur.textContent = 'Сейчас: ' + QUALITY[qi].name + (qAuto ? ' · авто' : ' · фиксированное'); };
+onQuality(qShow);
+onReset(() => setQualityMode('auto'));
+onBuild(body => {
+  const h = document.createElement('h3'); h.textContent = 'Графика'; body.append(h);
+  const g = document.createElement('div'); g.className = 'set-group';
+  const row = document.createElement('label'); row.className = 'set-row sel';
+  const t = document.createElement('span'); t.textContent = 'Качество графики';
+  const sel = document.createElement('select');
+  const oA = document.createElement('option'); oA.value = 'auto'; oA.textContent = 'Авто'; sel.append(oA);
+  QUALITY.forEach((q, i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = q.name[0].toUpperCase() + q.name.slice(1); sel.append(o); });
+  sel.onchange = () => setQualityMode(sel.value === 'auto' ? 'auto' : +sel.value);
+  row.append(t, sel); g.append(row);
+  const hint = document.createElement('p'); hint.className = 'set-hint';
+  hint.textContent = 'Авто: разрешение подстраивается под FPS, в бою уровень графики снижается при нехватке кадров и повышается, когда запас есть. Фиксированное: выбранный уровень и полное разрешение, без автоматических изменений.';
+  const cur = document.createElement('p'); cur.className = 'set-hint';
+  g.append(hint, cur); body.append(g);
+  qSel = sel; qCur = cur; qShow();
+});
 bSV.addEventListener('pointerdown', updateHud);
 big.addEventListener('click', e => { if (e.target === big) closeMap(); });
 MAP.pick = (x, z) => { teleport(x, z, null); closeMap(); };

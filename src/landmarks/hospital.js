@@ -4,7 +4,8 @@ import { lmBlock, lmBar, lmBoxL, lmLathe, lmLit, lmOp, lmRow } from './helpers.j
 import { polyA } from '../core/geometry.js';
 import { TERR, terrainH } from '../world/terrain.js';
 import { STATE } from '../core/state.js';
-import { hb } from '../core/util.js';
+import { hash, hb } from '../core/util.js';
+import { addStaticCar } from '../world/cars.js';
 
 /* Daugavpils Regional Hospital, Vasarnīcu iela 20. LGIA's 1:2,000 topographic plan and 7th-cycle orthophoto fix the
    tower axis, entry court, parking and therapy-wing position. Ministry, hospital and city photographs guide facades. */
@@ -186,9 +187,11 @@ function grounds(K) {
   for (const v of [-143, -137, -128, -122, -115, -109])
     beam(K.plain, HF, [-171.2, v, 0.1], [-74.8, v, 0.1], 0.04, mark);
   const car = (u, v, color) => {
-    lmBoxL(K.plain, HF, u - 0.92, u + 0.92, v - 2.2, v + 2.2, 0.1, 0.72, color);
-    lmBoxL(K.plain, HF, u - 0.72, u + 0.72, v - 1.25, v + 1.4, 0.68, 1.23, hb('#46575c'));
-    for (const du of [-0.91, 0.91]) for (const dv of [-1.45, 1.45]) { const p = lmW(HF, u + du, v + dv); lmLathe(K.plain, p[0], p[1], 0.15, [[0.22, 0], [0.22, 0.12]], 10, hb('#343839')); }
+    // a ready BMW (src/world/cars.js): nose along +v of the hospital frame, paint tinted per instance (col is already
+    // sRGB bytes from hb). The campus is flattened to its own base by STATE.GBC, so the car stands on that platform
+    const p = lmW(HF, u, v), dx = -HF[3], dz = HF[2];
+    const y = 0.06 + (STATE.GBC ? STATE.GBC(p[0], 0.06, p[1]) : 0);
+    addStaticCar(p[0], p[1], Math.atan2(-dz, dx), Math.floor(hash(u * 3.1 + v * 7.7) * 3), color, false, y);
   };
   for (const [u, v, color] of [[-164, -140, '#7d8886'], [-154, -125, '#d6d8d2'], [-143, -112, '#596b73'], [-132, -140, '#84756d'], [-121, -125, '#79837e'], [-110, -112, '#656f73'], [-99, -140, '#8a786e'], [-88, -125, '#66797b'], [-78, -112, '#737e78']]) car(u, v, hb(color));
 

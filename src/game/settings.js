@@ -2,7 +2,9 @@ import { $ } from '../core/env.js';
 
 /* ---------- player settings ----------
    Mouse sensitivity, field of view, the volume of the sounds and of the voices, inverted look, and the keys of the
-   game. Kept in localStorage (the page works without it). The panel opens with the "Настройки" button or O. */
+   game. Kept in localStorage (the page works without it). The panel opens with the "Настройки" button or O.
+   Other modules add their own groups to the panel through onBuild (the graphics quality does, see game/input.js)
+   and hear the reset through onReset. */
 const ACTIONS = [
   ['forward', 'Вперёд', 'KeyW'], ['back', 'Назад', 'KeyS'], ['left', 'Влево', 'KeyA'], ['right', 'Вправо', 'KeyD'], ['run', 'Бег', 'ShiftLeft'],
   ['jump', 'Прыжок', 'Space'], ['crouch', 'Присесть', 'KeyC'], ['reload', 'Перезарядка', 'KeyR'], ['grenade', 'Граната', 'KeyG'],
@@ -12,17 +14,20 @@ const ACTIONS = [
 ];
 const DEFAULTS = { sens: 1, fov: 66, vol: 0.8, voiceVol: 1, ambVol: 0.6, invertY: false, crossCol: '#ffffff', crossDot: true, crossDyn: true };
 const CROSS_COLS = ['#ffffff', '#8dff7a', '#5ad7ff', '#ffd75a', '#ff6a5a', '#ff7ad9'];
-const SET = { ...DEFAULTS, keys: Object.fromEntries(ACTIONS.map(a => [a[0], a[2]])) };
-const listeners = [];
+const SET = { ...DEFAULTS, v: 3, keys: Object.fromEntries(ACTIONS.map(a => [a[0], a[2]])) };
+const listeners = [], buildHooks = [], resetHooks = [];
+const onBuild = f => { buildHooks.push(f); };
+const onReset = f => { resetHooks.push(f); };
 try {
   const s = JSON.parse(localStorage.getItem('dpils.settings') || '{}'), num = (v, lo, hi, d) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
   SET.sens = num(s.sens, 0.2, 3, 1); SET.fov = num(s.fov, 60, 100, 66); SET.vol = num(s.vol, 0, 1, 0.8); SET.voiceVol = num(s.voiceVol, 0, 1, 1); SET.ambVol = num(s.ambVol, 0, 1, 0.6); SET.invertY = s.invertY === true;
   SET.crossCol = CROSS_COLS.includes(s.crossCol) ? s.crossCol : '#ffffff'; SET.crossDot = s.crossDot !== false; SET.crossDyn = s.crossDyn !== false;
   if (s.keys && typeof s.keys === 'object') for (const [a, , d] of ACTIONS) if (typeof s.keys[a] === 'string' && /^[A-Za-z0-9]{1,16}$/.test(s.keys[a])) SET.keys[a] = s.keys[a];
+  if ((s.v || 1) < 3 && /^Control/.test(SET.keys.crouch)) { SET.keys.crouch = 'KeyC'; save(); }   // v3: crouch returns from Ctrl to C — Ctrl combos belong to the browser; a saved Ctrl default follows once
 } catch (e) {}
 function save() { try { localStorage.setItem('dpils.settings', JSON.stringify(SET)); } catch (e) {} for (const f of listeners) f(); }
 const onChange = f => { listeners.push(f); };
-const NAMES = { Space: 'Пробел', ShiftLeft: 'Shift', ShiftRight: 'Shift (прав.)', Tab: 'Tab', Enter: 'Enter', Backquote: '`', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', CapsLock: 'Caps', Backspace: '⌫' };
+const NAMES = { Space: 'Пробел', ShiftLeft: 'Shift', ShiftRight: 'Shift (прав.)', ControlLeft: 'Ctrl', ControlRight: 'Ctrl (прав.)', Tab: 'Tab', Enter: 'Enter', Backquote: '`', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', CapsLock: 'Caps', Backspace: '⌫' };
 const keyName = c => NAMES[c] || c.replace(/^Key/, '').replace(/^Digit/, '').replace(/^Numpad/, 'Num ');
 
 /* ---------- the panel ---------- */
@@ -53,6 +58,7 @@ function build() {
     b.onclick = () => { if (waiting) waiting.b.textContent = keyName(SET.keys[waiting.a]); waiting = { a, b }; b.textContent = 'нажмите клавишу…'; }; row.append(n, b); keys.append(row);
   }
   body.append(keys);
+  for (const f of buildHooks) f(body);
 }
 // the next key goes to the key being set: this listener sees it before the game does
 window.addEventListener('keydown', e => {
@@ -60,16 +66,16 @@ window.addEventListener('keydown', e => {
   if (e.code === 'Escape' && !waiting) { closeSettings(); e.preventDefault(); e.stopImmediatePropagation(); return; }
   e.stopImmediatePropagation(); if (!waiting) return; e.preventDefault();
   const { a, b } = waiting; waiting = null;
-  if (e.code === 'Escape' || /^(Control|Alt|Meta)/.test(e.code) || e.code === 'KeyO') { b.textContent = keyName(SET.keys[a]); return; }   // not these: they have their own meaning
+  if (e.code === 'Escape' || /^(Control|Alt|Meta)/.test(e.code) || e.code === 'KeyO') { b.textContent = keyName(SET.keys[a]); return; }   // not these: they have their own meaning (Ctrl and Alt belong to the browser)
   const other = Object.keys(SET.keys).find(k => k !== a && SET.keys[k] === e.code); if (other) SET.keys[other] = SET.keys[a];   // a key in use swaps places
   SET.keys[a] = e.code; save(); build();
 }, true);
 function openSettings() { if (document.pointerLockElement) document.exitPointerLock(); build(); box.hidden = false; }
 function closeSettings() { box.hidden = true; waiting = null; }
 $('mpSetClose').onclick = closeSettings;
-$('mpSetReset').onclick = () => { Object.assign(SET, DEFAULTS); SET.keys = Object.fromEntries(ACTIONS.map(a => [a[0], a[2]])); save(); build(); };
+$('mpSetReset').onclick = () => { Object.assign(SET, DEFAULTS); SET.keys = Object.fromEntries(ACTIONS.map(a => [a[0], a[2]])); save(); for (const f of resetHooks) f(); build(); };
 $('bSet').onclick = openSettings; $('bSetStart').onclick = openSettings;
 window.addEventListener('keydown', e => { if (e.code === 'KeyO' && box.hidden && !(e.target instanceof HTMLInputElement) && !e.ctrlKey && !e.metaKey && !e.altKey && document.body.classList.contains('mp')) { e.preventDefault(); openSettings(); } });
 box.addEventListener('click', e => { if (e.target === box) closeSettings(); });
 
-export { ACTIONS, SET, closeSettings, keyName, onChange, openSettings };
+export { ACTIONS, SET, closeSettings, keyName, onBuild, onChange, onReset, openSettings };

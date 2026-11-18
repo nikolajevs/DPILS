@@ -121,9 +121,9 @@ export function createGame(opts) {
     all({ t: 'shot', id: p.id, w: wi, o, rays: out });
     for (const { v, dmg, head } of hits.values()) hurt(p, v, Math.round(dmg), head, wi, o);
   }
-  function throwNade(p, u) {
+  function throwNade(p, u, sp = NADE.speed) {
     const t0 = now(); if (!p.alive || p.nades <= 0 || t0 - p.lastNade < NADE.cooldownMs || roundOver) return;
-    p.nades--; p.lastNade = t0; const sp = NADE.speed, id = nextNade++;
+    p.nades--; p.lastNade = t0; sp = Math.max(NADE.minSpeed, Math.min(NADE.maxSpeed, sp)); const id = nextNade++;   // the charged throw: the client sends the speed it gathered holding the mouse
     const n = { id, by: p.id, p: [p.x + u[0] * 0.6, p.y - 0.2 + u[1] * 0.6, p.z + u[2] * 0.6], v: [u[0] * sp, u[1] * sp + NADE.loft * sp, u[2] * sp], t: t0 + NADE.fuseMs };
     nades.set(id, n); all({ t: 'nade', id, by: p.id, p: n.p, v: n.v, fuse: NADE.fuseMs });
   }
@@ -176,7 +176,7 @@ export function createGame(opts) {
           p.yaw = num(m.yaw, 100); p.pitch = num(m.pitch, 1.6); p.eye = Math.max(0.9, Math.min(1.8, num(m.h, 1.8) || 1.7)); p.wep = okWeapon(m.w) ? m.w : 0;
           p.hist.push([t0, p.x, p.y, p.z]); while (p.hist.length > 2 && t0 - p.hist[0][0] > 1000) p.hist.shift();
         } else if (m.t === 'shoot' && p.alive) shoot(p, okWeapon(m.w) ? m.w : 0, m.rays, 120 + Math.min(300, p.rtt / 2));
-        else if (m.t === 'throw') { const d = [num(m.dx, 1), num(m.dy, 1), num(m.dz, 1)], l = Math.hypot(...d); if (l >= 0.5) throwNade(p, d.map(x => x / l)); }
+        else if (m.t === 'throw') { const d = [num(m.dx, 1), num(m.dy, 1), num(m.dz, 1)], l = Math.hypot(...d); if (l >= 0.5) throwNade(p, d.map(x => x / l), m.sp == null ? NADE.speed : num(m.sp, NADE.maxSpeed)); }
         else if (m.t === 'reload' && p.alive) beginReload(p, okWeapon(m.w) ? m.w : p.wep, t0);
         else if (m.t === 'use' && m.kind === 'med') useMed(p, t0);
         else if (m.t === 'chat') {
