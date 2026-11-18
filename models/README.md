@@ -26,13 +26,12 @@
 
 Выбор персонажа в панели игры («Персонаж», «Причёска», «Цвет волос», «Борода») хранится в `localStorage['dpils.mp']` и передаётся серверу строкой `look` (`m.1.2.1` = мужчина, причёска 1, цвет 2, борода). Команда обозначается кепкой и нарукавной повязкой, не перекраской кожи. Пешеходы города ([src/world/pedestrians.js](../src/world/pedestrians.js)) — те же модели без оружия и знаков команды.
 
-## Трава и цветы (`ez-tree/`)
+## Цветы (`ez-tree/`)
 
 **MIT**, автор — Daniel Greenheck ([ez-tree](https://github.com/dgreenheck/ez-tree)); текст лицензии — `ez-tree/LICENSE.txt`.
 
 | Файл | Что |
 |---|---|
-| `grass.glb` | куст высокой травы (~2 м в файле, на газоне масштабируется до 0.3–0.6 м), alpha-test |
 | `flower_blue.glb`, `flower_white.glb`, `flower_yellow.glb` | цветы в сантиметрах (масштаб ×0.01) |
 
 Инстансятся по газонам парков в [src/landmarks/flora.js](../src/landmarks/flora.js), минуя дорожки, клумбы и площадки. Текстуры земли `textures/ground_grass.webp` и `textures/ground_dirt.webp` — оттуда же (MIT).
