@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { worldSpace } from '../render/world-space.js';
 import { akReady } from './viewmodel.js';
+import { FLASH_SIZE, makeFlash } from './muzzle.js';
 
 /* ---------- the ready model of the players ----------
    models/Soldier.glb (CC0, see models/README.md): a soldier with the animations Idle, Walk, Run, Jump, Death and the
@@ -40,7 +41,7 @@ function loadAvatar() {
 const ready = () => asset;
 
 // the fallback rifle of boxes, the muzzle along +z, the grip at the origin, in metres
-const GEO = new THREE.BoxGeometry(1, 1, 1), M1 = worldSpace(new THREE.MeshLambertMaterial({ color: 0x2a2d31 })), M2 = worldSpace(new THREE.MeshLambertMaterial({ color: 0x6b4a2b })), MF = worldSpace(new THREE.MeshBasicMaterial({ color: 0xffd36a, fog: false }));
+const GEO = new THREE.BoxGeometry(1, 1, 1), M1 = worldSpace(new THREE.MeshLambertMaterial({ color: 0x2a2d31 })), M2 = worldSpace(new THREE.MeshLambertMaterial({ color: 0x6b4a2b }));
 function boxRifle() {
   const g = new THREE.Group(), add = (m, sx, sy, sz, x, y, z) => { const o = new THREE.Mesh(GEO, m); o.scale.set(sx, sy, sz); o.position.set(x, y, z); g.add(o); return o; };
   add(M1, 0.07, 0.1, 0.62, 0, 0.02, 0.28); add(M1, 0.035, 0.035, 0.3, 0, 0.03, 0.72); add(M2, 0.06, 0.13, 0.22, 0, 0, -0.1); add(M1, 0.05, 0.16, 0.08, 0, -0.1, 0.18); add(M1, 0.045, 0.1, 0.08, 0, -0.07, 0.04);
@@ -63,7 +64,7 @@ function akRifle() {
   const g = k.gun.clone(true), shift = new THREE.Group(), holder = new THREE.Group(); g.traverse(o => { if (o.isMesh) o.material = worldSpace(o.material.clone()); });
   shift.position.copy(k.shoulder).negate(); shift.add(g); holder.add(shift);   // (the node of the rifle keeps the scale of its packed geometry: it is moved by a group of its own)
   const rel = h => h && Object.fromEntries(Object.entries(h).map(([n, v]) => [n, v.clone().sub(k.shoulder)]));
-  holder.userData = { both: true, hands: { R: rel(k.hands.R), L: rel(k.hands.L) }, flashAt: k.muzzle.clone().sub(k.shoulder).add(new THREE.Vector3(0, 0, 0.05)) };
+  holder.userData = { both: true, hands: { R: rel(k.hands.R), L: rel(k.hands.L) }, flashAt: k.muzzle.clone().sub(k.shoulder) };
   return holder;
 }
 const POLE = { R: new THREE.Vector3(-0.7, -1, -0.3).normalize(), L: new THREE.Vector3(0.5, -1, -0.2).normalize() };   // where the elbows point
@@ -112,10 +113,13 @@ function carry(H, inner, holder, rel) {
   inner.updateMatrixWorld(true); IM.copy(inner.matrixWorld).invert();
   MA.multiplyMatrices(IM, H.R[2].matrixWorld).multiply(rel).decompose(holder.position, holder.quaternion, holder.scale);
 }
-// the flash at the muzzle of the gun in hand: on the holder of the AK, on the hand mount of the others
+// the flash (muzzle.js) at the muzzle of the gun in hand, along its barrel: on the holder of the AK, on the hand mount of the others
 function placeFlash(gun, flash, mount) {
-  if (gun.userData.both) { gun.add(flash); flash.position.copy(gun.userData.flashAt); } else { mount.add(flash); flash.position.set(0, 0.04, gun.userData.muzzle + 0.05); }
+  const g = flash.group;
+  if (gun.userData.both) { gun.add(g); g.position.copy(gun.userData.flashAt); } else { mount.add(g); g.position.set(0, 0.04, gun.userData.muzzle); }
 }
+// a new shot (its time changed): the flash of the weapon in hand
+function shotFlash(flash, s, st) { if (s.shotAt && s.shotAt !== st.at) { st.at = s.shotAt; if (!s.dead) flash.fire(1, FLASH_SIZE[st.w] || 1); } flash.tick(st.dt); }
 const makeGun = i => i === 0 ? akRifle() : asset && asset.guns[i] ? readyGun(asset.guns[i], MODEL.gunLen[i], MODEL.gunYaw[i]) : boxRifle();
 const HOLD_OFS = { human: new THREE.Vector3(0, 0, 0), soldier: new THREE.Vector3(0, 0, 0) };   // the holder from the shoulder joint of each skeleton
 // the camouflage: blotches of three tones of the colour of the team (a smooth noise of the position on the body at rest,
@@ -233,7 +237,7 @@ function makeHuman(hue, L, civilian) {
   for (const k of keys) { const clip = civilian ? humans.full[k] : humans.clips[k]; if (clip) { act[k] = mixer.clipAction(clip); act[k].play(); act[k].weight = k === 'idle' || k === 'hold' ? 1 : 0; } }
   if (act.death) { act.death.setLoop(THREE.LoopOnce, 1); act.death.clampWhenFinished = true; }
   const headProxy = new THREE.Object3D(), armProxy = new THREE.Object3D();   // mp.js turns these as the soldier's head and arm
-  let deadT = -1, flashT = 0, flash = null, H = null, tied = null;
+  let deadT = -1, flash = null, H = null, tied = null; const shot = { at: 0, w: 0, dt: 0 };
   function update(dt, s) {
     const loco = s.dead ? null : s.speed > 5 ? 'run' : s.speed > 0.5 ? 'walk' : 'idle';
     if (s.dead && deadT < 0) { deadT = 0; if (act.death) { act.death.reset(); act.death.play(); } tied = H && gun && gun.userData.both ? tieToHand(H, inner, gun) : null; } else if (!s.dead) deadT = -1;
@@ -246,17 +250,17 @@ function makeHuman(hue, L, civilian) {
       if (bones.spine_03) bones.spine_03.quaternion.multiply(QP.setFromAxisAngle(XA, -armProxy.rotation.x * 0.5));
     }
     if (H && gun && gun.userData.both) { if (!s.dead) hold(H, inner, gun, headProxy.rotation.x); else if (tied) carry(H, inner, gun, tied); }
-    if (flash) { if (s.shot) flashT = 0.07; flashT = Math.max(0, flashT - dt); flash.visible = flashT > 0; }
+    if (flash) { shot.dt = dt; shotFlash(flash, s, shot); }
   }
   let mount = null, gun = null, setGun = () => {};
   if (!civilian) {   // the gun in the right hand: the fingers of the rig point along +Y, the back of the hand along +X
     const hand = bones.hand_r; mount = new THREE.Group();
     const guns = MODEL.guns.map((f, i) => makeGun(i));
-    flash = new THREE.Mesh(GEO, MF); flash.scale.setScalar(0.09); flash.visible = false; gun = guns[0];
+    flash = makeFlash(); gun = guns[0];
     if (hand) { inner.updateMatrixWorld(true); const k = hand.getWorldScale(new THREE.Vector3()).x || 1; mount.scale.setScalar(1 / k); hand.add(mount); }
     mount.rotation.set(-Math.PI / 2, 0, -Math.PI / 2); mount.position.set(-0.01, 0.09, 0.015);   // the muzzle along the fingers, the slide to the back of the hand
     guns.forEach((g, i) => { g.visible = i === 0; (g.userData.both ? inner : mount).add(g); });
-    setGun = i => { i = Math.max(0, Math.min(guns.length - 1, i | 0)); guns.forEach((g, k) => { g.visible = k === i; }); gun = guns[i]; placeFlash(gun, flash, mount); };
+    setGun = i => { i = Math.max(0, Math.min(guns.length - 1, i | 0)); guns.forEach((g, k) => { g.visible = k === i; }); gun = guns[i]; shot.w = i; placeFlash(gun, flash, mount); };
     const B = n => bones[n], all = a => a.every(Boolean) ? a : null;
     const R = all(['upperarm_r', 'lowerarm_r', 'hand_r'].map(B)), L = all(['upperarm_l', 'lowerarm_l', 'hand_l'].map(B)), fR = all(['middle_01_r', 'index_01_r', 'pinky_01_r'].map(B)), fL = all(['middle_01_l', 'index_01_l', 'pinky_01_l'].map(B));
     if (R && L) H = { R, L, fingers: fR && fL ? { R: fR, L: fL } : null, ofs: HOLD_OFS.human };
@@ -266,7 +270,7 @@ function makeHuman(hue, L, civilian) {
   return { root: inner, update, mount, setGun, mixer, get gun() { return gun; } };
 }
 
-// one player's model: update(dt, { speed, air, dead, shot }) every frame; look — the chosen person ('' = the soldier);
+// one player's model: update(dt, { speed, air, dead, shotAt }) every frame (shotAt: the time of the last shot, a new one flashes); look — the chosen person ('' = the soldier);
 // civilian: a person of the streets — the whole walk clip, no gun and no team gear
 function makeAvatar(hue, look, civilian) {
   const L = look ? parseLook(look) : null;
@@ -285,7 +289,7 @@ function makeAvatar(hue, look, civilian) {
   const armBones = MODEL.arms.map(n => root.getObjectByName(n)).filter(o => o && o.isBone), head = root.getObjectByName(MODEL.head);
   const holdMixer = new THREE.AnimationMixer(root); if (asset.clips[C.hold]) { const a = holdMixer.clipAction(asset.clips[C.hold]); a.play(); holdMixer.update(0.001); }
   const armQ = armBones.map(o => o.quaternion.clone()); holdMixer.stopAllAction(); holdMixer.uncacheRoot(root);
-  let deadT = -1, flashT = 0, tied = null;
+  let deadT = -1, tied = null; const shot = { at: 0, w: 0, dt: 0 };
   const want = s => s.dead ? { [C.death]: 1 } : s.air ? { [C.jump]: 1 } : s.speed > 5 ? { [C.run]: 1 } : s.speed > 0.5 ? { [C.walk]: 1 } : { [C.idle]: 1 };
   function update(dt, s) {
     const w = want(s);
@@ -297,15 +301,15 @@ function makeAvatar(hue, look, civilian) {
     if (!s.dead) armBones.forEach((o, i) => o.quaternion.copy(armQ[i]));
     if (head) head.scale.setScalar(MODEL.headScale);
     if (H && gun.userData.both) { if (!s.dead) hold(H, inner, gun, headProxy.rotation.x); else if (tied) carry(H, inner, gun, tied); }
-    if (s.shot) flashT = 0.07; flashT = Math.max(0, flashT - dt); flash.visible = flashT > 0;
+    shot.dt = dt; shotFlash(flash, s, shot);
   }
   // a mount on the hand in metres: the skeleton of the file is in other units, so the mount is scaled back
   const hand = root.getObjectByName(MODEL.hand), mount = new THREE.Group(), guns = MODEL.guns.map((f, i) => makeGun(i));
-  const flash = new THREE.Mesh(GEO, MF); flash.scale.setScalar(0.09); flash.visible = false; let gun = guns[0];
+  const flash = makeFlash(); let gun = guns[0];
   if (hand) { inner.updateMatrixWorld(true); const k = hand.getWorldScale(new THREE.Vector3()).x || 1; mount.scale.setScalar(1 / k); hand.add(mount); }
   mount.quaternion.setFromAxisAngle(new THREE.Vector3(1, 1, 1).normalize(), Math.PI * 2 / 3);   // the axes of the fist: x forward, z up; the gun's muzzle is z, its top y
   guns.forEach((g, i) => { g.visible = i === 0; (g.userData.both ? inner : mount).add(g); });
-  function setGun(i) { i = Math.max(0, Math.min(guns.length - 1, i | 0)); guns.forEach((g, k) => { g.visible = k === i; }); gun = guns[i]; placeFlash(gun, flash, mount); }
+  function setGun(i) { i = Math.max(0, Math.min(guns.length - 1, i | 0)); guns.forEach((g, k) => { g.visible = k === i; }); gun = guns[i]; shot.w = i; placeFlash(gun, flash, mount); }
   const arm = n => MODEL.arms.slice(n, n + 4).map(b => root.getObjectByName(b)), aL = arm(0), aR = arm(4);   // [shoulder, upper arm, forearm, fist]
   const H = aL.every(Boolean) && aR.every(Boolean) ? { R: aR.slice(1), L: aL.slice(1), fingers: null, ofs: HOLD_OFS.soldier } : null;
   const headProxy = new THREE.Object3D(), armProxy = new THREE.Object3D(); inner.userData.head = headProxy; inner.userData.arm = armProxy;   // mp.js turns these with the aim

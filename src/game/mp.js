@@ -6,7 +6,8 @@ import { buildingAt, onRoad } from '../world/data.js';
 import { PERF } from './perf.js';
 import { worldSpace } from '../render/world-space.js';
 import { gunModel, loadAvatar, loadHumans, makeAvatar, parseLook, ready as avatarReady, humansReady } from './avatar.js';
-import { akSettled, loadAK, makeViewmodel } from './viewmodel.js';
+import { akSettled, drawOver, loadAK, makeViewmodel } from './viewmodel.js';
+import { FLASH_SIZE, makeFlash } from './muzzle.js';
 import { SET, keyName, onChange } from './settings.js';
 import { firstGames } from './help.js';
 import { rememberServer } from '../ui/servers.js';
@@ -23,7 +24,7 @@ import { playerKey, boardOn, setBoardOn, account } from './identity.js';
 import { initLeaders } from './leaders.js';
 import { $ } from '../core/env.js';
 import { boomSound, crackSound, hitSound, loadSounds, shotSound, stepSound } from './sfx.js';
-import { tracerShot, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke, muzzleTex } from './impacts.js';
+import { tracerShot, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke } from './impacts.js';
 
 /* ---------- online shooter: deathmatch on the city map ----------
    The server (server/index.mjs) owns health, kills and respawns. This module: the connection, the other players
@@ -130,7 +131,7 @@ function upgradeViewmodels() {
     if (i === 0 && vm) return;   // the AK has the arms of viewmodel.js
     const g = gunModel(i); if (!g || m.userData.ready) return; m.userData.ready = true;
     m.children.forEach(c => { if (!c.userData.keep) c.visible = false; });   // the old boxes off (the hands stay)
-    g.rotation.y = Math.PI; g.scale.multiplyScalar([0.55, 0.55, 0.5, 0.85, 0.5][i] ?? FEEL.vm); g.position.set(0.05, i === 3 ? 0.07 : -0.02, i === 3 ? 0.02 : 0.12); m.add(g); if (i === 0) flash.position.set(0.05, 0.0, -g.userData.muzzle * 0.55 + 0.1);
+    g.rotation.y = Math.PI; g.scale.multiplyScalar([0.55, 0.55, 0.5, 0.85, 0.5][i] ?? FEEL.vm); g.position.set(0.05, i === 3 ? 0.07 : -0.02, i === 3 ? 0.02 : 0.12); m.add(g);
     placeHands(hands[i], HAND_REAL[i]);   // the real model's grip sits a little differently than the box's
   });
 }
@@ -190,8 +191,17 @@ const hands = models.map((m, i) => {
   const R = makeArm([0.16, -0.30, 0.10]), L = makeArm([-0.20, -0.30, 0.12]);   // right elbow to the bottom-right, left to the bottom-left
   hg.add(R, L); hg.userData.R = R; hg.userData.L = L; placeHands(hg, HAND_BOX[i]); m.add(hg); return hg;
 });
-const flash = new THREE.Sprite(worldSpace(new THREE.SpriteMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.95, depthWrite: false, fog: false }))); flash.scale.setScalar(0.3); flash.position.set(0, 0, -0.45); flash.visible = false; gun.add(flash);   // the star texture is attached on the first shot: module-scope calls into impacts.js can hit an import cycle
-const flashLight = new THREE.PointLight(0xffc36a, 0, 20, 2); flashLight.position.set(0, 0.05, -0.5); gun.add(flashLight);   // the flash lights the street for a moment
+// the flash of your own gun (muzzle.js): the AK of the arms has its own at its muzzle (viewmodel.js); this one serves
+// the other guns, ahead of the boxes and the small ready models. Made on the first shot (its canvases need the page)
+let fpFlash = null;
+function ownFlash() {
+  if (!fpFlash) { fpFlash = makeFlash({ size: 0.9, wrap: drawOver }); fpFlash.group.position.set(0, 0, -0.45); fpFlash.group.rotation.y = Math.PI; gun.add(fpFlash.group); }
+  return fpFlash;
+}
+// One light for the flashes: of your own gun, or of a shot of someone near you, whichever is brighter now. A single
+// light keeps the number of lights, and with it the shaders of the whole city, as they are.
+const flashLight = new THREE.PointLight(0xffb868, 0, 22, 2); flashLight.position.set(0, 0.05, -0.5); gun.add(flashLight);
+const near = { x: 0, y: 0, z: 0, t: 9, pow: 0 };   // the last flash of another player within 60 m
 const MV = new THREE.Vector3();
 let actx = null;
 function ac() {   // the audio context of the game sounds, with one volume knob (the settings)
@@ -227,6 +237,7 @@ function wallHit(o, d, len, hear = 45) {
 // that flies past your head
 function otherShot(m) {
   const wf = WEAPONS[m.w] || WEAPONS[0], hear = m.w === 2 ? 600 : (wf.hear ?? FEEL.hear), s = spot(m.o[0], m.o[1], m.o[2]);
+  if (s.d < 60 && m.rays && m.rays[0]) { const d = m.rays[0]; near.x = m.o[0] + d[0] * 0.9; near.y = m.o[1] - 0.15 + d[1] * 0.9; near.z = m.o[2] + d[2] * 0.9; near.t = 0; near.pow = 0.8 * (1 - s.d / 60); }   // its flash lights the street
   if (s.d < hear) {
     let real = false; try { real = shotSound(ac(), actx.master, m.w, (SHOT_VOL[m.w] ?? 0.5) * (1 - s.d / hear) * 25 / (25 + s.d), s.d, s.pan); } catch (e) {}
     if (!real) bang((m.w === 2 ? 0.7 : m.w === 1 ? 0.5 : (wf.vol ?? FEEL.vol) * 0.85) * (1 - s.d / hear), true);
@@ -263,7 +274,7 @@ function fire(now) {
   if (MP.dead || !STATE.locked || now - MP.lastShot < w.gapMs) return;
   if (MP.reloadAt) return;
   if (MP.ammo[MP.weapon] <= 0) { reload(now); return; }
-  statEvent('shot', {}, !!MP.local); MP.lastShot = now; MP.ammo[MP.weapon]--; MP.kick = 1; if (vm && MP.weapon === 0) vm.fire();
+  statEvent('shot', {}, !!MP.local); MP.lastShot = now; MP.ammo[MP.weapon]--; MP.kick = 1;
   const o = [P.x, P.y, P.z], t = performance.now() - 120, rays = [], yaw0 = P.yaw, pitch0 = P.pitch;   // the rays fly where the crosshair stood: the recoil kicks the view only after they are computed — kicking first lifted every sniper shot 0.03 rad (1.7°) over the target, a clean miss past ~40 m
   for (let i = 0; i < w.pellets; i++) {
     const sp = spreadNow(), ang = Math.random() * 6.283, rad = sp * Math.sqrt(Math.random());
@@ -280,9 +291,9 @@ function fire(now) {
     tracerShot(o, d, len, MP.weapon, kind, 0xffe9a0, kind === 'surface' && i < 2 ? () => wallHit(o, d, clear) : null);   // the mark and the hit sound appear when the bullet arrives (of a shotgun's pellets, two are heard)
   }
   P.pitch = Math.min(1.5, P.pitch + (w.pellets > 1 ? 0.02 : w.scope ? 0.03 : (w.kick ?? FEEL.kick))); P.yaw += (Math.random() - 0.5) * (w.pellets > 1 ? 0.006 : 0.0016); if (w.auto) MP.burst = Math.min(w.cap ?? 0.03, MP.burst + (w.burst ?? 0.0045));
-  flash.material.rotation = Math.random() * 6.283; flash.scale.setScalar(0.24 + Math.random() * 0.14);
-  if (vm && MP.weapon === 0) { flash.scale.multiplyScalar(1.7); placeFlash(); }   // the muzzle of the arms is twice as far as the boxes'
-  ejectShell(); gun.updateWorldMatrix(true, false); flash.getWorldPosition(MV); muzzleSmoke(MV.x, MV.y, MV.z, aim());
+  if (vm && MP.weapon === 0) { vm.fire(FLASH_SIZE[0]); vm.muzzle(MV); }
+  else { const f = ownFlash(); f.fire(1, FLASH_SIZE[MP.weapon]); gun.updateWorldMatrix(true, false); f.group.getWorldPosition(MV); }
+  ejectShell(); muzzleSmoke(MV.x, MV.y, MV.z, aim());
   let real = false; try { real = shotSound(ac(), actx.master, MP.weapon, SHOT_VOL[MP.weapon]); } catch (e) {}
   if (!real) bang(w.pellets > 1 ? 0.6 : w.scope ? 0.8 : (w.vol ?? FEEL.vol), true);
   MP.ws.send(JSON.stringify({ t: 'shoot', w: MP.weapon, rays }));
@@ -542,22 +553,29 @@ function mpTick(dt) {
       const c = r.corpse; g.visible = true; g.scale.y = 1; g.position.set(c.x, c.y - (c.h || 1.7) + 0.18 * Math.min(1, age / 350), c.z); g.rotation.y = c.yaw; g.rotation.x = 1.5 * Math.min(1, age / 350) * (2 - Math.min(1, age / 350)); continue;
     }
     const p = pose(r, t); if (!p) { g.visible = false; continue; }
-    remoteSteps(r, p, now); if (r.av) { if (r.gunW !== p.w) { r.gunW = p.w; r.av.setGun(p.w); } r.av.update(dt, { speed: r.speed || 0, air: !!r.air, dead: false, shot: now - (r.shotAt || 0) < 90 }); } g.visible = true; g.position.set(p.x, p.y - p.h, p.z); g.scale.y = p.h / 1.7; g.rotation.y = p.yaw; g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
+    remoteSteps(r, p, now); if (r.av) { if (r.gunW !== p.w) { r.gunW = p.w; r.av.setGun(p.w); } r.av.update(dt, { speed: r.speed || 0, air: !!r.air, dead: false, shotAt: r.shotAt || 0 }); } g.visible = true; g.position.set(p.x, p.y - p.h, p.z); g.scale.y = p.h / 1.7; g.rotation.y = p.yaw; g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
   }
   tickFx(dt);
-  MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06; flash.visible = MP.kick > 0.6; if (flash.visible && !flash.material.map) flash.material.map = muzzleTex(); flashLight.intensity = MP.kick > 0.6 ? 2.5 * MP.kick : 0;
+  MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06;
   if (MP.reloadAt) gun.rotation.x = -0.5 * Math.sin(Math.min(1, (now - MP.reloadAt) / WEAPONS[MP.reloadW].reloadMs) * Math.PI);
   if (vm) {   // the arms with the AK: your speed over the ground chooses the clip of the steps; the reload follows its progress
     vmSpeed += (Math.hypot(P.x - vmX, P.z - vmZ) / Math.max(dt, 1e-3) - vmSpeed) * Math.min(1, dt * 8); vmX = P.x; vmZ = P.z; if (vmSpeed > 40) vmSpeed = 0;
     vm.update(dt, { show: gun.visible && MP.weapon === 0, speed: vmSpeed, reload: MP.reloadAt && MP.reloadW === 0 ? (now - MP.reloadAt) / WEAPONS[0].reloadMs : -1, yaw: P.yaw, pitch: P.pitch, kick: MP.kick });
-    if (MP.weapon === 0) placeFlash();
   }
+  flashLit(dt);
   if (hitT && now - hitT > 140) { hitT = 0; el('mpHit').hidden = true; }
   if (hurtT && now - hurtT > 600) { hurtT = 0; el('mpHurt').hidden = true; }
 }
 const V = new THREE.Vector3();
-// the flash and its light at the muzzle of the AK of the arms (both hang on the camera, so the offset is taken there)
-function placeFlash() { vm.muzzle(MV); gun.updateWorldMatrix(true, false); gun.worldToLocal(MV); flash.position.copy(MV).z -= 0.04; flashLight.position.copy(MV); }
+// the light of the flashes: at the muzzle in your hands while your flash shines, else at the shot of someone near
+function flashLit(dt) {
+  const own = Math.max(fpFlash ? fpFlash.tick(dt) : 0, vm ? vm.glow : 0);
+  near.t += dt; const other = near.pow * Math.max(0, 1 - near.t / 0.06) ** 2;
+  gun.updateWorldMatrix(true, false);
+  if (own >= other) { if (own > 0) { if (vm && MP.weapon === 0) vm.muzzle(MV); else fpFlash.group.getWorldPosition(MV); gun.worldToLocal(flashLight.position.copy(MV)).z -= 0.8; } }   // a little ahead of the muzzle: it lights the street and tints the hands, it does not burn them white
+  else gun.worldToLocal(flashLight.position.set(near.x, near.y, near.z));
+  flashLight.intensity = 4.5 * Math.max(own, other);
+}
 // ---------- footsteps ----------
 let noise = null;
 function footstep(vol, pan, bright, low) {

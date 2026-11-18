@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { worldSpace } from '../render/world-space.js';
+import { makeFlash } from './muzzle.js';
 
 /* ---------- the AK-47 (models/fp_ak47.glb, CC BY 4.0, see models/README.md; built by tools/fp-ak.mjs) ----------
    One file, two uses. The arms of a soldier in gloves holding the rifle, rigged, with the clips idle, walk, run, fire,
@@ -68,12 +69,18 @@ function makeViewmodel(parent) {
   for (const c of g.animations) { const a = mixer.clipAction(c); a.play(); a.weight = 0; act[c.name] = a; }
   if (act.idle) act.idle.weight = 1;
   for (const k of ['fire', 'reload', 'equip']) if (act[k]) act[k].timeScale = 0;   // driven by hand: their time is set every frame
-  const muzzle = new THREE.Object3D();
-  if (ak.root) { rig.updateMatrixWorld(true); muzzle.position.copy(ak.root.worldToLocal(rig.localToWorld(ak.muzzle.clone()))); ak.root.add(muzzle); }
+  const muzzle = new THREE.Object3D(), flash = makeFlash({ wrap: drawOver });
+  if (ak.root) {   // the muzzle rides the bone of the rifle; its flash points along the barrel (+z of the file) in metres
+    rig.updateMatrixWorld(true); muzzle.position.copy(ak.root.worldToLocal(rig.localToWorld(ak.muzzle.clone()))); ak.root.add(muzzle);
+    const dir = ak.root.worldToLocal(rig.localToWorld(ak.muzzle.clone().add(new THREE.Vector3(0, 0, 0.1)))).sub(muzzle.position).normalize();
+    muzzle.add(flash.group); flash.group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir); muzzle.updateMatrixWorld(true);
+    flash.group.scale.setScalar(1 / (muzzle.getWorldScale(new THREE.Vector3()).x || 1));
+  }
   const w = { idle: 1, walk: 0, run: 0, fire: 0, reload: 0, equip: 0 };
-  let fireT = 9, equipT = 9, lastYaw = null, lastPitch = 0, swX = 0, swY = 0;
+  let fireT = 9, equipT = 9, lastYaw = null, lastPitch = 0, swX = 0, swY = 0, glow = 0;
   const dur = k => act[k] ? act[k].getClip().duration : 1;
   function update(dt, s) {
+    glow = flash.tick(dt);
     holder.visible = !!s.show; if (!s.show) { lastYaw = null; return; }
     fireT += dt; equipT += dt * 1.8;
     const reloading = s.reload >= 0, equipping = !reloading && equipT < dur('equip'), firing = !reloading && !equipping && fireT < dur('fire');
@@ -101,10 +108,11 @@ function makeViewmodel(parent) {
   }
   return {
     group: holder, update, act,
-    fire() { fireT = 0; },
+    fire(scale) { fireT = 0; flash.fire(1, scale); },
+    get glow() { return glow; },   // the brightness of the flash now, for its light (mp.js)
     equip() { equipT = 0; },
     muzzle(v) { return muzzle.getWorldPosition(v); },
   };
 }
 
-export { akReady, akSettled, loadAK, makeViewmodel };
+export { akReady, akSettled, drawOver, loadAK, makeViewmodel };

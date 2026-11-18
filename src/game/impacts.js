@@ -19,7 +19,7 @@ function canvasTex(size, draw) {
   const c = document.createElement('canvas'); c.width = c.height = size; draw(c.getContext('2d'), size);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
-let TEX_HOLE = null, TEX_PUFF = null, TEX_STAR = null;
+let TEX_HOLE = null, TEX_PUFF = null;
 function holeTex() {   // a dark punched hole with a rim of dust and short cracks
   if (TEX_HOLE) return TEX_HOLE;
   TEX_HOLE = canvasTex(64, (g, s) => {
@@ -40,18 +40,6 @@ function puffTex() {   // a soft round blob: dust, smoke, sparks
   TEX_PUFF = canvasTex(32, (g, s) => { const r = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2); r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.5, 'rgba(255,255,255,0.5)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, s, s); });
   return TEX_PUFF;
 }
-function muzzleTex() {   // the star of the muzzle flash
-  if (TEX_STAR) return TEX_STAR;
-  TEX_STAR = canvasTex(64, (g, s) => {
-    const c = s / 2;
-    g.translate(c, c);
-    for (let i = 0; i < 6; i++) { g.rotate(Math.PI / 3); g.fillStyle = 'rgba(255,220,150,0.85)'; g.beginPath(); g.moveTo(0, -3); g.lineTo(28 - (i % 2) * 9, 0); g.lineTo(0, 3); g.fill(); }
-    const r = g.createRadialGradient(0, 0, 0, 0, 0, 12); r.addColorStop(0, 'rgba(255,255,240,1)'); r.addColorStop(0.5, 'rgba(255,214,120,0.9)'); r.addColorStop(1, 'rgba(255,170,60,0)');
-    g.fillStyle = r; g.beginPath(); g.arc(0, 0, 12, 0, 6.283); g.fill();
-  });
-  return TEX_STAR;
-}
-
 /* ---------- bullet marks ---------- */
 const decals = [], DECAL_MAX = 140, DECAL_LIFE = 30;
 const decalGeo = new THREE.PlaneGeometry(1, 1);
@@ -241,4 +229,4 @@ function clearFx() {
   for (const s of shells) scene.remove(s.m); shells.length = 0;
 }
 
-export { tracerShot, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke, muzzleTex };
+export { tracerShot, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke };
