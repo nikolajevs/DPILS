@@ -8,7 +8,7 @@ const strip = $('mpHints'), box = $('mpHelp'), body = $('mpHelpBody'); let timer
 const k = a => keyName(SET.keys[a]);
 function stripText() {
   return [`${k('forward')} ${k('left')} ${k('back')} ${k('right')} — идти`, `${k('run')} — бег`, `${k('jump')} — прыжок`, `${k('crouch')} — присесть`, 'ЛКМ — огонь', 'ПКМ — прицел снайперской', `${k('reload')} — перезарядка`,
-    `${k('grenade')} — граната`, `${k('w1')} ${k('w2')} ${k('w3')} ${k('w4')} ${k('w5')} — оружие`, `${k('voice')} — рация`, `${k('chat')} ${k('teamChat')} — чат`, `${k('board')} — счёт`, 'O — настройки', 'F1 — все клавиши'];
+    `${k('grenade')} — граната`, `${k('inv')} — инвентарь`, `${k('med')} — аптечка`, `${k('w1')} ${k('w2')} ${k('w3')} ${k('w4')} ${k('w5')} — оружие`, `${k('voice')} — рация`, `${k('chat')} ${k('teamChat')} — чат`, `${k('board')} — счёт`, 'O — настройки', 'F1 — все клавиши'];
 }
 function renderStrip() { strip.textContent = ''; for (const t of stripText()) { const s = document.createElement('span'); s.textContent = t; strip.append(s); } }
 function showHints(ms = 25000) { renderStrip(); strip.hidden = false; clearTimeout(timer); timer = setTimeout(() => { strip.hidden = true; }, ms); }

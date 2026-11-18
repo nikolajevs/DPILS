@@ -7,6 +7,7 @@ const ACTIONS = [
   ['forward', 'Вперёд', 'KeyW'], ['back', 'Назад', 'KeyS'], ['left', 'Влево', 'KeyA'], ['right', 'Вправо', 'KeyD'], ['run', 'Бег', 'ShiftLeft'],
   ['jump', 'Прыжок', 'Space'], ['crouch', 'Присесть', 'KeyC'], ['reload', 'Перезарядка', 'KeyR'], ['grenade', 'Граната', 'KeyG'],
   ['w1', 'Автомат', 'Digit1'], ['w2', 'Дробовик', 'Digit2'], ['w3', 'Снайперская', 'Digit3'], ['w4', 'Пистолет', 'Digit4'], ['w5', 'Пулемёт', 'Digit5'],
+  ['inv', 'Инвентарь', 'KeyI'], ['med', 'Аптечка (использовать)', 'KeyH'],
   ['voice', 'Рация (удерживать)', 'KeyV'], ['chat', 'Чат всем', 'KeyY'], ['teamChat', 'Чат команде', 'KeyU'], ['board', 'Таблица очков', 'Tab'],
 ];
 const DEFAULTS = { sens: 1, fov: 66, vol: 0.8, voiceVol: 1, ambVol: 0.6, invertY: false };

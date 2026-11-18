@@ -6,10 +6,11 @@ import { buildingAt, onRoad } from '../world/data.js';
 import { PERF } from './perf.js';
 import { worldSpace } from '../render/world-space.js';
 import { gunModel, loadAvatar, loadHumans, makeAvatar, parseLook, ready as avatarReady, humansReady } from './avatar.js';
-import { SET, onChange } from './settings.js';
+import { SET, keyName, onChange } from './settings.js';
 import { firstGames } from './help.js';
 import { rememberServer } from '../ui/servers.js';
 import { addNade, boomNade, clearNades, tickNades } from './nades.js';
+import { KINDS, bindInv, setItems, itemBack, itemTook, tickItems, renderInv, closeInv, toggleInv } from './inventory.js';
 import { terrainH } from '../world/terrain.js';
 import { camera, canvas, scene } from '../render/renderer.js';
 import { CH, addLine, openChat } from './chat.js';
@@ -40,7 +41,15 @@ const WEAPONS = [
 ];
 // what the weapons of the table do not say themselves: the kick of one shot, how loud, how far it is heard, the size of the gun in your hands
 const FEEL = { kick: 0.0035, vol: 0.35, hear: 220, vm: 0.55 };
-const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, lastNade: 0, spec: 0, scope: false, zoom: 0, ammo: [30, 6, 5, 12, 100], reloadAt: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0 };
+const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, lastNade: 0, spec: 0, scope: false, zoom: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0 };
+// the pockets (keep server/combat.mjs in step: RESERVE and INV): the server owns them, the page only shows and predicts
+const RESERVE = [90, 24, 15, 36, 200], NADE_MAX = 3, MED_MAX = 2;
+bindInv({ useMed, switchWeapon, beep: kind => { if (kind === 'pick') tone(660, 990, 0.09, 0.22, 'triangle'); else if (kind === 'med') tone(440, 660, 0.16, 0.25, 'sine'); else tone(180, 120, 0.12, 0.2, 'square'); } });
+function useMed() {
+  const now = performance.now();
+  if (MP.dead || MP.meds <= 0 || MP.hp >= 100 || now - MP.lastMed < 800 || !MP.ws || MP.ws.readyState !== 1) return;
+  MP.lastMed = now; MP.ws.send(JSON.stringify({ t: 'use', kind: 'med' }));
+}
 STATE.mp = false;
 let voice = null;
 const remotes = new Map();   // id → { name, group, buf: [{ t, x, y, z, yaw, pitch }], tag }
@@ -247,17 +256,24 @@ function switchWeapon(i) {
   if (MP.dead || i === MP.weapon || i < 0 || i >= WEAPONS.length) return;
   MP.weapon = i; MP.reloadAt = 0; MP.firing = false; MP.scope = false; models.forEach((m, k) => { m.visible = k === i; }); tone(300, 200, 0.06, 0.15, 'square'); updatePanel();
 }
-function reload(now) { const w = W(); MP.scope = false; if (MP.reloadAt || MP.ammo[MP.weapon] >= w.mag || MP.dead) return; MP.reloadAt = now; updatePanel(); }
+function reload(now) {
+  const w = W(); MP.scope = false;
+  if (MP.reloadAt || MP.ammo[MP.weapon] >= w.mag || MP.dead) return;
+  if (MP.reserve[MP.weapon] <= 0) { if (now - MP.noAmmoAt > 3000) { MP.noAmmoAt = now; feed('Запас патронов пуст — ищите ящики на карте', 'sys'); } return; }
+  MP.reloadAt = now; MP.ws.send(JSON.stringify({ t: 'reload', w: MP.weapon })); updatePanel();   // the server counts the reload and takes the rounds from the reserve
+}
 
 /* ---------- panels ---------- */
 const el = id => $(id);
 let hitT = 0, hurtT = 0;
 function updatePanel() {
   el('mpHp').style.width = Math.max(0, MP.hp) + '%'; el('mpHpN').textContent = Math.max(0, Math.ceil(MP.hp)); el('mpStat').dataset.hp = MP.hp <= 25 ? 'low' : MP.hp <= 60 ? 'mid' : 'ok';
-  el('mpWeapon').textContent = W().name; el('mpAmmo').textContent = MP.reloadAt ? 'перезарядка…' : MP.ammo[MP.weapon] + ' / ' + W().mag; el('mpAmmo').dataset.empty = !MP.reloadAt && MP.ammo[MP.weapon] === 0 ? 1 : 0;
+  el('mpWeapon').textContent = W().name; el('mpAmmo').textContent = MP.reloadAt ? 'перезарядка…' : MP.ammo[MP.weapon] + ' / ' + MP.reserve[MP.weapon]; el('mpAmmo').title = 'в магазине / запас'; el('mpAmmo').dataset.empty = !MP.reloadAt && MP.ammo[MP.weapon] === 0 ? 1 : 0;
   el('mpNades').textContent = '●'.repeat(Math.max(0, MP.nades)) || '—';
-  const sl = el('mpSlots'); if (sl.children.length !== WEAPONS.length) { sl.textContent = ''; WEAPONS.forEach((w, i) => { const d = document.createElement('span'); d.title = w.name; d.textContent = i + 1; sl.append(d); }); }
-  [...sl.children].forEach((d, i) => d.classList.toggle('on', i === MP.weapon));
+  el('mpMeds').textContent = '✚'.repeat(Math.max(0, MP.meds)) || '—';
+  const sl = el('mpSlots'); if (sl.children.length !== WEAPONS.length) { sl.textContent = ''; WEAPONS.forEach((w, i) => { const d = document.createElement('span'), b = document.createElement('b'), r = document.createElement('i'); d.title = w.name; b.textContent = i + 1; d.append(b, r); sl.append(d); }); }
+  [...sl.children].forEach((d, i) => { d.classList.toggle('on', i === MP.weapon); d.querySelector('i').textContent = MP.reserve[i]; d.title = WEAPONS[i].name + ' · запас ' + MP.reserve[i]; });
+  renderInv({ weapons: WEAPONS.map((w, i) => ({ name: w.name, mag: MP.ammo[i], magSize: w.mag, reserve: MP.reserve[i], on: i === MP.weapon, key: keyName(SET.keys['w' + (i + 1)]) })), nades: MP.nades, nadeMax: NADE_MAX, meds: MP.meds, medMax: MED_MAX, hp: MP.hp, medKey: keyName(SET.keys.med), nadeKey: keyName(SET.keys.grenade) });
   el('mpScore').textContent = MP.kills + ' · ' + MP.deaths; el('mpFps').textContent = ' · ' + PERF.fps + ' кадр/с' + (PERF.scale < 1 ? ' · разрешение ' + Math.round(PERF.scale * 100) + ' %' : '');
   const tm = el('mpTeams'); tm.textContent = '';
   if (MP.ffa) { const lead = [...MP.board].sort((a, b) => b.kills - a.kills)[0], me = document.createElement('b'), ld = document.createElement('b'), lim = document.createElement('small'); me.className = 'me'; me.textContent = 'Вы ' + MP.kills; ld.className = 'lead'; ld.textContent = lead ? lead.name + ' ' + lead.kills : ''; lim.textContent = 'до ' + MP.win; tm.append(me, ld, lim); } else { const chip = (i, t) => { const e = document.createElement('b'); e.className = 't' + i; e.textContent = t; return e; };
@@ -272,7 +288,7 @@ function feed(text, cls) {
 }
 function die(byName, byId) {
   STATE.mpDead = true; document.body.classList.add('dead'); MP.spec = remotes.has(byId) ? byId : 0;   // watch the one who killed you first
-  MP.dead = true; MP.deadAt = performance.now(); MP.firing = false; MP.scope = false; gun.visible = false;
+  MP.dead = true; MP.deadAt = performance.now(); MP.firing = false; MP.scope = false; gun.visible = false; closeInv();
   if (document.pointerLockElement) document.exitPointerLock();
   el('mpDead').hidden = false; el('mpDeadBy').textContent = byName ? 'Вас убил ' + byName : 'Вы погибли';
 }
@@ -331,12 +347,12 @@ function respawn() {
 function onMsg(m) {
   switch (m.t) {
     case 'hello': MP.ffa = m.mode === 'ffa'; document.body.classList.toggle('ffa', MP.ffa); if (MP.ffa) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } if (!MP.local) rememberServer(MP.url, m.server); voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team, e.look); document.body.dataset.team = m.team;
-      MP.arena = m.arena || null; clearFx(); if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
+      MP.arena = m.arena || null; clearFx(); setItems(m.items); if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
       if (MP.local) feed('Тренировка с ботами: ' + MP.board.filter(e => e.bot).length + ', уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || '') + '»', 'sys'); break;
     case 'spawn': {
       const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.crouch = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
-      MP.weapon = 0; MP.scope = false; models.forEach((mm, k) => { mm.visible = k === 0; }); MP.hp = m.hp; MP.ammo = WEAPONS.map(w => w.mag); MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; clearNades(); gun.visible = true; el('mpDead').hidden = true; updatePanel();
+      MP.weapon = 0; MP.scope = false; models.forEach((mm, k) => { mm.visible = k === 0; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; clearNades(); gun.visible = true; el('mpDead').hidden = true; updatePanel();
       MP.ws.send(JSON.stringify({ t: 'state', x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch }));   // the server has the point as asked: tell it where the player really stands
       if (canvas.requestPointerLock) { canvas.focus(); try { const pr = canvas.requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} }
       break;
@@ -362,6 +378,10 @@ function onMsg(m) {
     case 'board': MP.board = m.board; MP.score = m.score; for (const e of m.board) { const r = addRemote(e.id, e.name, e.team, e.look); if (r) { r.name = e.name; r.tag.textContent = e.name; const look = parseLook(e.look) ? e.look : ''; if (look !== r.look) { r.look = look; rebuildAvatar(r); } } if (e.id === MP.id) { MP.kills = e.kills; MP.deaths = e.deaths; } } for (const id of [...remotes.keys()]) if (!m.board.some(e => e.id === id)) dropRemote(id); drawBoard(); updatePanel(); if (voice) voice.setPeers(m.board.filter(e => e.id !== MP.id && !e.bot).map(e => e.id)); break;
     case 'left': dropRemote(m.id); break;
     case 'nade': addNade(m); if (m.by !== MP.id) { const dd = Math.hypot(m.p[0] - P.x, m.p[2] - P.z); if (dd < 40) tone(500, 300, 0.08, 0.1 * (1 - dd / 40), 'triangle'); } break;
+    case 'item': itemBack(m); break;
+    case 'took': itemTook(m.id); if (m.to === MP.id) { feed('+ ' + KINDS[m.kind].name, 'sys'); tone(660, 990, 0.09, 0.22, 'triangle'); } break;
+    case 'inv': MP.ammo = m.mag.slice(); MP.reserve = m.reserve.slice(); MP.nades = m.nades; MP.meds = m.meds; updatePanel(); break;
+    case 'heal': { const got = m.hp - MP.hp; MP.hp = m.hp; MP.meds = m.meds; feed('Аптечка: +' + got + ' HP', 'sys'); tone(440, 660, 0.16, 0.25, 'sine'); updatePanel(); break; }
     case 'boom': {
       boomNade(m); const dd = Math.hypot(m.x - P.x, m.z - P.z), hear = 300; if (dd < hear) { const v = 1 - dd / hear; let real = false; try { real = boomSound(ac(), actx.master, 1.1 * v, dd, spot(m.x, P.y, m.z).pan); } catch (e) {} if (!real) { bang(1.1 * v, true); tone(80, 35, 0.6, 0.5 * v, 'sine'); } }
       if (dd < 14 && !MP.dead) { el('mpFlash').hidden = false; el('mpFlash').style.opacity = String(0.8 * (1 - dd / 14)); setTimeout(() => { el('mpFlash').hidden = true; }, 220); }
@@ -445,6 +465,8 @@ window.addEventListener('keydown', e => {
   else if (!MP.dead && (e.code === SET.keys.chat || e.code === SET.keys.teamChat || e.code === 'Enter')) { e.preventDefault(); openChat(e.code === SET.keys.teamChat && !MP.ffa); }
   else if (MP.dead && (e.code === 'ArrowRight' || e.code === 'KeyE')) specNext(1);
   else if (MP.dead && (e.code === 'ArrowLeft' || e.code === 'KeyQ')) specNext(-1);
+  else if (e.code === SET.keys.inv) { if (!MP.dead) toggleInv(); }
+  else if (e.code === SET.keys.med) useMed();
   else if (e.code === SET.keys.grenade) throwNade();
   else if (e.code === SET.keys.reload) reload(performance.now());
   else if (e.code === SET.keys.w1) switchWeapon(0); else if (e.code === SET.keys.w2) switchWeapon(1); else if (e.code === SET.keys.w3) switchWeapon(2); else if (e.code === SET.keys.w4) switchWeapon(3); else if (e.code === SET.keys.w5) switchWeapon(4);
@@ -465,8 +487,11 @@ function mpTick(dt) {
     const fov = SET.fov - (SET.fov - 20) * MP.zoom; if (Math.abs(camera.fov - fov) > 0.05) { camera.fov = fov; camera.updateProjectionMatrix(); }
     const scoped = MP.zoom > 0.6; if (el('mpScope').hidden === scoped) { el('mpScope').hidden = !scoped; $('cross').style.visibility = scoped ? 'hidden' : ''; }
     gun.visible = !MP.dead && MP.zoom < 0.5; }
-  ownSteps(dt); tickNades(dt); spectate(now);
-  if (MP.reloadAt && now - MP.reloadAt >= W().reloadMs) { MP.reloadAt = 0; MP.ammo[MP.weapon] = W().mag; updatePanel(); }
+  ownSteps(dt); tickNades(dt); tickItems(dt, now); spectate(now);
+  if (MP.reloadAt && now - MP.reloadAt >= W().reloadMs) {   // the local picture of the reload; the server's 'inv' message is the truth
+    MP.reloadAt = 0; const k = Math.min(W().mag - MP.ammo[MP.weapon], MP.reserve[MP.weapon]);
+    MP.ammo[MP.weapon] += k; MP.reserve[MP.weapon] -= k; updatePanel();
+  }
   MP.burst = Math.max(0, MP.burst - dt * 0.03); { const px = Math.max(6, Math.round(spreadNow() * 1400)), cr = $('cross'); if (cr.dataset.px !== String(px)) { cr.dataset.px = px; cr.style.width = cr.style.height = px + 'px'; cr.style.margin = (-px / 2) + 'px 0 0 ' + (-px / 2) + 'px'; } }
   if ((MP.pingT = (MP.pingT || 0) - dt) <= 0 && MP.ws.readyState === 1) { MP.pingT = 2; MP.ws.send(JSON.stringify({ t: 'ping', c: now, rtt: MP.rtt })); }
   if (MP.firing && W().auto) fire(now);
