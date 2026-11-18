@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { STATE } from '../core/state.js';
-import { AREAS, COL, M_ASPH, M_DIRT, M_LAND, M_PAVE, ROAD, inBuilding, matPlain } from '../world/data.js';
+import { AREAS, COL, M_ASPH, M_DIRT, M_LAND, M_PAVE, ROAD, inBuilding } from '../world/data.js';
+import { carGeo, carMat, carsReady } from '../world/cars.js';
 import { LAMPS } from '../world/streets.js';
 import { CARROAD } from '../transit/transit.js';
-import { TERR, subTris } from '../world/terrain.js';
+import { TERR, subTris, terrainH } from '../world/terrain.js';
 import { camera, scene } from '../render/renderer.js';
 import { GB, SegGrid, box, lathe, polyA } from '../core/geometry.js';
 import { area2, bbox, edgeN, hash, hb, obb, pip, reversed, sh, triangulate } from '../core/util.js';
@@ -38,6 +39,7 @@ const STRIP = k => k >= 1 && k <= 3;   // along a street
 const SURF = [  // asphalt, paving, gravel or earth, grass pavers, concrete: [material, colour]
   () => [M_ASPH, '#5c5d5e'], () => [M_PAVE, '#8e877c'], () => [M_DIRT, '#867a62'], () => [M_LAND, '#66734f'], () => [M_ASPH, '#8b8a85']];
 const COLS = ['#e8e8e6', '#1d1f22', '#8d9196', '#5b6067', '#7a1f22', '#1f3f6e', '#c9c6bd', '#2f4a35', '#b8bcc0', '#3a3d42', '#e8e8e6', '#1d1f22', '#8d9196', '#9a2a1e', '#2a4f8f', '#6e5a3e'];
+const CCOLS = COLS.map(c => new THREE.Color(c));   // the paint tints the white body of the BMW models (src/world/cars.js)
 // how full a car park is through the day, by whose cars stand in it: [hour, share] on weekdays and at the weekend
 const OCC = [
   [[[0, .86], [6, .86], [9, .42], [16, .45], [19, .78], [22, .86], [24, .86]], [[0, .88], [8, .88], [11, .66], [17, .62], [20, .82], [24, .88]]],   // yard
@@ -83,24 +85,6 @@ function fits(R, L, H) {
   for (const s of [-0.55, 0, 0.55]) { const x = R[0] + R[2] * R[4] * s, z = R[1] + R[3] * R[4] * s; if (blocked(x, z) || inBuilding(x, z)) return false; }
   for (const s of [-1, 1]) { const x = R[0] + R[2] * (R[4] + 0.6) * s, z = R[1] + R[3] * (R[4] + 0.6) * s; if (inBuilding(x, z)) return false; }   // not with its end at a wall
   return true;
-}
-
-/* ---- the car shapes: +x forward, white where the colour of the car goes ---- */
-function carGeo(kind) {
-  const g = new GB(false), BODY = [236, 236, 236], GL = hb('#2b333b'), TY = hb('#1b1b1c'), LT = hb('#ece6d0'), RL = hb('#b32a22');
-  const B = (x0, x1, z0, z1, y0, y1, c, top = true) => box(g, (x0 + x1) / 2, (z0 + z1) / 2, 1, 0, (x1 - x0) / 2, (z1 - z0) / 2, y0, y1, c, top);
-  const [L, W, Hb, G0, G1, R0, R1, Hg, Hr, wr] = [[4.5, 1.78, 0.8, -1.55, 1.05, -1.0, 0.35, 1.36, 1.44, 0.31], [4.0, 1.74, 0.82, -1.85, 0.75, -1.75, 0.15, 1.42, 1.5, 0.3], [4.8, 1.9, 1.0, -2.38, 1.6, -2.3, 1.0, 1.82, 1.9, 0.34]][kind];
-  B(-L / 2, L / 2, -W / 2, W / 2, 0.3, Hb, BODY);
-  // the cabin: the windscreen and the rear window sloped, glass all round under the roof
-  const zc = W / 2 - 0.1, P = [[G0, Hb], [R0, Hg], [R1, Hg], [G1, Hb]];
-  for (let i = 0; i < 3; i++) { const [x1, y1] = P[i], [x2, y2] = P[i + 1], nx = y2 - y1, ny = x1 - x2; polyA(g, [[x1, y1, -zc], [x2, y2, -zc], [x2, y2, zc], [x1, y1, zc]], GL, -nx, -ny, 0); }
-  for (const z of [-zc, zc]) polyA(g, P.map(([x, y]) => [x, y, z]), GL, 0, 0, z);
-  B(R0, R1, -zc, zc, Hg, Hr, BODY);
-  for (const x of [-L / 2 + 0.85, L / 2 - 0.85]) for (const z of [-1, 1]) { const z0 = z > 0 ? W / 2 - 0.26 : -W / 2; B(x - wr, x + wr, z0, z0 + 0.26, 0, 2 * wr, TY, false); }
-  for (const z of [-1, 1]) { const z0 = z * (W / 2 - 0.12), z1 = z * (W / 2 - 0.42), y0 = Hb - 0.2, y1 = Hb - 0.07;
-    polyA(g, [[L / 2 + 0.01, y0, z0], [L / 2 + 0.01, y0, z1], [L / 2 + 0.01, y1, z1], [L / 2 + 0.01, y1, z0]], LT, 1, 0, 0);
-    polyA(g, [[-L / 2 - 0.01, y0, z0], [-L / 2 - 0.01, y0, z1], [-L / 2 - 0.01, y1, z1], [-L / 2 - 0.01, y1, z0]], RL, -1, 0, 0); }
-  const m = g.mesh(matPlain); return m.geometry;
 }
 
 /* ---- the lidar trees (lidar-trees.js: 6 bytes a tree, see tools/lidar.js), by 20 m cells ---- */
@@ -244,18 +228,28 @@ function lmParking(K) {
 
   // the cars: per stall its shape, colour, place and how likely it is taken; drawn per 1 km tile
   const n = S.length;
-  ST = { n: 0, x: new Float32Array(n), z: new Float32Array(n), a: new Float32Array(n), kind: new Uint8Array(n), col: new Uint8Array(n), u: new Float32Array(n), lot: new Uint16Array(n), occ: new Uint8Array(n), prof: [], f: [] };
+  ST = { n: 0, x: new Float32Array(n), z: new Float32Array(n), y: new Float32Array(n), a: new Float32Array(n), kind: new Uint8Array(n), col: new Uint8Array(n), u: new Float32Array(n), lot: new Uint16Array(n), occ: new Uint8Array(n), prof: [], f: [] };
   LOTS.forEach((L, li) => { ST.prof[li] = L.prof; ST.f[li] = 0.85 + 0.3 * L.seed; L.li = li; });
   const tiles = new Map();
   for (let s = 0; s < n; s++) { if (!keep[s]) continue; const [R, L, face, par] = S[s], k = ST.n++, h1 = hash(s * 2654435761 + 11), h2 = hash(s * 40503 + 7);
-    const dx = R[2] * face, dz = R[3] * face; ST.x[k] = R[0]; ST.z[k] = R[1]; ST.a[k] = Math.atan2(-dz, dx); ST.kind[k] = par ? (h1 < 0.7 ? 1 : 0) : h1 < 0.5 ? 0 : h1 < 0.82 ? 1 : 2; ST.col[k] = Math.floor(h2 * COLS.length); ST.u[k] = hash(s * 7919 + 3); ST.lot[k] = L.li;
+    const dx = R[2] * face, dz = R[3] * face; ST.x[k] = R[0]; ST.z[k] = R[1]; ST.y[k] = terrainH(R[0], R[1]); ST.a[k] = Math.atan2(-dz, dx); ST.kind[k] = par ? (h1 < 0.7 ? 1 : 0) : h1 < 0.5 ? 0 : h1 < 0.82 ? 1 : 2; ST.col[k] = Math.floor(h2 * COLS.length); ST.u[k] = hash(s * 7919 + 3); ST.lot[k] = L.li;
     const hl = ST.kind[k] === 2 ? 1.55 : ST.kind[k] === 1 ? 1.15 : 1.4; PCOL.add(R[0] - R[2] * hl, R[1] - R[3] * hl, R[0] + R[2] * hl, R[1] + R[3] * hl, k, 0);
     const key = Math.floor(R[0] / 1000) * 100 + Math.floor(R[1] / 1000); let t = tiles.get(key); if (!t) tiles.set(key, t = { cx: (Math.floor(R[0] / 1000) + 0.5) * 1000, cz: (Math.floor(R[1] / 1000) + 0.5) * 1000, s: [[], [], []] }); t.s[ST.kind[k]].push(k); }
-  const geos = [0, 1, 2].map(carGeo), cols = COLS.map(c => new THREE.Color(c));
-  for (const t of tiles.values()) { t.m = t.s.map((list, kind) => { if (!list.length) return null; const m = new THREE.InstancedMesh(geos[kind], matPlain, list.length);
-    m.boundingSphere = new THREE.Sphere(new THREE.Vector3(t.cx, 0, t.cz), 800); m.castShadow = m.receiveShadow = true; m.count = 0; m.cols = cols; scene.add(m); return m; }); TILES.push(t); }
+  for (const t of tiles.values()) { t.m = null; TILES.push(t); }   // the BMW meshes are made by placeParkingCars once the files are in
   PSTAT.car = (x, z) => { let best = null, bd = 60; for (let k = 0; k < ST.n; k++) { const d = Math.hypot(ST.x[k] - x, ST.z[k] - z); if (ST.occ[k] && d < bd) { bd = d; best = [ST.x[k], ST.z[k], ST.a[k]]; } } return best; };   // the nearest parked car (for checks)
   PSTAT.lots = LOTS.length; PSTAT.stalls = ST.n; PSTAT.mapped = LOTS.reduce((t, L) => t + (L.cap > 0 ? L.cap : 0), 0); PSTAT.ofMapped = LOTS.reduce((t, L) => t + (L.cap > 0 ? L.stalls.length : 0), 0);   // the capacities mapped, and how many stalls those car parks got
+}
+
+/* ---- the BMW meshes of the car parks: made once the models are decoded (src/world/cars.js), a step of its own ---- */
+async function placeParkingCars() {
+  const r = carsReady(); if (r) await r;
+  const geos = [0, 1, 2].map(carGeo);
+  for (const t of TILES) {
+    if (t.m) continue;
+    t.m = t.s.map((list, kind) => { if (!list.length || !geos[kind]) return null; const m = new THREE.InstancedMesh(geos[kind], carMat, list.length);
+      m.boundingSphere = new THREE.Sphere(new THREE.Vector3(t.cx, 0, t.cz), 800); m.castShadow = m.receiveShadow = true; m.count = 0; m.cols = CCOLS; scene.add(m); return m; });
+  }
+  lastKey = -1;   // let parkTick fill the matrices now that the meshes exist
 }
 
 /* ---- the time of day: which stalls are taken (every 10 minutes of the clock), and which tiles are near enough ---- */
@@ -266,12 +260,12 @@ function parkTick(day, sec) {
     const wd = ((day + 4) % 7 + 7) % 7, weekend = wd === 0 || wd === 6, h = (sec / 3600) % 24, share = ST.prof.map((p, li) => Math.min(0.97, occAt(p, h, weekend) * ST.f[li]));
     let cars = 0; for (let k = 0; k < ST.n; k++) { const o = ST.u[k] < share[ST.lot[k]] ? 1 : 0; ST.occ[k] = o; cars += o; } PSTAT.cars = cars;
     const M = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();
-    for (const t of TILES) t.m.forEach((m, kind) => { if (!m) return; let c = 0;
-      for (const k of t.s[kind]) { if (!ST.occ[k]) continue; q.setFromAxisAngle(up, ST.a[k]); p.set(ST.x[k], 0, ST.z[k]); M.compose(p, q, one); m.setMatrixAt(c, M); m.setColorAt(c, m.cols[ST.col[k]]); c++; }
-      m.count = c; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; });
+    for (const t of TILES) { if (!t.m) continue; t.m.forEach((m, kind) => { if (!m) return; let c = 0;
+      for (const k of t.s[kind]) { if (!ST.occ[k]) continue; q.setFromAxisAngle(up, ST.a[k]); p.set(ST.x[k], ST.y[k], ST.z[k]); M.compose(p, q, one); m.setMatrixAt(c, M); m.setColorAt(c, m.cols[ST.col[k]]); c++; }
+      m.count = c; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }); }
   }
   const now = performance.now(); if (now - lastVis > 400) { lastVis = now; const cx = camera.position.x, cz = camera.position.z, far = 1500 + Math.max(0, camera.position.y) * 2;
-    for (const t of TILES) { const v = Math.hypot(t.cx - cx, t.cz - cz) < far; for (const m of t.m) if (m) m.visible = v; } }
+    for (const t of TILES) { if (!t.m) continue; const v = Math.hypot(t.cx - cx, t.cz - cz) < far; for (const m of t.m) if (m) m.visible = v; } }
 }
 // a walker against the parked cars: pushed out of each taken stall (0.45 m of the walker, 0.85 m of the car)
 function parkedPush(P) { if (!ST) return; PCOL.near(P.x, P.z, 1.3, (id, d, px, pz) => { if (!ST.occ[PCOL.s[id * 6 + 4]] || d >= 1.3 || d < 1e-5) return; const k = (1.3 - d) / d; P.x += (P.x - px) * k; P.z += (P.z - pz) * k; }); }
@@ -284,4 +278,4 @@ function inParking(x, z) {
   return false;
 }
 
-export { PARKING_LOTS, PSTAT, inParking, lmParking, parkTick, parkedAt, parkedPush };
+export { PARKING_LOTS, PSTAT, inParking, lmParking, parkTick, parkedAt, parkedPush, placeParkingCars };
