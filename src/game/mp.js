@@ -126,8 +126,9 @@ function rebuildAvatar(r) {   // the look changed on the board: the old model of
 function upgradeViewmodels() {
   models.forEach((m, i) => {
     const g = gunModel(i); if (!g || m.userData.ready) return; m.userData.ready = true;
-    m.children.forEach(c => { c.visible = false; });   // the old boxes off
+    m.children.forEach(c => { if (!c.userData.keep) c.visible = false; });   // the old boxes off (the hands stay)
     g.rotation.y = Math.PI; g.scale.multiplyScalar([0.55, 0.55, 0.5, 0.85, 0.5][i] ?? FEEL.vm); g.position.set(0.05, i === 3 ? 0.07 : -0.02, i === 3 ? 0.02 : 0.12); m.add(g); if (i === 0) flash.position.set(0.05, 0.0, -g.userData.muzzle * 0.55 + 0.1);
+    placeHands(hands[i], HAND_REAL[i]);   // the real model's grip sits a little differently than the box's
   });
 }
 function dropRemote(id) { const r = remotes.get(id); if (!r) return; scene.remove(r.group); r.tag.remove(); remotes.delete(id); }
@@ -153,8 +154,32 @@ const gun = new THREE.Group(), models = WEAPONS.map(() => new THREE.Group());
   add(n, m1, 0.045, 0.07, 1.0, 0, 0, -0.2); add(n, m3, 0.02, 0.02, 0.45, 0, 0.0, -0.95); add(n, m1, 0.05, 0.05, 0.28, 0, 0.065, -0.15); add(n, m2, 0.06, 0.15, 0.4, 0, -0.06, 0.4); add(n, m1, 0.04, 0.12, 0.07, 0, -0.08, 0.02);   // sniper rifle: long barrel, scope, stock
   models.slice(3).forEach(m => add(m, m1, 0.05, 0.08, 0.4, 0, 0, -0.1));   // the simple boxes of the weapons that have no ready model yet
   models.forEach((m, k) => { m.visible = k === 0; gun.add(m); });
-  gun.position.set(0.17, -0.19, -0.5); gun.scale.setScalar(0.8); gun.visible = false; camera.add(gun); scene.add(camera);
+  gun.position.set(0.17, -0.16, -0.5); gun.scale.setScalar(0.8); gun.visible = false; camera.add(gun); scene.add(camera);   // a touch higher so the hands on the grip show above the bottom edge
 })();
+// the hands that hold the gun: a fist on the grip, a supporting hand on the forend, the sleeves going off the bottom of the
+// frame. They live inside each weapon model, so they switch, kick and tilt with it and hide when the scope is up.
+const vmSkin = worldSpace(new THREE.MeshLambertMaterial({ color: 0xe0b890 })), vmSleeve = worldSpace(new THREE.MeshLambertMaterial({ color: 0x4b5320 }));
+const HAND_BOX = [   // [right hand, left hand] on the fallback boxes of each weapon
+  [[0, -0.10, 0.14], [0, -0.03, -0.20]], [[0, -0.07, 0.24], [0, -0.03, -0.30]], [[0, -0.08, 0.02], [0, -0.04, -0.30]],
+  [[0, -0.05, 0.02], [-0.06, -0.07, 0.0]], [[0, -0.06, 0.05], [0, -0.03, -0.18]],
+];
+const HAND_REAL = [   // the same on the ready models (their grip is at the holder's origin, shifted in upgradeViewmodels)
+  [[0.05, -0.06, 0.12], [0.03, -0.03, -0.18]], [[0.05, -0.06, 0.14], [0.03, -0.02, -0.22]], [[0.05, -0.06, 0.12], [0.03, -0.02, -0.25]],
+  [[0.05, 0.02, 0.02], [0.0, 0.0, 0.0]], [[0.05, -0.06, 0.12], [0.03, -0.03, -0.16]],
+];
+function makeArm(dir) {   // a fist with a wrist and a sleeve reaching toward the elbow (off the frame)
+  const g = new THREE.Group(), d = new THREE.Vector3(...dir).normalize(), z = new THREE.Vector3(0, 0, 1);
+  const fist = new THREE.Mesh(GEO.box, vmSkin); fist.scale.set(0.10, 0.09, 0.12); g.add(fist);
+  const wrist = new THREE.Mesh(GEO.box, vmSkin); wrist.scale.set(0.08, 0.08, 0.07); wrist.position.copy(d).multiplyScalar(0.08); wrist.quaternion.setFromUnitVectors(z, d); g.add(wrist);
+  const sleeve = new THREE.Mesh(GEO.box, vmSleeve); sleeve.scale.set(0.095, 0.095, 0.30); sleeve.position.copy(d).multiplyScalar(0.26); sleeve.quaternion.setFromUnitVectors(z, d); g.add(sleeve);
+  return g;
+}
+function placeHands(hg, a) { hg.userData.R.position.set(...a[0]); hg.userData.L.position.set(...a[1]); }
+const hands = models.map((m, i) => {
+  const hg = new THREE.Group(); hg.userData.keep = true;
+  const R = makeArm([0.16, -0.30, 0.10]), L = makeArm([-0.20, -0.30, 0.12]);   // right elbow to the bottom-right, left to the bottom-left
+  hg.add(R, L); hg.userData.R = R; hg.userData.L = L; placeHands(hg, HAND_BOX[i]); m.add(hg); return hg;
+});
 const flash = new THREE.Sprite(worldSpace(new THREE.SpriteMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.95, depthWrite: false, fog: false }))); flash.scale.setScalar(0.3); flash.position.set(0, 0, -0.45); flash.visible = false; gun.add(flash);   // the star texture is attached on the first shot: module-scope calls into impacts.js can hit an import cycle
 const flashLight = new THREE.PointLight(0xffc36a, 0, 20, 2); flashLight.position.set(0, 0.05, -0.5); gun.add(flashLight);   // the flash lights the street for a moment
 const MV = new THREE.Vector3();
