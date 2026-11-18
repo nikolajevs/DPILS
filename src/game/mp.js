@@ -714,7 +714,7 @@ function remoteSteps(r, p, now) {
   const moved = Math.hypot(p.x - r.sx, p.z - r.sz), secs = Math.max(0.001, (now - r.st) / 1000); r.sx = p.x; r.sz = p.z; r.st = now;
   const inst = moved / secs; r.speed = inst > 25 ? 0 : (r.speed || 0) + (inst - (r.speed || 0)) * 0.35; r.air = Math.abs(p.y - (r.sy ?? p.y)) / secs > 1.5;   // for the animation of the model
   if (moved / secs > 20 || moved < 0.002 || (p.h || 1.7) < 1.5 || Math.abs(p.y - (r.sy ?? p.y)) > 0.15) { r.sy = p.y; return; }   // a jump, a crouch, a teleport or standing still: no steps
-  r.sy = p.y; const run = moved / secs > 6; r.stride += moved; if (r.stride < (run ? 3 : 2.1)) return; r.stride = 0;
+  r.sy = p.y; const run = moved / secs > 8; r.stride += moved; if (r.stride < (run ? 3 : 2.1)) return; r.stride = 0;   // the run threshold sits between the jog (6) and the sprint (11)
   const dx = p.x - P.x, dz = p.z - P.z, d = Math.hypot(dx, dz); if (d > 40) return;
   const right = (dx * Math.cos(P.yaw) - dz * Math.sin(P.yaw)) / (d || 1);
   const behind = (r.losT || 0) < now - 600 ? (r.losT = now, r.muffled = freePath([P.x, P.y, P.z], [dx / (d || 1), 0, dz / (d || 1)], d) < d - 1) : r.muffled;

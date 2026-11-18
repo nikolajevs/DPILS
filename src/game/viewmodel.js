@@ -140,7 +140,7 @@ function makeViewmodel(parent) {
     holder.visible = !!s.show; if (!s.show) { lastYaw = null; return; }
     fireT += dt; equipT += dt * 1.8;
     const reloading = s.reload >= 0, equipping = !reloading && equipT < dur('equip'), firing = !reloading && !equipping && fireT < dur('fire');
-    const loco = s.speed > 6.5 ? 'run' : s.speed > 0.6 ? 'walk' : 'idle';
+    const loco = s.speed > 5 ? 'run' : s.speed > 0.6 ? 'walk' : 'idle';   // the same threshold as the body (avatar.js): the arms jog when the legs jog
     const want = { reload: reloading, equip: equipping, fire: firing };
     for (const k in want) w[k] += ((want[k] ? 1 : 0) - w[k]) * Math.min(1, dt * (want[k] ? 22 : 9));
     for (const k of ['idle', 'walk', 'run']) w[k] += ((k === loco ? 1 : 0) - w[k]) * Math.min(1, dt * 7);

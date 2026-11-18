@@ -44,7 +44,7 @@ function step(dt) {
     if (keys.has('KeyE') || keys.has('Space')) P.y += sp * 0.6 * dt; if (keys.has('KeyQ')) P.y -= sp * 0.6 * dt;
     P.y = Math.max(terrainH(P.x, P.z) + 2, Math.min(1500, P.y));
   } else if (l > 0.01) {
-    const sp = P.crouch ? JUMP.crouchSpeed : run ? 11 : 3.3; let dx = (-sy * f + cy * s) * sp * dt, dz = (-cy * f - sy * s) * sp * dt;
+    const sp = P.crouch ? JUMP.crouchSpeed : run ? 11 : 6; let dx = (-sy * f + cy * s) * sp * dt, dz = (-cy * f - sy * s) * sp * dt;   // 6 m/s by default: a brisk jog, the run clip plays at its own rate; Shift is the sprint
     const n = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.3)); dx /= n; dz /= n;
     for (let i = 0; i < n; i++) {
       const ox = P.x, oz = P.z; P.x += dx; P.z += dz; collide();

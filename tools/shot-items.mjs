@@ -6,7 +6,7 @@
 import http from 'node:http';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { chromium } from 'playwright';
+import { launchBrowser } from './browser.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const OUT = process.env.OUT || path.join(ROOT, '.claude', 'shots-items');   // .claude/ в .gitignore
@@ -27,7 +27,7 @@ const srv = http.createServer((req, res) => {
 await new Promise(r => srv.listen(PORT, '127.0.0.1', r));
 mkdirSync(OUT, { recursive: true });
 
-const browser = await chromium.launch({ executablePath: 'C:/Users/igors/AppData/Local/ms-playwright/chromium-1248/chrome-win64/chrome.exe', args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'] });
+const { browser } = await launchBrowser({ args: ['--no-sandbox'] });
 const page = await browser.newPage({ viewport: { width: 900, height: 600 } });
 const cdp = await page.context().newCDPSession(page);
 const shot = async f => { const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' }); writeFileSync(path.join(OUT, f), Buffer.from(data, 'base64')); };
@@ -59,7 +59,7 @@ for (const kind of ['ammo', 'med', 'nade']) {
     return [g.position.x, g.position.z];
   }, kind);
   if (!at) { console.log(kind, 'NOT FOUND'); continue; }
-  // ждём настоящий кадр после перестановки (под SwiftShader кадров почти нет)
+  // ждём настоящий кадр после перестановки (на программном рендере кадров почти нет)
   await page.waitForFunction(() => {
     const C = window.__city;
     return Math.hypot(C.camera.position.x - C.P.x, C.camera.position.z - C.P.z) < 0.6;
