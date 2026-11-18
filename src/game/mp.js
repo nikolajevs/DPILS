@@ -5,7 +5,7 @@ import { PLACES } from '../ui/places.js';
 import { buildingAt, onRoad } from '../world/data.js';
 import { PERF } from './perf.js';
 import { worldSpace } from '../render/world-space.js';
-import { gunModel, loadAvatar, loadHumans, makeAvatar, parseLook, ready as avatarReady, humansReady } from './avatar.js';
+import { gunModel, gunSource, loadAvatar, loadHumans, makeAvatar, parseLook, ready as avatarReady, humansReady } from './avatar.js';
 import { akSettled, drawOver, loadAK, makeViewmodel } from './viewmodel.js';
 import { FLASH_SIZE, makeFlash } from './muzzle.js';
 import { SET, keyName, onChange } from './settings.js';
@@ -128,7 +128,7 @@ function rebuildAvatar(r) {   // the look changed on the board: the old model of
 // the gun in your own hands: the ready models in place of the boxes
 function upgradeViewmodels() {
   models.forEach((m, i) => {
-    if (i === 0 && vm) return;   // the AK has the arms of viewmodel.js
+    if (vm && (vm.has(i) || vm.addWeapon(i, gunSource(i)))) { m.clear(); return; }   // the arms of viewmodel.js hold it: the boxes and their fists go
     const g = gunModel(i); if (!g || m.userData.ready) return; m.userData.ready = true;
     m.children.forEach(c => { if (!c.userData.keep) c.visible = false; });   // the old boxes off (the hands stay)
     const s = [0.55, 0.29, 0.46, 0.8, 0.44][i] ?? FEEL.vm;   // the fp_* guns are in metres: these keep the on-screen size of the old boxes
@@ -143,7 +143,7 @@ function upgradeViewmodels() {
 let vm = null, vmX = 0, vmZ = 0, vmSpeed = 0;
 function upgradeAK() {
   if (vm) return; vm = makeViewmodel(camera); if (!vm) return;
-  models[0].clear(); MP.vm = vm; if (MP.weapon === 0 && !MP.dead) vm.equip();
+  models[0].clear(); MP.vm = vm; vm.setWeapon(MP.weapon); if (vm.has(MP.weapon) && !MP.dead) vm.equip();
 }
 function dropRemote(id) { const r = remotes.get(id); if (!r) return; scene.remove(r.group); r.tag.remove(); remotes.delete(id); }
 function nameOf(id) { const b = MP.board.find(e => e.id === id); return b ? b.name : '?'; }
@@ -295,7 +295,7 @@ function fire(now) {
     tracerShot(o, d, len, MP.weapon, kind, 0xffe9a0, kind === 'surface' && i < 2 ? () => wallHit(o, d, clear) : null);   // the mark and the hit sound appear when the bullet arrives (of a shotgun's pellets, two are heard)
   }
   P.pitch = Math.min(1.5, P.pitch + (w.pellets > 1 ? 0.02 : w.scope ? 0.03 : (w.kick ?? FEEL.kick))); P.yaw += (Math.random() - 0.5) * (w.pellets > 1 ? 0.006 : 0.0016); if (w.auto) MP.burst = Math.min(w.cap ?? 0.03, MP.burst + (w.burst ?? 0.0045));
-  if (vm && MP.weapon === 0) { vm.fire(FLASH_SIZE[0]); vm.muzzle(MV); }
+  if (vm && vm.has(MP.weapon)) { vm.fire(FLASH_SIZE[MP.weapon]); vm.muzzle(MV); }
   else { const f = ownFlash(); f.fire(1, FLASH_SIZE[MP.weapon]); gun.updateWorldMatrix(true, false); f.group.getWorldPosition(MV); }
   ejectShell(); muzzleSmoke(MV.x, MV.y, MV.z, aim());
   let real = false; try { real = shotSound(ac(), actx.master, MP.weapon, SHOT_VOL[MP.weapon]); } catch (e) {}
@@ -306,7 +306,7 @@ function fire(now) {
 }
 function switchWeapon(i) {
   if (MP.dead || i === MP.weapon || i < 0 || i >= WEAPONS.length) return;
-  MP.weapon = i; MP.firing = false; MP.scope = false; crossGap = CROSS[i].ring ? 20 : CROSS[i].gap; models.forEach((m, k) => { m.visible = k === i; }); if (vm && i === 0) vm.equip(); tone(300, 200, 0.06, 0.15, 'square'); updatePanel();   // the reload keeps running: the server locks every weapon until it ends (server/game.mjs shoot)
+  MP.weapon = i; MP.firing = false; MP.scope = false; crossGap = CROSS[i].ring ? 20 : CROSS[i].gap; models.forEach((m, k) => { m.visible = k === i; }); if (vm) { vm.setWeapon(i); vm.equip(); } tone(300, 200, 0.06, 0.15, 'square'); updatePanel();   // the reload keeps running: the server locks every weapon until it ends (server/game.mjs shoot)
 }
 function reload(now) {
   const w = W(); MP.scope = false;
@@ -404,7 +404,7 @@ function onMsg(m) {
     case 'spawn': {
       const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.crouch = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
-      MP.weapon = 0; MP.scope = false; models.forEach((mm, k) => { mm.visible = k === 0; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; clearNades(); gun.visible = true; if (vm) vm.equip(); el('mpDead').hidden = true; updatePanel();
+      MP.weapon = 0; MP.scope = false; models.forEach((mm, k) => { mm.visible = k === 0; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; clearNades(); gun.visible = true; if (vm) { vm.setWeapon(0); vm.equip(); } el('mpDead').hidden = true; updatePanel();
       MP.ws.send(JSON.stringify({ t: 'state', x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch }));   // the server has the point as asked: tell it where the player really stands
       if (canvas.requestPointerLock) { canvas.focus(); try { const pr = canvas.requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} }
       break;
@@ -596,9 +596,9 @@ function mpTick(dt) {
   tickFx(dt);
   MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06;
   if (MP.reloadAt) gun.rotation.x = -0.5 * Math.sin(Math.min(1, (now - MP.reloadAt) / WEAPONS[MP.reloadW].reloadMs) * Math.PI);
-  if (vm) {   // the arms with the AK: your speed over the ground chooses the clip of the steps; the reload follows its progress
+  if (vm) {   // the arms with the weapon in hand: your speed over the ground chooses the clip of the steps; the reload follows its progress
     vmSpeed += (Math.hypot(P.x - vmX, P.z - vmZ) / Math.max(dt, 1e-3) - vmSpeed) * Math.min(1, dt * 8); vmX = P.x; vmZ = P.z; if (vmSpeed > 40) vmSpeed = 0;
-    vm.update(dt, { show: gun.visible && MP.weapon === 0, speed: vmSpeed, reload: MP.reloadAt && MP.reloadW === 0 ? (now - MP.reloadAt) / WEAPONS[0].reloadMs : -1, yaw: P.yaw, pitch: P.pitch, kick: MP.kick });
+    vm.update(dt, { show: gun.visible && vm.has(MP.weapon), speed: vmSpeed, reload: MP.reloadAt && MP.reloadW === MP.weapon ? (now - MP.reloadAt) / WEAPONS[MP.weapon].reloadMs : -1, yaw: P.yaw, pitch: P.pitch, kick: MP.kick });
   }
   flashLit(dt);
   if (hitT && now - hitT > 140) { hitT = 0; el('mpHit').hidden = true; }
@@ -610,7 +610,7 @@ function flashLit(dt) {
   const own = Math.max(fpFlash ? fpFlash.tick(dt) : 0, vm ? vm.glow : 0);
   near.t += dt; const other = near.pow * Math.max(0, 1 - near.t / 0.06) ** 2;
   gun.updateWorldMatrix(true, false);
-  if (own >= other) { if (own > 0) { if (vm && MP.weapon === 0) vm.muzzle(MV); else fpFlash.group.getWorldPosition(MV); gun.worldToLocal(flashLight.position.copy(MV)).z -= 0.8; } }   // a little ahead of the muzzle: it lights the street and tints the hands, it does not burn them white
+  if (own >= other) { if (own > 0) { if (vm && vm.has(MP.weapon)) vm.muzzle(MV); else fpFlash.group.getWorldPosition(MV); gun.worldToLocal(flashLight.position.copy(MV)).z -= 0.8; } }   // a little ahead of the muzzle: it lights the street and tints the hands, it does not burn them white
   else gun.worldToLocal(flashLight.position.set(near.x, near.y, near.z));
   flashLight.intensity = 4.5 * Math.max(own, other);
 }
