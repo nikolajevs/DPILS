@@ -331,19 +331,29 @@ function reload(now) {
 
 /* ---------- panels ---------- */
 const el = id => $(id);
+// silhouettes for the weapon belt, in the order of WEAPONS: the AK, the shotgun, the SVD, the pistol, the machine gun
+const SLOT_SVG = [
+  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="24" y="9" width="14" height="2"/><rect x="8" y="8" width="17" height="5"/><polygon points="1,9 8,8 8,13 3,14"/><polygon points="14,13 19,13 17,19 13,19"/><polygon points="20,13 23,13 22,17 19,17"/><rect x="26" y="7" width="2" height="2"/></svg>',
+  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="14" y="9" width="24" height="2.5"/><rect x="18" y="11.5" width="7" height="3"/><polygon points="1,9 14,9 14,13 4,15"/><rect x="10" y="8.5" width="8" height="4"/></svg>',
+  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="20" y="9.5" width="18" height="1.8"/><rect x="12" y="6" width="8" height="3"/><rect x="14" y="9" width="2" height="1.5"/><rect x="8" y="9" width="14" height="4"/><polygon points="1,9 8,9 8,14 3,15"/><rect x="14" y="13" width="4" height="4"/></svg>',
+  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="10" y="7" width="18" height="5"/><polygon points="12,12 19,12 17,19 11,19"/><rect x="28" y="8" width="2" height="3"/></svg>',
+  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="6" y="8" width="20" height="6"/><rect x="26" y="9" width="12" height="2.5"/><polygon points="1,9 6,8 6,14 2,15"/><rect x="12" y="14" width="8" height="5"/><rect x="10" y="6" width="8" height="2"/><path d="M30 11l-2 7M33 11l2 7" stroke="rgba(255,255,255,.62)" stroke-width="1.4" fill="none"/></svg>',
+];
 let hitT = 0, hurtT = 0;
 function updatePanel() {
   el('mpHp').style.width = Math.max(0, MP.hp) + '%'; el('mpHpN').textContent = Math.max(0, Math.ceil(MP.hp)); el('mpStat').dataset.hp = MP.hp <= 25 ? 'low' : MP.hp <= 60 ? 'mid' : 'ok';
-  el('mpWeapon').textContent = W().name; el('mpAmmo').textContent = MP.reloadAt ? 'перезарядка…' : MP.ammo[MP.weapon] + ' / ' + MP.reserve[MP.weapon]; el('mpAmmo').title = 'в магазине / запас'; el('mpAmmo').dataset.empty = !MP.reloadAt && MP.ammo[MP.weapon] === 0 ? 1 : 0;
-  el('mpNades').textContent = '●'.repeat(Math.max(0, MP.nades)) || '—';
-  el('mpMeds').textContent = '✚'.repeat(Math.max(0, MP.meds)) || '—';
-  const sl = el('mpSlots'); if (sl.children.length !== WEAPONS.length) { sl.textContent = ''; WEAPONS.forEach((w, i) => { const d = document.createElement('span'), b = document.createElement('b'), r = document.createElement('i'); d.title = w.name; b.textContent = i + 1; d.append(b, r); sl.append(d); }); }
+  el('mpWeapon').textContent = W().name; el('mpAmmo').textContent = MP.reloadAt ? 'перезарядка…' : MP.ammo[MP.weapon] + ' / ' + MP.reserve[MP.weapon]; el('mpAmmo').title = 'в магазине / запас'; el('mpAmmo').dataset.empty = !MP.reloadAt && MP.ammo[MP.weapon] === 0 ? 1 : 0; el('mpAmmo').dataset.reload = MP.reloadAt ? 1 : 0;
+  const nk = keyName(SET.keys.grenade), mk = keyName(SET.keys.med);
+  el('mpNades').textContent = '×' + Math.max(0, MP.nades); el('mpNadesBox').dataset.empty = MP.nades > 0 ? 0 : 1; el('mpNadesBox').title = 'Гранаты (' + nk + ' — прицельный бросок)'; el('mpNadeKey').textContent = nk;
+  el('mpMeds').textContent = '×' + Math.max(0, MP.meds); el('mpMedsBox').dataset.empty = MP.meds > 0 ? 0 : 1; el('mpMedsBox').title = 'Аптечки (' + mk + ')'; el('mpMedKey').textContent = mk;
+  const sl = el('mpSlots'); if (sl.children.length !== WEAPONS.length) { sl.textContent = ''; WEAPONS.forEach((w, i) => { const d = document.createElement('span'), b = document.createElement('b'), r = document.createElement('i'); d.title = w.name; d.innerHTML = SLOT_SVG[i]; b.textContent = i + 1; d.append(b, r); sl.append(d); }); }
   [...sl.children].forEach((d, i) => { d.classList.toggle('on', i === MP.weapon); d.querySelector('i').textContent = MP.reserve[i]; d.title = WEAPONS[i].name + ' · запас ' + MP.reserve[i]; });
   renderInv({ weapons: WEAPONS.map((w, i) => ({ name: w.name, mag: MP.ammo[i], magSize: w.mag, reserve: MP.reserve[i], on: i === MP.weapon, key: keyName(SET.keys['w' + (i + 1)]) })), nades: MP.nades, nadeMax: NADE_MAX, meds: MP.meds, medMax: MED_MAX, hp: MP.hp, medKey: keyName(SET.keys.med), nadeKey: keyName(SET.keys.grenade) });
-  el('mpScore').textContent = MP.kills + ' · ' + MP.deaths; el('mpFps').textContent = ' · ' + PERF.fps + ' кадр/с' + (PERF.scale < 1 ? ' · разрешение ' + Math.round(PERF.scale * 100) + ' %' : '');
+  el('mpScore').textContent = MP.kills + ' · ' + MP.deaths; el('mpFps').textContent = PERF.fps + ' кадр/с' + (PERF.scale < 1 ? ' · разрешение ' + Math.round(PERF.scale * 100) + ' %' : '');
+  el('mpMeName').textContent = MP.name || 'Вы'; el('mpMeDot').className = 'dot ' + (MP.ffa ? 'tf' : 't' + MP.team);
   const tm = el('mpTeams'); tm.textContent = '';
-  if (MP.ffa) { const lead = [...MP.board].sort((a, b) => b.kills - a.kills)[0], me = document.createElement('b'), ld = document.createElement('b'), lim = document.createElement('small'); me.className = 'me'; me.textContent = 'Вы ' + MP.kills; ld.className = 'lead'; ld.textContent = lead ? lead.name + ' ' + lead.kills : ''; lim.textContent = 'до ' + MP.win; tm.append(me, ld, lim); } else { const chip = (i, t) => { const e = document.createElement('b'); e.className = 't' + i; e.textContent = t; return e; };
-  const lim = document.createElement('small'); lim.textContent = 'до ' + MP.win; tm.append(chip(0, MP.teams[0] + ' ' + MP.score[0]), lim, chip(1, MP.score[1] + ' ' + MP.teams[1])); }
+  if (MP.ffa) { const lead = [...MP.board].sort((a, b) => b.kills - a.kills)[0], me = document.createElement('b'), ld = document.createElement('b'), lim = document.createElement('small'); me.className = 'me'; me.textContent = 'Вы ' + MP.kills; ld.className = 'lead'; ld.textContent = lead ? lead.name + ' ' + lead.kills : ''; lim.textContent = 'до ' + MP.win; tm.append(me, ld, lim); } else { const chip = (i, t, s) => { const e = document.createElement('b'), n = document.createElement('small'), v = document.createElement('span'); e.className = 't' + i; n.textContent = t; v.textContent = s; e.append(n, v); return e; };
+  const lim = document.createElement('small'); lim.textContent = 'до ' + MP.win; tm.append(chip(0, MP.teams[0], MP.score[0]), lim, chip(1, MP.teams[1], MP.score[1])); }
 }
 function drawBoard() {
   const rows = [...MP.board].sort((a, b) => (MP.ffa ? 0 : a.team - b.team) || b.kills - a.kills || a.deaths - b.deaths), ol = el('mpBoardList'); ol.textContent = '';
@@ -460,7 +470,7 @@ function onMsg(m) {
       if (canvas.requestPointerLock) { canvas.focus(); try { const pr = canvas.requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} }
       break;
     }
-    case 'pong': MP.rtt = Math.round(MP.rtt ? MP.rtt * 0.6 + (performance.now() - m.c) * 0.4 : performance.now() - m.c); el('mpPing').textContent = ' · пинг ' + MP.rtt + ' мс'; updatePanel(); break;
+    case 'pong': MP.rtt = Math.round(MP.rtt ? MP.rtt * 0.6 + (performance.now() - m.c) * 0.4 : performance.now() - m.c); el('mpPing').textContent = 'пинг ' + MP.rtt + ' мс'; updatePanel(); break;
     case 'correct': P.x = m.x; P.z = m.z; if (m.out) edgeNotice(); break;
     case 'snap': {
       const t = performance.now(), seen = new Set();
@@ -628,6 +638,7 @@ function mpTick(dt) {
   if (voice) voice.update(dt); ambTick(dt); statEvent('tick', { dt }, !!MP.local);
   if (MP.arena && !MP.dead) { const A = MP.arena, dx = P.x - A.cx, dz = P.z - A.cz, d = Math.hypot(dx, dz); if (d > A.r - 1) { P.x = A.cx + dx / d * (A.r - 1); P.z = A.cz + dz / d * (A.r - 1); edgeNotice(); } }   // the edge of the arena
   if ((MP.fpsT = (MP.fpsT || 0) - dt) <= 0) { MP.fpsT = 1; updatePanel(); }
+  el('mpReloadFill').style.width = (MP.reloadAt ? Math.min(1, (now - MP.reloadAt) / WEAPONS[MP.reloadW].reloadMs) * 100 : 0).toFixed(1) + '%';   // the reload bar under the rounds, every frame (the crosshair ring keeps its own)
   // the scope: the picture closes in (the field of view 66° → 20°) and the gun goes out of sight
   { const want = MP.scope && W().scope && !MP.dead && !MP.reloadAt ? 1 : 0; MP.zoom += (want - MP.zoom) * Math.min(1, dt * 14); if (Math.abs(MP.zoom - want) < 0.01) MP.zoom = want;
     const fov = SET.fov - (SET.fov - 20) * MP.zoom; if (Math.abs(camera.fov - fov) > 0.05) { camera.fov = fov; camera.updateProjectionMatrix(); }

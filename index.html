@@ -166,12 +166,17 @@
 <div class="mp-hurt" id="mpHurt" hidden><i id="mpHurtDir"></i></div>
 <div class="mp-hud" id="mpHud" hidden>
   <div class="mp-top"><div class="mp-teams" id="mpTeams"></div></div>
+  <div class="mp-me" id="mpMe"><span class="dot" id="mpMeDot"></span><b id="mpMeName">Вы</b><span class="kd"><small>У · С</small><span id="mpScore">0 · 0</span></span></div>
+  <div class="mp-slots" id="mpSlots"></div>
   <div class="mp-stat" id="mpStat">
-    <div class="mp-vitals"><span class="mp-hpn"><b id="mpHpN">100</b><i>HP</i></span><div class="mp-hp"><i id="mpHp"></i></div></div>
-    <div class="mp-gun"><span id="mpWeapon">Автомат</span><b id="mpAmmo">30 / 90</b><span class="mp-nades" id="mpNades" title="Гранаты (G — прицельный бросок)"></span><span class="mp-meds" id="mpMeds" title="Аптечки (H)"></span></div>
-    <div class="mp-slots" id="mpSlots"></div>
-    <small>убийств · смертей: <span id="mpScore">0 · 0</span><span id="mpPing"></span><span id="mpFps"></span></small>
+    <div class="mp-vitals"><small>ЗДОРОВЬЕ</small><span class="mp-hpn"><b id="mpHpN">100</b><i>HP</i></span><div class="mp-hp"><i id="mpHp"></i></div></div>
+    <div class="mp-gun"><span id="mpWeapon">Автомат</span><b id="mpAmmo">30 / 90</b><div class="mp-rl" aria-hidden="true"><i id="mpReloadFill"></i></div></div>
+    <div class="mp-items">
+      <span class="mp-it" id="mpNadesBox" title="Гранаты (G — прицельный бросок)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="14" r="7"/><path d="M10 7h4v3h-4zM14 5l3-2"/></svg><b class="cnt" id="mpNades">×2</b><kbd id="mpNadeKey">G</kbd></span>
+      <span class="mp-it" id="mpMedsBox" title="Аптечки (H)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M12 10v6M9 13h6M9 6V4h6v2"/></svg><b class="cnt" id="mpMeds">×0</b><kbd id="mpMedKey">H</kbd></span>
+    </div>
   </div>
+  <div class="mp-sys"><span id="mpPing"></span><span id="mpFps"></span></div>
   <div class="mp-feed" id="mpFeed" aria-live="polite"></div>
 </div>
 <div class="mp-banner" id="mpBanner" hidden></div>
