@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { FORT } from '../fortress/index.js';
-import { AREAS, M_LAND, WATER, WMASK, matBank, waterMask } from './data.js';
+import { AREAS, M_LAND, M_MARK, WATER, WMASK, matBank, waterMask } from './data.js';
 import { SMALL_WATER, waterDeep, waterMat } from './water.js';
 import { AREA_HEX, AREA_ORDER } from './palette.js';
 import { groundMaterial } from '../render/materials.js';
@@ -149,7 +149,7 @@ function groundDepth() {
   const nx = TERR.nx, nz = TERR.nz, s = TERR.s, H = terrainH, n = 8;
   scene.updateMatrixWorld(true);
   scene.traverse(o => {
-    const mt = o.material; if (!o.isMesh || !(o.renderOrder > -50 && o.renderOrder < -29.5) || o.renderOrder === -40 || !o.geometry.index || !mt || Array.isArray(mt) || mt.colorWrite === false || mt.transparent) return;
+    const mt = o.material; if (!o.isMesh || !(o.renderOrder > -50 && o.renderOrder < -29.5) || o.renderOrder === -40 || !o.geometry.index || !mt || Array.isArray(mt) || mt.colorWrite === false || mt.transparent || mt === M_MARK) return;   // the markings lie on the asphalt and the sidewalks, which have lowered the grid under them
     const A = o.geometry.attributes.position.array, I = o.geometry.index.array, e = o.matrixWorld.elements, ox = e[12], oy = e[13], oz = e[14];
     for (let t = 0; t < I.length; t += 3) {
       const a = 3 * I[t], b = 3 * I[t + 1], c = 3 * I[t + 2], ax = A[a] + ox, az = A[a + 2] + oz, bx = A[b] + ox, bz = A[b + 2] + oz, cx = A[c] + ox, cz = A[c + 2] + oz;
