@@ -6,7 +6,7 @@ import { SHV } from './landmarks/shops.js';
 import { frame } from './game/loop.js';
 import { PEDS } from './world/pedestrians.js';
 import { PERF } from './game/perf.js';
-import { MP, enablePlay } from './game/mp.js';
+import { MP, enablePlay, loadModels, warmSamples } from './game/mp.js';
 import './ui/start.js';
 import { ambProbe, ambStatus } from './game/ambience.js';
 import { statEvent, statsOf } from './game/stats.js';
@@ -78,7 +78,7 @@ import { $, C } from './core/env.js';
    laptop with both of its GPUs (RTX 3050 and Intel UHD: 25 and 35 s of building), the shares of the two averaged; the
    shaders are given more than a second visit takes, when the browser has them compiled already. Re-measure when a
    step changes much: a step heavier than its weight slows the bar down, a lighter one leaves it behind. */
-const W = { materials: 2100, ground: 2800, lines: 1600, houses: 3100, blocks: 300, landmarks: 4000, fortress: 2400, trees: 3500, flora: 500, cars: 400, transit: 3500, split: 1600, shaders: 2500, frame: 4000 };
+const W = { materials: 2100, ground: 2800, lines: 1600, houses: 3100, blocks: 300, landmarks: 4000, fortress: 2400, trees: 3500, flora: 500, cars: 400, transit: 3500, split: 1600, models: 1500, shaders: 2500, frame: 4000 };
 const WSUM = Object.values(W).reduce((a, b) => a + b, 0);
 let wDone = 0;
 const step = (text, w, reported) => {
@@ -87,6 +87,9 @@ const step = (text, w, reported) => {
 };
 (async () => {
   try {
+    // the players and the guns of the game: their files come while the city is built (src/game/mp.js loadModels)
+    let modelsF = 0, modelsStep = false;
+    const models = loadModels(f => { modelsF = f; if (modelsStep) loading.part(f); });
     await step('Рисую фасады и крыши…', W.materials); makeMaterials(); STATE.goldGB = new GB(false);
     // time of day: the choice of the start card is kept in the browser; the first visit follows the theme of the page
     let t0 = matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark' ? 2 : 0;
@@ -109,10 +112,13 @@ const step = (text, w, reported) => {
     await step('Выпускаю трамваи и автобусы на линии…', W.transit); const tripsN = buildTransit();
     await step('Делю землю и улицы на участки…', W.split); splitBigMeshes(scene);   // the meshes over the whole city, cut into tiles that can be culled (src/render/chunks.js)
     if (TERR.on) scene.traverse(o => { if (!o.isMesh || !o.frustumCulled || !o.geometry) return; const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere(); if (g.boundingSphere && !g.userData.terrGrown) { g.boundingSphere.radius += 70; g.userData.terrGrown = true; } });
+    // the players and the guns join the scene for the warm-up: the game starts with them ready (a minute at most for slow files)
+    await step('Одеваю игроков и раздаю оружие…', W.models, true); modelsStep = true; loading.part(modelsF);
+    await Promise.race([models, new Promise(r => setTimeout(r, 60000))]); modelsStep = false; warmSamples(true);
     // the shaders of every material, a few at a time, then the first frame (shadow map, environment, post-processing)
     await step('Готовлю шейдеры…', W.shaders, true); await warmUp(f => loading.part(f), loading.frame);
     await step('Рисую первый кадр…', W.frame); frame(performance.now());
-    await loading.frame();
+    await loading.frame(); warmSamples(false);
     loading.done('Готово: ' + BLD.length.toLocaleString('ru') + ' зданий, ' + LINES.length.toLocaleString('ru') + ' улиц и дорожек, ' + trees.toLocaleString('ru') + ' деревьев, ' + lamps.toLocaleString('ru') + ' фонарей' + (tripsN ? ', ' + tripsN.toLocaleString('ru') + ' рейсов в расписании' : '') + '.');
     $('view').classList.add('shown');
     $('go').disabled = false; enablePlay(); $('go').focus();

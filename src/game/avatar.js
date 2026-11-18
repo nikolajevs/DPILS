@@ -8,9 +8,10 @@ import { FLASH_SIZE, makeFlash } from './muzzle.js';
 
 /* ---------- the ready model of the players ----------
    models/Soldier.glb (CC BY 4.0, see models/README.md): a realistic special-forces operator — the "FSB Operator" body by
-   SpatialNeglect with Mixamo animations by fauze: Idle, Walk, Run, Jump, Death and Carry (the arms hold something in front). It is loaded once when a game starts; every other player gets a clone
-   with its own skeleton and mixer and the colours of the team on its helmet and jacket. Until the file has come (or if it
-   cannot) the players are the simple figures of src/game/mp.js.
+   SpatialNeglect with Mixamo animations by fauze: Idle, Walk, Run, Jump, Death and Carry (the arms hold something in front).
+   It is loaded once, with the city (loadModels of src/game/mp.js); every other player gets a clone with its own skeleton
+   and mixer and the colours of the team on its helmet and jacket. Only if the file cannot come are the players the
+   simple figures of src/game/mp.js.
    Everything that belongs to this one file is in MODEL: to use another character change that and nothing else. The model
    is scaled to a man's height with the feet on the ground, and turned to look where the game looks (the file looks
    along +z, the game along −z). The loader drops the dots of the bone names (Fist.R is FistR).
@@ -70,6 +71,8 @@ function readyGun(src, k, yaw, metres) {
    right of the figure −x; its origin is the right shoulder of the arms of the file. A dead player's gun goes down with
    the right hand. */
 const V3 = a => new THREE.Vector3(...a);
+// the muzzle of a gun file, found once (muzzleOf reads every vertex of the model): each player has every gun in hand
+const MUZZLES = new WeakMap(), muzzleAt = src => { let m = MUZZLES.get(src); if (!m) MUZZLES.set(src, m = muzzleOf(src)); return m; };
 function heldGun(i) {
   const k = akReady(), sp = HOLD[i], src = i ? asset && asset.guns[i] : k && k.gun; if (!k || !k.gun || !src || (i && !sp)) return null;
   const g = src.clone(true), shift = new THREE.Group(), holder = new THREE.Group(); g.traverse(o => { if (o.isMesh) o.material = worldSpace(o.material.clone()); });
@@ -78,7 +81,7 @@ function heldGun(i) {
   shift.add(g); holder.add(shift);
   const dR = i ? V3(sp.shift) : new THREE.Vector3(), dL = i ? k.palm.R.clone().add(V3(sp.shift)).add(V3(sp.fore)).sub(V3(sp.grip)).sub(k.palm.L) : new THREE.Vector3();
   const rel = (h, d) => h && Object.fromEntries(Object.entries(h).map(([n, v]) => [n, v.clone().sub(k.shoulder).add(d)]));
-  holder.userData = { both: true, hands: { R: rel(k.hands.R, dR), L: rel(k.hands.L, dL) }, flashAt: (i ? muzzleOf(src) : k.muzzle.clone()).add(shift.position) };
+  holder.userData = { both: true, hands: { R: rel(k.hands.R, dR), L: rel(k.hands.L, dL) }, flashAt: (i ? muzzleAt(src) : k.muzzle).clone().add(shift.position) };
   return holder;
 }
 const POLE = { R: new THREE.Vector3(-0.7, -1, -0.3).normalize(), L: new THREE.Vector3(0.5, -1, -0.2).normalize() };   // where the elbows point

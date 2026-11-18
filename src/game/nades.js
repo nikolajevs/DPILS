@@ -45,9 +45,10 @@ onProps(() => {
   }
 });
 // the blast: a fireball that swells and fades, and a flash of smoke
+const blastMat = () => worldSpace(new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.95, fog: false }));
 function boomNade(m) {
   const n = list.get(m.id); if (n) { scene.remove(n.mesh); list.delete(m.id); }
-  const mat = worldSpace(new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.95, fog: false })), mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), mat);
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), blastMat());
   mesh.position.set(m.x, m.y + 0.5, m.z); scene.add(mesh); blasts.push({ mesh, t: 0 });
 }
 function tickNades(dt) {
@@ -95,4 +96,7 @@ function showNadePreview(p, v) {
 }
 function hideNadePreview() { preLine.visible = false; preRing.visible = false; }
 
-export { addNade, boomNade, clearNades, tickNades, NADE_THROW, showNadePreview, hideNadePreview };
+// a flying grenade (the ready model, or the ball while it has not come) and a blast, out of the scene, for the warm-up (mp.js loadModels)
+const nadeSamples = () => [flyNade() || new THREE.Mesh(GEO, MAT), new THREE.Mesh(GEO, blastMat())];
+
+export { nadeSamples, addNade, boomNade, clearNades, tickNades, NADE_THROW, showNadePreview, hideNadePreview };
