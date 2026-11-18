@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/pine-sway | Медленнее качание и дрожь кроны деревьев | src/world/trees.js |
+| Chatbox | chatbox/hitboxes | Хитбоксы: голова/торс/ноги, присед и лаг-компенсация, рельеф как преграда | server/combat.mjs, server/game.mjs, server/bots.mjs, server/physics.mjs, src/game/mp.js, tools/combat-test.mjs |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
 
