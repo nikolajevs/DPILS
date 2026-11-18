@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/pine-sway | Медленнее качание и дрожь кроны деревьев | src/world/trees.js |
-| Chatbox | chatbox/inventory | Инвентарь: тактическая панель снаряжения (карточки оружия, предметы, состояние) | src/game/inventory.js, src/game/mp.js, src/style.css, index.html |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
 
