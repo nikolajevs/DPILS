@@ -1,11 +1,25 @@
 # Модели
 
-Все модели — **CC0 1.0** (общественное достояние), автор — Tomás Laulhé ([Quaternius](https://quaternius.com)); перед использованием в проекте автор просит рассмотреть поддержку на Patreon.
+## АК-47 (`fp_ak47.glb`)
+
+**CC BY 4.0.** This work is based on "[FPS Character Animation Pack Ak-47](https://sketchfab.com/3d-models/fps-character-animation-pack-ak-47-b95778a564094fc3a49d1d6a3b6a30ab)" by Cristian David Duque Camacho ([DuqueCD7](https://sketchfab.com/DuqueCD7)) licensed under [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/).
+
+Руки солдата в перчатках и камуфляжной куртке держат автомат с деревянным цевьём и прикладом. Есть скелет и анимации: покой, ходьба, бег, выстрел, перезарядка, взятие в руки. Скачанный glTF весил 117 МБ при текстурах 4096 px, [tools/fp-ak.mjs](../tools/fp-ak.mjs) собирает из него файл на 6 МБ:
+
+- оставлены шесть клипов (`idle`, `walk`, `run`, `fire`, `reload`, `equip`), лишние ключи убраны;
+- цвет и нормали автомата сжаты до 2048 px, остальные текстуры до 1024 px, всё в WebP;
+- геометрия упакована `EXT_meshopt_compression`;
+- добавлен узел `AK47_static`: автомат без рук в позе покоя, упрощённый втрое (9,5 тыс. треугольников).
+
+Руки с анимированным автоматом — вид от первого лица ([src/game/viewmodel.js](../src/game/viewmodel.js)). `AK47_static` держат обеими руками другие игроки ([src/game/avatar.js](../src/game/avatar.js)). Для скачивания с Sketchfab нужен аккаунт и его API-токен.
+
+## Солдат и остальное оружие
+
+Эти модели — **CC0 1.0** (общественное достояние), автор — Tomás Laulhé ([Quaternius](https://quaternius.com)); перед использованием в проекте автор просит рассмотреть поддержку на Patreon.
 
 | Файл | Что | Откуда |
 |---|---|---|
 | `Soldier.glb` | солдат (шлем, бронежилет) с анимациями Idle, Walk, Run, Jump, Death, Walk_Carry и др. | [Ultimate Animated Character Pack](https://quaternius.com/packs/ultimatedanimatedcharacter.html), файл `Soldier_Male` |
-| `AK.glb` | автомат в руках | [Toon Shooter Game Kit](https://quaternius.com/packs/toonshootergamekit.html), `Guns/glTF/AK` |
 | `Pistol.glb` | пистолет | оттуда же, `Guns/glTF/Pistol` |
 | `Rifle.glb` | пулемёт (тяжёлая винтовка) | [Zombie Apocalypse Kit](https://quaternius.com/packs/zombieapocalypsekit.html), `Weapons/glTF/Rifle` |
 | `Shotgun.glb` | дробовик в руках | оттуда же, `Weapons/glTF/Shotgun` |
