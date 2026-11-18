@@ -10,6 +10,7 @@ import { lmBar, lmBoxL, lmLathe } from '../landmarks/helpers.js';
 import { LMWS } from '../landmarks/tiles.js';
 import { lmW } from '../landmarks/core.js';
 import { COL } from '../world/data.js';
+import { addStaticCar } from '../world/cars.js';
 import { polyA } from '../core/geometry.js';
 import { bbox, hash, hb, pip, sh } from '../core/util.js';
 
@@ -347,16 +348,10 @@ function fortClassic(K, B) {
    the lawn, the railing along the front with its gap at the path to the door, and the police car park behind the
    house (OSM amenity=parking, 110 × 34 m) with service and private cars. Frame as FORT_CLASSIC 'kom'. */
 function fortCar(G, x, z, dx, dz, col, police, seed) {
-  const f = [x, z, dx, dz], GL = hb('#26303a'), TY = hb('#1c1c1c');
-  lmBoxL(G, f, -2.25, 2.25, -0.88, 0.88, 0.32, 0.92, col);
-  lmBoxL(G, f, -2.3, -1.9, -0.86, 0.86, 0.45, 0.8, sh(col, 0.9)); lmBoxL(G, f, 1.9, 2.3, -0.86, 0.86, 0.45, 0.8, sh(col, 0.9));
-  lmBoxL(G, f, -1.25, 0.95, -0.78, 0.78, 0.92, 1.4, GL);
-  lmBoxL(G, f, -1.2, 0.85, -0.8, 0.8, 1.4, 1.47, col);
-  for (const su of [-1.4, 1.45]) for (const sv of [-1, 1]) fortLatheAx(G, fortP(f, su, sv * 0.78, 0.32), [-dz * sv, 0, dx * sv], [[0, 0], [0.32, 0], [0.32, 0.2], [0, 0.2]], 10, TY);
-  if (police) {
-    lmBoxL(G, f, -2.27, 2.27, -0.9, 0.9, 0.55, 0.72, hb('#1f4ea0'));
-    lmBoxL(G, f, -0.35, 0.35, -0.6, 0.6, 1.47, 1.6, hb('#2a5bd0')); lmBoxL(G, f, -0.12, 0.12, -0.6, 0.6, 1.47, 1.61, hb('#c9cdd1'));
-  }
+  // a ready BMW (src/world/cars.js) instead of the old boxes: nose along (dx, dz), the paint tinted per instance; the
+  // police car takes the liveried model. G is kept in the signature for the callers (the squares draw through here too)
+  const kind = police ? 0 : Math.floor(hash(x * 3.17 + z * 7.31 + (seed || 0)) * 3);
+  addStaticCar(x, z, Math.atan2(-dz, dx), kind, col, police);
 }
 function fortPolice(K) {
   const B = FORT_CLASSIC.find(b => b.key === 'kom'); if (!B) return; const f = B.f, P = (u, v, y) => fortP(f, u, v, y);
