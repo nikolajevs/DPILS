@@ -40,7 +40,6 @@
     <button class="btn" id="bMap">Карта<kbd>M</kbd></button>
     <a class="btn" id="bSV" href="https://www.google.com/maps" target="_blank" rel="noopener" title="Открыть настоящую панораму Google Street View в этой точке и в этом направлении">Street View<kbd>V</kbd></a>
     <button class="btn" id="bFly" aria-pressed="false">Полёт<kbd>F</kbd></button>
-    <button class="btn" id="bNight" aria-pressed="false" title="День → вечер → ночь">Время: день<kbd>N</kbd></button>
     <button class="btn" id="bQuality" title="Качество графики: авто или фиксированное">Графика: авто</button>
     <button class="btn" id="bHelp">?</button>
     <button class="btn" id="bHint" title="Все клавиши, F1">Клавиши<kbd>F1</kbd></button>
@@ -73,6 +72,11 @@
         <button class="choice" id="chTrain" type="button" disabled><b>Тренировка с ботами</b><span>бой прямо в браузере, без сервера</span></button>
         <button class="choice" id="chOnline" type="button" disabled><b>Играть онлайн</b><span>команды или каждый сам за себя на сервере</span></button>
       </div>
+      <label class="time-pick" id="timeRow">Время суток
+        <select id="startTime" title="Выбирается до начала игры; в игре время суток не меняется">
+          <option value="0">День</option><option value="1">Вечер</option><option value="2">Ночь</option>
+        </select>
+      </label>
       <div class="sec-btns">
         <button class="btn" id="bSetStart" type="button">Настройки</button>
         <button class="btn" id="bStatsStart" type="button">Моя статистика</button>
@@ -85,10 +89,11 @@
       <dt>1 – 5 · колесо</dt><dd>в игре: автомат · дробовик · снайперская (правая кнопка мыши — прицел) · пистолет · пулемёт</dd>
       <dt>G · O</dt><dd>в игре: граната (две за жизнь) · настройки: мышь, звук, клавиши</dd>
       <dt>Y · U · V</dt><dd>в игре: чат всем · чат команде · рация (удерживать)</dd>
-      <dt>Пробел · C</dt><dd>в игре: прыжок · присесть (удерживать)</dd>
+      <dt>Пробел · C</dt><dd>прыжок (в игре) · присесть (удерживать)</dd>
       <dt>F</dt><dd>полёт: E / пробел — выше, Q — ниже</dd>
       <dt>V</dt><dd>открыть настоящую панораму Street View в этой точке</dd>
-      <dt>M · P · N</dt><dd>карта · список мест · время суток (день, вечер, ночь)</dd>
+      <dt>M · P</dt><dd>карта · список мест</dd>
+      <dt>Время суток</dt><dd>день, вечер или ночь — выбирается в этом меню до начала игры</dd>
       <dt>T</dt><dd>ускорить часы транспорта: ×1, ×10, ×60</dd>
       <dt>На телефоне</dt><dd>левая половина экрана — идти, правая — смотреть</dd>
     </dl>

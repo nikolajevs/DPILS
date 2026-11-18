@@ -14,7 +14,7 @@ const ACTIONS = [
 ];
 const DEFAULTS = { sens: 1, fov: 66, vol: 0.8, voiceVol: 1, ambVol: 0.6, invertY: false, crossCol: '#ffffff', crossDot: true, crossDyn: true };
 const CROSS_COLS = ['#ffffff', '#8dff7a', '#5ad7ff', '#ffd75a', '#ff6a5a', '#ff7ad9'];
-const SET = { ...DEFAULTS, keys: Object.fromEntries(ACTIONS.map(a => [a[0], a[2]])) };
+const SET = { ...DEFAULTS, v: 3, keys: Object.fromEntries(ACTIONS.map(a => [a[0], a[2]])) };
 const listeners = [], buildHooks = [], resetHooks = [];
 const onBuild = f => { buildHooks.push(f); };
 const onReset = f => { resetHooks.push(f); };
@@ -23,10 +23,11 @@ try {
   SET.sens = num(s.sens, 0.2, 3, 1); SET.fov = num(s.fov, 60, 100, 66); SET.vol = num(s.vol, 0, 1, 0.8); SET.voiceVol = num(s.voiceVol, 0, 1, 1); SET.ambVol = num(s.ambVol, 0, 1, 0.6); SET.invertY = s.invertY === true;
   SET.crossCol = CROSS_COLS.includes(s.crossCol) ? s.crossCol : '#ffffff'; SET.crossDot = s.crossDot !== false; SET.crossDyn = s.crossDyn !== false;
   if (s.keys && typeof s.keys === 'object') for (const [a, , d] of ACTIONS) if (typeof s.keys[a] === 'string' && /^[A-Za-z0-9]{1,16}$/.test(s.keys[a])) SET.keys[a] = s.keys[a];
+  if ((s.v || 1) < 3 && /^Control/.test(SET.keys.crouch)) { SET.keys.crouch = 'KeyC'; save(); }   // v3: crouch returns from Ctrl to C — Ctrl combos belong to the browser; a saved Ctrl default follows once
 } catch (e) {}
 function save() { try { localStorage.setItem('dpils.settings', JSON.stringify(SET)); } catch (e) {} for (const f of listeners) f(); }
 const onChange = f => { listeners.push(f); };
-const NAMES = { Space: 'Пробел', ShiftLeft: 'Shift', ShiftRight: 'Shift (прав.)', Tab: 'Tab', Enter: 'Enter', Backquote: '`', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', CapsLock: 'Caps', Backspace: '⌫' };
+const NAMES = { Space: 'Пробел', ShiftLeft: 'Shift', ShiftRight: 'Shift (прав.)', ControlLeft: 'Ctrl', ControlRight: 'Ctrl (прав.)', Tab: 'Tab', Enter: 'Enter', Backquote: '`', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', CapsLock: 'Caps', Backspace: '⌫' };
 const keyName = c => NAMES[c] || c.replace(/^Key/, '').replace(/^Digit/, '').replace(/^Numpad/, 'Num ');
 
 /* ---------- the panel ---------- */
@@ -65,7 +66,7 @@ window.addEventListener('keydown', e => {
   if (e.code === 'Escape' && !waiting) { closeSettings(); e.preventDefault(); e.stopImmediatePropagation(); return; }
   e.stopImmediatePropagation(); if (!waiting) return; e.preventDefault();
   const { a, b } = waiting; waiting = null;
-  if (e.code === 'Escape' || /^(Control|Alt|Meta)/.test(e.code) || e.code === 'KeyO') { b.textContent = keyName(SET.keys[a]); return; }   // not these: they have their own meaning
+  if (e.code === 'Escape' || /^(Control|Alt|Meta)/.test(e.code) || e.code === 'KeyO') { b.textContent = keyName(SET.keys[a]); return; }   // not these: they have their own meaning (Ctrl and Alt belong to the browser)
   const other = Object.keys(SET.keys).find(k => k !== a && SET.keys[k] === e.code); if (other) SET.keys[other] = SET.keys[a];   // a key in use swaps places
   SET.keys[a] = e.code; save(); build();
 }, true);

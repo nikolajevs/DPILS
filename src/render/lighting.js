@@ -25,7 +25,7 @@ let timeI = 0;
 const ENV = [];   // PMREM environment per time of day
 function setTime(i) {
   timeI = i; const T = TIMES[i]; STATE.night = i === 2;
-  const b = $('bNight'); b.firstChild.textContent = 'Время: ' + T.name; b.setAttribute('aria-pressed', i > 0);
+  const s = $('startTime'); if (s) s.value = String(i);   // the start card shows the chosen time of day (it is set there, before the game)
   LIGHTDIR.set(T.dir[0], T.dir[1], T.dir[2]).normalize();
   const top = lin(T.top), hor = lin(T.hor), gnd = lin(T.gnd), sc = lin(T.sun);
   for (const s of [sky, envSky]) {
