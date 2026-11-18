@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/pine-sway | Медленнее качание и дрожь кроны деревьев | src/world/trees.js |
+| Claude | claude/eloquent-hamilton-20ny76 | Модели игроков и оружия грузятся с городом, без коробок при старте игры | src/main.js, src/game/mp.js, src/game/avatar.js, src/game/impacts.js, src/game/nades.js |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
 
