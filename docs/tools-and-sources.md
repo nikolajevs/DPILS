@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/pine-sway | Медленнее качание и дрожь кроны деревьев | src/world/trees.js |
-| Claude | claude/laughing-newton-aa961j | Качественный АК-47 с Sketchfab: руки от первого лица с анимациями, автомат в обеих руках у солдат | models/, src/game/avatar.js, src/game/mp.js, src/game/viewmodel.js |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
 
