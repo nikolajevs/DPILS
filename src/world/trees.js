@@ -126,7 +126,7 @@ function treeGeo(type) {
   return g;
 }
 const LEAF_GLSL = `vec4 leafTex(vec3 c) { float cell = max(c.z - 1.0, 0.0); return texture2D(uLeaf, (vec2(mod(cell, 2.0), floor(cell * 0.5)) + clamp(vec2(c.x, 1.0 - c.y), 0.02, 0.98)) * 0.5); }\n`;
-// replaces <project_vertex>: wind sway, then the card corner is pushed out in view space
+// replaces <project_vertex>: wind sway (slow: a period of 7-14 s for the trunk, 7 s for the leaf cards), then the card corner is pushed out in view space
 const TREE_VERT = `
   vec4 mvPosition = vec4(transformed, 1.0);
   #ifdef USE_INSTANCING
@@ -136,11 +136,11 @@ const TREE_VERT = `
     float tScale = 1.0;
   #endif
   vec4 tWorld = modelMatrix * mvPosition; mvPosition.y += terrainH(tWorld.xz);
-  mvPosition.xz += vec2(0.8, 0.45) * ((sin(uTime * 1.1 + tWorld.x * 0.05 + tWorld.z * 0.07) + 0.5 * sin(uTime * 2.3 + tWorld.x * 0.13)) * max(transformed.y - 1.2, 0.0) * 0.006 * tScale);
+  mvPosition.xz += vec2(0.8, 0.45) * ((sin(uTime * 0.45 + tWorld.x * 0.05 + tWorld.z * 0.07) + 0.5 * sin(uTime * 0.9 + tWorld.x * 0.13)) * max(transformed.y - 1.2, 0.0) * 0.006 * tScale);
   mvPosition = modelViewMatrix * mvPosition;
   vCard = vec3(0.5, 0.5, 0.0);
   if (aCard.w > 0.5) {
-    float tA = aCard.z + sin(uTime * 2.7 + aCard.z * 40.0 + tWorld.x + tWorld.z) * 0.07;
+    float tA = aCard.z + sin(uTime * 0.9 + aCard.z * 40.0 + tWorld.x * 0.3 + tWorld.z * 0.3) * 0.04;
     vec2 tC = aCard.xy * tScale, tO = vec2(tC.x * cos(tA) - tC.y * sin(tA), tC.x * sin(tA) + tC.y * cos(tA));
     mvPosition.xy += tO;
     vCard = vec3(sign(aCard.xy) * 0.5 + 0.5, aCard.w);
