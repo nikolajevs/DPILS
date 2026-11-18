@@ -68,9 +68,16 @@ for (const kind of ['ammo', 'med', 'nade']) {
   await shot(`game-${kind}.png`);
   console.log(kind, 'item at', at);
 }
-// throw a grenade and catch it in flight
-await page.evaluate(() => { window.__city.P.pitch = -0.15; window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyG' })); window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyG' })); });
-await page.waitForTimeout(1500);
+// throw a grenade and catch it in flight: G takes it in hand, held LMB charges (the nadeFill bar), release throws;
+// charging needs the pointer lock, which headless has not — set STATE.locked by hand
+await page.evaluate(() => {
+  window.__city.P.pitch = -0.15; window.__city.STATE.locked = true;
+  window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyG' }));
+  window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyG' }));
+  window.dispatchEvent(new MouseEvent('mousedown', { button: 0 }));
+});
+await page.waitForFunction(() => document.getElementById('nadeFill').style.width === '100%', null, { timeout: 60000, polling: 250 });
+await page.evaluate(() => window.dispatchEvent(new MouseEvent('mouseup', { button: 0 })));
 const fly = await page.evaluate(() => {
   let n = 0; window.__city.scene.traverse(o => {
     if (!(o.userData && o.userData.shared)) return;

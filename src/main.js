@@ -16,7 +16,7 @@ import './ui/hud.js';
 import './ui/map.js';
 import { PP, renderFrame, warmUp } from './render/post.js';
 import { splitBigMeshes } from './render/chunks.js';
-import { QUALITY, TIMES, qi, setQuality, setTime, timeI } from './render/lighting.js';
+import { QUALITY, TIMES, qi, qAuto, setQuality, setQualityMode, setTime, timeI } from './render/lighting.js';
 import { P, setFly, teleport } from './game/player.js';
 import './ui/places.js';
 import { TX, buildTransit, setClock, updateBoard } from './transit/transit.js';
@@ -110,6 +110,6 @@ const step = (text, w, reported) => {
     loading.done('Готово: ' + BLD.length.toLocaleString('ru') + ' зданий, ' + LINES.length.toLocaleString('ru') + ' улиц и дорожек, ' + trees.toLocaleString('ru') + ' деревьев, ' + lamps.toLocaleString('ru') + ' фонарей' + (tripsN ? ', ' + tripsN.toLocaleString('ru') + ' рейсов в расписании' : '') + '.');
     $('view').classList.add('shown');
     $('go').disabled = false; enablePlay(); $('go').focus();
-    window.__city = { PERF, peds: PEDS, ambProbe, ambStatus, statEvent, statsOf, MP, STATE, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, updateBoard, P, teleport, setFly, setTime, fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU };
+    window.__city = { PERF, peds: PEDS, ambProbe, ambStatus, statEvent, statsOf, MP, STATE, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, updateBoard, P, teleport, setFly, setTime, fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, setQualityMode, qualityMode: () => (qAuto ? 'auto' : qi), scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU };
   } catch (e) { console.error(e); loading.fail('Ошибка при сборке города: ' + e.message); }
 })();
