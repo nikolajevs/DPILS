@@ -7,8 +7,8 @@ import { alignHand, at, reach, relMatrix, setFrame } from './ik.js';
 import { FLASH_SIZE, makeFlash } from './muzzle.js';
 
 /* ---------- the ready model of the players ----------
-   models/Soldier.glb (CC0, see models/README.md): a soldier with the animations Idle, Walk, Run, Jump, Death and the
-   "Carry" ones (the arms hold something in front). It is loaded once when a game starts; every other player gets a clone
+   models/Soldier.glb (CC BY 4.0, see models/README.md): a realistic special-forces operator — the "FSB Operator" body by
+   SpatialNeglect with Mixamo animations by fauze: Idle, Walk, Run, Jump, Death and Carry (the arms hold something in front). It is loaded once when a game starts; every other player gets a clone
    with its own skeleton and mixer and the colours of the team on its helmet and jacket. Until the file has come (or if it
    cannot) the players are the simple figures of src/game/mp.js.
    Everything that belongs to this one file is in MODEL: to use another character change that and nothing else. The model
@@ -17,15 +17,16 @@ import { FLASH_SIZE, makeFlash } from './muzzle.js';
    The weapons in hand are ready models too (models/fp_shotgun.glb, fp_sniper.glb, fp_pistol.glb, fp_mg.glb — CC BY 4.0, from Sketchfab, credits in models/README.md): metres, the muzzle along +z, the top along +y, the grip at the origin.
    The AK (null in MODEL.guns) is the rifle of the arms of viewmodel.js. Every gun is held in both hands: see heldGun and hold below. */
 const MODEL = {
-  file: 'models/Soldier.glb', guns: [null, 'models/fp_shotgun.glb', 'models/fp_sniper.glb', 'models/fp_pistol.glb', 'models/fp_mg.glb'], gunLen: [1, 1, 1, 1.5, 1], gunYaw: [0, 0, 0, 0, 0], gunM: [false, true, true, true, true], height: 1.8, headScale: 0.8,   // one gun model for each weapon of the game; the fp_* guns are already in metres and point along +z (gunM), the pistol is a little bigger in the hand; the head of the file is big: a little smaller
-  tint: ['Helmet'], camo: ['Main', 'DarkGreen'],   // tint: painted in the colour of the team; camo: the jacket and the trousers get a camouflage pattern in its tones
-  clips: { idle: 'Idle', walk: 'Walk', run: 'Run', jump: 'Jump', death: 'Death', hold: 'Walk_Carry' },   // hold: the pose of the arms with a rifle
+  file: 'models/Soldier.glb', guns: [null, 'models/fp_shotgun.glb', 'models/fp_sniper.glb', 'models/fp_pistol.glb', 'models/fp_mg.glb'], gunLen: [1, 1, 1, 1.5, 1], gunYaw: [0, 0, 0, 0, 0], gunM: [false, true, true, true, true], height: 1.8, headScale: 1,   // one gun model for each weapon of the game; the fp_* guns are already in metres and point along +z (gunM), the pistol is a little bigger in the hand; the operator's head is already in proportion
+  tint: ['helmet'], camo: ['uniform'],   // tint: painted in the colour of the team; camo: the jacket and the trousers get a camouflage pattern in its tones
+  clips: { idle: 'Idle', walk: 'Walk', run: 'Run', jump: 'Jump', death: 'Death', hold: 'Carry' },   // hold: the pose of the arms with a rifle
   arms: ['ShoulderL', 'UpperArmL', 'LowerArmL', 'FistL', 'ShoulderR', 'UpperArmR', 'LowerArmR', 'FistR'], hand: 'FistR', head: 'Head',
 };
 let loading = null, asset = null;
 function loadAvatar() {
-  if (!loading) loading = new Promise(res => {
-    new GLTFLoader().load(MODEL.file, g => {
+  if (!loading) loading = import('three/addons/libs/meshopt_decoder.module.js').then(({ MeshoptDecoder }) => new Promise(res => {
+    const SL = new GLTFLoader(); SL.setMeshoptDecoder(MeshoptDecoder);   // Soldier.glb is packed with EXT_meshopt_compression
+    SL.load(MODEL.file, g => {
       const clips = Object.fromEntries(g.animations.map(c => [c.name, c])), probe = clone(g.scene), mixer = new THREE.AnimationMixer(probe);
       mixer.clipAction(clips[MODEL.clips.idle]).play(); mixer.update(0.01);
       const head = probe.getObjectByName(MODEL.head); if (head) head.scale.setScalar(MODEL.headScale);
@@ -40,7 +41,7 @@ function loadAvatar() {
         });
       });
     }, undefined, () => res(null));
-  });
+  }));
   return loading;
 }
 const ready = () => asset;
