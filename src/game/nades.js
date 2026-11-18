@@ -3,6 +3,7 @@ import { buildingAt } from '../world/data.js';
 import { terrainH } from '../world/terrain.js';
 import { scene } from '../render/renderer.js';
 import { worldSpace } from '../render/world-space.js';
+import { prop, onProps } from './props.js';
 
 /* ---------- grenades ----------
    The server flies every grenade and says where and when it goes off (server/game.mjs, damage and all). Each page
@@ -25,10 +26,24 @@ function stepNade(n, dt) {
   } else if (y < gr + 0.12) { y = gr + 0.12; if (n.v[1] < 0) n.v[1] *= -0.4; n.v[0] *= 0.7; n.v[2] *= 0.7; if (Math.abs(n.v[1]) < 0.8) n.v[1] = 0; }
   n.p = [x, y, z];
 }
-function addNade(m) {
-  const mesh = new THREE.Mesh(GEO, MAT); mesh.position.set(m.p[0], m.p[1], m.p[2]); scene.add(mesh);
-  list.set(m.id, { mesh, p: m.p.slice(), v: m.v.slice(), age: 0 });
+/* модель гранаты посажена дном в ноль (так она стоит на карте); в полёте центруем её вокруг точки сервера */
+function flyNade() {
+  const m = prop('nade'); if (!m) return null;
+  for (const c of m.children) c.position.y -= 0.1;
+  return m;
 }
+function addNade(m) {
+  const model = flyNade();
+  const mesh = model || new THREE.Mesh(GEO, MAT); mesh.position.set(m.p[0], m.p[1], m.p[2]); scene.add(mesh);
+  list.set(m.id, { mesh, model: !!model, p: m.p.slice(), v: m.v.slice(), age: 0 });
+}
+onProps(() => {
+  for (const n of list.values()) if (!n.model) {
+    const m = flyNade(); if (!m) continue;
+    m.position.copy(n.mesh.position); m.rotation.copy(n.mesh.rotation);
+    scene.remove(n.mesh); n.mesh = m; n.model = true;
+  }
+});
 // the blast: a fireball that swells and fades, and a flash of smoke
 function boomNade(m) {
   const n = list.get(m.id); if (n) { scene.remove(n.mesh); list.delete(m.id); }

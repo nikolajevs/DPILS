@@ -6,6 +6,7 @@ import { scene } from '../render/renderer.js';
 import { worldSpace } from '../render/world-space.js';
 import { SET, keyName } from './settings.js';
 import { $ } from '../core/env.js';
+import { prop, onProps } from './props.js';
 
 /* ---------- the inventory ----------
    The server owns what a player carries (server/game.mjs: magazines, reserve, grenades, med kits); this module draws
@@ -26,15 +27,29 @@ const GEO = { box: new THREE.BoxGeometry(1, 1, 1), sph: new THREE.SphereGeometry
 const mat = c => worldSpace(new THREE.MeshLambertMaterial({ color: c }));
 function makeMesh(kind) {
   const g = new THREE.Group();
-  const box = (c, sx, sy, sz, x, y, z) => { const o = new THREE.Mesh(GEO.box, mat(c)); o.scale.set(sx, sy, sz); o.position.set(x, y, z); g.add(o); };
-  if (kind === 'ammo') { box(0x4a5d23, 0.36, 0.22, 0.26, 0, 0.13, 0); box(0x3a4a1a, 0.38, 0.05, 0.28, 0, 0.265, 0); box(0xd8c34a, 0.37, 0.06, 0.05, 0, 0.15, 0.135); }
-  else if (kind === 'nade') { const s = new THREE.Mesh(GEO.sph, mat(0x3d5a2a)); s.position.y = 0.16; g.add(s); box(0x777c80, 0.06, 0.08, 0.06, 0, 0.31, 0); }
-  else { box(0xf2f2f2, 0.32, 0.2, 0.26, 0, 0.12, 0); box(0xd8392f, 0.2, 0.055, 0.02, 0, 0.14, 0.135); box(0xd8392f, 0.055, 0.16, 0.02, 0, 0.14, 0.135); }
+  const body = new THREE.Group();
+  g.userData.body = body; g.add(body);
+  fillBody(body, kind);
   const ring = new THREE.Mesh(GEO.ring, worldSpace(new THREE.MeshBasicMaterial({ color: KINDS[kind].color, transparent: true, opacity: 0.35 })));
   ring.position.y = 0.02; g.add(ring);
   g.userData.item = kind;
   return g;
 }
+/* готовая модель со Sketchfab (models/item_*.glb), а пока она едет — самодельный ящик из боксов */
+function fillBody(body, kind) {
+  const m = prop(kind);
+  if (m) { body.add(m); return; }
+  const box = (c, sx, sy, sz, x, y, z) => { const o = new THREE.Mesh(GEO.box, mat(c)); o.scale.set(sx, sy, sz); o.position.set(x, y, z); body.add(o); };
+  if (kind === 'ammo') { box(0x4a5d23, 0.36, 0.22, 0.26, 0, 0.13, 0); box(0x3a4a1a, 0.38, 0.05, 0.28, 0, 0.265, 0); box(0xd8c34a, 0.37, 0.06, 0.05, 0, 0.15, 0.135); }
+  else if (kind === 'nade') { const s = new THREE.Mesh(GEO.sph, mat(0x3d5a2a)); s.position.y = 0.16; body.add(s); box(0x777c80, 0.06, 0.08, 0.06, 0, 0.31, 0); }
+  else { box(0xf2f2f2, 0.32, 0.2, 0.26, 0, 0.12, 0); box(0xd8392f, 0.2, 0.055, 0.02, 0, 0.14, 0.135); box(0xd8392f, 0.055, 0.16, 0.02, 0, 0.14, 0.135); }
+}
+/* материалы фолбэка свои у каждого предмета, материалы и геометрия модели — общие на все клоны */
+function dropBody(body) {
+  body.traverse(o => { if (o.isMesh && !o.userData.shared) o.material.dispose(); });
+  body.clear();
+}
+onProps(() => { for (const r of items.values()) { dropBody(r.group.userData.body); fillBody(r.group.userData.body, r.kind); } });
 function addItem(it) {
   const group = makeMesh(it.kind), baseY = terrainH(it.x, it.z);
   group.position.set(it.x, baseY, it.z); scene.add(group);
@@ -43,7 +58,7 @@ function addItem(it) {
 function setItems(list) { clearItems(); for (const it of list || []) addItem(it); }
 function itemBack(it) { const r = items.get(it.id); if (r) { r.active = true; r.group.visible = true; } else addItem(it); }
 function itemTook(id) { const r = items.get(id); if (r) { r.active = false; r.group.visible = false; } }
-function clearItems() { for (const r of items.values()) { scene.remove(r.group); r.group.traverse(o => { if (o.material) o.material.dispose(); }); } items.clear(); }
+function clearItems() { for (const r of items.values()) { scene.remove(r.group); r.group.traverse(o => { if (o.isMesh && !o.userData.shared) o.material.dispose(); }); } items.clear(); }
 const hint = $('mpItemHint');
 function tickItems(dt, now) {
   if (!STATE.mp) { if (!hint.hidden) hint.hidden = true; return; }
