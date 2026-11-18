@@ -22,7 +22,7 @@ function buildHelp() {
   const row = (name, key) => { const r = document.createElement('div'), a = document.createElement('span'), b = document.createElement('kbd'); r.className = 'help-row'; a.textContent = name; b.textContent = key; r.append(a, b); body.append(r); };
   for (const [a, label] of ACTIONS) row(label, k(a));
   row('Огонь', 'ЛКМ'); row('Прицел (снайперская)', 'ПКМ'); row('Граната: прицел мышью, сила броска', k('grenade') + ' → зажать ЛКМ'); row('Граната: бросок / отмена', 'отпустить ЛКМ / ПКМ'); row('Сменить оружие', 'колесо'); row('Чат (Shift — команде)', 'Enter'); row('Настройки', 'O'); row('Карта города', 'M'); row('Эта подсказка', 'F1'); row('Отпустить мышь', 'Esc');
-  row('После смерти: другой игрок', '← → · Q E · ЛКМ'); row('Возродиться', 'Пробел');
+  row('После смерти: другой игрок', '← → · Q E · ЛКМ'); row('После смерти: от первого лица / из-за спины', 'F'); row('Возродиться', 'Пробел');
 }
 function toggleHelp(on = box.hidden) { if (on) { if (document.pointerLockElement) document.exitPointerLock(); buildHelp(); } box.hidden = !on; }
 onChange(() => { if (!strip.hidden) renderStrip(); if (!box.hidden) buildHelp(); });

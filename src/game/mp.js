@@ -52,11 +52,12 @@ const DMG = [
   { dmg: 20, head: 42 },
   { dmg: 16, head: 28 },
 ];
-const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, lastNade: 0, spec: 0, scope: false, zoom: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0 };
+const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, lastNade: 0, spec: 0, specFP: true, scope: false, zoom: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0 };
 // the pockets (keep server/combat.mjs in step: RESERVE and INV): the server owns them, the page only shows and predicts
 const RESERVE = [90, 24, 15, 36, 200], NADE_MAX = 3, MED_MAX = 2;
 // the aimed grenade throw: G takes the grenade in hand, the mouse aims it, the left button held down charges the power
 const NAIM = { on: false, charging: false, t0: 0, power: 0, full: false };
+try { MP.specFP = localStorage.getItem('dpils.specfp') !== '0'; } catch (e) {}   // the dead man's camera: from the eyes by default, the choice is remembered
 bindInv({ useMed, switchWeapon, beep: kind => { if (kind === 'pick') tone(660, 990, 0.09, 0.22, 'triangle'); else if (kind === 'med') tone(440, 660, 0.16, 0.25, 'sine'); else tone(180, 120, 0.12, 0.2, 'square'); } });
 function useMed() {
   const now = performance.now();
@@ -462,19 +463,28 @@ function nadeAimTick(now) {
   nadeHand.position.set(0.2 + 0.1 * pw, -0.18 + 0.16 * pw + Math.sin(now / 320) * 0.004, -0.45 - 0.08 * pw);   // the wind-up: the hand rises back over the shoulder, away from the eye
   nadeHand.rotation.x = -0.7 * pw;
 }
-const specList = () => [...remotes.entries()].filter(([, r]) => r.group.visible && !r.fallT).sort((a, b) => isMate(b[1]) - isMate(a[1])).map(e => e[0]);
+const specAble = r => !r.fallT && r.buf.length > 0;   // alive with a fresh snapshot: the first-person view hides the body, so group.visible is not the test
+const specList = () => [...remotes.entries()].filter(([, r]) => specAble(r)).sort((a, b) => isMate(b[1]) - isMate(a[1])).map(e => e[0]);
 function specNext(dir) {
   const l = specList(); if (!l.length) { MP.spec = 0; return; }
   const i = l.indexOf(MP.spec); MP.spec = l[i < 0 ? 0 : (i + dir + l.length) % l.length];
 }
-// dead: the camera follows a living player from behind (the killer first, then teammates), until the respawn
+function specCam() {   // F or the button on the death panel: the eyes ↔ behind the back
+  MP.specFP = !MP.specFP;
+  try { localStorage.setItem('dpils.specfp', MP.specFP ? '1' : '0'); } catch (e) {}
+  specCamUi();
+}
+function specCamUi() { const b = el('mpSpecCam'); b.textContent = MP.specFP ? 'Из-за спины (F)' : 'От первого лица (F)'; b.setAttribute('aria-pressed', String(MP.specFP)); }
+// dead: the camera rides a living player's eyes (first person, the default) or follows from behind — the killer first,
+// then teammates — until the respawn; F switches the two views
 function spectate(now) {
   if (!MP.dead) return;
-  let r = remotes.get(MP.spec); if (!r || !r.group.visible || r.fallT) { specNext(1); r = remotes.get(MP.spec); }
+  let r = remotes.get(MP.spec); if (!r || !specAble(r)) { specNext(1); r = remotes.get(MP.spec); }
   const label = el('mpSpec'); if (!r) { label.textContent = 'Некого показывать'; return; }
   const p = pose(r, now - 120); if (!p) return;
-  P.yaw = p.yaw; P.pitch = -0.14; P.x = p.x + Math.sin(p.yaw) * 3.2; P.z = p.z + Math.cos(p.yaw) * 3.2; P.y = p.y + 0.6;
-  const t = 'Наблюдение: ' + r.name + (isMate(r) ? ' (свой)' : MP.ffa ? '' : ' (враг)') + ' · ← → или щелчок — другой'; if (label.textContent !== t) label.textContent = t;
+  if (MP.specFP) { P.x = p.x; P.y = p.y; P.z = p.z; P.yaw = p.yaw; P.pitch = p.pitch; }   // from the eyes: the watched body is hidden in mpTick
+  else { P.yaw = p.yaw; P.pitch = -0.14; P.x = p.x + Math.sin(p.yaw) * 3.2; P.z = p.z + Math.cos(p.yaw) * 3.2; P.y = p.y + 0.6; }
+  const t = 'Наблюдение: ' + r.name + (isMate(r) ? ' (свой)' : MP.ffa ? '' : ' (враг)') + ' · ← → или щелчок — другой · F — ' + (MP.specFP ? 'из-за спины' : 'от первого лица'); if (label.textContent !== t) label.textContent = t;
 }
 // ---------- the arena: the choices of the respawn, the edge, the ring and the bases on the maps ----------
 function arenaChoices() {   // in an arena you come back on your base (or next to a teammate), not where you like
@@ -596,7 +606,7 @@ function initUi() {   // the fields of the player and of the training: once, whe
   const rs = el('mpRespawnAt'); rs.textContent = ''; for (const [v, t] of [['mate', 'Рядом с товарищем'], ['rand', 'Случайное место']].concat(PLACES.map((p, i) => [i, p[0]]))) { const o = document.createElement('option'); o.value = v; o.textContent = t; rs.append(o); }
   el('mpNoBoard').checked = !boardOn(); el('mpNoBoard').onchange = () => setBoardOn(!el('mpNoBoard').checked); initLeaders(() => (MP.on ? (MP.local ? '' : MP.url) : serverUrl()));
   el('goPlay').onclick = () => join(); el('goTrain').onclick = () => { const o = { bots: +el('trBots').value, level: el('trLevel').value, mode: el('trMode').value, arena: el('trArena').value }; try { localStorage.setItem('dpils.train', JSON.stringify(o)); } catch (e) {} join(o); };
-  try { const t = JSON.parse(localStorage.getItem('dpils.train') || '{}'); for (const [k, id] of [['bots', 'trBots'], ['level', 'trLevel'], ['mode', 'trMode'], ['arena', 'trArena']]) if (t[k] != null && [...el(id).options].some(o => o.value === String(t[k]))) el(id).value = t[k]; } catch (e) {} el('mpRespawn').onclick = respawn; el('mpLeave').onclick = () => location.reload(); el('mpOverBtn').onclick = () => location.reload();
+  try { const t = JSON.parse(localStorage.getItem('dpils.train') || '{}'); for (const [k, id] of [['bots', 'trBots'], ['level', 'trLevel'], ['mode', 'trMode'], ['arena', 'trArena']]) if (t[k] != null && [...el(id).options].some(o => o.value === String(t[k]))) el(id).value = t[k]; } catch (e) {} el('mpRespawn').onclick = respawn; el('mpSpecCam').onclick = specCam; specCamUi(); el('mpLeave').onclick = () => location.reload(); el('mpOverBtn').onclick = () => location.reload();
   el('bLeave').onclick = () => location.reload();
 }
 
@@ -621,6 +631,7 @@ window.addEventListener('keydown', e => {
   else if (!MP.dead && (e.code === SET.keys.chat || e.code === SET.keys.teamChat || e.code === 'Enter')) { e.preventDefault(); nadeCancel(); openChat(e.code === SET.keys.teamChat && !MP.ffa); }
   else if (MP.dead && (e.code === 'ArrowRight' || e.code === 'KeyE')) specNext(1);
   else if (MP.dead && (e.code === 'ArrowLeft' || e.code === 'KeyQ')) specNext(-1);
+  else if (MP.dead && e.code === 'KeyF') specCam();
   else if (e.code === SET.keys.inv) { if (!MP.dead) { nadeCancel(); toggleInv(); } }
   else if (e.code === SET.keys.med) useMed();
   else if (e.code === SET.keys.grenade) { closeInv(); nadePrep(); }
@@ -699,6 +710,7 @@ function mpTick(dt) {
     }
     const p = pose(r, t); if (!p) { g.visible = false; continue; }
     remoteSteps(r, p, now); if (r.av) { if (r.gunW !== p.w) { r.gunW = p.w; r.av.setGun(p.w); } r.av.update(dt, { speed: r.speed || 0, air: !!r.air, dead: false, shotAt: r.shotAt || 0 }); } g.visible = true; g.position.set(p.x, p.y - p.h, p.z); g.scale.y = p.h / 1.7; g.rotation.y = p.yaw; g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
+    if (MP.dead && MP.specFP && r.id === MP.spec) g.visible = false;   // the first-person spectate: the watched body must not cover the eye
   }
   tickFx(dt);
   MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06;
