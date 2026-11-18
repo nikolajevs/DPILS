@@ -53,7 +53,7 @@ function dynTick(rdt) {
   dWin += rdt; dN++; dMax = Math.max(dMax, rdt);
   if (dWin < 1) return;
   const ft = dWin / dN * 1000, stall = dMax > 0.5 && dMax * 1000 > 3 * ft; dWin = dN = dMax = 0;
-  if (stall || document.hidden || !STATE.started) return;
+  if (stall || document.hidden || !STATE.started || STATE.mapOpen) return;   // with the full map open the frames say nothing of the city
   if (dTry) {   // the window after a step: did it do what it was for?
     const t = dTry; dTry = null;
     if (t.down && ft > t.ft * 0.93) { setScale(t.from); dLowBlock = dLowWait; dLowWait = Math.min(240, dLowWait * 2); dQuiet = 1; return; }

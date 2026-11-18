@@ -54,8 +54,9 @@
 
 <div class="bigmap" id="bigmap" hidden>
   <div class="panel sheet">
-    <header><span>Нажмите на карту, чтобы перенестись в это место</span><button class="btn" id="bMapClose">Закрыть</button></header>
-    <canvas id="mapCanvas"></canvas>
+    <header><span class="map-info" id="mapInfo" aria-live="polite"></span><span class="map-tools"><button class="btn" id="mapZoomIn" title="Приблизить (+)" aria-label="Приблизить">+</button><button class="btn" id="mapZoomOut" title="Отдалить (−)" aria-label="Отдалить">−</button><button class="btn" id="mapMe" title="Показать, где я (C)">Где я</button><button class="btn" id="mapAll" title="Весь город (0)">Весь город</button><button class="btn" id="bMapClose">Закрыть</button></span></header>
+    <canvas id="mapCanvas" role="img" aria-label="Карта Даугавпилса"></canvas>
+    <footer class="map-legend"><span><i class="tram"></i>трамвай</span><span><i class="bus"></i>автобус</span><span><i class="coach"></i>междугородний</span><span><i class="train"></i>поезд</span><span><i class="me"></i>вы</span></footer>
   </div>
 </div>
 
