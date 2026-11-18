@@ -63,11 +63,13 @@ THREE.Material.prototype.onBeforeCompile = function (s) { terrUniforms(s); if (/
 // the same bilinear height as the shaders, from the same decimetres
 function terrainH(x, z) {
   if (!TERR.on) return 0;
+  return PATCH.on ? gridH(x, z) + patchAt(x, z) : gridH(x, z);
+}
+function gridH(x, z) {   // the height grid alone, without the fine patch
   const nx = TERR.nx, q = TERR.q; let gx = (x - TERR.x0) / TERR.s, gz = (z - TERR.z0) / TERR.s;
   gx = gx < 0 ? 0 : gx > nx - 1.001 ? nx - 1.001 : gx; gz = gz < 0 ? 0 : gz > TERR.nz - 1.001 ? TERR.nz - 1.001 : gz;
   const i = Math.floor(gx), j = Math.floor(gz), fx = gx - i, fz = gz - j, k = j * nx + i, a = q[k], b = q[k + 1], c = q[k + nx], d = q[k + nx + 1];
-  const h = ((a + (b - a) * fx) * (1 - fz) + (c + (d - c) * fx) * fz) * 0.1 - TERR.ref;
-  return PATCH.on ? h + patchAt(x, z) : h;
+  return ((a + (b - a) * fx) * (1 - fz) + (c + (d - c) * fx) * fz) * 0.1 - TERR.ref;
 }
 /* A fine patch over the grid: offsets in metres on a 1 m grid over a small box, added to the heights, for places the
    20 m grid cannot draw (Daugavas iela under the end of Vienības tilts, src/world/underpass.js). Inside its box the
@@ -232,13 +234,38 @@ const walkLift = (x, z, prev = null) => fortGround(x, z) + (upUnder(x, z, 0, 0, 
 // the surface of a river or lake at a point: in the terrain model water is the lowest ground around, so the lowest
 // height within 50 m keeps the water level right up to its banks
 function waterLevel(x, z) { let m = terrainH(x, z); for (const r of [20, 50]) for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4; m = Math.min(m, terrainH(x + Math.cos(a) * r, z + Math.sin(a) * r)); } return m; }
-// polylines cut where the ground bends, so that ribbons laid on them follow it (to within tol metres)
+/* The largest gap between the ground and the straight line from (ax, az) at height ha to (bx, bz) at hb, looked at until
+   it passes tol. Along the line the gap is a parabola between the points where it crosses the lines of the height grid:
+   from the ends and the middle of each piece its peak is exact. In the fine patch: a look every half metre. Its
+   midpoint is looked at first. */
+function lineGap(ax, az, bx, bz, ha, hb, tol) {
+  const dx = bx - ax, dz = bz - az, dh = hb - ha;
+  if (inPatch(Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz))) {
+    const n = 2 * Math.max(1, Math.ceil(Math.hypot(dx, dz) / PATCH.s)); let e = Math.abs(terrainH(ax + dx / 2, az + dz / 2) - ha - dh / 2);
+    for (let k = 1; k < n && e <= tol; k++) { const t = k / n; e = Math.max(e, Math.abs(terrainH(ax + dx * t, az + dz * t) - ha - dh * t)); }
+    return e;
+  }
+  const S = TERR.s, X0 = TERR.x0, Z0 = TERR.z0, gap = t => gridH(ax + dx * t, az + dz * t) - ha - dh * t, sx = dx > 0 ? 1 : -1, sz = dz > 0 ? 1 : -1;
+  let gx = dx > 0 ? Math.floor((ax - X0) / S) + 1 : Math.ceil((ax - X0) / S) - 1, gz = dz > 0 ? Math.floor((az - Z0) / S) + 1 : Math.ceil((az - Z0) / S) - 1;
+  let t0 = 0, f0 = gap(0), e = Math.max(Math.abs(f0), Math.abs(gap(0.5)));
+  while (t0 < 1 && e <= tol) {
+    const tx = Math.abs(dx) > 1e-9 ? (X0 + gx * S - ax) / dx : 2, tz = Math.abs(dz) > 1e-9 ? (Z0 + gz * S - az) / dz : 2, t1 = Math.min(tx, tz, 1);
+    if (t1 > t0 + 1e-9) {
+      const f1 = gap(t1), fm = gap((t0 + t1) / 2), C = 2 * (f0 + f1 - 2 * fm), B = f1 - f0 - C, u = C !== 0 ? -B / (2 * C) : -1;
+      e = Math.max(e, Math.abs(f1), Math.abs(fm), u > 0 && u < 1 ? Math.abs(f0 + B * u + C * u * u) : 0); t0 = t1; f0 = f1;
+    }
+    if (tx <= t1) gx += sx; if (tz <= t1) gz += sz;
+  }
+  return e;
+}
+/* polylines cut where the ground bends, so that ribbons laid on them follow it (to within tol metres; the midpoint
+   alone, as before, let streets run under hummocks it did not see) */
 function densify(p, tol = 0.15) {
   const n = p.length >> 1, o = [p[0], p[1]];
-  const seg = (x0, z0, x1, z1, d) => { const L = Math.hypot(x1 - x0, z1 - z0), mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+  const seg = (x0, z0, x1, z1, h0, h1, d) => { const L = Math.hypot(x1 - x0, z1 - z0), mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
     const fine = inPatch(Math.min(x0, x1), Math.min(z0, z1), Math.max(x0, x1), Math.max(z0, z1));
-    if (d < (fine ? 18 : 12) && L > (fine ? 1 : 6) && Math.abs(terrainH(mx, mz) - (terrainH(x0, z0) + terrainH(x1, z1)) / 2) > tol) { seg(x0, z0, mx, mz, d + 1); seg(mx, mz, x1, z1, d + 1); } else o.push(x1, z1); };
-  for (let i = 1; i < n; i++) seg(p[2 * i - 2], p[2 * i - 1], p[2 * i], p[2 * i + 1], 0);
+    if (d < (fine ? 18 : 12) && L > (fine ? 1 : 6) && lineGap(x0, z0, x1, z1, h0, h1, tol) > tol) { const hm = terrainH(mx, mz); seg(x0, z0, mx, mz, h0, hm, d + 1); seg(mx, mz, x1, z1, hm, h1, d + 1); } else o.push(x1, z1); };
+  for (let i = 1; i < n; i++) seg(p[2 * i - 2], p[2 * i - 1], p[2 * i], p[2 * i + 1], terrainH(p[2 * i - 2], p[2 * i - 1]), terrainH(p[2 * i], p[2 * i + 1]), 0);
   return o;
 }
 /* Triangles split along their longest side until they lie on the ground to within tol metres (or get small). Inside a
@@ -252,39 +279,11 @@ function densify(p, tol = 0.15) {
 function subTris(flat, tris, tol) {
   const F = Array.from(flat), T = [], ed = [], Hc = [], q = TERR.q, nx = TERR.nx, nz = TERR.nz, S = TERR.s, X0 = TERR.x0, Z0 = TERR.z0, ref = TERR.ref;
   const hAt = i => { if (Hc[i] === undefined) Hc[i] = terrainH(F[2 * i], F[2 * i + 1]); return Hc[i]; };
-  const bil = (x, z) => {   // terrainH away from the fine patch
-    const gx = Math.max(0, Math.min(nx - 1.001, (x - X0) / S)), gz = Math.max(0, Math.min(nz - 1.001, (z - Z0) / S)), i = Math.floor(gx), j = Math.floor(gz), fx = gx - i, fz = gz - j, k = j * nx + i;
-    return ((q[k] + (q[k + 1] - q[k]) * fx) * (1 - fz) + (q[k + nx] + (q[k + nx + 1] - q[k + nx]) * fx) * fz) * 0.1 - ref;
-  };
   // the sides met so far, by their lower end: [upper end, middle point or -1, error or -1, …]
   let el = null;
   const slot = (a, b) => { const lo = a < b ? a : b, hi = a < b ? b : a; el = ed[lo] || (ed[lo] = []); for (let i = 0; i < el.length; i += 3) if (el[i] === hi) return i; el.push(hi, -1, -1); return el.length - 3; };
   const split = (a, b) => { const i = slot(a, b); if (el[i + 1] < 0) { el[i + 1] = F.length >> 1; F.push((F[2 * a] + F[2 * b]) / 2, (F[2 * a + 1] + F[2 * b + 1]) / 2); } return el[i + 1]; };
-  /* whether side ab leaves the ground by more than tol. Along it the gap is a parabola between the points where it crosses
-     the lines of the grid: from its ends and its middle the peak of each piece is exact. In the fine patch: a look every
-     half metre (and always at the midpoint of the side) */
-  const sideOff = (a, b) => {
-    const i = slot(a, b), l = el; if (l[i + 2] >= 0) return l[i + 2] > tol;
-    const ax = F[2 * a], az = F[2 * a + 1], dx = F[2 * b] - ax, dz = F[2 * b + 1] - az, ha = hAt(a), dh = hAt(b) - ha;
-    let e = 0;
-    if (inPatch(Math.min(ax, ax + dx), Math.min(az, az + dz), Math.max(ax, ax + dx), Math.max(az, az + dz))) {
-      const n = 2 * Math.max(1, Math.ceil(Math.hypot(dx, dz) / PATCH.s));
-      for (let k = 1; k < n && e <= tol; k++) { const t = k / n; e = Math.max(e, Math.abs(terrainH(ax + dx * t, az + dz * t) - ha - dh * t)); }
-    } else {
-      const gap = t => bil(ax + dx * t, az + dz * t) - ha - dh * t, sx = dx > 0 ? 1 : -1, sz = dz > 0 ? 1 : -1;
-      let gx = dx > 0 ? Math.floor((ax - X0) / S) + 1 : Math.ceil((ax - X0) / S) - 1, gz = dz > 0 ? Math.floor((az - Z0) / S) + 1 : Math.ceil((az - Z0) / S) - 1;
-      let t0 = 0, f0 = 0; e = Math.abs(gap(0.5));
-      while (t0 < 1 && e <= tol) {
-        const tx = Math.abs(dx) > 1e-9 ? (X0 + gx * S - ax) / dx : 2, tz = Math.abs(dz) > 1e-9 ? (Z0 + gz * S - az) / dz : 2, t1 = Math.min(tx, tz, 1);
-        if (t1 > t0 + 1e-9) {
-          const f1 = t1 < 1 ? gap(t1) : 0, fm = gap((t0 + t1) / 2), C = 2 * (f0 + f1 - 2 * fm), B = f1 - f0 - C, u = C !== 0 ? -B / (2 * C) : -1;
-          e = Math.max(e, Math.abs(f1), u > 0 && u < 1 ? Math.abs(f0 + B * u + C * u * u) : 0); t0 = t1; f0 = f1;
-        }
-        if (tx <= t1) gx += sx; if (tz <= t1) gz += sz;
-      }
-    }
-    l[i + 2] = e; return e > tol;
-  };
+  const sideOff = (a, b) => { const i = slot(a, b), l = el; if (l[i + 2] < 0) l[i + 2] = lineGap(F[2 * a], F[2 * a + 1], F[2 * b], F[2 * b + 1], hAt(a), hAt(b), tol); return l[i + 2] > tol; };
   // whether a node of a grid (origin x0, z0, step s, nx × nz nodes) inside triangle abc lies further than tol from its
   // plane h = ha + gx (x - ax) + gz (z - az); h(i, j) gives the ground at a node
   const nodesOff = (a, b, c, x0, z0, s, gnx, gnz, h) => {

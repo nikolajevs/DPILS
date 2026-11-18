@@ -13,40 +13,61 @@ import { bbox, dec, hb, rnd, sh, triangulate } from '../core/util.js';
 import { C, HX, HY, WL } from '../core/env.js';
 
 /* ---------- ground: land use, water in its bed ---------- */
-/* The ground layers are drawn first without writing depth; a hill must still hide what lies behind it. A grid on the
-   height grid, at least 0.5 m under the ground, writes depth first (and casts the shadows of the hills); a second one,
-   just under the ground, writes it after them for everything else. Both leave out the water, which lies lower, and the
-   fortress, which has its own ground and depth mask. */
-function terrainDepth() {
+/* The ground layers are drawn without writing depth, one over the other in their order; a hill must still hide what lies
+   behind it. A grid on the height grid, DEEP under the ground, writes depth first (and casts the shadows of the hills); a
+   second one, just under the ground, writes it after them for everything else. Both leave out the water, which lies
+   lower, and the fortress, which has its own ground and depth mask. */
+const DEEP = 0.5, DEEP_MARGIN = 0.1;
+/* The ground layers keep within their tol of the ground (subTris: 0.35 m), DEEP above the grid, except a triangle that
+   got as small as subTris cuts (12 m) under a sharp edge: the grid is lowered under it, on the nodes of the cells it
+   touches, by what it dips deeper (dip: per node of the height grid, in metres). */
+function noteDips(flat, tris, dip) {
+  const nx = TERR.nx, nz = TERR.nz, s = TERR.s, n = 8;
+  for (let t = 0; t < tris.length; t += 3) {
+    const a = tris[t], b = tris[t + 1], c = tris[t + 2], ax = flat[2 * a], az = flat[2 * a + 1], bx = flat[2 * b], bz = flat[2 * b + 1], cx = flat[2 * c], cz = flat[2 * c + 1];
+    if (Math.max(Math.hypot(bx - ax, bz - az), Math.hypot(cx - bx, cz - bz), Math.hypot(ax - cx, az - cz)) > 12.01) continue;
+    const x0 = Math.min(ax, bx, cx), x1 = Math.max(ax, bx, cx), z0 = Math.min(az, bz, cz), z1 = Math.max(az, bz, cz); if (inPatch(x0, z0, x1, z1)) continue;
+    const ha = terrainH(ax, az), hb = terrainH(bx, bz), hc = terrainH(cx, cz); let e = 0;
+    for (let i = 0; i <= n; i++) for (let j = 0; i + j <= n; j++) { const u = i / n, v = j / n; e = Math.max(e, terrainH(ax + (bx - ax) * u + (cx - ax) * v, az + (bz - az) * u + (cz - az) * v) - ha - (hb - ha) * u - (hc - ha) * v); }
+    const d = e + DEEP_MARGIN - DEEP; if (d <= 0) continue;
+    for (let j = Math.max(0, Math.floor((z0 - TERR.z0) / s)), j1 = Math.min(nz - 1, Math.ceil((z1 - TERR.z0) / s)); j <= j1; j++)
+      for (let i = Math.max(0, Math.floor((x0 - TERR.x0) / s)), i1 = Math.min(nx - 1, Math.ceil((x1 - TERR.x0) / s)); i <= i1; i++) if (dip[j * nx + i] < d) dip[j * nx + i] = d;
+  }
+}
+function terrainDepth(dip) {
   if (!WMASK) waterMask();
-  // on every node of the height grid, each 0.5 m under the lowest of its neighbours: the plane of a triangle then never
-  // rises above the ground drawn over it, which follows the bilinear heights (a grid one node in two did, on the edges
-  // of embankments and cuttings, and hid the ground)
+  /* On every node DEEP under the ground, each cell cut along the diagonal that keeps both its triangles under the
+     bilinear heights (along the other one the twist of the cell would lift a plane over the ground). It used to lie
+     0.5 m under the lowest of the neighbours of a node: on a slope metres down, so the streets and the land use behind a
+     hummock, drawn after the ground in front of it, showed through its foot (18. novembra iela by the overpass). Beside
+     the Latgales cutting it still does, and under the floor of the cutting: the road there runs under the ground. */
   const g = new GB(false), nx = TERR.nx, nz = TERR.nz, s = TERR.s, q = TERR.q, C0 = [0, 0, 0]; g.ensure(nx * nz);
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
-    let m = 1e9; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = Math.min(nx - 1, Math.max(0, i + di)), jj = Math.min(nz - 1, Math.max(0, j + dj)); m = Math.min(m, q[jj * nx + ii]); }
-    m = Math.min(m, cutFloor(TERR.x0 + i * s, TERR.z0 + j * s) * 10);   // beside the retaining walls of the Latgales cutting
-    g.vert(TERR.x0 + i * s, (m - q[j * nx + i]) * 0.1 - 0.5, TERR.z0 + j * s, 0, 1, 0, C0);
+    const x = TERR.x0 + i * s, z = TERR.z0 + j * s, k = j * nx + i;
+    let y = -DEEP - dip[k];
+    if (cutTouches([x - s, z - s, x + s, z + s])) {
+      let m = 1e9; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = Math.min(nx - 1, Math.max(0, i + di)), jj = Math.min(nz - 1, Math.max(0, j + dj)); m = Math.min(m, q[jj * nx + ii]); }
+      y = Math.min(y, (Math.min(m, cutFloor(x, z) * 10) - q[k]) * 0.1 - 0.5);
+    }
+    g.vert(x, y, z, 0, 1, 0, C0);
   }
-  /* That grid lies too deep to hide what stands behind a hill: on a slope the lowest neighbour is metres down, so the
-     people, trees and houses beyond a crest showed through the ground in front of them (most of all looking up a slope,
-     and a player on a hilltop through the hill). Once the ground layers are drawn a second grid writes depth close under
-     them: on the nodes, TOP_GAP under the ground, each cell cut along the diagonal that keeps both its triangles under
-     the bilinear heights (along the other one the twist of the cell would lift the plane over the ground). Only what is
-     drawn after the ground meets it, never the ground itself. It leaves out what the deep grid leaves out, and the road
-     of the Latgales cutting, which runs under the grid (cutY). */
+  /* The deep grid still lets what stands just behind a crest show through it (most of all looking up a slope, and a
+     player on a hilltop through the hill). Once the ground layers are drawn a second grid writes depth closer under
+     them, TOP_GAP under the ground, cut like the deep one. Only what is drawn after the ground meets it, never the ground
+     itself. It leaves out what the deep grid leaves out, and the road of the Latgales cutting, which runs under the grid
+     (cutY). */
   const TOP_GAP = 0.25, top = new GB(false); top.ensure(nx * nz);
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) top.vert(TERR.x0 + i * s, -TOP_GAP, TERR.z0 + j * s, 0, 1, 0, C0);
   const wet = (x, z) => { const W = WMASK, i = Math.floor((x - W.X0) / W.S), j = Math.floor((z - W.Z0) / W.S); return i >= 0 && j >= 0 && i < W.NX && j < W.NZ && W.m[j * W.NX + i] !== 0; };
+  const cell = (b, k, tw) => { if (tw) { b.triUp(k, k + 1, k + nx); b.triUp(k + 1, k + nx + 1, k + nx); } else { b.triUp(k, k + 1, k + nx + 1); b.triUp(k, k + nx + 1, k + nx); } };
   for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
     const x = TERR.x0 + i * s, z = TERR.z0 + j * s;
     if (FORT.ok && Math.abs(x + s / 2 - FORT.cx) < FORT.R + 60 && Math.abs(z + s / 2 - FORT.cz) < FORT.R + 60) continue;
     let w = false; for (let a = 0; a <= s && !w; a += s / 4) for (let b = 0; b <= s && !w; b += s / 4) w = wet(x + a, z + b); if (w) continue;
     if (inPatch(x, z, x + s, z + s)) continue;   // the fine patch has a depth grid of its own, below
-    const k = j * nx + i; g.triUp(k, k + nx, k + 1); g.triUp(k + 1, k + nx, k + nx + 1);
+    const k = j * nx + i, tw = q[k] - q[k + 1] - q[k + nx] + q[k + nx + 1] > 0; cell(g, k, tw);
     if (cutTouches([x, z, x + s, z + s]) && cutInward(x + s / 2, z + s / 2)[2] < CUT.BLEND + s) continue;
-    if (q[k] - q[k + 1] - q[k + nx] + q[k + nx + 1] > 0) { top.triUp(k, k + 1, k + nx); top.triUp(k + 1, k + nx + 1, k + nx); }
-    else { top.triUp(k, k + 1, k + nx + 1); top.triUp(k, k + nx + 1, k + nx); }
+    cell(top, k, tw);
   }
   const tm = top.mesh(new THREE.MeshBasicMaterial({ colorWrite: false })); if (tm) { tm.renderOrder = -29; tm.frustumCulled = false; scene.add(tm); }   // after every ground layer (the last at -30)
   /* over the fine patch (src/world/underpass.js) a 2 m grid, each node 0.5 m under the lowest ground around it, over
@@ -76,6 +97,7 @@ function buildGround() {
   base.ensure(bs.flat.length / 2); for (let i = 0; i < bs.flat.length; i += 2) base.vert(bs.flat[i], 0, bs.flat[i + 1], 0, 1, 0, bc);
   for (let t = 0; t < bs.tris.length; t += 3) base.triUp(bs.tris[t], bs.tris[t + 1], bs.tris[t + 2]);
   const gm0 = base.mesh(matBase); gm0.renderOrder = -50; gm0.frustumCulled = false; gm0.receiveShadow = true; scene.add(gm0);
+  const dip = TERR.on ? new Float32Array(TERR.nx * TERR.nz) : null; if (TERR.on) noteDips(bs.flat, bs.tris, dip);
   for (const a of C.a) { const rings = a.slice(1).map(dec); const o = { cls: a[0], rings, bb: bbox(rings[0]) }; AREAS.push(o); if (o.cls === 0) WATER.push(o); }
   AREAS.sort((p, q) => AREA_ORDER.indexOf(p.cls) - AREA_ORDER.indexOf(q.cls));
   const colors = {}; for (const k in AREA_HEX) colors[k] = hb(AREA_HEX[k]);
@@ -93,13 +115,14 @@ function buildGround() {
         polyA(bank, [[x1, 0, z1], [x2, 0, z2], [x2, b2, z2], [x1, b1, z1]], sh(bcol, 0.9 + rnd(n, i) * 0.2), 0, 0, 1); } }
       return;
     }
+    if (TERR.on) noteDips(flat, tris, dip);
     const v0 = land.v, col = sh(colors[a.cls], 0.94 + rnd(n, 3) * 0.12);
     land.ensure(flat.length / 2);
     for (let i = 0; i < flat.length; i += 2) land.vert(flat[i], 0, flat[i + 1], 0, 1, 0, col);
     for (let i = 0; i < tris.length; i += 3) land.triUp(v0 + tris[i], v0 + tris[i + 1], v0 + tris[i + 2]);
   });
   const lm = land.mesh(M_LAND); if (lm) { lm.renderOrder = -40; lm.frustumCulled = false; lm.receiveShadow = true; scene.add(lm); }
-  if (TERR.on) terrainDepth();
+  if (TERR.on) terrainDepth(dip);
   const bm = bank.mesh(matBank); if (bm) { bm.renderOrder = -39; bm.frustumCulled = false; scene.add(bm); }
   wet.forEach(([wp, wi], k) => {
     if (!wp.length) return;
@@ -110,4 +133,28 @@ function buildGround() {
   });
 }
 
-export { buildGround };
+/* The water is transparent, so it is drawn after everything opaque, whatever its order, and the ground layers write no
+   depth: where an OSM water area runs under a street (Daugavas iela on its dam, with the Daugava 5–6 m below) the river
+   was drawn over the road and its sidewalks, cut off square along the cells the depth grids leave out for the water. The
+   ground layers drawn over the water by their order (streets, sidewalks, paved grounds) write depth where they lie over
+   water: a copy of those triangles 0.2 m under them, drawn after them, before the water. */
+function waterGuard() {
+  if (!TERR.on) return;
+  if (!WMASK) waterMask();
+  const W = WMASK, wet = (x, z) => { const i = Math.floor((x - W.X0) / W.S), j = Math.floor((z - W.Z0) / W.S); return i >= 0 && j >= 0 && i < W.NX && j < W.NZ && W.m[j * W.NX + i] !== 0; };
+  const g = new GB(false), C0 = [0, 0, 0], p = new THREE.Vector3();
+  scene.updateMatrixWorld(true);
+  scene.traverse(o => {
+    const mt = o.material; if (!o.isMesh || !(o.renderOrder > -38 && o.renderOrder < -29.5) || !o.geometry.index || !mt || Array.isArray(mt) || mt.colorWrite === false || mt.transparent) return;
+    const P = o.geometry.attributes.position, I = o.geometry.index.array, at = i => p.fromBufferAttribute(P, i).applyMatrix4(o.matrixWorld).toArray();
+    for (let t = 0; t < I.length; t += 3) {
+      const A = at(I[t]), B = at(I[t + 1]), Cc = at(I[t + 2]); let w = wet((A[0] + B[0] + Cc[0]) / 3, (A[2] + B[2] + Cc[2]) / 3);
+      for (const [U, V] of [[A, B], [B, Cc], [Cc, A]]) { const n = Math.ceil(Math.hypot(V[0] - U[0], V[2] - U[2]) / W.S); for (let k = 0; k <= n && !w; k++) w = wet(U[0] + (V[0] - U[0]) * k / n, U[2] + (V[2] - U[2]) * k / n); }
+      if (!w) continue;
+      const v = g.v; g.ensure(3); for (const Q of [A, B, Cc]) g.vert(Q[0], Q[1] - 0.2, Q[2], 0, 1, 0, C0); g.triUp(v, v + 1, v + 2);
+    }
+  });
+  const m = g.mesh(new THREE.MeshBasicMaterial({ colorWrite: false })); if (m) { m.renderOrder = -29.5; m.frustumCulled = false; scene.add(m); }
+}
+
+export { buildGround, waterGuard };
