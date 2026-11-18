@@ -124,6 +124,14 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
 .cross .c-re { position: absolute; left: -21px; top: -21px; width: 42px; height: 42px; transform: rotate(-90deg); opacity: 0; transition: opacity .12s; }
 .cross .c-re circle { fill: none; stroke: #ffc24d; stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 106.81; filter: drop-shadow(0 0 1px rgba(0, 0, 0, .7)); }
 .cross.reloading .c-re { opacity: 1; }
+/* the aimed grenade throw (G): the power bar under the crosshair and its hint; the bar fills while the left mouse
+   button is held down, the frame glows red at full power */
+.nade-ui { position: fixed; left: 50%; top: 56%; transform: translateX(-50%); z-index: 6; text-align: center; pointer-events: none; font: 600 12px/1.3 var(--f-body); }
+.nade-ui[hidden] { display: none; }
+.nade-bar { width: 190px; height: 7px; margin: 0 auto 6px; border: 1px solid rgba(255, 210, 122, .85); border-radius: 4px; background: rgba(8, 10, 8, .55); overflow: hidden; box-shadow: 0 1px 4px rgba(0, 0, 0, .5); }
+.nade-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #9fd06a, #ffd24d 60%, #ff6a3d); }
+.nade-ui small { color: #ffd27a; text-shadow: 0 1px 3px rgba(0, 0, 0, .85); }
+.nade-ui[data-full="1"] .nade-bar { border-color: #ff6a3d; box-shadow: 0 0 9px rgba(255, 106, 61, .65); }
 
 /* start card */
 .start { position: fixed; inset: 0; display: grid; place-items: center; background: var(--scrim); padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px)); overflow: auto; }
@@ -300,13 +308,16 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
 .mp-settings h3 { margin: 4px 0 0; font: 500 12px/1.3 var(--f-body); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .set-group { display: grid; gap: 10px; } .set-row { display: grid; grid-template-columns: 190px 1fr 64px; gap: 10px; align-items: center; font: 500 14px/1.3 var(--f-body); }
 .set-row.check { grid-template-columns: auto 1fr; } .set-row b { text-align: right; font-weight: 600; }
-.set-row.swatches { grid-template-columns: 190px 1fr; }
+.set-row.swatches, .set-row.sel { grid-template-columns: 190px 1fr; }
+.set-row select { font: 500 14px/1.3 var(--f-body); padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-solid); color: var(--ink); min-width: 0; }
+.set-row select:focus { outline: 2px solid var(--brick); outline-offset: 0; border-color: transparent; }
+.set-hint { margin: 0; font: 400 12.5px/1.45 var(--f-body); color: var(--muted); }
 .sw-row { display: flex; gap: 8px; align-items: center; }
 .sw { width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(0, 0, 0, .25); cursor: pointer; padding: 0; }
 .sw[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--panel-solid), 0 0 0 4px var(--brick); }
 .set-keys { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; } .set-key { display: flex; justify-content: space-between; align-items: center; gap: 8px; font: 500 14px/1.3 var(--f-body); }
 .set-key .btn { min-width: 96px; }
-@media (max-width: 560px) { .set-row { grid-template-columns: 1fr 1fr 52px; } .set-keys { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .set-row { grid-template-columns: 1fr 1fr 52px; } .set-row.sel { grid-template-columns: 1fr; } .set-keys { grid-template-columns: 1fr; } }
 .mp-dead { pointer-events: none; place-items: end center; padding-bottom: 96px; background: linear-gradient(transparent 55%, rgba(120, 0, 0, .5)); }
 .mp-dead .panel { pointer-events: auto; text-align: center; }
 .mp-dead#mpOver { pointer-events: auto; place-items: center; padding: 0; background: rgba(0, 0, 0, .55); }

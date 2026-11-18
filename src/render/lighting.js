@@ -54,15 +54,33 @@ const QUALITY = [
 ];
 let qi = WEAK_GPU || matchMedia('(pointer: coarse)').matches ? 1 : 0;
 try { const s = localStorage.getItem('dpils-quality2'); if (s != null) qi = Math.max(0, Math.min(QUALITY.length - 1, +s)); } catch (e) {}
+/* Quality mode: 'auto' — the page adapts by itself (dynamic resolution in the city and the game, the level goes down
+   and up in the fight, see game/perf.js); a fixed level is the player's choice and stays. Both are remembered. */
+let qAuto = true;
+try { qAuto = localStorage.getItem('dpils-quality-mode') !== 'fixed'; } catch (e) {}
+const qWatch = [];
+const onQuality = f => { qWatch.push(f); };
+function qualityBtn() {
+  const b = $('bQuality');
+  b.textContent = 'Графика: ' + (qAuto ? 'авто' : QUALITY[qi].name);
+  b.title = qAuto ? 'Качество графики: авто, подстраивается под FPS. Клик — фиксированное' : 'Качество графики: ' + QUALITY[qi].name + ', фиксированное. Клик — следующий режим';
+}
 function setQuality(i) {
   qi = i; const q = QUALITY[i];
-  $('bQuality').textContent = 'Графика: ' + q.name;
+  qualityBtn();
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.pr));
   const want = q.shadow > 0;
   if (want) { if (sun.shadow.map && sun.shadow.mapSize.x !== q.shadow) { sun.shadow.map.dispose(); sun.shadow.map = null; } sun.shadow.mapSize.set(q.shadow, q.shadow); }
   if (renderer.shadowMap.enabled !== want || sun.castShadow !== want) { renderer.shadowMap.enabled = want; sun.castShadow = want; for (const m of allMats) m.needsUpdate = true; matGold && (matGold.needsUpdate = true); }
   try { localStorage.setItem('dpils-quality2', String(i)); } catch (e) {}
   resize(); STATE.lodTimer = 0; STATE.shadowDirty = true;
+  for (const f of qWatch) f();
+}
+function setQualityMode(m) {   // 'auto' or the index of a fixed level, 0…QUALITY.length−1
+  qAuto = m === 'auto';
+  try { localStorage.setItem('dpils-quality-mode', qAuto ? 'auto' : 'fixed'); } catch (e) {}
+  if (qAuto) { qualityBtn(); for (const f of qWatch) f(); }
+  else setQuality(Math.max(0, Math.min(QUALITY.length - 1, Math.round(+m))));
 }
 
-export { QUALITY, TIMES, qi, setQuality, setTime, timeI };
+export { QUALITY, TIMES, qi, qAuto, onQuality, setQuality, setQualityMode, setTime, timeI };
