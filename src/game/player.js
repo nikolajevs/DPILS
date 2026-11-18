@@ -55,8 +55,7 @@ function step(dt) {
   P.x = Math.max(-HX, Math.min(HX, P.x)); P.z = Math.max(-HY, Math.min(HY, P.z));
   if (!P.fly) {
     const ground = P.y - P.eye - P.up;   // the ground under the feet at the last frame (walkLift uses it to tell bridges from what is under them)
-    const ck = SET.keys.crouch, otherCtrl = ck === 'ControlLeft' ? 'ControlRight' : ck === 'ControlRight' ? 'ControlLeft' : null;
-    P.crouch = (keys.has(ck) || (otherCtrl && keys.has(otherCtrl))) && P.up <= 0.001;   // crouch: Ctrl (hold), on a walk and in the game alike; either Ctrl key does
+    P.crouch = keys.has(SET.keys.crouch) && P.up <= 0.001;   // crouch: C (hold), on a walk and in the game alike
     if (STATE.mp) {   // in the game: jump (space) too
       if (keys.has(SET.keys.jump) && P.up <= 0.001 && !P.crouch) P.vy = JUMP.v;
       if (P.vy !== 0 || P.up > 0) { P.vy -= JUMP.g * dt; P.up += P.vy * dt; if (P.up <= 0) { P.up = 0; P.vy = 0; } }
