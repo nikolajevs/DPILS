@@ -29,6 +29,24 @@ const carMat = std({ vertexColors: true, roughness: 0.5, metalness: 0.2 }, 'bmwc
   s.vertexShader = out;
 });
 
+// The wheels bake light: the sedan / police rim and tyre sidewall are pure white, the hatch / SUV rims silver, so they
+// read as bare metal rather than rubber. Paint the whole wheel black. A wheel is a circle of radius ~0.3 m in the x-y
+// plane about the axle (|x| ~ 1.55 m, y ~ 0.3 m), outboard at |z| > 0.55 m; everything inside that circle is wheel
+// (tyre, sidewall, rim) whatever its baked colour. The body arch sits just outside it (radius >= 0.4 m) and stays paint.
+// Chromatic non-white parts that dip into the circle — the police band, lamps, glass — keep their colour.
+function blackenWheels(g) {
+  const p = g.attributes.position, c = g.attributes.color; if (!p || !c) return;
+  const BLACK = 12 / 255;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    if (y > 0.7 || Math.abs(z) < 0.55) continue;
+    if (Math.hypot(Math.abs(x) - 1.55, y - 0.30) > 0.34) continue;
+    const r = c.getX(i), gg = c.getY(i), b = c.getZ(i), mx = Math.max(r, gg, b), mn = Math.min(r, gg, b);
+    if (mx < 250 / 255 && mx - mn >= 0.06) continue;
+    c.setXYZ(i, BLACK, BLACK, BLACK);
+  }
+}
+
 function initCars() {
   if (ready) return;
   ready = import('three/addons/libs/meshopt_decoder.module.js').then(({ MeshoptDecoder }) => {
@@ -51,6 +69,7 @@ function initCars() {
           src.setAttribute(name, new THREE.BufferAttribute(f, a.itemSize));
         }
         src.applyMatrix4(o.matrixWorld);
+        blackenWheels(src);
         g = src;
       });
       return g;
@@ -68,7 +87,6 @@ function addStaticCar(x, z, a, kind, col, police, y) { staticCars.push({ x, z, a
 async function placeStaticCars() {
   if (ready) await ready;
   if (!geos || !staticCars.length) return;
-  const { terrainH } = await import('./terrain.js');   // dynamic: a static import would close the cycle cars -> terrain -> fortress -> cars
   const colorOf = c => new THREE.Color().setRGB(c[0] / 255, c[1] / 255, c[2] / 255, THREE.SRGBColorSpace);
   const WHITE = new THREE.Color(1, 1, 1);
   // gather by 1 km tile and by model (the three body kinds and the police car), so each tile is culled whole
@@ -82,9 +100,10 @@ async function placeStaticCars() {
   }
   for (const t of tiles.values()) for (const { g, cars } of t.lists.values()) {
     const m = new THREE.InstancedMesh(g, carMat, cars.length);
-    // y is explicit when a landmark flattens its own platform (the hospital sits on a base, not on terrainH);
-    // otherwise the car follows the natural ground
-    cars.forEach((c, i) => { Q.setFromAxisAngle(UP, c.a); M.compose(V.set(c.x, c.y !== undefined ? c.y : terrainH(c.x, c.z), c.z), Q, ONE); m.setMatrixAt(i, M); m.setColorAt(i, c.police ? WHITE : colorOf(c.col)); });
+    // the shared vertex shader (src/world/terrain.js) lifts every car by the terrain under it, so the matrix carries
+    // no terrain height of its own — baking terrainH here would double it and leave the car floating. y is explicit
+    // only where a landmark flattens its own platform (the hospital base), and is already relative to the terrain
+    cars.forEach((c, i) => { Q.setFromAxisAngle(UP, c.a); M.compose(V.set(c.x, c.y !== undefined ? c.y : 0, c.z), Q, ONE); m.setMatrixAt(i, M); m.setColorAt(i, c.police ? WHITE : colorOf(c.col)); });
     m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true;
     m.castShadow = m.receiveShadow = true; m.computeBoundingSphere(); if (m.boundingSphere) m.boundingSphere.radius += 6;
     scene.add(m);
