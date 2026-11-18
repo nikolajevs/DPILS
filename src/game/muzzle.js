@@ -116,4 +116,4 @@ function makeFlash({ size = 1, wrap = m => m } = {}) {
   return { group, fire, tick };
 }
 
-export { FLASH_SIZE, makeFlash };
+export { FLASH_SIZE, fbm, makeFlash };
