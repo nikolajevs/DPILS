@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite';
-import { copyFileSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 // The city data stay plain scripts that set window.CITY, window.TRANSIT, window.FORTRESS, window.TERRAIN, window.SCHOOLS, window.PARKS, window.LIDAR and window.LIDAR_TREES (written
@@ -25,6 +25,9 @@ function syncStatic(src, dest) {
 export default defineConfig({
   base: './',
   publicDir: false,
-  build: { outDir: 'dist', target: 'es2020', chunkSizeWarningLimit: 1500 },
-  plugins: [{ name: 'city-data', apply: 'build', closeBundle() { copied = 0; for (const f of STATIC) syncStatic(f, 'dist/' + f); console.log(`city-data: ${copied} changed static file(s) copied`); } }],
+  // emptyOutDir off keeps the copied static data between builds; only the hashed bundle in dist/assets is cleared
+  build: { outDir: 'dist', target: 'es2020', chunkSizeWarningLimit: 1500, emptyOutDir: false },
+  plugins: [{ name: 'city-data', apply: 'build',
+    buildStart() { rmSync('dist/assets', { recursive: true, force: true }); },
+    closeBundle() { copied = 0; for (const f of STATIC) syncStatic(f, 'dist/' + f); console.log(`city-data: ${copied} changed static file(s) copied`); } }],
 });

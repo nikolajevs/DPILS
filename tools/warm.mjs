@@ -58,14 +58,17 @@ const srv = http.createServer(async (req, res) => {
   const u = new URL(req.url, 'http://x');
   try {
     if (u.pathname === '/__warm/status') return json(res, { ready, renderer, errs: errs.length });
-    if (!ready) return json(res, { error: 'not ready' }, 503);
-    if (u.pathname === '/__warm/errs') return json(res, errs.splice(0));
-    if (u.pathname === '/__warm/shot') { const buf = await serial(() => shot(u.searchParams)); res.writeHead(200, { 'Content-Type': 'image/jpeg' }); return res.end(buf); }
-    if (u.pathname === '/__warm/reload' && req.method === 'POST') {
-      await serial(async () => { ready = false; errs.length = 0; await page.reload({ waitUntil: 'load' }); await waitCity(); await enterWalk(); ready = true; });
-      return json(res, { ok: true });
+    if (u.pathname === '/__warm/errs') return json(res, errs.splice(0));   // available before ready too: to debug a stuck load
+    if (u.pathname.startsWith('/__warm/')) {   // the control endpoints need the loaded city; static files below do not
+      if (!ready) return json(res, { error: 'not ready' }, 503);
+      if (u.pathname === '/__warm/shot') { const buf = await serial(() => shot(u.searchParams)); res.writeHead(200, { 'Content-Type': 'image/jpeg' }); return res.end(buf); }
+      if (u.pathname === '/__warm/reload' && req.method === 'POST') {
+        await serial(async () => { ready = false; errs.length = 0; await page.reload({ waitUntil: 'load' }); await waitCity(); await enterWalk(); ready = true; });
+        return json(res, { ok: true });
+      }
+      if (u.pathname === '/__warm/eval' && req.method === 'POST') { const code = await body(req); const result = await serial(() => page.evaluate(code)); return json(res, { result }); }
+      return json(res, { error: 'unknown endpoint' }, 404);
     }
-    if (u.pathname === '/__warm/eval' && req.method === 'POST') { const code = await body(req); const result = await serial(() => page.evaluate(code)); return json(res, { result }); }
   } catch (e) { return json(res, { error: String(e.message || e).slice(0, 500) }, 500); }
   // static files of the repository (the page itself)
   let f = decodeURIComponent(u.pathname);
@@ -89,7 +92,7 @@ page.on('pageerror', e => errs.push('PAGEERROR ' + String(e.stack || e).slice(0,
 await page.addInitScript(() => { try { localStorage.setItem('dpils-quality2', '1'); } catch (e) {} });   // the high quality setting
 console.log(`warm: loading the city on http://127.0.0.1:${PORT}/ …`);
 await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'load' });
-await waitCity();
+try { await waitCity(); } catch (e) { console.log('warm: LOAD FAIL\n' + errs.join('\n')); process.exit(2); }
 await enterWalk();
 ready = true;
 console.log(`warm: ready on http://127.0.0.1:${PORT} (${launched.gpu ? 'GPU' : 'SwiftShader'}) — tools/shots.js will use it automatically`);
