@@ -9,6 +9,7 @@ import { PARK_RINGS, PARK_TREES, parkNoTree } from '../landmarks/parks.js';
 import { fuelNoTree } from '../landmarks/fuel.js';
 import { spwNoTree } from '../landmarks/speedway.js';
 import { lmClear } from '../landmarks/core.js';
+import { ssNoTree } from '../landmarks/substation.js';
 import { ovNoTree } from './overpass.js';
 import { vbNoTree } from './bridge-vienibas.js';
 import { AREAS, inBuilding, onRoad, wetTree } from './data.js';
@@ -233,7 +234,7 @@ function buildTrees() {
   farGeo.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
   // a tree: its kind, the scale of the model across (sc) and up (sy), and a variation v for its tint and turn
   const add = (x, z, type, sc, v, sy = sc * (0.88 + (v * 7 % 1) * 0.3)) => {
-    if (Math.abs(x) > HX || Math.abs(z) > HY || lmClear(x, z) || wetTree(x, z) || fortNoTree(x, z) || vbNoTree(x, z) || spwNoTree(x, z) || fuelNoTree(x, z) || ovNoTree(x, z) || parkNoTree(x, z) || upNoTree(x, z)) return;
+    if (Math.abs(x) > HX || Math.abs(z) > HY || lmClear(x, z) || ssNoTree(x, z) || wetTree(x, z) || fortNoTree(x, z) || vbNoTree(x, z) || spwNoTree(x, z) || fuelNoTree(x, z) || ovNoTree(x, z) || parkNoTree(x, z) || upNoTree(x, z)) return;
     const i = Math.floor(x / TTILE), j = Math.floor(z / TTILE), k = (i + 100) * 1000 + j + 100;
     let t = treeTiles.get(k); if (!t) treeTiles.set(k, t = { x0: i * TTILE, z0: j * TTILE, list: [] }); t.list.push(x, z, type, sc, v, sy);
   };
