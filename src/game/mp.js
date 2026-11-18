@@ -41,7 +41,7 @@ const WEAPONS = [
 ];
 // what the weapons of the table do not say themselves: the kick of one shot, how loud, how far it is heard, the size of the gun in your hands
 const FEEL = { kick: 0.0035, vol: 0.35, hear: 220, vm: 0.55 };
-const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, lastNade: 0, spec: 0, scope: false, zoom: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0 };
+const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, lastNade: 0, spec: 0, scope: false, zoom: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0 };
 // the pockets (keep server/combat.mjs in step: RESERVE and INV): the server owns them, the page only shows and predicts
 const RESERVE = [90, 24, 15, 36, 200], NADE_MAX = 3, MED_MAX = 2;
 bindInv({ useMed, switchWeapon, beep: kind => { if (kind === 'pick') tone(660, 990, 0.09, 0.22, 'triangle'); else if (kind === 'med') tone(440, 660, 0.16, 0.25, 'sine'); else tone(180, 120, 0.12, 0.2, 'square'); } });
@@ -255,13 +255,13 @@ function fire(now) {
 }
 function switchWeapon(i) {
   if (MP.dead || i === MP.weapon || i < 0 || i >= WEAPONS.length) return;
-  MP.weapon = i; MP.reloadAt = 0; MP.firing = false; MP.scope = false; models.forEach((m, k) => { m.visible = k === i; }); tone(300, 200, 0.06, 0.15, 'square'); updatePanel();
+  MP.weapon = i; MP.firing = false; MP.scope = false; models.forEach((m, k) => { m.visible = k === i; }); tone(300, 200, 0.06, 0.15, 'square'); updatePanel();   // the reload keeps running: the server locks every weapon until it ends (server/game.mjs shoot)
 }
 function reload(now) {
   const w = W(); MP.scope = false;
   if (MP.reloadAt || MP.ammo[MP.weapon] >= w.mag || MP.dead) return;
   if (MP.reserve[MP.weapon] <= 0) { if (now - MP.noAmmoAt > 3000) { MP.noAmmoAt = now; feed('Запас патронов пуст — ищите ящики на карте', 'sys'); } return; }
-  MP.reloadAt = now; MP.ws.send(JSON.stringify({ t: 'reload', w: MP.weapon })); updatePanel();   // the server counts the reload and takes the rounds from the reserve
+  MP.reloadAt = now; MP.reloadW = MP.weapon; MP.ws.send(JSON.stringify({ t: 'reload', w: MP.weapon })); updatePanel();   // the server counts the reload and takes the rounds from the reserve
 }
 
 /* ---------- panels ---------- */
@@ -489,9 +489,9 @@ function mpTick(dt) {
     const scoped = MP.zoom > 0.6; if (el('mpScope').hidden === scoped) { el('mpScope').hidden = !scoped; $('cross').style.visibility = scoped ? 'hidden' : ''; }
     gun.visible = !MP.dead && MP.zoom < 0.5; }
   ownSteps(dt); tickNades(dt); tickItems(dt, now); spectate(now);
-  if (MP.reloadAt && now - MP.reloadAt >= W().reloadMs) {   // the local picture of the reload; the server's 'inv' message is the truth
-    MP.reloadAt = 0; const k = Math.min(W().mag - MP.ammo[MP.weapon], MP.reserve[MP.weapon]);
-    MP.ammo[MP.weapon] += k; MP.reserve[MP.weapon] -= k; updatePanel();
+  if (MP.reloadAt && now - MP.reloadAt >= WEAPONS[MP.reloadW].reloadMs) {   // the local picture of the reload; the server's 'inv' message is the truth. It finishes on the weapon that started it, even if another is in hand now
+    const rw = MP.reloadW; MP.reloadAt = 0; const k = Math.min(WEAPONS[rw].mag - MP.ammo[rw], MP.reserve[rw]);
+    MP.ammo[rw] += k; MP.reserve[rw] -= k; updatePanel();
   }
   MP.burst = Math.max(0, MP.burst - dt * 0.03); { const px = Math.max(6, Math.round(spreadNow() * 1400)), cr = $('cross'); if (cr.dataset.px !== String(px)) { cr.dataset.px = px; cr.style.width = cr.style.height = px + 'px'; cr.style.margin = (-px / 2) + 'px 0 0 ' + (-px / 2) + 'px'; } }
   if ((MP.pingT = (MP.pingT || 0) - dt) <= 0 && MP.ws.readyState === 1) { MP.pingT = 2; MP.ws.send(JSON.stringify({ t: 'ping', c: now, rtt: MP.rtt })); }
@@ -510,7 +510,7 @@ function mpTick(dt) {
   }
   tickFx(dt);
   MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06; flash.visible = MP.kick > 0.6; if (flash.visible && !flash.material.map) flash.material.map = muzzleTex(); flashLight.intensity = MP.kick > 0.6 ? 2.5 * MP.kick : 0;
-  if (MP.reloadAt) gun.rotation.x = -0.5 * Math.sin(Math.min(1, (now - MP.reloadAt) / W().reloadMs) * Math.PI);
+  if (MP.reloadAt) gun.rotation.x = -0.5 * Math.sin(Math.min(1, (now - MP.reloadAt) / WEAPONS[MP.reloadW].reloadMs) * Math.PI);
   if (hitT && now - hitT > 140) { hitT = 0; el('mpHit').hidden = true; }
   if (hurtT && now - hurtT > 600) { hurtT = 0; el('mpHurt').hidden = true; }
 }
