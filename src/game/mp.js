@@ -11,7 +11,7 @@ import { FLASH_SIZE, makeFlash } from './muzzle.js';
 import { SET, keyName, onChange } from './settings.js';
 import { firstGames } from './help.js';
 import { rememberServer } from '../ui/servers.js';
-import { addNade, boomNade, clearNades, tickNades } from './nades.js';
+import { addNade, boomNade, clearNades, tickNades, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
 import { KINDS, bindInv, setItems, itemBack, itemTook, tickItems, renderInv, closeInv, toggleInv } from './inventory.js';
 import { terrainH } from '../world/terrain.js';
 import { camera, canvas, scene } from '../render/renderer.js';
@@ -46,6 +46,8 @@ const FEEL = { kick: 0.0035, vol: 0.35, hear: 220, vm: 0.55 };
 const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, lastNade: 0, spec: 0, scope: false, zoom: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0 };
 // the pockets (keep server/combat.mjs in step: RESERVE and INV): the server owns them, the page only shows and predicts
 const RESERVE = [90, 24, 15, 36, 200], NADE_MAX = 3, MED_MAX = 2;
+// the aimed grenade throw: G takes the grenade in hand, the mouse aims it, the left button held down charges the power
+const NAIM = { on: false, charging: false, t0: 0, power: 0, full: false };
 bindInv({ useMed, switchWeapon, beep: kind => { if (kind === 'pick') tone(660, 990, 0.09, 0.22, 'triangle'); else if (kind === 'med') tone(440, 660, 0.16, 0.25, 'sine'); else tone(180, 120, 0.12, 0.2, 'square'); } });
 function useMed() {
   const now = performance.now();
@@ -194,6 +196,17 @@ const hands = models.map((m, i) => {
   const R = makeArm([0.16, -0.30, 0.10]), L = makeArm([-0.20, -0.30, 0.12]);   // right elbow to the bottom-right, left to the bottom-left
   hg.add(R, L); hg.userData.R = R; hg.userData.L = L; placeHands(hg, HAND_BOX[i]); m.add(hg); return hg;
 });
+// the grenade in hand while the throw is aimed: a fist like the weapons hold, the sleeve off the bottom of the frame.
+// It lives on the camera (the gun hides while it is out); nadeAimTick pulls it back as the throw charges
+const nadeHand = new THREE.Group();
+(function () {
+  const mb = worldSpace(new THREE.MeshLambertMaterial({ color: 0x3d5a2a })), ml = worldSpace(new THREE.MeshLambertMaterial({ color: 0x8a8f94 }));
+  nadeHand.add(new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 10), mb));
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.035, 8), ml); cap.position.y = 0.08; nadeHand.add(cap);
+  const lever = new THREE.Mesh(GEO.box, ml); lever.scale.set(0.014, 0.06, 0.028); lever.position.set(0.05, 0.05, 0); lever.rotation.z = -0.25; nadeHand.add(lever);
+  const fist = makeArm([0.16, -0.30, 0.10]); fist.position.set(0.01, -0.085, 0.02); nadeHand.add(fist);
+  nadeHand.position.set(0.2, -0.18, -0.45); nadeHand.visible = false; camera.add(nadeHand);
+})();
 // the flash of your own gun (muzzle.js): the AK of the arms has its own at its muzzle (viewmodel.js); this one serves
 // the other guns, at the muzzle tip of the ready model (upgradeViewmodels keeps its place). Made on the first shot
 let fpFlash = null;
@@ -305,6 +318,7 @@ function fire(now) {
   updatePanel();
 }
 function switchWeapon(i) {
+  nadeCancel();
   if (MP.dead || i === MP.weapon || i < 0 || i >= WEAPONS.length) return;
   MP.weapon = i; MP.firing = false; MP.scope = false; crossGap = CROSS[i].ring ? 20 : CROSS[i].gap; models.forEach((m, k) => { m.visible = k === i; }); if (vm) { vm.setWeapon(i); vm.equip(); } tone(300, 200, 0.06, 0.15, 'square'); updatePanel();   // the reload keeps running: the server locks every weapon until it ends (server/game.mjs shoot)
 }
@@ -317,19 +331,29 @@ function reload(now) {
 
 /* ---------- panels ---------- */
 const el = id => $(id);
+// silhouettes for the weapon belt, in the order of WEAPONS: the AK, the shotgun, the SVD, the pistol, the machine gun
+const SLOT_SVG = [
+  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="24" y="9" width="14" height="2"/><rect x="8" y="8" width="17" height="5"/><polygon points="1,9 8,8 8,13 3,14"/><polygon points="14,13 19,13 17,19 13,19"/><polygon points="20,13 23,13 22,17 19,17"/><rect x="26" y="7" width="2" height="2"/></svg>',
+  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="14" y="9" width="24" height="2.5"/><rect x="18" y="11.5" width="7" height="3"/><polygon points="1,9 14,9 14,13 4,15"/><rect x="10" y="8.5" width="8" height="4"/></svg>',
+  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="20" y="9.5" width="18" height="1.8"/><rect x="12" y="6" width="8" height="3"/><rect x="14" y="9" width="2" height="1.5"/><rect x="8" y="9" width="14" height="4"/><polygon points="1,9 8,9 8,14 3,15"/><rect x="14" y="13" width="4" height="4"/></svg>',
+  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="10" y="7" width="18" height="5"/><polygon points="12,12 19,12 17,19 11,19"/><rect x="28" y="8" width="2" height="3"/></svg>',
+  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="6" y="8" width="20" height="6"/><rect x="26" y="9" width="12" height="2.5"/><polygon points="1,9 6,8 6,14 2,15"/><rect x="12" y="14" width="8" height="5"/><rect x="10" y="6" width="8" height="2"/><path d="M30 11l-2 7M33 11l2 7" stroke="rgba(255,255,255,.62)" stroke-width="1.4" fill="none"/></svg>',
+];
 let hitT = 0, hurtT = 0;
 function updatePanel() {
   el('mpHp').style.width = Math.max(0, MP.hp) + '%'; el('mpHpN').textContent = Math.max(0, Math.ceil(MP.hp)); el('mpStat').dataset.hp = MP.hp <= 25 ? 'low' : MP.hp <= 60 ? 'mid' : 'ok';
-  el('mpWeapon').textContent = W().name; el('mpAmmo').textContent = MP.reloadAt ? 'перезарядка…' : MP.ammo[MP.weapon] + ' / ' + MP.reserve[MP.weapon]; el('mpAmmo').title = 'в магазине / запас'; el('mpAmmo').dataset.empty = !MP.reloadAt && MP.ammo[MP.weapon] === 0 ? 1 : 0;
-  el('mpNades').textContent = '●'.repeat(Math.max(0, MP.nades)) || '—';
-  el('mpMeds').textContent = '✚'.repeat(Math.max(0, MP.meds)) || '—';
-  const sl = el('mpSlots'); if (sl.children.length !== WEAPONS.length) { sl.textContent = ''; WEAPONS.forEach((w, i) => { const d = document.createElement('span'), b = document.createElement('b'), r = document.createElement('i'); d.title = w.name; b.textContent = i + 1; d.append(b, r); sl.append(d); }); }
+  el('mpWeapon').textContent = W().name; el('mpAmmo').textContent = MP.reloadAt ? 'перезарядка…' : MP.ammo[MP.weapon] + ' / ' + MP.reserve[MP.weapon]; el('mpAmmo').title = 'в магазине / запас'; el('mpAmmo').dataset.empty = !MP.reloadAt && MP.ammo[MP.weapon] === 0 ? 1 : 0; el('mpAmmo').dataset.reload = MP.reloadAt ? 1 : 0;
+  const nk = keyName(SET.keys.grenade), mk = keyName(SET.keys.med);
+  el('mpNades').textContent = '×' + Math.max(0, MP.nades); el('mpNadesBox').dataset.empty = MP.nades > 0 ? 0 : 1; el('mpNadesBox').title = 'Гранаты (' + nk + ' — прицельный бросок)'; el('mpNadeKey').textContent = nk;
+  el('mpMeds').textContent = '×' + Math.max(0, MP.meds); el('mpMedsBox').dataset.empty = MP.meds > 0 ? 0 : 1; el('mpMedsBox').title = 'Аптечки (' + mk + ')'; el('mpMedKey').textContent = mk;
+  const sl = el('mpSlots'); if (sl.children.length !== WEAPONS.length) { sl.textContent = ''; WEAPONS.forEach((w, i) => { const d = document.createElement('span'), b = document.createElement('b'), r = document.createElement('i'); d.title = w.name; d.innerHTML = SLOT_SVG[i]; b.textContent = i + 1; d.append(b, r); sl.append(d); }); }
   [...sl.children].forEach((d, i) => { d.classList.toggle('on', i === MP.weapon); d.querySelector('i').textContent = MP.reserve[i]; d.title = WEAPONS[i].name + ' · запас ' + MP.reserve[i]; });
   renderInv({ weapons: WEAPONS.map((w, i) => ({ name: w.name, mag: MP.ammo[i], magSize: w.mag, reserve: MP.reserve[i], on: i === MP.weapon, key: keyName(SET.keys['w' + (i + 1)]) })), nades: MP.nades, nadeMax: NADE_MAX, meds: MP.meds, medMax: MED_MAX, hp: MP.hp, medKey: keyName(SET.keys.med), nadeKey: keyName(SET.keys.grenade) });
-  el('mpScore').textContent = MP.kills + ' · ' + MP.deaths; el('mpFps').textContent = ' · ' + PERF.fps + ' кадр/с' + (PERF.scale < 1 ? ' · разрешение ' + Math.round(PERF.scale * 100) + ' %' : '');
+  el('mpScore').textContent = MP.kills + ' · ' + MP.deaths; el('mpFps').textContent = PERF.fps + ' кадр/с' + (PERF.scale < 1 ? ' · разрешение ' + Math.round(PERF.scale * 100) + ' %' : '');
+  el('mpMeName').textContent = MP.name || 'Вы'; el('mpMeDot').className = 'dot ' + (MP.ffa ? 'tf' : 't' + MP.team);
   const tm = el('mpTeams'); tm.textContent = '';
-  if (MP.ffa) { const lead = [...MP.board].sort((a, b) => b.kills - a.kills)[0], me = document.createElement('b'), ld = document.createElement('b'), lim = document.createElement('small'); me.className = 'me'; me.textContent = 'Вы ' + MP.kills; ld.className = 'lead'; ld.textContent = lead ? lead.name + ' ' + lead.kills : ''; lim.textContent = 'до ' + MP.win; tm.append(me, ld, lim); } else { const chip = (i, t) => { const e = document.createElement('b'); e.className = 't' + i; e.textContent = t; return e; };
-  const lim = document.createElement('small'); lim.textContent = 'до ' + MP.win; tm.append(chip(0, MP.teams[0] + ' ' + MP.score[0]), lim, chip(1, MP.score[1] + ' ' + MP.teams[1])); }
+  if (MP.ffa) { const lead = [...MP.board].sort((a, b) => b.kills - a.kills)[0], me = document.createElement('b'), ld = document.createElement('b'), lim = document.createElement('small'); me.className = 'me'; me.textContent = 'Вы ' + MP.kills; ld.className = 'lead'; ld.textContent = lead ? lead.name + ' ' + lead.kills : ''; lim.textContent = 'до ' + MP.win; tm.append(me, ld, lim); } else { const chip = (i, t, s) => { const e = document.createElement('b'), n = document.createElement('small'), v = document.createElement('span'); e.className = 't' + i; n.textContent = t; v.textContent = s; e.append(n, v); return e; };
+  const lim = document.createElement('small'); lim.textContent = 'до ' + MP.win; tm.append(chip(0, MP.teams[0], MP.score[0]), lim, chip(1, MP.teams[1], MP.score[1])); }
 }
 function drawBoard() {
   const rows = [...MP.board].sort((a, b) => (MP.ffa ? 0 : a.team - b.team) || b.kills - a.kills || a.deaths - b.deaths), ol = el('mpBoardList'); ol.textContent = '';
@@ -340,7 +364,7 @@ function feed(text, cls) {
 }
 function die(byName, byId) {
   STATE.mpDead = true; document.body.classList.add('dead'); MP.spec = remotes.has(byId) ? byId : 0;   // watch the one who killed you first
-  MP.dead = true; MP.deadAt = performance.now(); MP.firing = false; MP.scope = false; gun.visible = false; closeInv();
+  MP.dead = true; MP.deadAt = performance.now(); MP.firing = false; MP.scope = false; gun.visible = false; closeInv(); nadeCancel();
   if (document.pointerLockElement) document.exitPointerLock();
   el('mpDead').hidden = false; el('mpDeadBy').textContent = byName ? 'Вас убил ' + byName : 'Вы погибли';
 }
@@ -363,10 +387,46 @@ function showSummary(m) {
   tick(); endTimer = setInterval(tick, 300);
 }
 // ---------- grenades and the dead man's view ----------
-function throwNade() {
-  const now = performance.now(); if (MP.dead || MP.nades <= 0 || now - MP.lastNade < 900) return;
-  MP.nades--; MP.lastNade = now; const d = aim(); MP.ws.send(JSON.stringify({ t: 'throw', dx: +d[0].toFixed(4), dy: +d[1].toFixed(4), dz: +d[2].toFixed(4) }));
-  tone(260, 140, 0.12, 0.2, 'triangle'); MP.kick = 0.6; updatePanel();
+// G takes the grenade in hand: the mouse aims, the dashed arc shows where it will land, the left button held down
+// charges the throw (the bar under the crosshair), the release throws; the right button or G again puts it away
+function nadeCancel() {
+  if (!NAIM.on) return;
+  NAIM.on = false; NAIM.charging = false; NAIM.power = 0; NAIM.full = false;
+  nadeHand.visible = false; hideNadePreview(); el('nadeUi').hidden = true;
+}
+function nadePrep() {
+  const now = performance.now();
+  if (MP.dead || !MP.ws || MP.ws.readyState !== 1) return;
+  if (NAIM.on) { nadeCancel(); return; }
+  if (MP.nades <= 0) { feed('Гранат нет — ищите их на карте', 'sys'); tone(180, 120, 0.12, 0.2, 'square'); return; }
+  if (now - MP.lastNade < 900) return;
+  NAIM.on = true; NAIM.charging = false; NAIM.power = 0; NAIM.full = false;
+  MP.scope = false; MP.firing = false; closeInv();
+  nadeHand.visible = true; el('nadeUi').hidden = false; el('nadeFill').style.width = '0%'; el('nadeUi').dataset.full = '0';
+  tone(340, 430, 0.07, 0.15, 'triangle');
+}
+function throwNade(power) {
+  const now = performance.now();
+  if (MP.dead || MP.nades <= 0 || now - MP.lastNade < 900) { nadeCancel(); return; }
+  MP.nades--; MP.lastNade = now;
+  const d = aim(), sp = NADE_THROW.min + (NADE_THROW.max - NADE_THROW.min) * Math.max(0, Math.min(1, power));
+  MP.ws.send(JSON.stringify({ t: 'throw', dx: +d[0].toFixed(4), dy: +d[1].toFixed(4), dz: +d[2].toFixed(4), sp: +sp.toFixed(2) }));
+  tone(260, 140, 0.12, 0.2, 'triangle'); MP.kick = 0.6;
+  nadeCancel(); updatePanel();
+}
+// every frame while the grenade is in hand: the charge grows, the arc follows the aim and the power, the hand pulls back
+function nadeAimTick(now) {
+  if (!NAIM.on) return;
+  if (!STATE.locked || MP.dead) { nadeCancel(); return; }
+  if (NAIM.charging) {
+    NAIM.power = Math.min(1, (now - NAIM.t0) / NADE_THROW.chargeMs);
+    if (NAIM.power >= 1 && !NAIM.full) { NAIM.full = true; tone(900, 900, 0.05, 0.1, 'square'); }
+  }
+  const pw = NAIM.charging ? NAIM.power : 0, d = aim(), sp = NADE_THROW.min + (NADE_THROW.max - NADE_THROW.min) * pw;
+  showNadePreview([P.x + d[0] * 0.6, P.y - 0.2 + d[1] * 0.6, P.z + d[2] * 0.6], [d[0] * sp, d[1] * sp + NADE_THROW.loft * sp, d[2] * sp]);
+  el('nadeFill').style.width = Math.round(pw * 100) + '%'; el('nadeUi').dataset.full = NAIM.full ? '1' : '0';
+  nadeHand.position.set(0.2 + 0.1 * pw, -0.18 + 0.16 * pw + Math.sin(now / 320) * 0.004, -0.45 - 0.08 * pw);   // the wind-up: the hand rises back over the shoulder, away from the eye
+  nadeHand.rotation.x = -0.7 * pw;
 }
 const specList = () => [...remotes.entries()].filter(([, r]) => r.group.visible && !r.fallT).sort((a, b) => isMate(b[1]) - isMate(a[1])).map(e => e[0]);
 function specNext(dir) {
@@ -402,6 +462,7 @@ function onMsg(m) {
       MP.arena = m.arena || null; clearFx(); setItems(m.items); if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
       if (MP.local) feed('Тренировка с ботами: ' + MP.board.filter(e => e.bot).length + ', уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || '') + '»', 'sys'); break;
     case 'spawn': {
+      nadeCancel();
       const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.crouch = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
       MP.weapon = 0; MP.scope = false; models.forEach((mm, k) => { mm.visible = k === 0; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; clearNades(); gun.visible = true; if (vm) { vm.setWeapon(0); vm.equip(); } el('mpDead').hidden = true; updatePanel();
@@ -409,7 +470,7 @@ function onMsg(m) {
       if (canvas.requestPointerLock) { canvas.focus(); try { const pr = canvas.requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} }
       break;
     }
-    case 'pong': MP.rtt = Math.round(MP.rtt ? MP.rtt * 0.6 + (performance.now() - m.c) * 0.4 : performance.now() - m.c); el('mpPing').textContent = ' · пинг ' + MP.rtt + ' мс'; updatePanel(); break;
+    case 'pong': MP.rtt = Math.round(MP.rtt ? MP.rtt * 0.6 + (performance.now() - m.c) * 0.4 : performance.now() - m.c); el('mpPing').textContent = 'пинг ' + MP.rtt + ' мс'; updatePanel(); break;
     case 'correct': P.x = m.x; P.z = m.z; if (m.out) edgeNotice(); break;
     case 'snap': {
       const t = performance.now(), seen = new Set();
@@ -441,7 +502,7 @@ function onMsg(m) {
     }
     case 'say': addLine(m, MP.id); if (m.id !== MP.id) tone(900, 700, 0.05, 0.08, 'sine'); break;
     case 'rtc': if (voice) voice.signal(m.from, m.d); break;
-    case 'win': { const mine = m.mode === 'ffa' ? m.mvp === MP.id : m.team === MP.team, row = m.rows.find(r => r.id === MP.id); statEvent('round', { win: mine, kills: row ? row.kills : 0 }, !!MP.local); showSummary(m); break; }
+    case 'win': { nadeCancel(); const mine = m.mode === 'ffa' ? m.mvp === MP.id : m.team === MP.team, row = m.rows.find(r => r.id === MP.id); statEvent('round', { win: mine, kills: row ? row.kills : 0 }, !!MP.local); showSummary(m); break; }
     case 'round': el('mpEnd').hidden = true; clearInterval(endTimer); break;
     case 'chat': feed(m.text, 'sys'); break;
     case 'full': el('mpMsg').textContent = 'На сервере нет мест.'; break;
@@ -472,7 +533,7 @@ function join(local) {   // local: { bots, level, mode, arena } for the game aga
   ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, team: MP.wantTeam, look: look || undefined, key: local ? undefined : playerKey() || undefined, ...s })); };
   ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (err) { console.error(err); } };
   ws.onerror = () => { if (!MP.started) msg.textContent = 'Не удалось подключиться к ' + url; };
-  ws.onclose = () => { if (MP.started) { el('mpDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; if (!msg.textContent.startsWith('На сервере') && !msg.textContent.startsWith('Не удалось')) msg.textContent = 'Соединение закрыто.'; } };
+  ws.onclose = () => { nadeCancel(); if (MP.started) { el('mpDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; if (!msg.textContent.startsWith('На сервере') && !msg.textContent.startsWith('Не удалось')) msg.textContent = 'Соединение закрыто.'; } };
 }
 // the chosen person: sex, haircut, hair colour, beard — a short string for the join message and the memory of the browser
 const HAIR_NAMES = { m: ['Короткая', 'Ёжик', 'Пробор'], f: ['Длинные', 'Пучки', 'Короткие'] };
@@ -508,19 +569,28 @@ function initUi() {   // the fields of the player and of the training: once, whe
 /* ---------- input ---------- */
 canvas.addEventListener('wheel', e => { if (MP.on && !MP.dead) switchWeapon((MP.weapon + (e.deltaY > 0 ? 1 : WEAPONS.length - 1)) % WEAPONS.length); }, { passive: true });
 canvas.addEventListener('contextmenu', e => { if (MP.on) e.preventDefault(); });
-canvas.addEventListener('mousedown', e => { if (MP.on && e.button === 2 && W().scope && !MP.dead && !MP.reloadAt) MP.scope = true; if (!MP.on || e.button !== 0) return; if (MP.dead) { specNext(1); return; } MP.firing = true; if (!STATE.locked && !MP.dead) return; fire(performance.now()); });
-window.addEventListener('mouseup', e => { if (e.button === 0) MP.firing = false; if (e.button === 2) MP.scope = false; });
+canvas.addEventListener('mousedown', e => {
+  if (MP.on && e.button === 2) { if (NAIM.on) { nadeCancel(); return; } if (W().scope && !MP.dead && !MP.reloadAt) MP.scope = true; }
+  if (!MP.on || e.button !== 0) return;
+  if (MP.dead) { specNext(1); return; }
+  if (NAIM.on) { if (STATE.locked) { NAIM.charging = true; NAIM.t0 = performance.now(); NAIM.power = 0; NAIM.full = false; } return; }   // the held left button gathers the throw instead of firing
+  MP.firing = true; if (!STATE.locked && !MP.dead) return; fire(performance.now());
+});
+window.addEventListener('mouseup', e => {
+  if (e.button === 0) { MP.firing = false; if (NAIM.on && NAIM.charging) { NAIM.charging = false; throwNade(NAIM.power); } }   // the release throws with the gathered power
+  if (e.button === 2) MP.scope = false;
+});
 window.addEventListener('keydown', e => {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;   // typing in the chat box
   if (!MP.on || e.repeat) return;
   if (e.code === SET.keys.voice && voice) { if (!voice.hasMic) { voice.enableMic().then(ok => { el('mpVoice').dataset.mic = ok ? 'on' : 'denied'; }); } else voice.talk(true); }
-  else if (!MP.dead && (e.code === SET.keys.chat || e.code === SET.keys.teamChat || e.code === 'Enter')) { e.preventDefault(); openChat(e.code === SET.keys.teamChat && !MP.ffa); }
+  else if (!MP.dead && (e.code === SET.keys.chat || e.code === SET.keys.teamChat || e.code === 'Enter')) { e.preventDefault(); nadeCancel(); openChat(e.code === SET.keys.teamChat && !MP.ffa); }
   else if (MP.dead && (e.code === 'ArrowRight' || e.code === 'KeyE')) specNext(1);
   else if (MP.dead && (e.code === 'ArrowLeft' || e.code === 'KeyQ')) specNext(-1);
-  else if (e.code === SET.keys.inv) { if (!MP.dead) toggleInv(); }
+  else if (e.code === SET.keys.inv) { if (!MP.dead) { nadeCancel(); toggleInv(); } }
   else if (e.code === SET.keys.med) useMed();
-  else if (e.code === SET.keys.grenade) throwNade();
-  else if (e.code === SET.keys.reload) reload(performance.now());
+  else if (e.code === SET.keys.grenade) nadePrep();
+  else if (e.code === SET.keys.reload) { nadeCancel(); reload(performance.now()); }
   else if (e.code === SET.keys.w1) switchWeapon(0); else if (e.code === SET.keys.w2) switchWeapon(1); else if (e.code === SET.keys.w3) switchWeapon(2); else if (e.code === SET.keys.w4) switchWeapon(3); else if (e.code === SET.keys.w5) switchWeapon(4);
   else if (e.code === SET.keys.board) { e.preventDefault(); el('mpBoard').hidden = false; drawBoard(); }
   else if ((e.code === 'Space' || e.code === 'Enter') && MP.dead) { e.preventDefault(); respawn(); }
@@ -549,7 +619,7 @@ function crossTick(dt, now) {
   const target = cfg.ring ? Math.max(10, spreadNow() * K) : Math.min(70, cfg.gap + (SET.crossDyn ? spreadNow() * K : 0));
   crossGap += (target - crossGap) * Math.min(1, dt * 14);
   const mag = MP.ammo[MP.weapon];
-  const col = MP.reloadAt ? '#ffc24d' : mag === 0 ? '#ff5a4d' : mag <= w.mag * 0.25 ? '#ffc24d' : SET.crossCol;
+  const col = NAIM.on ? '#ffd27a' : MP.reloadAt ? '#ffc24d' : mag === 0 ? '#ff5a4d' : mag <= w.mag * 0.25 ? '#ffc24d' : SET.crossCol;   // amber while the grenade is aimed
   const g = Math.round(crossGap * 2) / 2, key = MP.weapon + '|' + g + '|' + col + '|' + SET.crossDot;
   if (key !== crossKey) {
     crossKey = key;
@@ -568,12 +638,13 @@ function mpTick(dt) {
   if (voice) voice.update(dt); ambTick(dt); statEvent('tick', { dt }, !!MP.local);
   if (MP.arena && !MP.dead) { const A = MP.arena, dx = P.x - A.cx, dz = P.z - A.cz, d = Math.hypot(dx, dz); if (d > A.r - 1) { P.x = A.cx + dx / d * (A.r - 1); P.z = A.cz + dz / d * (A.r - 1); edgeNotice(); } }   // the edge of the arena
   if ((MP.fpsT = (MP.fpsT || 0) - dt) <= 0) { MP.fpsT = 1; updatePanel(); }
+  el('mpReloadFill').style.width = (MP.reloadAt ? Math.min(1, (now - MP.reloadAt) / WEAPONS[MP.reloadW].reloadMs) * 100 : 0).toFixed(1) + '%';   // the reload bar under the rounds, every frame (the crosshair ring keeps its own)
   // the scope: the picture closes in (the field of view 66° → 20°) and the gun goes out of sight
   { const want = MP.scope && W().scope && !MP.dead && !MP.reloadAt ? 1 : 0; MP.zoom += (want - MP.zoom) * Math.min(1, dt * 14); if (Math.abs(MP.zoom - want) < 0.01) MP.zoom = want;
     const fov = SET.fov - (SET.fov - 20) * MP.zoom; if (Math.abs(camera.fov - fov) > 0.05) { camera.fov = fov; camera.updateProjectionMatrix(); }
     const scoped = MP.zoom > 0.6; if (el('mpScope').hidden === scoped) el('mpScope').hidden = !scoped;   // the crosshair hides itself in crossTick
-    gun.visible = !MP.dead && MP.zoom < 0.5; }
-  ownSteps(dt); tickNades(dt); tickItems(dt, now); spectate(now);
+    gun.visible = !MP.dead && MP.zoom < 0.5 && !NAIM.on; }   // the grenade in hand replaces the gun
+  ownSteps(dt); tickNades(dt); tickItems(dt, now); spectate(now); nadeAimTick(now);
   if (MP.reloadAt && now - MP.reloadAt >= WEAPONS[MP.reloadW].reloadMs) {   // the local picture of the reload; the server's 'inv' message is the truth. It finishes on the weapon that started it, even if another is in hand now
     const rw = MP.reloadW; MP.reloadAt = 0; const k = Math.min(WEAPONS[rw].mag - MP.ammo[rw], MP.reserve[rw]);
     MP.ammo[rw] += k; MP.reserve[rw] -= k; updatePanel();
@@ -643,7 +714,7 @@ function remoteSteps(r, p, now) {
   const moved = Math.hypot(p.x - r.sx, p.z - r.sz), secs = Math.max(0.001, (now - r.st) / 1000); r.sx = p.x; r.sz = p.z; r.st = now;
   const inst = moved / secs; r.speed = inst > 25 ? 0 : (r.speed || 0) + (inst - (r.speed || 0)) * 0.35; r.air = Math.abs(p.y - (r.sy ?? p.y)) / secs > 1.5;   // for the animation of the model
   if (moved / secs > 20 || moved < 0.002 || (p.h || 1.7) < 1.5 || Math.abs(p.y - (r.sy ?? p.y)) > 0.15) { r.sy = p.y; return; }   // a jump, a crouch, a teleport or standing still: no steps
-  r.sy = p.y; const run = moved / secs > 6; r.stride += moved; if (r.stride < (run ? 3 : 2.1)) return; r.stride = 0;
+  r.sy = p.y; const run = moved / secs > 8; r.stride += moved; if (r.stride < (run ? 3 : 2.1)) return; r.stride = 0;   // the run threshold sits between the jog (6) and the sprint (11)
   const dx = p.x - P.x, dz = p.z - P.z, d = Math.hypot(dx, dz); if (d > 40) return;
   const right = (dx * Math.cos(P.yaw) - dz * Math.sin(P.yaw)) / (d || 1);
   const behind = (r.losT || 0) < now - 600 ? (r.losT = now, r.muffled = freePath([P.x, P.y, P.z], [dx / (d || 1), 0, dz / (d || 1)], d) < d - 1) : r.muffled;

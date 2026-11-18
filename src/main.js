@@ -16,7 +16,7 @@ import './ui/hud.js';
 import './ui/map.js';
 import { PP, renderFrame, warmUp } from './render/post.js';
 import { splitBigMeshes } from './render/chunks.js';
-import { QUALITY, TIMES, qi, setQuality, setTime, timeI } from './render/lighting.js';
+import { QUALITY, TIMES, qi, qAuto, setQuality, setQualityMode, setTime, timeI } from './render/lighting.js';
 import { P, setFly, teleport } from './game/player.js';
 import './ui/places.js';
 import { TX, buildTransit, setClock, updateBoard } from './transit/transit.js';
@@ -88,7 +88,10 @@ const step = (text, w, reported) => {
 (async () => {
   try {
     await step('Рисую фасады и крыши…', W.materials); makeMaterials(); STATE.goldGB = new GB(false);
-    setTime(matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark' ? 2 : 0);
+    // time of day: the choice of the start card is kept in the browser; the first visit follows the theme of the page
+    let t0 = matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark' ? 2 : 0;
+    try { const s = localStorage.getItem('dpils-time'); if (s != null) { const v = +s; if (Number.isInteger(v) && v >= 0 && v < TIMES.length) t0 = v; } } catch (e) {}
+    setTime(t0);
     setQuality(qi);
     terrainInit();
     await step('Заливаю Даугаву и озёра…', W.ground); buildGround();
@@ -112,6 +115,6 @@ const step = (text, w, reported) => {
     loading.done('Готово: ' + BLD.length.toLocaleString('ru') + ' зданий, ' + LINES.length.toLocaleString('ru') + ' улиц и дорожек, ' + trees.toLocaleString('ru') + ' деревьев, ' + lamps.toLocaleString('ru') + ' фонарей' + (tripsN ? ', ' + tripsN.toLocaleString('ru') + ' рейсов в расписании' : '') + '.');
     $('view').classList.add('shown');
     $('go').disabled = false; enablePlay(); $('go').focus();
-    window.__city = { PERF, peds: PEDS, ambProbe, ambStatus, statEvent, statsOf, MP, STATE, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, updateBoard, P, teleport, setFly, setTime, fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU };
+    window.__city = { PERF, peds: PEDS, ambProbe, ambStatus, statEvent, statsOf, MP, STATE, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, updateBoard, P, teleport, setFly, setTime, fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, setQualityMode, qualityMode: () => (qAuto ? 'auto' : qi), scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU };
   } catch (e) { console.error(e); loading.fail('Ошибка при сборке города: ' + e.message); }
 })();

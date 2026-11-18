@@ -124,6 +124,14 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
 .cross .c-re { position: absolute; left: -21px; top: -21px; width: 42px; height: 42px; transform: rotate(-90deg); opacity: 0; transition: opacity .12s; }
 .cross .c-re circle { fill: none; stroke: #ffc24d; stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 106.81; filter: drop-shadow(0 0 1px rgba(0, 0, 0, .7)); }
 .cross.reloading .c-re { opacity: 1; }
+/* the aimed grenade throw (G): the power bar under the crosshair and its hint; the bar fills while the left mouse
+   button is held down, the frame glows red at full power */
+.nade-ui { position: fixed; left: 50%; top: 56%; transform: translateX(-50%); z-index: 6; text-align: center; pointer-events: none; font: 600 12px/1.3 var(--f-body); }
+.nade-ui[hidden] { display: none; }
+.nade-bar { width: 190px; height: 7px; margin: 0 auto 6px; border: 1px solid rgba(255, 210, 122, .85); border-radius: 4px; background: rgba(8, 10, 8, .55); overflow: hidden; box-shadow: 0 1px 4px rgba(0, 0, 0, .5); }
+.nade-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #9fd06a, #ffd24d 60%, #ff6a3d); }
+.nade-ui small { color: #ffd27a; text-shadow: 0 1px 3px rgba(0, 0, 0, .85); }
+.nade-ui[data-full="1"] .nade-bar { border-color: #ff6a3d; box-shadow: 0 0 9px rgba(255, 106, 61, .65); }
 
 /* start card */
 .start { position: fixed; inset: 0; display: grid; place-items: center; background: var(--scrim); padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px)); overflow: auto; }
@@ -243,7 +251,7 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
 .mp-dead .go { margin: 0; }
 #bLeave { display: none; }
 .mp #bLeave { display: inline-block; }
-.mp #bFly, .mp #bPlaces, .mp #places, .mp #clock, .mp #bNight, .mp #bSV, .mp #near { display: none !important; }
+.mp #bFly, .mp #bPlaces, .mp #places, .mp #clock, .mp #bSV, .mp #near { display: none !important; }
 .mp-teams { grid-column: 1 / 3; font: 600 14px/1.2 var(--f-body); }
 .mp-teams small { opacity: .8; font-weight: 500; }
 .t0 { --team: #d8392f; } .t1 { --team: #2f78d8; }
@@ -300,13 +308,16 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
 .mp-settings h3 { margin: 4px 0 0; font: 500 12px/1.3 var(--f-body); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .set-group { display: grid; gap: 10px; } .set-row { display: grid; grid-template-columns: 190px 1fr 64px; gap: 10px; align-items: center; font: 500 14px/1.3 var(--f-body); }
 .set-row.check { grid-template-columns: auto 1fr; } .set-row b { text-align: right; font-weight: 600; }
-.set-row.swatches { grid-template-columns: 190px 1fr; }
+.set-row.swatches, .set-row.sel { grid-template-columns: 190px 1fr; }
+.set-row select { font: 500 14px/1.3 var(--f-body); padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-solid); color: var(--ink); min-width: 0; }
+.set-row select:focus { outline: 2px solid var(--brick); outline-offset: 0; border-color: transparent; }
+.set-hint { margin: 0; font: 400 12.5px/1.45 var(--f-body); color: var(--muted); }
 .sw-row { display: flex; gap: 8px; align-items: center; }
 .sw { width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(0, 0, 0, .25); cursor: pointer; padding: 0; }
 .sw[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--panel-solid), 0 0 0 4px var(--brick); }
 .set-keys { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; } .set-key { display: flex; justify-content: space-between; align-items: center; gap: 8px; font: 500 14px/1.3 var(--f-body); }
 .set-key .btn { min-width: 96px; }
-@media (max-width: 560px) { .set-row { grid-template-columns: 1fr 1fr 52px; } .set-keys { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .set-row { grid-template-columns: 1fr 1fr 52px; } .set-row.sel { grid-template-columns: 1fr; } .set-keys { grid-template-columns: 1fr; } }
 .mp-dead { pointer-events: none; place-items: end center; padding-bottom: 96px; background: linear-gradient(transparent 55%, rgba(120, 0, 0, .5)); }
 .mp-dead .panel { pointer-events: auto; text-align: center; }
 .mp-dead#mpOver { pointer-events: auto; place-items: center; padding: 0; background: rgba(0, 0, 0, .55); }
@@ -374,10 +385,6 @@ label.chk { display: flex; align-items: center; gap: 8px; font-size: 13px; color
 .mp-gun { display: grid; grid-template-columns: 1fr auto auto; grid-template-areas: "w n m" "a a a"; align-items: end; column-gap: 10px; }
 .mp-gun #mpWeapon { grid-area: w; font: 600 12px/1 var(--f-body); letter-spacing: .08em; text-transform: uppercase; opacity: .75; }
 .mp-stat .mp-gun #mpAmmo { grid-area: a; grid-column: 1 / 4; font: 700 28px/1.1 var(--f-display); font-variant-numeric: tabular-nums; } .mp-gun #mpAmmo[data-empty="1"] { color: #ff7a6b; }
-.mp-nades { grid-area: n; font: 600 13px/1 var(--f-body); letter-spacing: .15em; color: #cfe3ff; }
-.mp-nades::before { content: "Граната "; letter-spacing: 0; font-size: 11px; opacity: .6; text-transform: uppercase; }
-.mp-meds { grid-area: m; font: 600 13px/1 var(--f-body); letter-spacing: .15em; color: #ffd9d0; }
-.mp-meds::before { content: "Аптечка "; letter-spacing: 0; font-size: 11px; opacity: .6; text-transform: uppercase; }
 .mp-slots { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
 .mp-slots span { display: grid; gap: 2px; text-align: center; padding: 5px 0; border-radius: 6px; font: 600 12px/1 var(--f-body); background: rgba(255, 255, 255, .08); color: rgba(255, 255, 255, .55); }
 .mp-slots span i { font-style: normal; font-size: 10px; line-height: 1; opacity: .65; font-variant-numeric: tabular-nums; }
@@ -470,6 +477,9 @@ body.mp .bar { background: var(--glass); border-color: var(--glass-line); color:
 .choice.main span, .choice.main::after { color: inherit; opacity: .85; }
 .choice:disabled { cursor: progress; opacity: .55; }
 .choice.main:disabled { background: var(--line); color: var(--muted); box-shadow: none; opacity: 1; }
+.time-pick { display: flex; align-items: center; justify-content: space-between; gap: 12px; font: 500 13px/1.2 var(--f-body); color: var(--muted); }
+.time-pick select { font: 500 14px/1.3 var(--f-body); padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-solid); color: var(--ink); min-width: 132px; }
+.time-pick select:focus { outline: 2px solid var(--brick); outline-offset: 0; border-color: transparent; }
 .keys-box summary, .srv-addr summary { cursor: pointer; font: 600 13px/1.4 var(--f-body); color: var(--ink); width: max-content; max-width: 100%; }
 .srv-addr summary { font-weight: 500; color: var(--muted); }
 .keys-box[open] .keys { margin-top: 10px; }
@@ -487,3 +497,87 @@ body.mp .bar { background: var(--glass); border-color: var(--glass-line); color:
 .play .player label.chk { align-self: end; padding-bottom: 8px; }
 .play .srv-part { display: grid; gap: 8px; }
 @media (max-width: 560px) { .play .player { grid-template-columns: 1fr; } .play .step-head h2 { font-size: 19px; } .choice { padding: 13px 40px 13px 14px; } }
+
+/* ================= game interface, third pass: the arena console =================
+   All combat reading sits in one bottom console: health | rounds and the reload bar | grenades and med kits.
+   Above it a belt of weapon cards with silhouettes; the player's chip and the kill feed move to the top left. */
+/* the console */
+.mp-stat { left: 50%; right: auto; bottom: 18px; transform: translateX(-50%); width: min(660px, 94vw); grid-template-columns: 185px minmax(0, 1fr) 150px; gap: 20px; align-items: center; padding: 14px 20px; border-radius: 16px; }
+.mp-stat::before { content: ""; position: absolute; left: 12%; right: 12%; top: -1px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, transparent, rgba(224, 70, 58, .85), transparent); }
+.mp-vitals { display: grid; grid-template-columns: 1fr; gap: 5px; align-items: center; }
+.mp-vitals > small { font: 600 8.5px/1 var(--f-body); letter-spacing: .18em; opacity: .55; }
+.mp-vitals .mp-hpn b { font-size: 29px; }
+.mp-vitals .mp-hp { height: 8px; }
+.mp-gun { display: grid; grid-template-columns: 1fr; grid-template-areas: none; justify-items: center; text-align: center; row-gap: 6px; border-inline: 1px solid rgba(255, 255, 255, .1); padding-inline: 14px; }
+.mp-gun #mpWeapon { grid-area: auto; font: 600 9.5px/1 var(--f-body); letter-spacing: .2em; opacity: .6; }
+.mp-stat .mp-gun #mpAmmo { grid-area: auto; grid-column: auto; font: 700 32px/1 var(--f-display); }
+.mp-stat .mp-gun #mpAmmo[data-reload="1"] { font: 600 14px/2.3 var(--f-body); letter-spacing: .08em; text-transform: uppercase; color: var(--warn); }
+.mp-rl { width: 150px; max-width: 100%; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, .12); overflow: hidden; }
+.mp-rl i { display: block; height: 100%; width: 0; background: var(--warn); }
+/* grenades and med kits: square chips with a count badge and the key */
+.mp-items { display: flex; gap: 10px; justify-content: flex-end; }
+.mp-it { position: relative; width: 56px; height: 56px; border-radius: 12px; border: 1px solid var(--glass-line); background: rgba(255, 255, 255, .06); display: grid; place-items: center; }
+.mp-it svg { width: 24px; height: 24px; fill: none; stroke: rgba(255, 255, 255, .85); stroke-width: 1.7; }
+.mp-it .cnt { position: absolute; right: -5px; top: -6px; font: 700 10px/1 var(--f-body); font-variant-numeric: tabular-nums; background: var(--warn); color: #1a1206; border-radius: 999px; padding: 3px 6px; }
+.mp-it kbd { position: absolute; left: 5px; bottom: 4px; font: 700 8.5px/1 var(--f-body); color: rgba(255, 255, 255, .55); }
+.mp-it[data-empty="1"] { opacity: .45; } .mp-it[data-empty="1"] .cnt { background: rgba(255, 255, 255, .25); color: #fff; }
+/* the weapon belt above the console */
+.mp-slots { position: absolute; left: 50%; bottom: 128px; transform: translateX(-50%); display: flex; gap: 8px; align-items: flex-end; }
+.mp-slots span { position: relative; width: 62px; height: 60px; padding: 0; border-radius: 12px; background: rgba(13, 17, 24, .5); border: 1px solid rgba(255, 255, 255, .12); display: grid; place-items: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); transition: height .15s, background .2s, border-color .2s; }
+.mp-slots span svg { width: 40px; height: 20px; fill: rgba(255, 255, 255, .62); }
+.mp-slots span b { position: absolute; left: 6px; top: 5px; font: 700 9px/1 var(--f-body); color: rgba(255, 255, 255, .5); }
+.mp-slots span i { position: absolute; right: 6px; bottom: 4px; font: 600 8.5px/1 var(--f-body); font-variant-numeric: tabular-nums; color: rgba(255, 255, 255, .4); opacity: 1; }
+.mp-slots span.on { height: 70px; background: rgba(30, 22, 16, .72); border-color: rgba(240, 180, 41, .75); box-shadow: 0 0 18px rgba(240, 180, 41, .28), 0 10px 24px rgba(0, 0, 0, .45); color: inherit; }
+.mp-slots span.on svg { fill: var(--warn); }
+.mp-slots span.on b { color: var(--warn); } .mp-slots span.on i { color: rgba(240, 180, 41, .8); opacity: 1; }
+body.dead .mp-slots { display: none; }
+/* the player's chip: name, team colour, kills · deaths */
+.mp-me { position: absolute; left: 16px; top: 14px; display: flex; align-items: center; gap: 9px; padding: 8px 13px; border-radius: 12px; background: var(--glass); border: 1px solid var(--glass-line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: var(--shadow); }
+.mp-me .dot { width: 9px; height: 9px; border-radius: 50%; background: #8a8a8a; flex: none; }
+.mp-me .dot.t0 { background: var(--red); box-shadow: 0 0 9px rgba(224, 70, 58, .8); }
+.mp-me .dot.t1 { background: var(--blue); box-shadow: 0 0 9px rgba(59, 134, 232, .8); }
+.mp-me > b { font: 600 13.5px/1 var(--f-body); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-me .kd { font: 600 12px/1 var(--f-body); font-variant-numeric: tabular-nums; color: rgba(255, 255, 255, .75); border-left: 1px solid var(--glass-line); padding-left: 9px; }
+.mp-me .kd small { display: block; font: 500 8px/1 var(--f-body); letter-spacing: .1em; opacity: .55; margin-bottom: 3px; }
+/* ping and fps: a quiet line in the corner */
+.mp-sys { position: absolute; right: 18px; bottom: 14px; display: flex; gap: 8px; font: 500 9.5px/1 var(--f-body); letter-spacing: .06em; color: rgba(255, 255, 255, .6); text-shadow: 0 1px 3px #000, 0 0 6px rgba(0, 0, 0, .8); }
+.mp-sys span:empty { display: none; }
+/* the kill feed under the player's chip, on the left */
+.mp-feed { left: 16px; right: auto; top: 96px; justify-items: start; max-width: min(380px, 60vw); }
+.mp-feed div { animation: feed-in-l .22s ease-out; }
+@keyframes feed-in-l { from { transform: translateX(-14px); opacity: 0; } }
+/* the score: team plates with a label and a big number, the limit between them */
+.mp-teams b { display: flex; align-items: center; gap: 9px; padding: 9px 16px; }
+.mp-teams b small { display: inline; padding: 0; font: 600 9px/1 var(--f-body); letter-spacing: .16em; text-transform: uppercase; opacity: .85; }
+.mp-teams b span { font: 700 19px/1 var(--f-display); font-variant-numeric: tabular-nums; }
+.mp-teams b.t0 { background: linear-gradient(180deg, rgba(224, 70, 58, .92), rgba(190, 50, 40, .92)); }
+.mp-teams b.t1 { background: linear-gradient(180deg, rgba(59, 134, 232, .92), rgba(40, 100, 190, .92)); }
+.mp-teams b.t1 small { order: 2; }
+.mp-teams > small { display: grid; place-items: center; padding: 0 14px; font: 600 10px/1.3 var(--f-body); letter-spacing: .08em; text-transform: uppercase; opacity: .75; text-align: center; }
+/* the button bar returns on Esc: the console and the belt step up above it */
+body.mp:not(:has(#view.locked)) .mp-stat { bottom: 76px; }
+body.mp:not(:has(#view.locked)) .mp-slots { bottom: 186px; }
+body.mp:not(:has(#view.locked)) .mp-hints, body.mp:not(:has(#view.locked)) .mp-itemhint { bottom: 270px; }
+body.mp:not(:has(#view.locked)) .mp-sys { bottom: 64px; }   /* above the returned button bar, not inside its right end */
+/* hints, the item hint and the chat live above the belt now */
+.mp-hints { bottom: 212px; }
+.mp-itemhint { bottom: 212px; }
+.mp-chat { bottom: 214px; }
+@media (max-width: 560px) {
+  .mp-stat { width: min(430px, 96vw); grid-template-columns: 118px minmax(0, 1fr) 108px; gap: 10px; padding: 10px 12px; }
+  .mp-vitals .mp-hpn b { font-size: 24px; } .mp-stat .mp-gun #mpAmmo { font-size: 24px; }
+  .mp-it { width: 46px; height: 46px; } .mp-it svg { width: 20px; height: 20px; }
+  .mp-slots { bottom: 150px; gap: 5px; } .mp-slots span { width: 50px; height: 50px; } .mp-slots span.on { height: 58px; } .mp-slots span svg { width: 32px; height: 16px; }
+  .mp-me { left: 10px; top: 56px; padding: 6px 10px; } .mp-me > b { max-width: 90px; }   /* under the score plates: at 480px they share the top row */
+  .mp-voice { left: 10px; top: 100px; }
+  .mp-feed { left: 10px; top: 136px; }
+  .mp-hints, .mp-itemhint { bottom: 216px; } .mp-chat { bottom: 220px; }
+  body.mp #status { display: none; }   /* the walk line would sit under the console here */
+  /* the button bar wraps into two rows on a narrow screen: the console steps up above it */
+  body.mp:not(:has(#view.locked)) .mp-stat { bottom: 156px; }
+  body.mp:not(:has(#view.locked)) .mp-slots { bottom: 264px; }
+  body.mp:not(:has(#view.locked)) .mp-hints, body.mp:not(:has(#view.locked)) .mp-itemhint { bottom: 348px; }
+  body.mp:not(:has(#view.locked)) .mp-chat { bottom: 352px; }
+  body.mp:not(:has(#view.locked)) .mp-sys { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .mp-feed div { animation: none; } .mp-slots span { transition: none; } }

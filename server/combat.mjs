@@ -12,11 +12,13 @@ export const WEAPONS = [
   { name: 'Пистолет', mag: 12, gapMs: 150, pellets: 1, dmg: 20, head: 42, range: 90, falloff: 0.3 },
   { name: 'Пулемёт', mag: 100, gapMs: 60, pellets: 1, dmg: 16, head: 28, range: 140, falloff: 0.25 },
 ];   // mag: the magazine size (keep src/game/mp.js in step); the reserve and the reload time are below
-// the grenade (keep src/game/nades.js in step): thrown at `speed` along the aim lifted by `loft`, falls with `g`,
-// bounces on the ground and off walls, goes off after `fuseMs`; damage falls linearly from `dmg` at the blast to 0 at `radius`
+// the grenade (keep src/game/nades.js in step): thrown along the aim lifted by `loft`, falls with `g`, bounces on the
+// ground and off walls, goes off after `fuseMs`; damage falls linearly from `dmg` at the blast to 0 at `radius`.
+// The player charges the throw with the mouse held down: the speed grows from `minSpeed` to `maxSpeed`; `speed` is the
+// throw of the bots and of a message without a speed.
 // the number put in a kill message for a grenade (the weapons are 0 … WEAPONS.length − 1)
 export const W_NADE = 9;
-export const NADE = { count: 2, speed: 15, loft: 0.17, g: 18, fuseMs: 2500, radius: 8, dmg: 100, cooldownMs: 900, self: 0.5 };
+export const NADE = { count: 2, speed: 15, minSpeed: 6, maxSpeed: 24, loft: 0.17, g: 18, fuseMs: 2500, radius: 8, dmg: 100, cooldownMs: 900, self: 0.5 };
 // the inventory (keep src/game/mp.js and src/game/inventory.js in step): the reserve each weapon starts with, the time
 // of its reload, and the items that lie on the map and are picked up by walking over them
 export const RESERVE = [90, 24, 15, 36, 200];
