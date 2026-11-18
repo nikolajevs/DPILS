@@ -3,11 +3,14 @@
    speed of its level, waits its reaction time, and fires in bursts with the error of its level; the server then judges
    its shots as it judges everybody's. It walks to waypoints round the arena, goes round houses and keeps out of the water,
    strafes in a fight, falls back when hurt, throws a grenade now and then and comes back after the death by itself. */
+import { HIT } from './combat.mjs';
 const NAMES = ['Андрис', 'Янис', 'Артур', 'Лиена', 'Виктор', 'Ольга', 'Эдгар', 'Дайна', 'Максим', 'Илзе', 'Роман', 'Кристап', 'Анна', 'Игорь', 'Мартиньш', 'Светлана'];
+// sigma: the aim error in radians — tuned for the small hitboxes (a torso half a metre wide, a head 0.36 m), so the
+// error is about half of what it was against the old metre-wide capsule; head: the share of shots aimed at the head
 export const LEVELS = {
-  easy: { react: 0.75, sigma: 0.06, turn: 3.2, burst: [2, 3], pause: 0.9, sight: 70, nades: 0, head: 0.55 },
-  normal: { react: 0.4, sigma: 0.026, turn: 6, burst: [3, 5], pause: 0.55, sight: 100, nades: 0.003, head: 0.25 },
-  hard: { react: 0.2, sigma: 0.012, turn: 10, burst: [4, 8], pause: 0.3, sight: 130, nades: 0.006, head: 0.1 },
+  easy: { react: 0.75, sigma: 0.018, turn: 3.2, burst: [2, 3], pause: 0.9, sight: 70, nades: 0, head: 0.4 },
+  normal: { react: 0.4, sigma: 0.008, turn: 6, burst: [3, 5], pause: 0.55, sight: 100, nades: 0.003, head: 0.2 },
+  hard: { react: 0.2, sigma: 0.004, turn: 10, burst: [4, 8], pause: 0.3, sight: 130, nades: 0.006, head: 0.1 },
 };
 const rnd = (a, b) => a + Math.random() * (b - a), gauss = () => { let s = 0; for (let i = 0; i < 4; i++) s += Math.random(); return (s - 2) * 1.7; };
 export const botName = i => NAMES[i % NAMES.length] + ' (бот)';
@@ -108,7 +111,7 @@ export function createBrain(g) {
     }
     // turn towards where we look, at the speed of the level
     let dy = aimYaw - p.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); const step = L.turn * dt; p.yaw += Math.max(-step, Math.min(step, dy)); p.pitch += (aimPitch - p.pitch) * Math.min(1, dt * 6);
-    p.y = world.ground(p.x, p.z) + 1.7; p.eye = 1.7; p.hist.push([now, p.x, p.y, p.z]); while (p.hist.length > 2 && now - p.hist[0][0] > 1000) p.hist.shift();
+    p.y = world.ground(p.x, p.z) + 1.7; p.eye = 1.7; p.hist.push([now, p.x, p.y, p.z, p.eye, p.yaw]); while (p.hist.length > 2 && now - p.hist[0][0] > 1000) p.hist.shift();
     if (!(q && b.target) || now < b.react || Math.abs(dy) > 0.25) return;
     fight(p, q, dist, now, L);
   }
@@ -118,7 +121,7 @@ export function createBrain(g) {
     const w = dist < 11 ? 1 : dist > 105 ? 2 : (L === LEVELS.hard && dist > 35 && dist < 75) ? 4 : 0; p.wep = w;
     if (L.nades && p.nades > 0 && dist > 12 && dist < 26 && Math.random() < L.nades) { const d = [q.x - p.x, 0.28 * dist / 20, q.z - p.z], l = Math.hypot(...d); g.throwNade(p, d.map(x => x / l)); return; }
     if (now < b.pauseUntil || now < b.nextShot) return;
-    const W = g.WEAPONS[w], aimY = q.y - (Math.random() < L.head ? 0.05 : 0.5);   // the chest, sometimes the head
+    const W = g.WEAPONS[w], aimY = q.y - (Math.random() < L.head ? HIT.headDrop : 0.56 * (q.eye / 1.7));   // the head centre, otherwise the chest (lower on a crouched target)
     const dx = q.x - p.x, dz = q.z - p.z, dy2 = aimY - p.y, d3 = Math.hypot(dx, dy2, dz), sig = L.sigma * (b.moving ? 1.3 : 1) * (w === 2 ? 0.5 : 1) * (1 + dist / 150);
     const rays = [];
     for (let i = 0; i < W.pellets; i++) {
