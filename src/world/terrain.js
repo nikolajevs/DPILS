@@ -241,21 +241,74 @@ function densify(p, tol = 0.15) {
   for (let i = 1; i < n; i++) seg(p[2 * i - 2], p[2 * i - 1], p[2 * i], p[2 * i + 1], 0);
   return o;
 }
-// triangles split along their longest side until they lie on the ground to within tol metres (or get small); the
-// new points are shared between the two triangles of a split side, so no cracks open inside a polygon
+/* Triangles split along their longest side until they lie on the ground to within tol metres (or get small). Inside a
+   cell of the height grid the gap between the bilinear ground and the plane of a triangle is a saddle with no peak of
+   its own, so it peaks on a node of the grid or on a side: the test takes every node inside the triangle (and every node
+   of the fine patch where it is in) and the whole of each side, and is exact. The midpoints of the sides alone missed
+   hills inside big triangles (the base ground ran up to 4.5 m under them) and split flat ground on noise. A side keeps
+   its middle point and its error, as the triangles on both sides of it and the halves of a split ask for them again:
+   the new points are shared between the two triangles of a split side, and a side left whole lies on the ground to
+   within tol all along, so the points the triangle beyond it adds on it open no crack wider than that. */
 function subTris(flat, tris, tol) {
-  const F = Array.from(flat), T = [], mid = new Map(), Hc = [];
+  const F = Array.from(flat), T = [], ed = [], Hc = [], q = TERR.q, nx = TERR.nx, nz = TERR.nz, S = TERR.s, X0 = TERR.x0, Z0 = TERR.z0, ref = TERR.ref;
   const hAt = i => { if (Hc[i] === undefined) Hc[i] = terrainH(F[2 * i], F[2 * i + 1]); return Hc[i]; };
-  const split = (a, b) => { const k = a < b ? a * 4194304 + b : b * 4194304 + a; let m = mid.get(k); if (m === undefined) { m = F.length >> 1; F.push((F[2 * a] + F[2 * b]) / 2, (F[2 * a + 1] + F[2 * b + 1]) / 2); mid.set(k, m); } return m; };
-  const st = []; for (let t = 0; t < tris.length; t += 3) st.push([tris[t], tris[t + 1], tris[t + 2], 0]);
+  const bil = (x, z) => {   // terrainH away from the fine patch
+    const gx = Math.max(0, Math.min(nx - 1.001, (x - X0) / S)), gz = Math.max(0, Math.min(nz - 1.001, (z - Z0) / S)), i = Math.floor(gx), j = Math.floor(gz), fx = gx - i, fz = gz - j, k = j * nx + i;
+    return ((q[k] + (q[k + 1] - q[k]) * fx) * (1 - fz) + (q[k + nx] + (q[k + nx + 1] - q[k + nx]) * fx) * fz) * 0.1 - ref;
+  };
+  // the sides met so far, by their lower end: [upper end, middle point or -1, error or -1, …]
+  let el = null;
+  const slot = (a, b) => { const lo = a < b ? a : b, hi = a < b ? b : a; el = ed[lo] || (ed[lo] = []); for (let i = 0; i < el.length; i += 3) if (el[i] === hi) return i; el.push(hi, -1, -1); return el.length - 3; };
+  const split = (a, b) => { const i = slot(a, b); if (el[i + 1] < 0) { el[i + 1] = F.length >> 1; F.push((F[2 * a] + F[2 * b]) / 2, (F[2 * a + 1] + F[2 * b + 1]) / 2); } return el[i + 1]; };
+  /* whether side ab leaves the ground by more than tol. Along it the gap is a parabola between the points where it crosses
+     the lines of the grid: from its ends and its middle the peak of each piece is exact. In the fine patch: a look every
+     half metre (and always at the midpoint of the side) */
+  const sideOff = (a, b) => {
+    const i = slot(a, b), l = el; if (l[i + 2] >= 0) return l[i + 2] > tol;
+    const ax = F[2 * a], az = F[2 * a + 1], dx = F[2 * b] - ax, dz = F[2 * b + 1] - az, ha = hAt(a), dh = hAt(b) - ha;
+    let e = 0;
+    if (inPatch(Math.min(ax, ax + dx), Math.min(az, az + dz), Math.max(ax, ax + dx), Math.max(az, az + dz))) {
+      const n = 2 * Math.max(1, Math.ceil(Math.hypot(dx, dz) / PATCH.s));
+      for (let k = 1; k < n && e <= tol; k++) { const t = k / n; e = Math.max(e, Math.abs(terrainH(ax + dx * t, az + dz * t) - ha - dh * t)); }
+    } else {
+      const gap = t => bil(ax + dx * t, az + dz * t) - ha - dh * t, sx = dx > 0 ? 1 : -1, sz = dz > 0 ? 1 : -1;
+      let gx = dx > 0 ? Math.floor((ax - X0) / S) + 1 : Math.ceil((ax - X0) / S) - 1, gz = dz > 0 ? Math.floor((az - Z0) / S) + 1 : Math.ceil((az - Z0) / S) - 1;
+      let t0 = 0, f0 = 0; e = Math.abs(gap(0.5));
+      while (t0 < 1 && e <= tol) {
+        const tx = Math.abs(dx) > 1e-9 ? (X0 + gx * S - ax) / dx : 2, tz = Math.abs(dz) > 1e-9 ? (Z0 + gz * S - az) / dz : 2, t1 = Math.min(tx, tz, 1);
+        if (t1 > t0 + 1e-9) {
+          const f1 = t1 < 1 ? gap(t1) : 0, fm = gap((t0 + t1) / 2), C = 2 * (f0 + f1 - 2 * fm), B = f1 - f0 - C, u = C !== 0 ? -B / (2 * C) : -1;
+          e = Math.max(e, Math.abs(f1), u > 0 && u < 1 ? Math.abs(f0 + B * u + C * u * u) : 0); t0 = t1; f0 = f1;
+        }
+        if (tx <= t1) gx += sx; if (tz <= t1) gz += sz;
+      }
+    }
+    l[i + 2] = e; return e > tol;
+  };
+  // whether a node of a grid (origin x0, z0, step s, nx × nz nodes) inside triangle abc lies further than tol from its
+  // plane h = ha + gx (x - ax) + gz (z - az); h(i, j) gives the ground at a node
+  const nodesOff = (a, b, c, x0, z0, s, gnx, gnz, h) => {
+    const ax = F[2 * a], az = F[2 * a + 1], bx = F[2 * b], bz = F[2 * b + 1], cx = F[2 * c], cz = F[2 * c + 1], ha = hAt(a), hb = hAt(b), hc = hAt(c);
+    const det = (bx - ax) * (cz - az) - (cx - ax) * (bz - az); if (Math.abs(det) < 1e-9) return false;
+    const gx = ((hb - ha) * (cz - az) - (hc - ha) * (bz - az)) / det, gz = ((hc - ha) * (bx - ax) - (hb - ha) * (cx - ax)) / det;
+    const cut = (z, px, pz, qx, qz, lr) => z < Math.min(pz, qz) || z > Math.max(pz, qz) ? lr * Infinity : pz === qz ? (lr < 0 ? Math.max(px, qx) : Math.min(px, qx)) : px + (qx - px) * (z - pz) / (qz - pz);
+    for (let j = Math.max(0, Math.ceil((Math.min(az, bz, cz) - z0) / s)), je = Math.min(gnz - 1, Math.floor((Math.max(az, bz, cz) - z0) / s)); j <= je; j++) {
+      const z = z0 + j * s, xl = Math.min(cut(z, ax, az, bx, bz, 1), cut(z, bx, bz, cx, cz, 1), cut(z, cx, cz, ax, az, 1)), xr = Math.max(cut(z, ax, az, bx, bz, -1), cut(z, bx, bz, cx, cz, -1), cut(z, cx, cz, ax, az, -1));
+      for (let i = Math.max(0, Math.ceil((xl - x0) / s)), ie = Math.min(gnx - 1, Math.floor((xr - x0) / s)); i <= ie; i++) if (Math.abs(h(i, j) - ha - gx * (x0 + i * s - ax) - gz * (z - az)) > tol) return true;
+    }
+    return false;
+  };
+  const coarse = (i, j) => q[j * nx + i] * 0.1 - ref, onH = (i, j) => terrainH(X0 + i * S, Z0 + j * S), onPatch = (i, j) => terrainH(PATCH.x0 + i * PATCH.s, PATCH.z0 + j * PATCH.s);
+  const off = (a, b, c, fine) => sideOff(a, b) || sideOff(b, c) || sideOff(c, a) || nodesOff(a, b, c, X0, Z0, S, nx, nz, fine ? onH : coarse) || fine && nodesOff(a, b, c, PATCH.x0, PATCH.z0, PATCH.s, PATCH.nx, PATCH.nz, onPatch);
+  const st = []; for (let t = 0; t < tris.length; t += 3) st.push(tris[t], tris[t + 1], tris[t + 2], 0);
   while (st.length) {
-    const [a, b, c, d] = st.pop(), L = (p, q) => Math.hypot(F[2 * q] - F[2 * p], F[2 * q + 1] - F[2 * p + 1]), lab = L(a, b), lbc = L(b, c), lca = L(c, a), lm = Math.max(lab, lbc, lca);
-    let err = 0; const fine = inPatch(Math.min(F[2 * a], F[2 * b], F[2 * c]), Math.min(F[2 * a + 1], F[2 * b + 1], F[2 * c + 1]), Math.max(F[2 * a], F[2 * b], F[2 * c]), Math.max(F[2 * a + 1], F[2 * b + 1], F[2 * c + 1])), mn = fine ? 1.5 : 12, dm = fine ? 24 : 16;
-    if (lm > mn && d < dm) for (const [p, q] of [[a, b], [b, c], [c, a]]) err = Math.max(err, Math.abs(terrainH((F[2 * p] + F[2 * q]) / 2, (F[2 * p + 1] + F[2 * q + 1]) / 2) - (hAt(p) + hAt(q)) / 2));
-    if (lm > mn && d < dm && (err > tol || lm > 400)) {
-      if (lab === lm) { const m = split(a, b); st.push([a, m, c, d + 1], [m, b, c, d + 1]); }
-      else if (lbc === lm) { const m = split(b, c); st.push([a, b, m, d + 1], [a, m, c, d + 1]); }
-      else { const m = split(c, a); st.push([a, b, m, d + 1], [m, b, c, d + 1]); }
+    const d = st.pop(), c = st.pop(), b = st.pop(), a = st.pop(), ax = F[2 * a], az = F[2 * a + 1], bx = F[2 * b], bz = F[2 * b + 1], cx = F[2 * c], cz = F[2 * c + 1];
+    const lab = Math.hypot(bx - ax, bz - az), lbc = Math.hypot(cx - bx, cz - bz), lca = Math.hypot(ax - cx, az - cz), lm = Math.max(lab, lbc, lca);
+    const fine = inPatch(Math.min(ax, bx, cx), Math.min(az, bz, cz), Math.max(ax, bx, cx), Math.max(az, bz, cz)), mn = fine ? 1.5 : 12, dm = fine ? 24 : 16;
+    if (lm > mn && d < dm && (lm > 400 || off(a, b, c, fine))) {
+      if (lab === lm) { const m = split(a, b); st.push(a, m, c, d + 1, m, b, c, d + 1); }
+      else if (lbc === lm) { const m = split(b, c); st.push(a, b, m, d + 1, a, m, c, d + 1); }
+      else { const m = split(c, a); st.push(a, b, m, d + 1, m, b, c, d + 1); }
     } else T.push(a, b, c);
   }
   return { flat: F, tris: T };
