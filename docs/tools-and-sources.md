@@ -9,7 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/pine-sway | Медленнее качание и дрожь кроны деревьев | src/world/trees.js |
-| Claude | claude/wizardly-ramanujan-gtjve8 | Сетка глубины прилегает к земле, вода не рисуется поверх улиц, `densify` точный | src/world/ground.js, src/world/terrain.js, src/main.js |
+| Claude | claude/wizardly-ramanujan-gtjve8 | Сетка глубины прилегает к земле, река не просвечивает сквозь берег, `densify` точный | src/world/ground.js, src/world/terrain.js, src/world/data.js, src/main.js |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
 
