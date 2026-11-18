@@ -12,8 +12,16 @@
      DPILS_GPU=0 in the environment does the same; CHROME_PATH sets the browser executable.
    If the Playwright registry expects a browser build that is not installed ("Executable doesn't exist"), the
    newest installed chromium-* under the Playwright browsers dir is picked instead (full chrome.exe preferred:
-   its new headless mode uses the GPU even without flags). */
+   its new headless mode uses the GPU even without flags).
+
+   On hybrid Windows laptops (Intel iGPU + NVIDIA dGPU) the OS hands browsers the power-saving adapter by
+   default, so headless would render on the iGPU. Before a GPU launch we pin the Playwright chromium exes to
+   the high-performance GPU via the per-app DirectX preference (HKCU\...\UserGpuPreferences, GpuPreference=2 —
+   the same switch as Settings > Display > Graphics, no admin rights needed). Only test chromium exes are
+   touched, only when no preference exists yet; the user's own browser is left alone. DPILS_GPU_PREF=0 skips
+   the pin. A warm browser (tools/warm.mjs) started before the pin keeps its old adapter until restarted. */
 const { chromium } = require('playwright');
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -38,6 +46,19 @@ function findChrome() {
   return best;
 }
 
+function preferHighPerfGpu(exes) {
+  if (process.platform !== 'win32' || process.env.DPILS_GPU_PREF === '0') return;
+  const key = 'HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences';
+  for (const exe of new Set(exes.filter(Boolean))) {
+    try {
+      if (!fs.existsSync(exe)) continue;
+      try { execFileSync('reg', ['query', key, '/v', exe], { stdio: 'ignore' }); continue; } catch (e) { /* no preference yet */ }
+      execFileSync('reg', ['add', key, '/v', exe, '/t', 'REG_SZ', '/d', 'GpuPreference=2;', '/f'], { stdio: 'ignore' });
+      console.log('browser: pinned to the high-performance GPU (UserGpuPreferences) — ' + exe);
+    } catch (e) { /* registry unavailable — keep the OS default adapter */ }
+  }
+}
+
 async function probeRenderer(browser) {
   const p = await browser.newPage();
   try {
@@ -56,6 +77,10 @@ async function launchBrowser(opts = {}) {
   const forceSw = software || process.env.DPILS_GPU === '0';
   const exe = rest.executablePath || process.env.CHROME_PATH || undefined;
   const gpuArgs = process.platform === 'win32' ? ['--use-angle=d3d11'] : [];
+  if (!forceSw) {
+    let expected = ''; try { expected = chromium.executablePath(); } catch (e) { /* older playwright */ }
+    preferHighPerfGpu([exe, expected, findChrome()]);
+  }
   const tryLaunch = (extra, executablePath) => chromium.launch({ headless: true, ...rest, executablePath, args: [...extra, ...args] });
   const launchAny = async extra => {
     try { return await tryLaunch(extra, exe); }
