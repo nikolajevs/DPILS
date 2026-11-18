@@ -300,13 +300,16 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
 .mp-settings h3 { margin: 4px 0 0; font: 500 12px/1.3 var(--f-body); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .set-group { display: grid; gap: 10px; } .set-row { display: grid; grid-template-columns: 190px 1fr 64px; gap: 10px; align-items: center; font: 500 14px/1.3 var(--f-body); }
 .set-row.check { grid-template-columns: auto 1fr; } .set-row b { text-align: right; font-weight: 600; }
-.set-row.swatches { grid-template-columns: 190px 1fr; }
+.set-row.swatches, .set-row.sel { grid-template-columns: 190px 1fr; }
+.set-row select { font: 500 14px/1.3 var(--f-body); padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-solid); color: var(--ink); min-width: 0; }
+.set-row select:focus { outline: 2px solid var(--brick); outline-offset: 0; border-color: transparent; }
+.set-hint { margin: 0; font: 400 12.5px/1.45 var(--f-body); color: var(--muted); }
 .sw-row { display: flex; gap: 8px; align-items: center; }
 .sw { width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(0, 0, 0, .25); cursor: pointer; padding: 0; }
 .sw[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--panel-solid), 0 0 0 4px var(--brick); }
 .set-keys { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; } .set-key { display: flex; justify-content: space-between; align-items: center; gap: 8px; font: 500 14px/1.3 var(--f-body); }
 .set-key .btn { min-width: 96px; }
-@media (max-width: 560px) { .set-row { grid-template-columns: 1fr 1fr 52px; } .set-keys { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .set-row { grid-template-columns: 1fr 1fr 52px; } .set-row.sel { grid-template-columns: 1fr; } .set-keys { grid-template-columns: 1fr; } }
 .mp-dead { pointer-events: none; place-items: end center; padding-bottom: 96px; background: linear-gradient(transparent 55%, rgba(120, 0, 0, .5)); }
 .mp-dead .panel { pointer-events: auto; text-align: center; }
 .mp-dead#mpOver { pointer-events: auto; place-items: center; padding: 0; background: rgba(0, 0, 0, .55); }
