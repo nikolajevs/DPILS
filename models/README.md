@@ -69,3 +69,19 @@ This work is based on the models above, each by its author, licensed under [CC-B
 | `flower_blue.glb`, `flower_white.glb`, `flower_yellow.glb` | цветы в сантиметрах (масштаб ×0.01) |
 
 Инстансятся по газонам парков в [src/landmarks/flora.js](../src/landmarks/flora.js), минуя дорожки, клумбы и площадки. Текстуры земли `textures/ground_grass.webp` и `textures/ground_dirt.webp` — оттуда же (MIT).
+
+## Предметы (`item_*.glb`)
+
+Все три — **CC-BY-4.0** со Sketchfab, атрибуция обязательна:
+
+| Файл | Что | Откуда |
+|---|---|---|
+| `item_ammo.glb` | ящик патронов: советский деревянный ящик с трафаретной маркировкой, замками и ручками (крышка закрыта) | [Soviet Weapons Ammo Crate Box Animated Low Poly](https://sketchfab.com/3d-models/soviet-weapons-ammo-crate-box-animated-low-poly-e8566467ba3f4dffb686a669add07b3f), автор [lil_bentley](https://sketchfab.com/lil_bentley) |
+| `item_nade.glb` | граната M67 в сборе: чека, кольцо и рычаг на месте, жёлтая маркировка корпуса | [M67](https://sketchfab.com/3d-models/m67-52dc34ff97984927b0322326e3171467), автор [Firewarden](https://sketchfab.com/Firewarden) |
+| `item_med.glb` | аптечка: белый кейс с красным крестом и чёрной ручкой | [Medical Kit](https://sketchfab.com/3d-models/medical-kit-1c5c0905f9f34b939309cff3ecd00870), автор [tediuminteractive](https://sketchfab.com/tediuminteractive) |
+
+This work is based on "Soviet Weapons Ammo Crate Box Animated Low Poly" by lil_bentley, "M67" by Firewarden and "Medical Kit" by tediuminteractive (Sketchfab), licensed under [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/).
+
+Собираются [tools/items.mjs](../tools/items.mjs): у гранаты в сцене две копии (одна с вынутой чекой) — берётся собранная; у ящика удалена анимация открытия крышки; вершины запекаются в мировые координаты и сливаются по материалу, модель центрируется (дно в y=0) и нормируется в метры (ящик 0.55 м по длине, граната 0.2 м в высоту, аптечка 0.26 м); текстуры жмутся в WebP (1024 px), геометрия — `EXT_meshopt_compression`. Итог: ящик 0.40 МБ / 6.0 тыс. треугольников, граната 0.29 МБ / 5.0 тыс., аптечка 0.08 МБ / 1.6 тыс.
+
+Загружаются один раз в [src/game/props.js](../src/game/props.js) и клонируются на каждый предмет на карте ([src/game/inventory.js](../src/game/inventory.js)) и на летящую гранату ([src/game/nades.js](../src/game/nades.js)); пока модель едет, рисуется прежний фолбэк из боксов. Проверка без экрана — [tools/shot-items.mjs](../tools/shot-items.mjs).

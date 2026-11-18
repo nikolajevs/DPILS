@@ -27,6 +27,18 @@ node tools/shots.js shots 0 square:-1440,1300,25:-1487,1263,0 bridge:-1760,1640,
 - Нужен Playwright с Chromium. В облачных сессиях Claude они уже стоят; в другом окружении: `npm i -D playwright` и `npx playwright install chromium`.
 - Страница сама даёт отладке `window.__city`: игрок `P`, `camera`, `terrainH(x, z)`, `setTime`, `teleport` и др. (см. конец [src/main.js](../src/main.js)).
 
+## Предметы без экрана: `tools/shot-items.mjs`
+
+Сам поднимает сервер страницы (порт 8767, `PORT=`), входит в тренировку с ботами в странице (без внешнего сервера, ботов 0), ждёт загрузки GLB-предметов, ставит игрока рядом с одним предметом каждого вида (ящик, аптечка, граната) и бросает гранату; снимки PNG — в `.claude/shots-items` (`OUT=`), ошибки консоли печатает. Снимки делаются через CDP `Page.captureScreenshot`: обычный `page.screenshot` под SwiftShader голодает на ожидании шрифтов. Телепорт в бою делается сразу и в локальной игре (`MP.ws.game.players`), иначе сервер откатывает его сообщением `correct`.
+
+```bash
+node tools/shot-items.mjs
+```
+
+## Сборка моделей предметов: `tools/items.mjs`
+
+Из распакованных архивов Sketchfab (подпапки `ammo-soviet/`, `nade-m67/`, `med-tedium/`, внутри `x/scene.gltf`; источник по умолчанию — `.claude/items-src`, переопределяется `SRC=`) собирает `models/item_{ammo,nade,med}.glb`: запекание мировых матриц, слияние по материалу, центровка дном в y=0, нормировка габарита в метры, WebP-текстуры и meshopt (`COMPRESS=0` — без сжатия). Авторы и лицензии (CC-BY-4.0) — в [models/README.md](../models/README.md). Зависимости ставятся `npm i --no-save`, в репозиторий не входят.
+
 ## Координаты LKS-92: `tools/lks92.js`
 
 Данные LGIA лежат в латвийской сетке LKS-92 TM (EPSG:3059), высоты — в системе LAS-2000,5 (над уровнем моря). Перевод туда и обратно точен до миллиметра:
