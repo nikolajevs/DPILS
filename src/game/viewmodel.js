@@ -11,7 +11,7 @@ import { makeFlash } from './muzzle.js';
    players seen from the side copy (ak.hands, ak.shoulder).
    The arms hang on the camera and are drawn over everything: their vertices keep their place on the screen but their
    depth is squeezed into the first thousandth of the depth range, ordered among themselves by distance. So the rifle
-   never goes into a wall you stand at, and the near plane of the city (0.3 m) does not cut the hands. */
+   never goes into a wall you stand at, and the near plane of the city (0.09–0.3 m, src/game/loop.js) does not cut the hands. */
 const FILE = 'models/fp_ak47.glb';
 const EYE = new THREE.Vector3(0, 1.598, 0.022);
 let loading = null, ak = null, settled = false;
