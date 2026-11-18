@@ -9,6 +9,7 @@ import { perfTick } from './perf.js';
 import { TX, updateBoard, updateClockUI, updateTags, updateTransit } from '../transit/transit.js';
 import { lmTick } from '../landmarks/index.js';
 import { sky, terrainH } from '../world/terrain.js';
+import { pedTick } from '../world/pedestrians.js';
 import { U, camera, renderer, scene } from '../render/renderer.js';
 import { $, reduceMotion } from '../core/env.js';
 
@@ -21,7 +22,7 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); perfTick(Math.min(5, (now - last) / 1000)); last = now; clock += dt;
   if (STATE.started) { if ($('start').hidden && big.hidden && !(MP.on && MP.dead)) step(dt); }
   else { STATE.introT += reduceMotion ? 0 : dt; P.yaw = 0.6 + STATE.introT * 0.05; P.x = -1350 + Math.sin(P.yaw) * 420; P.z = 1250 + Math.cos(P.yaw) * 420; P.y = 150 + terrainH(P.x, P.z); P.pitch = -0.33; }
-  mpTick(dt); updateTransit(dt); lmTick();
+  mpTick(dt); updateTransit(dt); lmTick(); pedTick(dt);
   if (!reduceMotion) U.time.value = clock;
   // the full map covers the city: outside the game the 3D picture is not drawn while it is open (the last frame stays)
   if (!big.hidden) { mapFrame(); if (!STATE.mp) return; }

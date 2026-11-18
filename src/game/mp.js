@@ -5,7 +5,7 @@ import { PLACES } from '../ui/places.js';
 import { buildingAt, onRoad } from '../world/data.js';
 import { PERF } from './perf.js';
 import { worldSpace } from '../render/world-space.js';
-import { gunModel, loadAvatar, makeAvatar, ready as avatarReady } from './avatar.js';
+import { gunModel, loadAvatar, loadHumans, makeAvatar, parseLook, ready as avatarReady, humansReady } from './avatar.js';
 import { SET, onChange } from './settings.js';
 import { firstGames } from './help.js';
 import { rememberServer } from '../ui/servers.js';
@@ -17,10 +17,11 @@ import { createVoice } from './voice.js';
 import { openLocal } from './local.js';
 import { ambStart, ambTick } from './ambience.js';
 import { statEvent } from './stats.js';
-import { playerKey, boardOn, setBoardOn } from './identity.js';
+import { playerKey, boardOn, setBoardOn, account } from './identity.js';
 import { initLeaders } from './leaders.js';
 import { $ } from '../core/env.js';
-import { crackSound, hitSound, loadSounds, shotSound } from './sfx.js';
+import { boomSound, crackSound, hitSound, loadSounds, shotSound, stepSound } from './sfx.js';
+import { tracerShot, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke, muzzleTex } from './impacts.js';
 
 /* ---------- online shooter: deathmatch on the city map ----------
    The server (server/index.mjs) owns health, kills and respawns. This module: the connection, the other players
@@ -43,7 +44,6 @@ const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: fa
 STATE.mp = false;
 let voice = null;
 const remotes = new Map();   // id → { name, group, buf: [{ t, x, y, z, yaw, pitch }], tag }
-const tracers = [];
 const DEFAULT_SERVER = '';   // e.g. 'wss://dpils-game.example.com'; empty: ?server=…, the saved address, or localhost
 
 /* ---------- geometry ---------- */
@@ -90,15 +90,28 @@ function makeFigure(hue) {
   const head = new THREE.Mesh(GEO.head, ms); head.position.set(0, 1.58, 0); g.add(head);
   g.userData.head = head; g.userData.arm = arm; return g;
 }
-function addRemote(id, name, team) {
+function addRemote(id, name, team, look) {
   if (remotes.has(id) || id === MP.id) return remotes.get(id);
   const hue = MP.ffa ? (id * 0.381966) % 1 : (HUE[team] ?? 0.3), group = makeFigure(hue), tag = document.createElement('div'); tag.className = 'mp-tag ' + (MP.ffa ? 'tf' : 't' + team); if (MP.ffa) tag.style.background = 'hsla(' + Math.round(hue * 360) + ', 55%, 32%, .78)'; tag.textContent = name || '…'; group.visible = false; scene.add(group); $('mpTags').append(tag);
-  const r = { name, team, hue, group, buf: [], tag }; remotes.set(id, r); attachAvatar(r); return r;
+  const r = { name, team, hue, group, buf: [], tag, look: parseLook(look) ? look : '', figHead: group.userData.head, figArm: group.userData.arm }; remotes.set(id, r); attachAvatar(r); return r;
 }
-// the ready animated model instead of the simple figure, as soon as its file has come
+// the ready animated model instead of the simple figure, as soon as its file has come; look — the chosen person
 function attachAvatar(r) {
-  if (r.av || !avatarReady()) return; const av = makeAvatar(r.hue); if (!av) return;
+  if (r.av) return;
+  if (r.look) {   // the people's files are heavier: they come only when someone has chosen a person
+    if (!humansReady()) { loadHumans().then(h => { if (h && !r.av && remotes.has(r.id)) attachAvatar(r); }); return; }
+  } else if (!avatarReady()) return;
+  const av = makeAvatar(r.hue, r.look); if (!av) return;
   for (const c of r.group.children) c.visible = false; r.group.add(av.root); r.av = av;
+  if (av.root.userData.head) { r.group.userData.head = av.root.userData.head; r.group.userData.arm = av.root.userData.arm; }   // the aim turns the proxies of the person
+}
+function rebuildAvatar(r) {   // the look changed on the board: the old model off, the new one on
+  if (r.av) {
+    r.group.remove(r.av.root);
+    r.av.root.traverse(o => { if (o.isMesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.dispose(); });
+    r.av = null; r.group.userData.head = r.figHead; r.group.userData.arm = r.figArm;
+  }
+  attachAvatar(r);
 }
 // the gun in your own hands: the ready models in place of the boxes
 function upgradeViewmodels() {
@@ -133,7 +146,9 @@ const gun = new THREE.Group(), models = WEAPONS.map(() => new THREE.Group());
   models.forEach((m, k) => { m.visible = k === 0; gun.add(m); });
   gun.position.set(0.17, -0.19, -0.5); gun.scale.setScalar(0.8); gun.visible = false; camera.add(gun); scene.add(camera);
 })();
-const flash = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), worldSpace(new THREE.MeshBasicMaterial({ color: 0xffd36a }))); flash.position.set(0, 0, -0.45); flash.visible = false; gun.add(flash);
+const flash = new THREE.Sprite(worldSpace(new THREE.SpriteMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.95, depthWrite: false, fog: false }))); flash.scale.setScalar(0.3); flash.position.set(0, 0, -0.45); flash.visible = false; gun.add(flash);   // the star texture is attached on the first shot: module-scope calls into impacts.js can hit an import cycle
+const flashLight = new THREE.PointLight(0xffc36a, 0, 20, 2); flashLight.position.set(0, 0.05, -0.5); gun.add(flashLight);   // the flash lights the street for a moment
+const MV = new THREE.Vector3();
 let actx = null;
 function ac() {   // the audio context of the game sounds, with one volume knob (the settings)
   if (!actx) { actx = new (window.AudioContext || window.webkitAudioContext)(); actx.master = actx.createGain(); actx.master.gain.value = SET.vol; const lim = actx.createDynamicsCompressor(); lim.threshold.value = -6; lim.ratio.value = 12; lim.attack.value = 0.002; lim.release.value = 0.2; actx.master.connect(lim); lim.connect(actx.destination); }   // a limiter: a burst of shots does not clip
@@ -154,11 +169,15 @@ const SV = new THREE.Vector3();
 function spot(x, y, z) { SV.set(x, y, z).applyMatrix4(camera.matrixWorldInverse); const d = SV.length(); return { d, pan: d > 0.5 ? 0.85 * SV.x / Math.max(0.5, Math.hypot(SV.x, SV.z)) : 0 }; }
 // the recorded shots are louder than the old synthetic bang: their own volumes, in the order of WEAPONS
 const SHOT_VOL = [0.55, 0.7, 0.75, 0.45, 0.55];
+// what a bullet hits, by the facade style of the cadastre (tools/process.js): wood, brick, plaster or metal
+const WALL_MAT = { 0: 'concrete', 1: 'stone', 2: 'stone', 3: 'concrete', 4: 'concrete', 5: 'wood', 6: 'metal', 12: 'metal', 13: 'metal', 14: 'concrete' };
 // a bullet stopped by a wall or the ground at distance len along d from o: the sound of the hit, if it is near enough to hear
 function wallHit(o, d, len, hear = 45) {
   const x = o[0] + d[0] * len, y = o[1] + d[1] * len, z = o[2] + d[2] * len, s = spot(x, y, z);
   if (s.d > hear) return;
-  try { hitSound(ac(), actx.master, y - terrainH(x, z) < 0.5 ? 'ground' : 'wall', 0.7 * 4 / (4 + s.d) * (1 - s.d / hear), s.d, s.pan); } catch (e) {}
+  const ground = y - terrainH(x, z) < 0.5;
+  const mat = ground ? (onRoad(x, z, 1.5) ? 'road' : 'grass') : (WALL_MAT[(buildingAt(x, z) || {}).kind] || 'concrete');
+  try { hitSound(ac(), actx.master, ground ? 'ground' : 'wall', 0.7 * 4 / (4 + s.d) * (1 - s.d / hear), s.d, s.pan, mat); } catch (e) {}
 }
 // someone else's shot: its sound (later and duller the farther it is), the hits of its bullets near you and the crack of one
 // that flies past your head
@@ -171,10 +190,15 @@ function otherShot(m) {
   let hits = 0, crack = false;
   for (const r of m.rays) {
     const len = r[3], who = r[4];
-    if (who === MP.id) continue;   // into you: 'hurt' plays that
-    if (hits < 2 && who) { const h = spot(m.o[0] + r[0] * len, m.o[1] + r[1] * len, m.o[2] + r[2] * len); if (h.d < 40) try { hitSound(ac(), actx.master, 'body', 0.6 * 4 / (4 + h.d) * (1 - h.d / 40), h.d, h.pan); } catch (e) {} hits++; }
-    else if (hits < 2 && len < wf.range - 0.5) { wallHit(m.o, r, len); hits++; }
-    if (crack || MP.dead) continue;
+    const kind = who === MP.id ? 'air' : who ? 'body' : (len < wf.range - 0.5 ? 'surface' : 'air');   // into you: no mark, 'hurt' speaks
+    let cb = null;
+    if (who !== MP.id && hits < 2) {   // the hits of its bullets near you are heard when they arrive
+      hits++;
+      if (who) { const h = spot(m.o[0] + r[0] * len, m.o[1] + r[1] * len, m.o[2] + r[2] * len); cb = () => { if (h.d < 40) try { hitSound(ac(), actx.master, 'body', 0.6 * 4 / (4 + h.d) * (1 - h.d / 40), h.d, h.pan); } catch (e) {} }; }
+      else if (kind === 'surface') cb = () => wallHit(m.o, r, len);
+    }
+    tracerShot(m.o, r, len, m.w, kind, 0xffb060, cb);
+    if (crack || MP.dead || who === MP.id) continue;
     const t = (P.x - m.o[0]) * r[0] + (P.y - m.o[1]) * r[1] + (P.z - m.o[2]) * r[2];   // the point of the bullet's path nearest to your head
     if (t < 6 || t > len + 1) continue;
     const cx = m.o[0] + r[0] * t, cy = m.o[1] + r[1] * t, cz = m.o[2] + r[2] * t, near = Math.hypot(cx - P.x, cy - P.y, cz - P.z);
@@ -188,11 +212,6 @@ function tone(f0, f1, dur, vol, type = 'sine', delay = 0) {
     g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur); o.connect(g); g.connect(actx.master); o.start(t); o.stop(t + dur + 0.02);
   } catch (e) {}
 }
-function tracer(o, d, len, color) {
-  const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(o[0] + d[0] * 1.2, o[1] - 0.1 + d[1] * 1.2, o[2] + d[2] * 1.2), new THREE.Vector3(o[0] + d[0] * len, o[1] + d[1] * len, o[2] + d[2] * len)]);
-  const m = worldSpace(new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9, fog: false })), l = new THREE.Line(g, m); l.frustumCulled = false; scene.add(l); tracers.push({ l, t: 0 });
-}
-
 /* ---------- shooting ---------- */
 const W = () => WEAPONS[MP.weapon];
 function fire(now) {
@@ -213,9 +232,11 @@ function fire(now) {
       if (h.dist <= RULES.hitR && (!best || h.t < best.t)) best = { id, t: h.t };
     }
     const len = best ? best.t : clear; rays.push([+d[0].toFixed(4), +d[1].toFixed(4), +d[2].toFixed(4), +len.toFixed(1), best ? best.id : 0]);
-    tracer(o, d, len, 0xffe9a0);
-    if (!best && clear < w.range - 0.5 && i < 2) wallHit(o, d, clear);   // the bullet strikes a wall or the ground (of a shotgun's pellets, two are heard)
+    const kind = best ? 'body' : (clear < w.range - 0.5 ? 'surface' : 'air');
+    tracerShot(o, d, len, MP.weapon, kind, 0xffe9a0, kind === 'surface' && i < 2 ? () => wallHit(o, d, clear) : null);   // the mark and the hit sound appear when the bullet arrives (of a shotgun's pellets, two are heard)
   }
+  flash.material.rotation = Math.random() * 6.283; flash.scale.setScalar(0.24 + Math.random() * 0.14);
+  ejectShell(); gun.updateWorldMatrix(true, false); flash.getWorldPosition(MV); muzzleSmoke(MV.x, MV.y, MV.z, aim());
   let real = false; try { real = shotSound(ac(), actx.master, MP.weapon, SHOT_VOL[MP.weapon]); } catch (e) {}
   if (!real) bang(w.pellets > 1 ? 0.6 : w.scope ? 0.8 : (w.vol ?? FEEL.vol), true);
   MP.ws.send(JSON.stringify({ t: 'shoot', w: MP.weapon, rays }));
@@ -309,8 +330,8 @@ function respawn() {
 /* ---------- messages from the server ---------- */
 function onMsg(m) {
   switch (m.t) {
-    case 'hello': MP.ffa = m.mode === 'ffa'; document.body.classList.toggle('ffa', MP.ffa); if (MP.ffa) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } if (!MP.local) rememberServer(MP.url, m.server); voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team); document.body.dataset.team = m.team;
-      MP.arena = m.arena || null; if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
+    case 'hello': MP.ffa = m.mode === 'ffa'; document.body.classList.toggle('ffa', MP.ffa); if (MP.ffa) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } if (!MP.local) rememberServer(MP.url, m.server); voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team, e.look); document.body.dataset.team = m.team;
+      MP.arena = m.arena || null; clearFx(); if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
       if (MP.local) feed('Тренировка с ботами: ' + MP.board.filter(e => e.bot).length + ', уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || '') + '»', 'sys'); break;
     case 'spawn': {
       const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.crouch = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
@@ -328,8 +349,8 @@ function onMsg(m) {
       for (const [id, r] of remotes) if (!seen.has(id) && !r.fallT) { r.group.visible = false; r.buf.length = 0; }
       break;
     }
-    case 'shot': { if (m.id === MP.id) break; const rs = remotes.get(m.id); if (rs) rs.shotAt = performance.now(); for (const r of m.rays) tracer(m.o, r, r[3], 0xffb060); otherShot(m); break; }
-    case 'hit': statEvent('hit', m, !!MP.local); hitT = performance.now(); if (m.kill) { tone(880, 880, 0.12, 0.25, 'triangle'); tone(1320, 1320, 0.25, 0.25, 'triangle', 0.1); } else tone(m.head ? 2600 : 1700, m.head ? 2200 : 1400, 0.07, 0.2, 'square'); { const r = remotes.get(m.id), g = r && r.group.visible ? r.group.position : null; if (g) { const s = spot(g.x, g.y + 1.2, g.z); try { hitSound(ac(), actx.master, m.head ? 'head' : 'body', 0.75 * 6 / (6 + s.d), s.d, s.pan); } catch (e) {} } } el('mpHit').className = m.head ? 'head' : m.kill ? 'kill' : ''; el('mpHit').hidden = false; break;
+    case 'shot': { if (m.id === MP.id) break; const rs = remotes.get(m.id); if (rs) rs.shotAt = performance.now(); otherShot(m); break; }
+    case 'hit': statEvent('hit', m, !!MP.local); hitT = performance.now(); if (m.kill) { tone(880, 880, 0.12, 0.25, 'triangle'); tone(1320, 1320, 0.25, 0.25, 'triangle', 0.1); } else tone(m.head ? 2600 : 1700, m.head ? 2200 : 1400, 0.07, 0.2, 'square'); { const r = remotes.get(m.id), g = r && r.group.visible ? r.group.position : null; if (g) { const s = spot(g.x, g.y + 1.2, g.z); try { hitSound(ac(), actx.master, m.head ? 'head' : 'body', 0.75 * 6 / (6 + s.d), s.d, s.pan); } catch (e) {} if (m.dmg > 0) dmgFloat(g.x, g.y + 1.9, g.z, String(m.dmg), m.head ? 'head' : m.kill ? 'kill' : ''); } } el('mpHit').className = m.head ? 'head' : m.kill ? 'kill' : ''; el('mpHit').hidden = false; break;
     case 'hurt': {
       statEvent('taken', { dmg: Math.max(0, MP.hp - m.hp) }, !!MP.local); MP.hp = m.hp; hurtT = performance.now(); { let real = false; try { real = hitSound(ac(), actx.master, 'body', 1); } catch (e) {} if (!real) tone(160, 60, 0.18, 0.4, 'sawtooth'); } el('mpHurt').hidden = false; updatePanel();
       const a = Math.atan2(-m.dx, -m.dz) - P.yaw; el('mpHurtDir').style.transform = 'rotate(' + (-a) + 'rad)';   // the side the shot came from
@@ -338,11 +359,11 @@ function onMsg(m) {
     }
     case 'kill': { feed(m.kn + '  ➜  ' + m.vn + (m.w === 9 ? '  (граната)' : m.head ? '  (в голову)' : ''), m.killer === MP.id ? 'mine' : m.victim === MP.id ? 'dead' : ''); if (m.killer === MP.id) { MP.kills++; if (m.victim !== MP.id) statEvent('kill', m, !!MP.local); } if (m.victim === MP.id) { MP.deaths++; statEvent('death', {}, !!MP.local); if (!MP.dead) die(m.kn, m.killer); } else { const rv = remotes.get(m.victim); if (rv && rv.buf.length) { rv.fallT = performance.now(); rv.corpse = { ...rv.buf[rv.buf.length - 1] }; } } updatePanel(); break; }
     case 'alive': { const r = remotes.get(m.id); if (r) { r.buf.length = 0; r.fallT = 0; } break; }
-    case 'board': MP.board = m.board; MP.score = m.score; for (const e of m.board) { const r = addRemote(e.id, e.name, e.team); if (r) { r.name = e.name; r.tag.textContent = e.name; } if (e.id === MP.id) { MP.kills = e.kills; MP.deaths = e.deaths; } } for (const id of [...remotes.keys()]) if (!m.board.some(e => e.id === id)) dropRemote(id); drawBoard(); updatePanel(); if (voice) voice.setPeers(m.board.filter(e => e.id !== MP.id && !e.bot).map(e => e.id)); break;
+    case 'board': MP.board = m.board; MP.score = m.score; for (const e of m.board) { const r = addRemote(e.id, e.name, e.team, e.look); if (r) { r.name = e.name; r.tag.textContent = e.name; const look = parseLook(e.look) ? e.look : ''; if (look !== r.look) { r.look = look; rebuildAvatar(r); } } if (e.id === MP.id) { MP.kills = e.kills; MP.deaths = e.deaths; } } for (const id of [...remotes.keys()]) if (!m.board.some(e => e.id === id)) dropRemote(id); drawBoard(); updatePanel(); if (voice) voice.setPeers(m.board.filter(e => e.id !== MP.id && !e.bot).map(e => e.id)); break;
     case 'left': dropRemote(m.id); break;
     case 'nade': addNade(m); if (m.by !== MP.id) { const dd = Math.hypot(m.p[0] - P.x, m.p[2] - P.z); if (dd < 40) tone(500, 300, 0.08, 0.1 * (1 - dd / 40), 'triangle'); } break;
     case 'boom': {
-      boomNade(m); const dd = Math.hypot(m.x - P.x, m.z - P.z), hear = 300; if (dd < hear) { const v = 1 - dd / hear; bang(1.1 * v, true); tone(80, 35, 0.6, 0.5 * v, 'sine'); }
+      boomNade(m); const dd = Math.hypot(m.x - P.x, m.z - P.z), hear = 300; if (dd < hear) { const v = 1 - dd / hear; let real = false; try { real = boomSound(ac(), actx.master, 1.1 * v, dd, spot(m.x, P.y, m.z).pan); } catch (e) {} if (!real) { bang(1.1 * v, true); tone(80, 35, 0.6, 0.5 * v, 'sine'); } }
       if (dd < 14 && !MP.dead) { el('mpFlash').hidden = false; el('mpFlash').style.opacity = String(0.8 * (1 - dd / 14)); setTimeout(() => { el('mpFlash').hidden = true; }, 220); }
       break;
     }
@@ -371,20 +392,36 @@ function showGame() {
 function join(local) {   // local: { bots, level, mode, arena } for the game against bots in the page, with no server
   const name = el('mpName').value.trim(), url = local ? 'local:' : serverUrl(), msg = el('mpMsg');
   if (!url) { msg.textContent = 'Укажите адрес сервера (поле «Сервер»).'; return; }
-  try { localStorage.setItem('dpils.mp', JSON.stringify({ name, server: el('mpServer').value.trim(), spawn: el('mpSpawn').value, team: el('mpTeam').value })); } catch (e) {}
-  MP.spawn = +el('mpSpawn').value; MP.wantTeam = +el('mpTeam').value; MP.url = url; MP.local = local || null; loadAvatar().then(a => { if (a) { for (const r of remotes.values()) attachAvatar(r); upgradeViewmodels(); } }); msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true; el('goTrain').disabled = true;
+  const look = uiLook();
+  try { localStorage.setItem('dpils.mp', JSON.stringify({ name, server: el('mpServer').value.trim(), spawn: el('mpSpawn').value, team: el('mpTeam').value, look })); } catch (e) {}
+  MP.spawn = +el('mpSpawn').value; MP.wantTeam = +el('mpTeam').value; MP.url = url; MP.local = local || null; loadAvatar().then(a => { if (a) { for (const r of remotes.values()) attachAvatar(r); upgradeViewmodels(); } }); if (look) loadHumans(); msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true; el('goTrain').disabled = true;
   let ws; try { ws = local ? openLocal(local) : new WebSocket(url); } catch (e) { msg.textContent = 'Неверный адрес сервера.'; el('goPlay').disabled = false; el('goTrain').disabled = false; return; }
   MP.ws = ws; MP.started = false;
-  ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, team: MP.wantTeam, key: local ? undefined : playerKey() || undefined, ...s })); };
+  ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, team: MP.wantTeam, look: look || undefined, key: local ? undefined : playerKey() || undefined, ...s })); };
   ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (err) { console.error(err); } };
   ws.onerror = () => { if (!MP.started) msg.textContent = 'Не удалось подключиться к ' + url; };
   ws.onclose = () => { if (MP.started) { el('mpDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; if (!msg.textContent.startsWith('На сервере') && !msg.textContent.startsWith('Не удалось')) msg.textContent = 'Соединение закрыто.'; } };
+}
+// the chosen person: sex, haircut, hair colour, beard — a short string for the join message and the memory of the browser
+const HAIR_NAMES = { m: ['Короткая', 'Ёжик', 'Пробор'], f: ['Длинные', 'Пучки', 'Короткие'] };
+function uiLook() {
+  const sex = el('mpChar').value; if (!sex) return '';
+  return sex + '.' + (el('mpHair').value || '0') + '.' + (el('mpHairCol').value || '0') + (sex === 'm' && el('mpBeard').checked ? '.1' : '');
+}
+function charUi() {
+  const sex = el('mpChar').value, hs = el('mpHair'); hs.textContent = '';
+  (HAIR_NAMES[sex] || []).forEach((n, i) => { const o = document.createElement('option'); o.value = i; o.textContent = n; hs.append(o); });
+  el('mpHairRow').hidden = el('mpHairColRow').hidden = !sex; el('mpBeardRow').hidden = sex !== 'm';
 }
 function initUi() {
   const sel = el('mpSpawn'); sel.textContent = '';
   PLACES.forEach((p, i) => { const o = document.createElement('option'); o.value = i; o.textContent = p[0]; sel.append(o); });
   const r = document.createElement('option'); r.value = -1; r.textContent = 'Случайное место'; sel.append(r);
-  try { const s = JSON.parse(localStorage.getItem('dpils.mp') || '{}'); if (s.name) el('mpName').value = s.name; if (s.server) el('mpServer').value = s.server; if (s.spawn != null) sel.value = s.spawn; if (s.team != null) el('mpTeam').value = s.team; } catch (e) {}
+  el('mpChar').onchange = charUi;
+  try { const s = JSON.parse(localStorage.getItem('dpils.mp') || '{}'); if (s.name) el('mpName').value = s.name; if (s.server) el('mpServer').value = s.server; if (s.spawn != null) sel.value = s.spawn; if (s.team != null) el('mpTeam').value = s.team;
+    const L = parseLook(s.look); if (L) { el('mpChar').value = L.sex; charUi(); el('mpHair').value = L.hair; el('mpHairCol').value = L.col; el('mpBeard').checked = !!L.beard; }
+  } catch (e) {}
+  const acc = account(); if (acc) el('mpName').value = acc.name;   // the account's nick belongs to its key on the server
   el('mpName').placeholder = 'Игрок' + (100 + Math.floor(Math.random() * 900));
   if (!el('mpName').value) el('mpName').value = el('mpName').placeholder;
   const rs = el('mpRespawnAt'); rs.textContent = ''; for (const [v, t] of [['mate', 'Рядом с товарищем'], ['rand', 'Случайное место']].concat(PLACES.map((p, i) => [i, p[0]]))) { const o = document.createElement('option'); o.value = v; o.textContent = t; rs.append(o); }
@@ -443,8 +480,8 @@ function mpTick(dt) {
     const p = pose(r, t); if (!p) { g.visible = false; continue; }
     remoteSteps(r, p, now); if (r.av) { if (r.gunW !== p.w) { r.gunW = p.w; r.av.setGun(p.w); } r.av.update(dt, { speed: r.speed || 0, air: !!r.air, dead: false, shot: now - (r.shotAt || 0) < 90 }); } g.visible = true; g.position.set(p.x, p.y - p.h, p.z); g.scale.y = p.h / 1.7; g.rotation.y = p.yaw; g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
   }
-  for (let i = tracers.length - 1; i >= 0; i--) { const tr = tracers[i]; tr.t += dt; tr.l.material.opacity = Math.max(0, 0.9 - tr.t * 9); if (tr.t > 0.1) { scene.remove(tr.l); tr.l.geometry.dispose(); tr.l.material.dispose(); tracers.splice(i, 1); } }
-  MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06; flash.visible = MP.kick > 0.6;
+  tickFx(dt);
+  MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06; flash.visible = MP.kick > 0.6; if (flash.visible && !flash.material.map) flash.material.map = muzzleTex(); flashLight.intensity = MP.kick > 0.6 ? 2.5 * MP.kick : 0;
   if (MP.reloadAt) gun.rotation.x = -0.5 * Math.sin(Math.min(1, (now - MP.reloadAt) / W().reloadMs) * Math.PI);
   if (hitT && now - hitT > 140) { hitT = 0; el('mpHit').hidden = true; }
   if (hurtT && now - hurtT > 600) { hurtT = 0; el('mpHurt').hidden = true; }
@@ -455,6 +492,7 @@ let noise = null;
 function footstep(vol, pan, bright, low) {
   try {
     ac();
+    if (stepSound(actx, actx.master, bright ? 'concrete' : 'grass', vol * 2, pan, low)) return;   // the recorded step (Kenney); the synthesis below is the fallback
     if (!noise) { const n = Math.floor(actx.sampleRate * 0.09); noise = actx.createBuffer(1, n, actx.sampleRate); const d = noise.getChannelData(0); for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 3); }
     const s = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain(), p = actx.createStereoPanner();
     s.buffer = noise; s.playbackRate.value = (low ? 0.55 : 0.85) + Math.random() * 0.3; f.type = 'lowpass'; f.frequency.value = (bright ? 1700 : 600) * (0.85 + Math.random() * 0.3) * (low ? 0.6 : 1); g.gain.value = vol; p.pan.value = Math.max(-1, Math.min(1, pan));

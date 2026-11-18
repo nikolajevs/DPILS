@@ -1,9 +1,10 @@
 import { $ } from '../core/env.js';
 
 /* ---------- the list of servers on the start card ----------
-   The list is servers.json beside the page (the owner's servers), the servers the player has joined before (kept in
-   the browser) and, on localhost, the local one. Each server is asked for /health (players, round, the time it takes to
-   answer) every few seconds while the card is open; a click puts its address in the field below. */
+   The list is the server the page itself is served from (a game server with STATIC gives out the page too, so whoever
+   opens the page sees its host right away), servers.json beside the page (the owner's servers), the servers the player
+   has joined before (kept in the browser) and, on localhost, the local one. Each server is asked for /health (players,
+   round, the time it takes to answer) every few seconds while the card is open; a click puts its address in the field below. */
 const listEl = $('mpServers'), input = $('mpServer'), KEEP = 'dpils.servers';
 let rows = [], timer = 0;
 const wsUrl = u => { u = String(u || '').trim(); if (u && !/^wss?:\/\//.test(u)) u = (location.protocol === 'https:' ? 'wss://' : 'ws://') + u; return u.replace(/\/+$/, ''); };
@@ -16,6 +17,7 @@ function rememberServer(url, name) {
 }
 async function load() {
   const out = [], seen = new Set(), add = (name, url, fixed) => { url = wsUrl(url); if (url && !seen.has(url)) { seen.add(url); out.push({ name, url, fixed }); } };
+  try { const r = await fetch('health', { cache: 'no-store' }); if (r.ok) { const j = await r.json(); if (j && j.ok && j.mode) add(String(j.name || 'Этот сервер'), location.host, true); } } catch (e) {}   // the page's own host: a game server answers /health, a plain static host does not
   try { const r = await fetch('servers.json', { cache: 'no-store' }); if (r.ok) { const j = await r.json(); for (const s of j.servers || []) add(String(s.name || s.url), s.url, true); } } catch (e) {}
   const q = new URLSearchParams(location.search).get('server'); if (q) add('Из адреса страницы', q, true);
   if (['localhost', '127.0.0.1'].includes(location.hostname)) add('Локальный сервер', 'ws://localhost:8787', true);
