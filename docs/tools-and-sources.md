@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/pine-sway | Медленнее качание и дрожь кроны деревьев | src/world/trees.js |
+| Chatbox | chatbox/scopes | Прицелы-предметы: коллиматор и дальний зум (подбор, установка на любое оружие) | src/game/mp.js, viewmodel.js, props.js, inventory.js, help.js, avatar.js, index.html, src/style.css, server/game.mjs, server/combat.mjs, tools/sights.mjs, models/ |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
 
