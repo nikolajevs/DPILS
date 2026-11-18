@@ -1,4 +1,5 @@
 ﻿# Драйвер автономного цикла улучшений DPILS. Документация: docs/autoloop.md.
+# Промпт итерации каждый раз берётся из origin/main — цикл не зависит от ветки общего каталога.
 # Запуск: npm run loop  (или powershell -File tools/improve-loop.ps1 -MaxIterations 5)
 param(
   [int]$MaxIterations = 0,         # 0 = бесконечно
@@ -33,8 +34,8 @@ if (Test-Path $lockFile) {
 }
 Set-Content -Path $lockFile -Value $PID -Encoding ASCII
 
-$promptFile = Join-Path $Repo 'tools/improve-prompt.md'
-if (-not (Test-Path $promptFile)) { Log "Нет промпта: $promptFile"; exit 1 }
+$promptDisk = Join-Path $Repo 'tools/improve-prompt.md'
+$promptFile = Join-Path $logDir 'prompt-current.md'
 if (-not (Get-Command $Agent -ErrorAction SilentlyContinue)) {
   Log "Агент '$Agent' не найден. Установка: npm i -g @anthropic-ai/claude-code, затем один раз claude для входа."
   exit 1
@@ -68,6 +69,10 @@ try {
     $iter++
     git -C $Repo fetch origin --quiet
     $before = (git -C $Repo rev-parse origin/main).Trim()
+    $promptSrc = git -C $Repo show origin/main:tools/improve-prompt.md 2>$null
+    if ($promptSrc) { ($promptSrc -join "`n") | Set-Content -Path $promptFile -Encoding UTF8 }
+    elseif (Test-Path $promptDisk) { Copy-Item $promptDisk $promptFile -Force }
+    else { Log 'Промпт не найден ни в origin/main, ни на диске — остановка.'; break }
     $stamp  = Get-Date -Format 'yyyyMMdd-HHmmss'
     $log    = Join-Path $logDir "iter-$iter-$stamp.log"
     $runner = Join-Path $logDir "run-$iter.ps1"

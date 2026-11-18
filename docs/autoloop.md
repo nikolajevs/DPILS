@@ -19,6 +19,8 @@ npm run loop -- -PauseSec 120 -Model sonnet
 
 Драйвер — [tools/improve-loop.ps1](../tools/improve-loop.ps1), промпт итерации — [tools/improve-prompt.md](../tools/improve-prompt.md). Параметры драйвера: `-MaxIterations` (0 = бесконечно), `-PauseSec` (пауза между итерациями, по умолчанию 60), `-IterationTimeoutMin` (убить зависшую итерацию, 45), `-Model`, `-Agent` (команда headless-агента), `-Repo`.
 
+Драйвер не зависит от ветки общего каталога: промпт итерации он каждый раз берёт из `origin/main`. Если общий каталог стоит на чужой ветке и `npm run loop` там недоступен, запускай локальный лаунчер `.claude\loop.cmd` (он сам извлекает свежий драйвер из `origin/main`; на этой машине уже создан) или `powershell -File tools\improve-loop.ps1` из любого worktree с `main`.
+
 ## Остановка и наблюдение
 
 - Мягкая остановка: создать файл `LOOP-STOP` в корне репозитория (`New-Item LOOP-STOP -ItemType File`). Текущая итерация доработает, новая не начнётся. Удалить файл — чтобы снова разрешить запуск.
