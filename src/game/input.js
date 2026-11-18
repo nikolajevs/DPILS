@@ -57,14 +57,13 @@ $('clkFwd').onclick = () => { setClock(TX.sec + 3600, false); canvas.focus(); };
 $('clkNow').onclick = () => { const n = rigaNow(); TX.day = n.day; TX.si = 0; setClock(n.sec, true); canvas.focus(); };
 $('clkFirst').onclick = e => { const t = +e.currentTarget.dataset.t; if (!isNaN(t)) setClock(t - 120, false); canvas.focus(); };
 /* Graphics quality: auto or a fixed level. The button cycles авто → высокая → средняя → низкая → минимум → авто;
-   the same choice lives in the settings panel — the group is added here through onBuild. */
+   the same choice lives in the settings panel — the group fills the «Графика» tab through onBuild. */
 $('bQuality').onclick = () => { setQualityMode(qAuto ? 0 : qi + 1 < QUALITY.length ? qi + 1 : 'auto'); canvas.focus(); };
 let qSel = null, qCur = null;
 const qShow = () => { if (qSel) qSel.value = qAuto ? 'auto' : String(qi); if (qCur) qCur.textContent = 'Сейчас: ' + QUALITY[qi].name + (qAuto ? ' · авто' : ' · фиксированное'); };
 onQuality(qShow);
 onReset(() => setQualityMode('auto'));
-onBuild(body => {
-  const h = document.createElement('h3'); h.textContent = 'Графика'; body.append(h);
+onBuild(panes => {
   const g = document.createElement('div'); g.className = 'set-group';
   const row = document.createElement('label'); row.className = 'set-row sel';
   const t = document.createElement('span'); t.textContent = 'Качество графики';
@@ -76,7 +75,7 @@ onBuild(body => {
   const hint = document.createElement('p'); hint.className = 'set-hint';
   hint.textContent = 'Авто: разрешение подстраивается под FPS, в бою уровень графики снижается при нехватке кадров и повышается, когда запас есть. Фиксированное: выбранный уровень и полное разрешение, без автоматических изменений.';
   const cur = document.createElement('p'); cur.className = 'set-hint';
-  g.append(hint, cur); body.append(g);
+  g.append(hint, cur); panes.video.append(g);
   qSel = sel; qCur = cur; qShow();
 });
 bSV.addEventListener('pointerdown', updateHud);
