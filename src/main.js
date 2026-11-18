@@ -87,7 +87,10 @@ const step = (text, w, reported) => {
 (async () => {
   try {
     await step('Рисую фасады и крыши…', W.materials); makeMaterials(); STATE.goldGB = new GB(false);
-    setTime(matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark' ? 2 : 0);
+    // time of day: the choice of the start card is kept in the browser; the first visit follows the theme of the page
+    let t0 = matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark' ? 2 : 0;
+    try { const s = localStorage.getItem('dpils-time'); if (s != null) { const v = +s; if (Number.isInteger(v) && v >= 0 && v < TIMES.length) t0 = v; } } catch (e) {}
+    setTime(t0);
     setQuality(qi);
     terrainInit();
     await step('Заливаю Даугаву и озёра…', W.ground); buildGround();

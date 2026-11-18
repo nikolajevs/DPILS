@@ -3,7 +3,7 @@
    errors or warnings: the check of a change "in the browser" when no screen is at hand (a cloud session).
 
    Usage: node tools/shots.js <out dir> <time> <view> [<view> …]
-     time  0 day, 1 evening, 2 night (as the "Время" button)
+     time  0 day, 1 evening, 2 night (the time of day chosen on the start card)
      view  name:x,z,h:tx,tz,th[:fov]
            x, z    the camera in the frame of the city (metres, x east, z south, Vienības laukums ≈ −1487, 1263);
            tx, tz  the point it looks at;
