@@ -10,7 +10,6 @@
 |---|---|---|---|
 | Claude | claude/pine-sway | Медленнее качание и дрожь кроны деревьев | src/world/trees.js |
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Claude | claude/blissful-pasteur-ertrz8 | Вид броска гранаты: руки, чека, замах, дуга прицела, полёт | src/game/nades.js, viewmodel.js, mp.js (гранаты), props.js, avatar.js, index.html/style.css (nade-ui) |
 
 ## Автономный цикл улучшений
 
