@@ -44,7 +44,7 @@ const SHOPS = [
   { id: 'n460001555', b: 'maxima', n: 'Maxima X', a: 'Strādnieku iela 103', k: 'in', p: [1215.2, 153.3], e: [1204, 165.7] },
   { id: 'n4128737289', b: 'maxima', n: 'Maxima X', a: 'Arhitektu iela 3', k: 'box', p: [1230.9, -1012.4], e: [1257.4, -1029.1] },
   { id: 'n8746469346', b: 'maxima', n: 'Maxima X', a: 'Kandavas iela 5', k: 'in', p: [-1688, 991.4], pk: [-1676.6, 999.1] },
-  { id: 'n1314059910', b: 'maxima', n: 'Maxima XX', a: 'Cietokšņa iela 60', k: 'box', p: [-1183.7, 844.8], e: [-1224.4, 804.6], pk: [-1151.2, 829.1] },
+  { id: 'n1314059910', b: 'maxima', n: 'Maxima XX', a: 'Cietokšņa iela 60', k: 'box', style: 'maximaXX', p: [-1183.7, 844.8], e: [-1224.4, 804.6], pk: [-1151.2, 829.1] },
   { id: 'w115783101', b: 'mego', n: 'Mego', a: 'Inženieru iela 3', k: 'box', p: [1332.6, -1149.9], pk: [1358, -1134] },   // the long side on the street (photographs)
   { id: 'w238279628', b: 'mego', n: 'Mego', a: 'Valkas iela 1A', k: 'box', p: [1295.4, 316.8], pk: [1280, 310.4] },
   { id: 'n9061242848', b: 'mego', n: 'Mego', a: 'Aveņu iela 26', k: 'osm', p: [-791.3, -2082.8], pk: [-823.8, -2101.3], o: [[-789.6, -2118], [-792.7, -2113.4], [-793.8, -2111.7], [-815.2, -2080.1], [-823.6, -2067.8], [-821.8, -2066.5], [-820.1, -2065.1], [-818.5, -2063.9], [-816.1, -2051], [-812, -2048.4], [-802.1, -2063.5], [-786.7, -2053.8], [-757.9, -2096.5], [-781.2, -2112.2], [-784.9, -2114.8], [-787.3, -2116.4]] },
@@ -64,6 +64,9 @@ const SHOPS = [
 const STY = {
   lidl: { h: 7.2, tex: 5, wall: '#dde0e3', plinth: '#62676b', glaze: 'all', gTop: 4.2, canopy: 4.2, pylon: 'lidl' },
   rimi: { h: 6.2, tex: 5, wall: '#eef0f0', plinth: '#73777b', glaze: 0.5, gTop: 3.4, bands: [[1.5, 0.9, '#d8202c']], canopy: 1.6, pylon: 'rimi' },
+  // Maxima XX on Cietokšņa iela 60 (Mapillary photographs, 2020–25): buff brick walls under a dark brown fascia, a deep dark blue canopy over the corner entrance,
+  // the name in blue letters with a red X straight on the brown, and the white squares with the red X of the format
+  maximaXX: { h: 6.6, tex: 6, wall: '#ffffff', plinth: '#6e6a62', glaze: 0.55, gTop: 3.7, bands: [[0, 2.3, '#4a3b36']], canopy: 0, pylon: 'maxima' },
   maxima: { h: 5.8, tex: 5, wall: '#f1f2f0', plinth: '#73777b', glaze: 0.4, gTop: 3.2, bands: [[0.75, 0.45, '#1d3d8f']], gBand: '#1d3d8f', canopy: 1.3, pylon: 'maxima' },
   // Mego (Inženieru iela 3 in Ķīmiķu ciemats, photographs sent by the owner of the project): light grey panels, a deep dark blue canopy along the
   // front with the hours in yellow, the name in big yellow letters on the wall above it
@@ -177,6 +180,15 @@ function shAtlas() {
     ['miniRimi', 3.6, 1.6, () => { RR(0, 0, 3.6, 1.6, 0.16, '#d8202c', '#ff3a3a'); text('mini', 0.25, 0.1, 1.2, 0.5, '#ffffff', { italic: true, wt: 800, align: 'left' }); text('Rimi', 0.25, 0.48, 2.7, 1.0, '#ffffff', { italic: true, wt: 900 }); R(3.05, 0.6, 0.14, 0.6, '#2d66b8', 'gloss', '#4f8ae0'); R(3.27, 0.6, 0.14, 0.6, '#ffffff', 'gloss', '#ffffff'); }],
     ['maximaX', 6.0, 1.3, () => { R(0, 0, 6, 1.3, '#1d3d8f', 'gloss', '#2d5ad0'); text('MAXIMA', 0.25, 0.15, 4.3, 1.0, '#ffffff', { wt: 900 }); R(4.75, 0.15, 1.0, 1.0, '#e0202a', 'gloss', '#ff3030'); text('X', 4.75, 0.17, 1.0, 0.95, '#ffffff', { wt: 900 }); }],
     ['maximaXX', 7.0, 1.3, () => { R(0, 0, 7, 1.3, '#1d3d8f', 'gloss', '#2d5ad0'); text('MAXIMA', 0.25, 0.15, 4.3, 1.0, '#ffffff', { wt: 900 }); for (const x of [4.7, 5.8]) { R(x, 0.15, 1.0, 1.0, '#e0202a', 'gloss', '#ff3030'); text('X', x, 0.17, 1.0, 0.95, '#ffffff', { wt: 900 }); } }],
+    // Maxima XX on the brown fascia: blue letters in white outlines, the X of the name red; a white square with the red X (the format sign)
+    ['xxName', 6.4, 1.4, () => {
+      let sz = 1.4 * PX * 1.2; const f = () => `900 ${sz}px Arial, "Golos Text", sans-serif`, parts = [['MA', '#1e3f9a', '#3a66d8'], ['X', '#d8202c', '#ff3a3a'], ['IMA', '#1e3f9a', '#3a66d8']];
+      g.font = f(); const W = parts.reduce((a, q) => a + g.measureText(q[0]).width, 0); if (W > 6.2 * PX) { sz *= 6.2 * PX / W; g.font = f(); }
+      let x0 = X + (6.4 * PX - parts.reduce((a, q) => a + g.measureText(q[0]).width, 0)) / 2; const yb = Y + 1.3 * PX;
+      for (const [t, col, glow] of parts) { const w = g.measureText(t).width;
+        for (const [c, s2] of [[g, col], [e, glow], [o, ORM.gloss]]) { c.font = f(); c.textAlign = 'left'; c.textBaseline = 'alphabetic'; if (c === g) { c.lineWidth = sz * 0.07; c.strokeStyle = '#ffffff'; c.lineJoin = 'round'; c.strokeText(t, x0, yb); } c.fillStyle = s2; c.fillText(t, x0, yb); }
+        x0 += w; } }],
+    ['xxSq', 1.4, 1.4, () => { R(0, 0, 1.4, 1.4, '#ffffff', 'gloss', '#ffffff'); text('X', 0.08, 0.05, 1.24, 1.3, '#d8202c', { wt: 900, glow: '#ff3a3a' }); }],
     ['lidl', 2.6, 2.6, () => { R(0, 0, 2.6, 2.6, '#0a50a8', 'gloss', '#2a70d8'); for (const [c, s] of [[g, '#fff100'], [e, '#fff36a'], [o, ORM.gloss]]) { c.fillStyle = s; c.beginPath(); c.arc(X + 1.3 * PX, Y + 1.3 * PX, 1.08 * PX, 0, 7); c.fill(); }
       for (const [c, s] of [[g, '#e0101c'], [e, '#ff3030']]) { c.strokeStyle = s; c.lineWidth = 0.07 * PX; c.beginPath(); c.arc(X + 1.3 * PX, Y + 1.3 * PX, 1.0 * PX, 0, 7); c.stroke(); }
       text('LIDL', 0.4, 0.92, 1.8, 0.78, '#0a50a8', { wt: 900, glow: '#0a3a90' }); }],
@@ -266,7 +278,7 @@ function pylon(K, S, r, i, name, gbc) {
 /* A store with a building of its own: the chain's walls round its outline r (the parapet at H), the front edge
    glazed (the whole of it for Lidl), the doors in the middle of the glazing, a canopy over it, the board above it. */
 function storeBox(K, S, r, H, gbc) {
-  const st = STY[S.b], G = K.plain, n = r.length >> 1, fi = frontEdge(r, S), wall = { tex: st.tex, col: hb(st.wall), plinth: 0.45, pcol: hb(st.plinth) };
+  const st = STY[S.style || S.b], G = K.plain, n = r.length >> 1, fi = frontEdge(r, S), wall = { tex: st.tex, col: hb(st.wall), plinth: 0.45, pcol: hb(st.plinth) };
   STATE.GBC = gbc;
   let front = null;
   for (let i = 0; i < n; i++) {
@@ -307,9 +319,15 @@ function storeBox(K, S, r, H, gbc) {
     for (const q of [s - w * 0.3, s + w * 0.3]) lmBar(G, Fw.at(q, H - 0.4, 0.4), Fw.at(q, yb + hh * 0.6, 0.4), 0.1, hb('#55595d'));
     flat(Fw, s - w / 2, s + w / 2, yb, yb + hh, 0.25, t);
   } else {
+    if (S.style === 'maximaXX') {   // the name and the two squares on the brown fascia over the canopy
+      const yb = Math.min(H - 1.75, st.gTop + 1.0), t = CT.xxName, w = 1.4 * t.w / t.h, sx = Math.max(w / 2 + 6.7, Math.min(L - w / 2 - 1.5, sc + 3));   // seen from outside s runs right to left: the squares at the smaller s stand right of the name
+      flat(Fw, sx - w / 2, sx + w / 2, yb, yb + 1.4, -0.1, t);
+      for (const q of [0, 1.6]) flat(Fw, sx - w / 2 - 0.5 - 1.4 - q, sx - w / 2 - 0.5 - q, yb, yb + 1.4, -0.1, CT.xxSq);
+    } else {
     lmBoxW(G, Fw, sc - gw / 2 - 0.3, sc + gw / 2 + 0.3, st.gTop + 0.05, st.gTop + 0.35, -st.canopy, 0, hb(S.b === 'mego' ? '#2e3033' : '#d6d9db'));
     const name = signOf(S), t = CT[name], yb = st.gTop + (S.b === 'maxima' && /XX/.test(S.n) ? 0.8 : 0.55), room = H - 0.3 - yb, h = Math.max(0.9, Math.min(t.h, room, (gw + 1) * t.h / t.w));
     board(K, Fw, name, sc, yb, h, 0.12, S.b === 'beta' ? '#c9252c' : null);
+    }
   }
   // machines on the roof
   const [cx, cz] = inner(r); STATE.GBC = gbc;
@@ -320,22 +338,23 @@ function storeBox(K, S, r, H, gbc) {
 }
 /* Maxima XX on Cietokšņa iela 60, the big store next to Ditton nams: over the plain walls of storeBox a glazed
    vestibule of the entrance (two pairs of sliding doors, a white roof slab with a blue fascia), a shelter with the
-   shopping trolleys, bollards along the glazing, a bin and a bike rack; panel joints on the long walls;
+   shopping trolleys, bollards along the glazing, a bin and a bike rack; 
    steel service doors, lamps and downpipes on the other walls; on the roof rooftop units, condensers, vent stacks, hatches and rows of skylights. */
 function maximaXX(K, S, r, H, front, gbc) {
   if (!front) return;
-  const G = K.plain, { Fw, L, sc, gw, i: fi } = front, n = r.length >> 1, BL = hb('#1d3d8f'), WH = hb('#f1f2f0'), GR = hb('#a7abae'), DG = hb('#6c7074');
+  const G = K.plain, { Fw, L, sc, gw, i: fi } = front, n = r.length >> 1, GR = hb('#a7abae'), DG = hb('#6c7074');
   let sd = 4177; const rr = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
   const freeAt = (F, s, d) => { const [x, , z] = F.at(s, 0, d); STATE.GBC = levelAt(x, z); return [x, z]; };
   // the vestibule over the middle of the glazing: a glass front in four modules with the doors in the two middle ones, solid white sides, a roof slab with a blue fascia
-  const vw = Math.min(10, gw - 2), dp = 2.8, vh = 3.55, v0 = sc - vw / 2, v1 = sc + vw / 2, m = 4, mw = vw / m;
+  const vw = Math.min(10, gw - 2), dp = 2.8, vh = 3.55, v0 = sc - vw / 2, v1 = sc + vw / 2, m = 4, mw = vw / m, NB = hb('#233a73'), cw = Math.min(L - 0.5, vw + 8), c0 = Math.max(-0.3, sc - cw / 2), c1 = Math.min(L + 0.3, sc + cw / 2), cd = 3.6, cy = 3.75;
   for (let k = 0; k < m; k++) flat(Fw, v0 + k * mw, v0 + (k + 1) * mw, 0.1, vh, -dp, k === 1 || k === 2 ? CT.door : CT.glass);
-  for (const s of [v0, v1 - 0.25]) lmBoxW(G, Fw, s, s + 0.25, 0, vh + 0.3, -dp - 0.05, -0.05, WH);
-  for (let k = 1; k < m; k++) lmBoxW(G, Fw, v0 + k * mw - 0.05, v0 + k * mw + 0.05, 0, vh, -dp - 0.07, -dp, hb('#b9bdc1'), false);
-  lmBoxW(G, Fw, v0 - 0.2, v1 + 0.2, vh, vh + 0.3, -dp - 0.3, 0, WH);
-  lmBoxW(G, Fw, v0 - 0.2, v1 + 0.2, vh - 0.05, vh + 0.3, -dp - 0.33, -dp - 0.3, BL);
-  lmBoxW(G, Fw, v0 - 0.2, v1 + 0.2, vh + 0.3, vh + 0.36, -dp - 0.3, 0, DG);
-  for (const q of [-2.2, 2.2]) { const [x, z] = freeAt(Fw, sc + q, -dp - 1.2); box(G, x, z, Fw.tx, Fw.tz, 0.12, 0.12, 0, 0.9, hb('#e0b020')); }
+  for (const s of [v0, v1 - 0.25]) lmBoxW(G, Fw, s, s + 0.25, 0, vh, -dp - 0.05, -0.05, hb('#3a3f45'));
+  for (let k = 1; k < m; k++) lmBoxW(G, Fw, v0 + k * mw - 0.05, v0 + k * mw + 0.05, 0, vh, -dp - 0.07, -dp, hb('#2d3135'), false);
+  // the deep canopy over the entrance: a dark blue fascia, lights in its underside, louvres on the top of its outer end
+  lmBoxW(G, Fw, c0, c1, cy, cy + 0.65, -cd, 0, NB);
+  for (let s = c0 + 0.8; s < c1 - 0.5; s += 1.6) lmBoxW(G, Fw, s - 0.12, s + 0.12, cy - 0.03, cy, -cd + 0.5, -cd + 0.74, hb('#fff6e0'));
+  for (let d = 0.2; d < cd - 0.3; d += 0.34) lmBoxW(G, Fw, c1 - 3.4, c1, cy + 0.65, cy + 0.75, -d - 0.14, -d, hb('#1b2d5e'), false);
+  for (const q of [-2.2, 2.2]) { const [x, z] = freeAt(Fw, sc + q, -cd - 0.5); box(G, x, z, Fw.tx, Fw.tz, 0.12, 0.12, 0, 0.9, hb('#e0b020')); }
   // the shelter for the trolleys on the plain wall beside the glazing (the side with more room), the trolleys nested in a row; a bin and a rack for bikes by the vestibule
   { const room1 = L - (sc + gw / 2) - 1.5, room0 = sc - gw / 2 - 1.5, up = room1 >= room0, w = Math.min(7.5, Math.max(room0, room1)), a = up ? sc + gw / 2 + 0.7 : sc - gw / 2 - 0.7 - w, b = a + w;
     if (w > 3.5) {
@@ -351,10 +370,9 @@ function maximaXX(K, S, r, H, front, gbc) {
   // bollards along the glazing on both sides of the vestibule
   for (let s = sc - gw / 2; s <= sc + gw / 2; s += 3) { if (Math.abs(s - sc) < vw / 2 + 2.5) continue; const [x, z] = freeAt(Fw, s, -4.6); lmLathe(G, x, z, 0, [[0.09, 0], [0.09, 0.85], [0.07, 0.9]], 8, hb('#8b9095')); }
   STATE.GBC = gbc;
-  // joints of the wall panels on the long walls, away from the glazing; steel service doors and downpipes on the other walls
+  // steel service doors, lamps and downpipes on the other walls
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n, P = [r[2 * i], r[2 * i + 1]], Q = [r[2 * j], r[2 * j + 1]], F2 = lmWF(P, Q), L2 = F2.L; if (L2 < 8) continue;
-    for (let s = 2.4; s < L2 - 1; s += 2.4) { if (i === fi && s > sc - gw / 2 - 0.3 && s < sc + gw / 2 + 0.3) continue; lmBoxW(G, F2, s - 0.014, s + 0.014, 0.5, H - 0.2, -0.045, 0, hb('#c4c8ca'), false); }
     if (i !== fi && L2 > 12) {
       const s1 = 3 + rr() * (L2 - 8);
       lmBoxW(G, F2, s1, s1 + 1.1, 0, 2.15, -0.1, 0, hb('#7b8186')); lmBoxW(G, F2, s1 - 0.3, s1 + 1.4, 2.3, 2.45, -0.9, 0, hb('#9aa0a4')); lmBoxW(G, F2, s1 + 0.3, s1 + 0.7, 2.6, 2.75, -0.25, 0, hb('#fff1c8'));
