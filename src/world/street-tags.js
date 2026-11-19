@@ -36,6 +36,12 @@ const TAGS = [
   [127382595, 3296, -1019, 3022, -891, { rural: true }],
   [128080447, 3590, -1156, 3296, -1019, { rural: true }],
   [127382450, 4784, -2611, 4405, -1857, { rural: true }],
+  /* Lielā iela in Grīva by the railway bridge (OSM API, November 2026: primary, lanes=2, lane_markings=no on the ways either
+     side): a country road of 6–6.5 m between grass verges, no kerbs or sidewalks, passing under the girder span at the
+     south-west end of the bridge (Mapillary 2016–2025) */
+  [625581583, -2759, 484, -2769, 471, { rural: true, hw: 3.2 }],
+  [625581584, -2710, 748, -2759, 484, { rural: true, hw: 3.2 }],
+  [178446347, -2769, 471, -3182, 541, { rural: true, hw: 3.2 }],
   // Latgales iela between its two roundabouts, the two one-way carriageways of the cutting (lanes=2)
   [133296796, -309, -1184, -1109, -1269, { lanes: 2 }],
   [133296797, -1098, -1236, -331, -1174, { lanes: 2 }],

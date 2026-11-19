@@ -258,7 +258,7 @@ function waterLevel(x, z) { let m = terrainH(x, z); for (const r of [20, 50]) fo
 function lineGap(ax, az, bx, bz, ha, hb, tol) {
   const dx = bx - ax, dz = bz - az, dh = hb - ha;
   if (inPatch(Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz))) {
-    const n = 2 * Math.max(1, Math.ceil(Math.hypot(dx, dz) / PATCHES[0].s)); let e = Math.abs(terrainH(ax + dx / 2, az + dz / 2) - ha - dh / 2);
+    const n = 2 * Math.max(1, Math.ceil(Math.hypot(dx, dz) / Math.min(...PATCHES.map(P => P.s)))); let e = Math.abs(terrainH(ax + dx / 2, az + dz / 2) - ha - dh / 2);
     for (let k = 1; k < n && e <= tol; k++) { const t = k / n; e = Math.max(e, Math.abs(terrainH(ax + dx * t, az + dz * t) - ha - dh * t)); }
     return e;
   }

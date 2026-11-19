@@ -21,10 +21,12 @@ import { terrainH } from './terrain.js';   // a cycle: used at run time only
      iela 117 m on. A crest of 3.2 m each side of the track, the fill between the wings of the abutment (s 282 … 293.6,
      d −10.6 … 3.3) and the platform beside the track behind it where the booth stands (OSM embankment 1165130417:
      d down to −18 for s 293.6 … 326) are raised to that profile, with slopes of 1 : 1.5 down to the ground. In front of
-     the abutment (s < 279.6) the ground is left as it is: the face of the abutment stands there. */
+     the back wall of the abutment the ground is left as it is: the seat of the truss and the face of the abutment stand
+     there. This patch has a step of 0.5 m, so the fill keeps behind the back wall and still lifts the end of the rails
+     (a node of the grid) exactly to RB.H. */
 const RP = { ok: false };
 const SW = { HALF: 4.2, SLOPE: 1.5, UNDER: 4, GRADE: 0.07, KNEE: 12, FLAT: 12, RMAX: 100, EMB: 0.3 };
-const NE = { W: 3.2, SLOPE: 1.5, T0: 14, GRADE: 0.04, KNEE: 15, LEN: 117, PLAT: [293.6, 326, -18, 0], FILL: [282, 293.6, -10.6, 3.3] };
+const NE = { W: 3.2, SLOPE: 1.5, T0: 14, GRADE: 0.04, KNEE: 15, LEN: 117, PLAT: [293.6, 326, -18, 0], FILL: [281.9, 293.6, -10.6, 3.3], STEP: 0.5 };
 const knee = (u, k) => u <= 0 ? 0 : u < k ? u * u / (2 * k) : u - k / 2;
 // distance from (s, d) to a rectangle [s0, s1] × [d0, d1] of the bridge frame
 const rectDist = (s, d, [s0, s1, d0, d1]) => Math.hypot(Math.max(0, s0 - s, s - s1), Math.max(0, d0 - d, d - d1));
@@ -103,18 +105,18 @@ function nePatch() {
   let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9; const grow = (x, z) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); };
   for (let t = 0; t <= LEN; t += 2) grow(...at(t));
   for (const [s0, s1, d0, d1] of [NE.FILL, NE.PLAT]) for (const s of [s0, s1]) for (const dd of [d0, d1]) grow(RB.A[0] + RB.T[0] * s + RB.N[0] * dd, RB.A[1] + RB.T[1] * s + RB.N[1] * dd);
-  const M2 = 14; x0 = Math.floor(x0 - M2); z0 = Math.floor(z0 - M2); x1 = Math.ceil(x1 + M2); z1 = Math.ceil(z1 + M2);
-  const nx = x1 - x0 + 1, nz = z1 - z0 + 1, d = new Float32Array(nx * nz), Ab = RB.ABUT_NE;
+  const M2 = 14, St = NE.STEP; x0 = Math.floor(x0 - M2); z0 = Math.floor(z0 - M2); x1 = Math.ceil(x1 + M2); z1 = Math.ceil(z1 + M2);
+  const nx = Math.round((x1 - x0) / St) + 1, nz = Math.round((z1 - z0) / St) + 1, d = new Float32Array(nx * nz), Ab = RB.ABUT_NE;
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
-    const x = x0 + i, z = z0 + j, [s, db] = rbLocal(x, z);
-    if (s < Ab.s + 1.4 && db >= Ab.d0 && db <= Ab.d1w) continue;   // in front of the abutment: its face (the fill starts 1.4 m behind it, so the 1 m grid shows no earth before it)
+    const x = x0 + i * St, z = z0 + j * St, [s, db] = rbLocal(x, z);
+    if (s < NE.FILL[0] && db >= Ab.d0 && db <= Ab.d1w) continue;   // in front of the back wall of the abutment (s = 281.2): its seat and face; the fill starts 0.7 m behind it, the 0.5 m grid shows no earth before it
     const [dist, t] = near(x, z), H = terrainH(x, z);
     const e = Math.min(Math.max(0, dist - NE.W), rectDist(s, db, NE.FILL), rectDist(s, db, NE.PLAT));
     const top = Rt(s >= NE.FILL[0] && Math.abs(db) < 30 ? Math.min(t, Math.max(0, s - RB.L)) : t);   // the fill and the platform by their s, the track by its own
     d[j * nx + i] = Math.max(0, top - e / NE.SLOPE - H);
   }
   RP.ne = { line, len: LEN };
-  return { x0, z0, s: 1, nx, nz, d };
+  return { x0, z0, s: St, nx, nz, d };
 }
 
 export { RP, rbPatches };

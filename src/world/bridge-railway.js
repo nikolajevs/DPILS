@@ -27,10 +27,11 @@ const RB = (() => {
     A, B, L, T, N: [-T[1], T[0]],
     BEAR: [15.0, 92.7, 182.0, 280.6], PANELS: [7, 8, 9], TH: 12.5, TW: 3.1,   // bearings, panels per span, truss height, half the distance between the trusses
     GIRDER: [0.2, 14.2], DROP: 6.7, CLEAR: 4.8,                              // the girder span; the road under it below the rails, the clearance
-    ABUT_SW: { s: 1.0, keep: 0.3, d0: -10.4, d1: 3.9, wing: -5.6 },   // the face 1 m before the OSM line: the 1 m patch keeps the embankment behind s = 0.3 and so shows no wedge of earth before it
+    ABUT_SW: { s: 1.0, keep: 0.05, d0: -10.4, d1: 3.9, wing: -5.6 },   // the face 1 m before the OSM line: the 1 m patch keeps the embankment behind s = 0.05 and so shows little earth before it
     PIER_SW: { s0: 13.3, s1: 17.4, d0: -12.5, d1: 3.9 },
     PIERS: [{ s: 92.95, hs: 2.15, d0: -13.1, d1: 5.8 }, { s: 182.5, hs: 2.1, d0: -12.3, d1: 6.6 }],
-    ABUT_NE: { s: 279.6, back: 282, d0: -10.6, d1: 2.2, wingL: 293.6, wingR: 292.6, d1w: 3.3 },
+    ABUT_NE: { s: 279.6, back: 282,   // the face to the river with the seat of the truss; the back wall from back − 0.8 to back
+      d0: -10.6, d1: 2.2, wingL: 293.6, wingR: 292.6, d1w: 3.3 },
     BOOTHS: [{ s: -2.5, d: -7.15, ls: 2.2, ld: 2.1 }, { s: 297.25, d: -11.0, ls: 2.7, ld: 5.8 }],
     H: null   // the height of the rails over the reference: lmRailBridge and the patches (src/world/underpass-rail.js) read it
   };
@@ -45,4 +46,12 @@ function rbDrops(ring, bb) {
   return false;
 }
 
-export { RB, rbDrops, rbLocal, rbOnLine, rbWorld };
+// a walker below the deck at either end of the bridge (2 m or more under the rails): the walls under the deck (COL tag 3)
+// stop him, one walking on the deck passes over them
+function rbLow(x, z, feet) {
+  if (RB.H == null) return false;
+  const [s, d] = rbLocal(x, z); if (Math.abs(d) > 16 || (s > 22 && s < 272) || s < -10 || s > RB.L + 16) return false;
+  return feet < RB.H - 2;
+}
+
+export { RB, rbDrops, rbLocal, rbLow, rbOnLine, rbWorld };

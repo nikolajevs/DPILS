@@ -373,7 +373,7 @@ async function buildLines() {
     }
     l.bb = bbox(pts); l.w = def[0]; LINES.push(l);
     if (spwTrackLine(cls, pts)) continue;   // the speedway track: lmSpeedway lays the whole track, the line stays on the map
-    const hw = def[0] / 2;
+    const tag0 = cls <= 3 ? streetTags(pts) : null, hw = tag0 && tag0.hw && !tag0.oneway ? tag0.hw : def[0] / 2;   // a narrower country road where OSM says so (src/world/street-tags.js)
     if (l.bridge && vbOnLine(pts)) {   // on Vienības tilts: lmVienibas draws the deck, the line still guides traffic and walking
       if (cls <= 4) for (let i = 0; i < n - 1; i++) CARROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, cls);
       for (let i = 0; i < n - 1; i++) ROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw + (cls <= 3 ? 2.6 : 0), cls <= 7 ? l.name : -1);
