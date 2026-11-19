@@ -36,13 +36,17 @@ export function createGame(opts) {
     return n;
   }
   const validKey = k => typeof k === 'string' && /^[0-9a-f]{16,64}$/i.test(k), lb = opts.board || null;   // the leaderboard (leaderboard.mjs): only the humans who sent a key are in it
-  const board = () => [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, bot: !!p.bot }));
+  // the chosen character rides the board: a key of CHARS in src/game/avatar.js; empty — the operator
+  const CHARS = ['soldier', 'spartan', 'alien', '2b'];
+  const cleanChar = s => (typeof s === 'string' && CHARS.includes(s) ? s : '');
+  const botChar = () => CHARS[Math.random() * CHARS.length | 0];
+  const board = () => [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, bot: !!p.bot, char: p.char }));
   const sendBoard = () => all({ t: 'board', board: board(), score: FFA ? [] : teamScore });
   const count = k => [...players.values()].filter(p => p.team === k).length;
   function pickTeam(want, id) {
     if (FFA) return id; const a = count(0), b = count(1); if (a !== b) return a < b ? 0 : 1; return want === 0 || want === 1 ? want : Math.random() < 0.5 ? 0 : 1;
   }
-  const newPlayer = () => ({ id: nextId++, conn: null, bot: null, name: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, st: { shots: 0, hitShots: 0, dmg: 0, heads: 0 }, wep: 0, lastShot: 0, lastNade: 0, nades: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(),
+  const newPlayer = () => ({ id: nextId++, conn: null, bot: null, name: '', char: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, st: { shots: 0, hitShots: 0, dmg: 0, heads: 0 }, wep: 0, lastShot: 0, lastNade: 0, nades: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(),
     mag: WEAPONS.map(w => w.mag), reserve: RESERVE.slice(), meds: 0, reloadDone: 0, reloadW: 0, lastMed: 0,
     sights: { sight: 0, optic: 0 }, attach: WEAPONS.map(() => null) });   // loose sights in the pocket and the one mounted on each weapon
   // where the player stood at time t (the shooter saw the target 120 ms in the past plus half the round trip);
@@ -92,7 +96,18 @@ export function createGame(opts) {
       const c = [v.x, v.y - 0.41 * v.eye, v.z], o = [n.p[0], n.p[1] + 0.3, n.p[2]], dx = c[0] - o[0], dy = c[1] - o[1], dz = c[2] - o[2], d = Math.hypot(dx, dy, dz);
       if (d >= NADE.radius || (v !== thrower && now() <= v.protectUntil)) continue;
       if (d > 0.6 && world.freePath(o, [dx / d, dy / d, dz / d], d) < d - 0.7) continue;   // a wall between the blast and the player
-      hurt(thrower, v, Math.round(NADE.dmg * (1 - d / NADE.radius) * (v === thrower ? NADE.self : 1)), 0, W_NADE, n.p);
+      const k = 1 - d / NADE.radius, self = v === thrower ? NADE.self : 1;
+      hurt(thrower, v, Math.round(NADE.dmg * k * self), 0, W_NADE, n.p);
+      if (!v.alive) continue;   // the dead stay where they fell
+      // the blast throws too: a velocity away from the blast, fading with the damage, plus a kick up (NADE.push).
+      // The player's client adds it to the jump and a decaying slide ('push'), a bot slides here on the server.
+      // Right at the blast the direction is undefined — throw up and aside at random.
+      let ux, uy, uz;
+      if (d < 0.5) { const a = Math.random() * 6.283, l = Math.hypot(1, 0.8); ux = Math.cos(a) / l; uz = Math.sin(a) / l; uy = 0.8 / l; }
+      else { ux = dx / d; uy = dy / d; uz = dz / d; }
+      const s = NADE.push * k * self, vx = ux * s, vz = uz * s, vy = Math.max(0, uy) * s + NADE.pushUp * k * self;
+      if (v.bot) { v.bot.kx += vx; v.bot.kz += vz; }
+      else send(v, { t: 'push', vx: +vx.toFixed(2), vy: +vy.toFixed(2), vz: +vz.toFixed(2) });
     }
   }
   // ---- the inventory: the server keeps the magazines and the reserve; a reload takes time and fills from the reserve ----
@@ -210,7 +225,7 @@ export function createGame(opts) {
   let botN = 0;
   function addBot(level) {
     if (players.size >= MAX) return null;
-    const p = newPlayer(); let nm = botName(botN++); while ([...players.values()].some(q => q.name === nm)) nm = botName(botN++); p.name = nm; p.team = pickTeam(-1, p.id); p.joined = true; brain.make(level || opts.level, p); players.set(p.id, p);
+    const p = newPlayer(); let nm = botName(botN++); while ([...players.values()].some(q => q.name === nm)) nm = botName(botN++); p.name = nm; p.char = botChar(); p.team = pickTeam(-1, p.id); p.joined = true; brain.make(level || opts.level, p); players.set(p.id, p);
     spawn(p); sendBoard(); all({ t: 'chat', text: p.name + ' в игре' }); return p;
   }
   function removeBot() { const b = [...players.values()].reverse().find(p => p.bot); if (!b) return false; players.delete(b.id); all({ t: 'left', id: b.id }); sendBoard(); return true; }
@@ -228,7 +243,7 @@ export function createGame(opts) {
         if (m.t === 'join' && !p.joined) {
           if (players.size >= MAX && !removeBot()) { send(p, { t: 'full' }); conn.close(); return; }
           if (lb && validKey(m.key) && ![...players.values()].some(q => q.key === m.key)) { p.key = m.key; const r = lb.identify(m.key, nameBase(m.name), n => !taken(n)); p.name = r.name; p.prof = r.prof; } else p.name = cleanName(m.name);
-          p.team = pickTeam(m.team, p.id); p.joined = true; players.set(p.id, p);
+          p.team = pickTeam(m.team, p.id); p.char = cleanChar(m.char); p.joined = true; players.set(p.id, p);
           send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])) });
           spawn(p, m.x, m.z, m.yaw); sendBoard(); all({ t: 'chat', text: p.name + (FFA ? ' в игре' : ' в игре, ' + TEAMS[p.team]) });
           return;
@@ -315,12 +330,14 @@ export function createGame(opts) {
     if (players.size) all({ t: 'snap', now: now(), p: list });
   }, 1000 / R.tickHz));
   timers.push(setInterval(() => { for (const p of players.values()) if (p.prof) p.prof.add('secs'); }, 1000));   // the time played
-  timers.push(setInterval(() => { const t = now(); for (const n of [...nades.values()]) { world.stepNade(n, 1 / 30, NADE.g); if (t >= n.t) explode(n); } }, 1000 / 30));
+  function stepNades() { const t = now(); for (const n of [...nades.values()]) { world.stepNade(n, 1 / 30, NADE.g); if (t >= n.t) explode(n); } }
+  timers.push(setInterval(stepNades, 1000 / 30));
   timers.push(setInterval(() => advanceBullets(now()), 1000 / 30));   // the bullets in the air fly on the same clock
   timers.push(setInterval(() => { const t = now(), dt = Math.min(0.2, (t - last) / 1000); last = t; for (const p of [...players.values()]) if (p.bot) brain.think(p, dt); }, 50));
   return {
     attach, addBot, removeBot, players, arena, mode: MODE,
     stepBullets: () => advanceBullets(now()),   // the tests drive the flight by their own clock
+    stepNades,   // the tests drive the fuse by their own clock too
     stop() { for (const t of timers) { clearInterval(t); clearTimeout(t); } timers.length = 0; },
     health() { return { ok: true, mode: MODE, name: NAME, players: humans().length, bots: players.size - humans().length, max: MAX, score: teamScore, win: WIN, teams: TEAMS, round: roundOver ? 'end' : 'play', arena: arena ? arena.name : null, leaderboard: !!lb }; },
   };

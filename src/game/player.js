@@ -9,8 +9,9 @@ import { SET } from './settings.js';
 import { $, HX, HY } from '../core/env.js';
 
 /* ---------- player ---------- */
-// eye: height of the eyes over the feet (1.7 standing, 1.1 crouched); up: the jump, metres over the ground; vy: its speed
-const P = { x: -1487, y: 1.7, z: 1263, yaw: 0.6, pitch: 0, fly: false, walked: 0, eye: 1.7, up: 0, vy: 0, crouch: false };
+// eye: height of the eyes over the feet (1.7 standing, 1.1 crouched); up: the jump, metres over the ground; vy: its speed;
+// kx/kz: the blast knockback (the server's 'push'), a horizontal velocity that decays as it slides
+const P = { x: -1487, y: 1.7, z: 1263, yaw: 0.6, pitch: 0, fly: false, walked: 0, eye: 1.7, up: 0, vy: 0, crouch: false, kx: 0, kz: 0 };
 const JUMP = { v: 6.4, g: 21, eyeStand: 1.7, eyeCrouch: 1.1, crouchSpeed: 1.8 };
 const keys = new Set(); const touch = { mx: 0, mz: 0 };
 STATE.started = false; STATE.night = false; STATE.locked = false; STATE.introT = 0;
@@ -23,7 +24,7 @@ function freeSpot(x, z) {
 function teleport(x, z, yaw) {
   if (STATE.mp) return;   // in the game you only appear where the server puts you
   x = Math.max(-HX + 5, Math.min(HX - 5, x)); z = Math.max(-HY + 5, Math.min(HY - 5, z));
-  if (P.fly) { P.x = x; P.z = z; P.y = Math.max(P.y, terrainH(x, z) + 30); } else { [P.x, P.z] = freeSpot(x, z); P.eye = 1.7; P.up = 0; P.vy = 0; P.y = 1.7 + walkLift(P.x, P.z); }
+  if (P.fly) { P.x = x; P.z = z; P.y = Math.max(P.y, terrainH(x, z) + 30); } else { [P.x, P.z] = freeSpot(x, z); P.eye = 1.7; P.up = 0; P.vy = 0; P.kx = P.kz = 0; P.y = 1.7 + walkLift(P.x, P.z); }
   if (yaw != null) { P.yaw = yaw; P.pitch = P.fly ? -0.45 : 0; }
   STATE.hudTimer = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
 }
@@ -57,6 +58,16 @@ function step(dt) {
     }
     P.walked += sp * dt * l;
   }
+  if (!P.fly && (P.kx || P.kz)) {   // the blast knockback: a decaying slide with the same collisions as the walk, even when standing still
+    let dx = P.kx * dt, dz = P.kz * dt;
+    const feet = P.y - P.eye - P.up, n = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.3)); dx /= n; dz /= n;
+    for (let i = 0; i < n; i++) {
+      const ox = P.x, oz = P.z; P.x += dx; P.z += dz; collide(feet);
+      if (inWater(P.x, P.z) && !onRoad(P.x, P.z, 1.2) && !(inWater(ox, oz) && !onRoad(ox, oz, 1.2))) { P.x = ox; P.z = oz; P.kx = P.kz = 0; break; }
+    }
+    const kd = Math.exp(-5 * dt); P.kx *= kd; P.kz *= kd;
+    if (Math.hypot(P.kx, P.kz) < 0.05) P.kx = P.kz = 0;
+  }
   P.x = Math.max(-HX, Math.min(HX, P.x)); P.z = Math.max(-HY, Math.min(HY, P.z));
   if (!P.fly) {
     const ground = P.y - P.eye - P.up;   // the ground under the feet at the last frame (walkLift uses it to tell bridges from what is under them)
@@ -72,7 +83,7 @@ function step(dt) {
 function setFly(on) {
   if (STATE.mp && on) return;
   P.fly = on; $('bFly').setAttribute('aria-pressed', on);
-  if (on) { P.y = Math.max(P.y, terrainH(P.x, P.z) + 70); P.pitch = Math.min(P.pitch, -0.35); } else { [P.x, P.z] = freeSpot(P.x, P.z); P.eye = 1.7; P.up = 0; P.vy = 0; P.y = 1.7 + terrainH(P.x, P.z); P.pitch = 0; }
+  if (on) { P.y = Math.max(P.y, terrainH(P.x, P.z) + 70); P.pitch = Math.min(P.pitch, -0.35); } else { [P.x, P.z] = freeSpot(P.x, P.z); P.eye = 1.7; P.up = 0; P.vy = 0; P.kx = P.kz = 0; P.y = 1.7 + terrainH(P.x, P.z); P.pitch = 0; }
   STATE.hudTimer = 0; STATE.lodTimer = 0;
 }
 

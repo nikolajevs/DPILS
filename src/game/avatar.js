@@ -7,50 +7,63 @@ import { prop, onProps } from './props.js';
 import { alignHand, at, reach, relMatrix, setFrame } from './ik.js';
 import { FLASH_SIZE, makeFlash } from './muzzle.js';
 
-/* ---------- the ready model of the players ----------
-   models/Soldier.glb (CC BY 4.0, see models/README.md): a realistic special-forces operator — the "S.W.A.T. Operator" body by
-   SpatialNeglect with Mixamo animations by fauze: Idle, Walk, Run, Jump, Death and Carry (the arms hold something in front).
-   It is loaded once, with the city (loadModels of src/game/mp.js); every other player gets a clone with its own skeleton
-   and mixer and the colours of the team on its helmet and jacket. Only if the file cannot come are the players the
-   simple figures of src/game/mp.js.
-   Everything that belongs to this one file is in MODEL: to use another character change that and nothing else. The model
-   is scaled to a man's height with the feet on the ground, and turned to look where the game looks (the file looks
-   along +z, the game along −z). The loader drops the dots of the bone names (Fist.R is FistR).
+/* ---------- the ready models of the players ----------
+   Four characters (CC BY 4.0, see models/README.md), each a rigged body with the same fauze Mixamo clips
+   (Idle, Walk, Run, Jump, Death, Carry) retargeted by tools/character.mjs onto its own skeleton:
+   the S.W.A.T. operator (Soldier.glb, the default), the Halo Spartan MKV (Spartan.glb), the alien of the
+   Mixamo retexture (Alien.glb) and 2B of NieR:Automata (2B.glb, a 3ds Max biped rig with skirt bones).
+   The player picks one in the game panel; the choice rides the join/board messages as its key (CHARS).
+   All are loaded once, with the city (loadModels of src/game/mp.js); every player gets a clone with its
+   own skeleton and mixer. The models keep their original textures, uncoloured: the two teams will get
+   their own models later, so no team painting is applied.
+   Only if the files cannot come are the players the simple figures of src/game/mp.js.
+   Each model is scaled to its height with the feet on the ground and turned to look where the game looks
+   (turn: the file's facing, the game along −z). The bones carry the standard names of MODEL.arms.
    The weapons in hand are ready models too (models/fp_shotgun.glb, fp_sniper.glb, fp_pistol.glb, fp_mg.glb — CC BY 4.0, from Sketchfab, credits in models/README.md): metres, the muzzle along +z, the top along +y, the grip at the origin.
    The AK (null in MODEL.guns) is the rifle of the arms of viewmodel.js. Every gun is held in both hands: see heldGun and hold below. */
 const MODEL = {
-  file: 'models/Soldier.glb', guns: [null, 'models/fp_shotgun.glb', 'models/fp_sniper.glb', 'models/fp_pistol.glb', 'models/fp_mg.glb'], gunLen: [1, 1, 1, 1.5, 1], gunYaw: [0, 0, 0, 0, 0], gunM: [false, true, true, true, true], height: 1.8, headScale: 1,   // one gun model for each weapon of the game; the fp_* guns are already in metres and point along +z (gunM), the pistol is a little bigger in the hand; the operator's head is already in proportion
+  guns: [null, 'models/fp_shotgun.glb', 'models/fp_sniper.glb', 'models/fp_pistol.glb', 'models/fp_mg.glb'], gunLen: [1, 1, 1, 1.5, 1], gunYaw: [0, 0, 0, 0, 0], gunM: [false, true, true, true, true], headScale: 1,   // one gun model for each weapon of the game; the fp_* guns are already in metres and point along +z (gunM), the pistol is a little bigger in the hand
   // a gun whose file lies tilted: where its bore and its left side point in the file. The Makarov came off its display
   // stand rolled by 35° and its barrel 30° down and aside (tools/fp-weapons.mjs did not level it): it is turned once on
   // loading, about its grip, so that every clone has the muzzle along +z and the top along +y (axes of its faces)
   gunAxes: [null, null, null, { bore: [0.289, -0.408, 0.866], left: [0.8165, 0.5774, 0] }, null],
-  tint: ['helmet'], camo: ['uniform'],   // tint: painted in the colour of the team; camo: the jacket and the trousers get a camouflage pattern in its tones
   clips: { idle: 'Idle', walk: 'Walk', run: 'Run', jump: 'Jump', death: 'Death', hold: 'Carry' },   // hold: the pose of the arms with a rifle
   arms: ['ShoulderL', 'UpperArmL', 'LowerArmL', 'FistL', 'ShoulderR', 'UpperArmR', 'LowerArmR', 'FistR'], hand: 'FistR', head: 'Head',
 };
-let loading = null, asset = null;
+// the characters: turn — the y turn of the file so it faces the game's −z; the textures stay as the file has them
+const CHARS = {
+  soldier: { file: 'models/Soldier.glb', name: 'Оператор SWAT', height: 1.8, turn: Math.PI },
+  spartan: { file: 'models/Spartan.glb', name: 'Спартанец MKV', height: 2.0, turn: Math.PI },
+  alien: { file: 'models/Alien.glb', name: 'Пришелец', height: 1.9, turn: Math.PI },
+  '2b': { file: 'models/2B.glb', name: '2B — NieR', height: 1.68, turn: Math.PI },
+};
+const CHAR_KEYS = Object.keys(CHARS);
+const parseChar = s => (typeof s === 'string' && CHARS[s] ? s : '');
+const randomChar = () => CHAR_KEYS[Math.floor(Math.random() * CHAR_KEYS.length)];
+const assets = {};
+let gunsP = null;
 function loadAvatar() {
-  if (!loading) loading = import('three/addons/libs/meshopt_decoder.module.js').then(({ MeshoptDecoder }) => new Promise(res => {
-    const SL = new GLTFLoader(); SL.setMeshoptDecoder(MeshoptDecoder);   // Soldier.glb is packed with EXT_meshopt_compression
-    SL.load(MODEL.file, g => {
-      const clips = Object.fromEntries(g.animations.map(c => [c.name, c])), probe = clone(g.scene), mixer = new THREE.AnimationMixer(probe);
-      mixer.clipAction(clips[MODEL.clips.idle]).play(); mixer.update(0.01);
-      const head = probe.getObjectByName(MODEL.head); if (head) head.scale.setScalar(MODEL.headScale);
-      probe.updateMatrixWorld(true); const box = new THREE.Box3().setFromObject(probe, true), h = box.max.y - box.min.y || 1;
-      asset = { scene: g.scene, clips, scale: MODEL.height / h, floor: -box.min.y * MODEL.height / h, guns: [] };
-      // the guns come after the soldier; without them the simple rifle is drawn. The fp_* files are packed with
-      // EXT_meshopt_compression, so their loader needs the decoder (as the AK's loader in viewmodel.js)
-      import('three/addons/libs/meshopt_decoder.module.js').then(({ MeshoptDecoder }) => {
-        const L = new GLTFLoader(); L.setMeshoptDecoder(MeshoptDecoder);
-        Promise.all([...new Set(MODEL.guns.filter(Boolean))].map(f => new Promise(r => L.load(f, x => r([f, x.scene]), undefined, () => r([f, null]))))).then(list => {
-          const by = Object.fromEntries(list); asset.guns = MODEL.guns.map((f, i) => level((f && by[f]) || null, MODEL.gunAxes[i])); res(asset);
-        });
-      });
-    }, undefined, () => res(null));
-  }));
-  return loading;
+  if (!gunsP) gunsP = import('three/addons/libs/meshopt_decoder.module.js').then(({ MeshoptDecoder }) => {
+    const L = new GLTFLoader(); L.setMeshoptDecoder(MeshoptDecoder);   // the character files are packed with EXT_meshopt_compression
+    const chars = Promise.all(CHAR_KEYS.map(key => new Promise(res => {
+      L.load(CHARS[key].file, g => {
+        const clips = Object.fromEntries(g.animations.map(c => [c.name, c])), probe = clone(g.scene), mixer = new THREE.AnimationMixer(probe);
+        if (clips[MODEL.clips.idle]) { mixer.clipAction(clips[MODEL.clips.idle]).play(); mixer.update(0.01); }
+        const head = probe.getObjectByName(MODEL.head); if (head) head.scale.setScalar(MODEL.headScale);
+        probe.updateMatrixWorld(true); const box = new THREE.Box3().setFromObject(probe, true), h = box.max.y - box.min.y || 1;
+        assets[key] = { scene: g.scene, clips, scale: CHARS[key].height / h, floor: -box.min.y * CHARS[key].height / h };
+        res(assets[key]);
+      }, undefined, () => res(null));
+    })));
+    // the guns come with the characters; without them the simple rifle is drawn
+    const guns = Promise.all([...new Set(MODEL.guns.filter(Boolean))].map(f => new Promise(r => L.load(f, x => r([f, x.scene]), undefined, () => r([f, null]))))).then(list => {
+      const by = Object.fromEntries(list); return MODEL.guns.map((f, i) => level((f && by[f]) || null, MODEL.gunAxes[i]));
+    });
+    return Promise.all([chars, guns]).then(([, g]) => { for (const k in assets) assets[k].guns = g; return assets.soldier || null; });
+  });
+  return gunsP;
 }
-const ready = () => asset;
+const ready = () => assets.soldier || null;
 // a tilted gun turned about its origin so that its bore is +z and its left side +x; two groups, because readyGun sets
 // the y turn of the outer one
 function level(src, ax) {
@@ -72,7 +85,7 @@ function boxRifle() {
 // the flash is at the muzzle — its distance from the grip and its height are kept for the viewmodel
 function readyGun(src, k, yaw, metres) {
   const g = src.clone(true); g.rotation.y = yaw || 0; g.traverse(o => { if (o.isMesh) o.material = worldSpace(o.material.clone()); });
-  const s = (metres ? 1 : asset.scale) * k;
+  const s = (metres ? 1 : (ready() || { scale: 1 }).scale) * k;
   const box = new THREE.Box3().setFromObject(g), holder = new THREE.Group(); holder.add(g); holder.scale.setScalar(s); holder.userData.muzzle = box.max.z * s; holder.userData.muzzleY = (box.min.y + box.max.y) / 2 * s; return holder;
 }
 /* ---------- the guns in both hands ----------
@@ -88,7 +101,7 @@ const V3 = a => new THREE.Vector3(...a);
 // the muzzle of a gun file, found once (muzzleOf reads every vertex of the model): each player has every gun in hand
 const MUZZLES = new WeakMap(), muzzleAt = src => { let m = MUZZLES.get(src); if (!m) MUZZLES.set(src, m = muzzleOf(src)); return m; };
 function heldGun(i) {
-  const k = akReady(), sp = HOLD[i], src = i ? asset && asset.guns[i] : k && k.gun; if (!k || !k.gun || !src || (i && !sp)) return null;
+  const a = ready(), k = akReady(), sp = HOLD[i], src = i ? a && a.guns && a.guns[i] : k && k.gun; if (!k || !k.gun || !src || (i && !sp)) return null;
   const g = src.clone(true), shift = new THREE.Group(), holder = new THREE.Group(); g.traverse(o => { if (o.isMesh) o.material = worldSpace(o.material.clone()); });
   // (the node of a packed model keeps the scale of its geometry: it is moved by a group of its own)
   if (i) shift.position.copy(k.palm.R).add(V3(sp.shift)).sub(V3(sp.grip)).sub(k.shoulder); else shift.position.copy(k.shoulder).negate();
@@ -135,7 +148,7 @@ function placeFlash(gun, flash, mount) {
 }
 // a new shot (its time changed): the flash of the weapon in hand
 function shotFlash(flash, s, st) { if (s.shotAt && s.shotAt !== st.at) { st.at = s.shotAt; if (!s.dead) flash.fire(1, FLASH_SIZE[st.w] || 1); } flash.tick(st.dt); }
-const makeGun = i => heldGun(i) || (asset && asset.guns[i] ? readyGun(asset.guns[i], MODEL.gunLen[i], MODEL.gunYaw[i], MODEL.gunM[i]) : boxRifle());
+const makeGun = i => { const a = ready(); return heldGun(i) || (a && a.guns && a.guns[i] ? readyGun(a.guns[i], MODEL.gunLen[i], MODEL.gunYaw[i], MODEL.gunM[i]) : boxRifle()); };
 // the picked-up sights on a player seen from the side: one node per gun, on the receiver where heldGun put scopeAt.
 // The item models come with the city (props.js); until then the guns stay bare and refresh() puts the sights on later.
 function scopeKit(guns, getGun) {
@@ -163,37 +176,17 @@ function scopeKit(guns, getGun) {
   return { setAttach, refresh };
 }
 const HOLD_OFS = new THREE.Vector3(0, 0, 0);   // the holder from the shoulder joint of the skeleton
-// the camouflage: blotches of three tones of the colour of the team (a smooth noise of the position on the body at rest,
-// cut at two levels), on the material of the file; the vertex position before the skeleton moves it keeps the pattern on the body
-const CAMO_GLSL = `
-varying vec3 vCamo;
-uniform vec3 uCamoA; uniform vec3 uCamoB; uniform vec3 uCamoC;
-float camoH(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
-float camoN(vec3 p) {
-  vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(mix(camoH(i), camoH(i + vec3(1, 0, 0)), f.x), mix(camoH(i + vec3(0, 1, 0)), camoH(i + vec3(1, 1, 0)), f.x), f.y),
-             mix(mix(camoH(i + vec3(0, 0, 1)), camoH(i + vec3(1, 0, 1)), f.x), mix(camoH(i + vec3(0, 1, 1)), camoH(i + vec3(1, 1, 1)), f.x), f.y), f.z);
-}`;
-function camouflage(m, hue) {
-  const A = new THREE.Color().setHSL(hue, 0.4, 0.42), B = new THREE.Color().setHSL(hue, 0.5, 0.27), C = new THREE.Color().setHSL(hue, 0.55, 0.14), base = THREE.Material.prototype.onBeforeCompile;
-  m.onBeforeCompile = function (s) {
-    base.call(this, s);   // the lift of the page's shaders by the terrain (see world/terrain.js) stays
-    s.uniforms.uCamoA = { value: A }; s.uniforms.uCamoB = { value: B }; s.uniforms.uCamoC = { value: C };
-    s.vertexShader = s.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vCamo;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvCamo = position;');
-    s.fragmentShader = s.fragmentShader.replace('#include <common>', '#include <common>\n' + CAMO_GLSL).replace('#include <color_fragment>', `#include <color_fragment>
-      { float n = camoN(vCamo * 5.5) * 0.6 + camoN(vCamo * 12.0 + 3.7) * 0.4; diffuseColor.rgb = n < 0.42 ? uCamoA : n < 0.6 ? uCamoB : uCamoC; }`);
-  };
-  m.customProgramCacheKey = () => 'camo'; m.needsUpdate = true;
-}
-// one player's model: update(dt, { speed, air, dead, shotAt, throwAt }) every frame (shotAt: the time of the last shot, a new one flashes; throwAt: of the last grenade thrown, the arm swings)
-function makeAvatar(hue) {
+// one player's model: update(dt, { speed, air, dead, shotAt, throwAt }) every frame (shotAt: the time of the last shot, a new one flashes; throwAt: of the last grenade thrown, the arm swings);
+// char — the chosen character of CHARS ('' = the operator); if its file did not come, the operator stands in
+function makeAvatar(char) {
+  const key = parseChar(char) || 'soldier', cfg = CHARS[key], asset = assets[key] || assets.soldier;
   if (!asset) return null;
+  const cc = assets[key] ? cfg : CHARS.soldier;
   const root = clone(asset.scene), inner = new THREE.Group(), mixer = new THREE.AnimationMixer(root), act = {}, C = MODEL.clips;
-  root.scale.setScalar(asset.scale); root.position.y = asset.floor; inner.rotation.y = Math.PI; inner.add(root);
+  root.scale.setScalar(asset.scale); root.position.y = asset.floor; inner.rotation.y = cc.turn; inner.add(root);
   root.traverse(o => {
     if (!o.isMesh) return; o.frustumCulled = false;   // a skinned mesh keeps the bounds of its rest pose
-    o.material = worldSpace(Array.isArray(o.material) ? o.material.map(m => m.clone()) : o.material.clone());
-    for (const m of Array.isArray(o.material) ? o.material : [o.material]) { if (MODEL.tint.includes(m.name)) m.color.setHSL(hue, 0.5, 0.3); else if (MODEL.camo.includes(m.name)) camouflage(m, hue); }
+    o.material = worldSpace(Array.isArray(o.material) ? o.material.map(m => m.clone()) : o.material.clone());   // the file's textures, uncoloured
   });
   for (const n of [C.idle, C.walk, C.run, C.jump, C.death]) if (asset.clips[n]) { act[n] = mixer.clipAction(asset.clips[n]); act[n].play(); act[n].weight = n === C.idle ? 1 : 0; }
   if (act[C.death]) { act[C.death].setLoop(THREE.LoopOnce, 1); act[C.death].clampWhenFinished = true; }
@@ -232,8 +225,8 @@ function makeAvatar(hue) {
 }
 
 // the model of a weapon as its file has it (metres, the muzzle along +z, the grip at the origin): the arms of viewmodel.js hold a clone of it
-const gunSource = i => (asset && asset.guns[i]) || null;
+const gunSource = i => { const a = ready(); return (a && a.guns && a.guns[i]) || null; };
 // a ready gun for the viewmodel of the player himself (a clone in metres, the muzzle along +z), or null before the files have come
-function gunModel(i) { return asset && asset.guns[i] ? readyGun(asset.guns[i], MODEL.gunLen[i], MODEL.gunYaw[i], MODEL.gunM[i]) : null; }
+function gunModel(i) { const a = ready(); return a && a.guns && a.guns[i] ? readyGun(a.guns[i], MODEL.gunLen[i], MODEL.gunYaw[i], MODEL.gunM[i]) : null; }
 
-export { MODEL, gunModel, gunSource, loadAvatar, makeAvatar, ready };
+export { MODEL, CHARS, CHAR_KEYS, gunModel, gunSource, loadAvatar, makeAvatar, parseChar, randomChar, ready };
