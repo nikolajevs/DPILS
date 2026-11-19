@@ -11,8 +11,8 @@
       an edge and falls for real (g.stepBots drives its think by the test clock), a slope is walked without damage.
    3. A real bot fight on a flat arena (12 s of real time): with the small hitboxes the bots must still see,
       shoot and kill each other. */
-import { FALL, HIT, WEAPONS, NADE, W_FALL, rayHit } from '../server/combat.mjs';
-import { createGame } from '../server/game.mjs';
+import { BULLET_G, FALL, HIT, WEAPONS, NADE, W_FALL, bulletAt, bulletDir, bulletDrop, rayHit } from '../server/combat.mjs';
+import { createGame, MUZZLE } from '../server/game.mjs';
 import { makePhysics } from '../server/physics.mjs';
 
 let pass = 0, fail = 0;
@@ -121,12 +121,55 @@ console.log('server rules (createGame, controlled clock):');
   const shootAt = (tx, ty, tz) => { const n = A.all('hit').length; msg(A, { t: 'shoot', w: 0, rays: [aim(tx, ty, tz)] }); clock += 120; g.stepBullets(); const h = A.all('hit'); return h.length > n ? h[h.length - 1] : null; };
   ok(shootAt(0, 1.1, -20) === null, 'the house stops the hit');
   const len = A.last('shot').rays[0][3];
-  ok(near(len, 7, 0.15), 'the tracer stops at the wall face (~7 m)', String(len));
+  ok(near(len, 7 - MUZZLE, 0.15), 'the tracer stops at the wall face, measured from the barrel (~6.4 m)', String(len));
   msg(B, { t: 'state', x: 0, y: 1.7, z: -6.8, yaw: 0, pitch: 0 });
   ok(shootAt(0, 1.1, -6.8) !== null, 'a target just in front of the wall is hit');
   msg(B, { t: 'state', x: 0, y: 1.7, z: -7.4, yaw: 0, pitch: 0 });
   clock += 300;   // let the lag-compensation window pass the move, so the shot sees the target behind the wall
   ok(shootAt(0, 1.1, -7.4) === null, 'a target just behind the wall is not');
+  g.stop();
+}
+{
+  // point-blank: the shooter leans on the wall (the face 0.4 m from the eye, nearer than the 0.6 m barrel).
+  // The old scan started at 2 m and let such a wall shoot through; now the muzzle rests on the face and the flight is zero.
+  let clock = 1e6;
+  const house = (x, z) => (Math.abs(x) < 3 && z > -6 && z < -0.4) ? { top: 12 } : null;
+  const g = createGame({ world: flatWorld(house), area: { cx: 0, cz: 0 }, now: () => clock, name: 'lean' });
+  const A = seat(g, conn()), B = seat(g, conn());
+  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -2, yaw: 0 });
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(B, { t: 'state', x: 0, y: 1.7, z: -2, yaw: 0, pitch: 0 });
+  const n = A.all('hit').length;
+  msg(A, { t: 'shoot', w: 0, rays: [[0, 0, -1]] });
+  const len = A.last('shot').rays[0][3];
+  clock += 120; g.stepBullets();
+  ok(A.all('hit').length === n, 'leaning on the wall: the target behind it is not hit');
+  ok(near(len, 0, 0.05), 'leaning on the wall: the muzzle rests on the face, the flight is zero', String(len));
+  ok(near(makePhysics(house, () => 0).freePath([0, 1.7, 0], [0, 0, -1], 160), 0.4, 0.05), 'freePath: the near face to 5 cm');
+  g.stop();
+}
+{
+  // the corner clip: a 0.7 m slab the ray enters at 0.5 m and leaves at 1.2 m — both before the old first sample at 2 m,
+  // so the old scan saw open air past it and shot straight through. The near scan must stop at the 0.5 m face.
+  let clock = 1e6;
+  const slab = (x, z) => (Math.abs(x) < 3 && z > -1.2 && z < -0.5) ? { top: 12 } : null;
+  const g = createGame({ world: flatWorld(slab), area: { cx: 0, cz: 0 }, now: () => clock, name: 'clip' });
+  const A = seat(g, conn()), B = seat(g, conn());
+  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -3, yaw: 0 });
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(B, { t: 'state', x: 0, y: 1.7, z: -3, yaw: 0, pitch: 0 });
+  const n = A.all('hit').length;
+  msg(A, { t: 'shoot', w: 0, rays: [[0, 0, -1]] });
+  const len = A.last('shot').rays[0][3];
+  clock += 120; g.stepBullets();
+  ok(A.all('hit').length === n, 'the corner clip no longer shoots through the slab');
+  ok(near(len, 0, 0.05), 'the clip: the 0.6 m barrel is past the 0.5 m face, the flight is zero', String(len));
+  ok(near(makePhysics(slab, () => 0).freePath([0, 1.7, 0], [0, 0, -1], 160), 0.5, 0.05), 'freePath: the slab face to 5 cm');
+  ok(makePhysics(slab, () => 0).freePath([0, 1.7, -0.8], [0, 0, -1], 160) === 0, 'freePath: an origin inside stone dies at once');
   g.stop();
 }
 {
@@ -144,7 +187,7 @@ console.log('server rules (createGame, controlled clock):');
   const shootAt = (tx, ty, tz) => { const n = A.all('hit').length; msg(A, { t: 'shoot', w: 0, rays: [aim(tx, ty, tz)] }); clock += 120; g.stepBullets(); const h = A.all('hit'); return h.length > n ? h[h.length - 1] : null; };
   ok(shootAt(0, 1.1, -20) === null, 'the hill slope stops a flat shot');
   const len = A.last('shot').rays[0][3];
-  ok(near(len, 12.64, 0.2), 'the tracer stops on the slope (~12.6 m for the slightly downward aim)', String(len));
+  ok(near(len, 12.64 - MUZZLE, 0.2), 'the tracer stops on the slope (~12 m from the barrel for the slightly downward aim)', String(len));
   msg(B, { t: 'state', x: 0, y: hill(0, -20) + 1.7, z: -20, yaw: 0, pitch: 0 });
   ok(shootAt(0, hill(0, -20) + 1.1, -20) !== null, 'a target on top of the hill is hit over the slope');
   g.stop();
@@ -199,7 +242,7 @@ console.log('server rules (createGame, controlled clock):');
   g.stop();
 }
 {
-  // the flight time: nothing lands at the click; the bhit and the damage come when the bullet arrives (56 m at 560 m/s = 100 ms)
+  // the flight time: nothing lands at the click; the bhit and the damage come when the bullet arrives (55.4 m from the barrel at 560 m/s ≈ 100 ms)
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'flight' });
   const A = seat(g, conn()), B = seat(g, conn());
@@ -216,8 +259,90 @@ console.log('server rules (createGame, controlled clock):');
   clock += 60; g.stepBullets();   // past the 100 ms of flight
   const h = A.last('hit'), b = A.last('bhit');
   ok(h && h.dmg === WEAPONS[0].dmg && B.handle.player.hp === 100 - WEAPONS[0].dmg, 'the damage lands when the bullet arrives', JSON.stringify(h));
-  ok(b && near(b.d, 56, 0.5) && b.v === B.handle.player.id, 'bhit reports the body at ~56 m', JSON.stringify(b));
+  ok(b && near(b.d, 56 - MUZZLE, 0.5) && b.v === B.handle.player.id, 'bhit reports the body at ~55.4 m from the barrel', JSON.stringify(b));
   g.stop();
+}
+/* ---------- 2a. the bullet's fall: gravity on the arc, holdover, the ground catching a long flat shot ---------- */
+console.log('bullet drop (gravity, holdover, determinism):');
+{
+  // the arc itself: a 7.62 at 400 m (820 m/s, 0.49 s) sinks ~1.17 m, and the tangent bends down with it
+  ok(near(bulletDrop(400, 820), 0.5 * BULLET_G * (400 / 820) ** 2, 1e-9) && near(bulletDrop(400, 820), 1.167, 0.01), 'the sniper bullet falls ~1.17 m at 400 m', String(bulletDrop(400, 820)));
+  const p = bulletAt([0, 1.7, 0], [0, 0, -1], 400, 820);
+  ok(near(p[1], 1.7 - 1.167, 0.01) && p[2] === -400, 'bulletAt rides the arc, not the straight line', JSON.stringify(p));
+  const t = bulletDir([0, 0, -1], 400, 820);
+  ok(t[1] < -0.005 && near(Math.hypot(...t), 1, 1e-9), 'the tangent at 400 m points down and stays unit', JSON.stringify(t));
+  ok(bulletDrop(20, 560) < 0.01, 'at 20 m the rifle drop is under a centimetre — close fights unchanged');
+}
+{
+  // the sniper at 400 m: a flat aim at the chest hits the dirt; the same aim lifted by the drop hits the chest
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'drop' });
+  const A = seat(g, conn()), B = seat(g, conn());
+  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -400, yaw: 0 });
+  const bid = B.handle.player.id;
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(B, { t: 'state', x: 0, y: 1.7, z: -400, yaw: 0, pitch: 0 });
+  const aim = (tx, ty, tz) => { const dx = tx, dy = ty - 1.7, dz = tz, l = Math.hypot(dx, dy, dz); return [dx / l, dy / l, dz / l]; };
+  const fly = (ray, w, ms) => { const n = A.all('bhit').length; msg(A, { t: 'shoot', w, rays: [ray] }); clock += ms; g.stepBullets(); const b = A.all('bhit'); return b.length > n ? b[b.length - 1] : null; };
+  ok(fly(aim(0, 1.1, -400), 2, 600) === null, 'a flat sniper aim at 400 m misses: the bullet is ~1.17 m low');
+  const wall = A.last('shot').rays[0][3];
+  ok(wall < 400, 'the fallen bullet meets the ground before 400 m', String(wall));
+  clock += 1400;   // past the sniper's gapMs
+  const hold = bulletDrop(400, 820);
+  const b = fly(aim(0, 1.1 + hold, -400), 2, 600);
+  ok(b && b.v === bid && near(b.d, 400, 1) && near(b.at[1], 1.1, 0.06), 'the holdover aim hits the chest at 400 m', JSON.stringify(b));
+  const h = A.last('hit');
+  ok(h && h.dmg === WEAPONS[2].dmg, 'the damage is the sniper body damage', JSON.stringify(h));
+  clock += 1400;
+  const hb = fly(aim(0, 1.6 + bulletDrop(400, 820), -400), 2, 600);
+  ok(hb && hb.zone === 1 && A.last('hit').kill, 'the head holdover at 400 m kills', JSON.stringify(hb));
+  g.stop();
+}
+{
+  // the bot's formula: aim lifted by the drop of the straight distance hits at the hard bot's sniper range (130 m)
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'bothold' });
+  const A = seat(g, conn()), B = seat(g, conn());
+  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -130, yaw: 0 });
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(B, { t: 'state', x: 0, y: 1.7, z: -130, yaw: 0, pitch: 0 });
+  const aimY = 1.7 - 0.56, dy2 = aimY - 1.7, d3 = Math.hypot(130, dy2), hold = bulletDrop(d3, 820);
+  const pitch = Math.asin((dy2 + hold) / d3), cp = Math.cos(pitch);
+  msg(A, { t: 'shoot', w: 2, rays: [[0, Math.sin(pitch), -cp]] });
+  clock += 300; g.stepBullets();
+  ok(A.last('hit') && A.last('hit').dmg === WEAPONS[2].dmg, 'the bots\' holdover formula lands the 130 m chest shot', JSON.stringify(A.last('hit')));
+  g.stop();
+}
+{
+  // a long flat shot from low: the ground catches the arc sooner than the straight line (eye 1.0 m, 820 m/s → ~370 m)
+  const phys = makePhysics(() => null, () => 0);
+  const straight = phys.freePath([0, 1.0, 0], [0, 0, -1], 500);
+  const arc = phys.freePath([0, 1.0, 0], [0, 0, -1], 500, 820);
+  ok(straight === 500, 'the straight sight line stays open');
+  ok(near(arc, 820 * Math.sqrt(2 * 1.0 / BULLET_G), 1.5), 'the falling arc meets the ground at ~370 m', String(arc));
+}
+{
+  // determinism: the same shot in two identical games lands at the same point to the millimetre
+  const run = () => {
+    let clock = 1e6;
+    const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'det' });
+    const A = seat(g, conn()), B = seat(g, conn());
+    msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+    msg(B, { t: 'join', name: 'Мишень', team: 1, x: 2, z: -300, yaw: 0.4 });
+    clock += 3000;
+    msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+    msg(B, { t: 'state', x: 2, y: 1.7, z: -300, yaw: 0.4, pitch: 0 });
+    const ty = 1.2 + bulletDrop(300, 820), l = Math.hypot(2, ty - 1.7, 300);
+    msg(A, { t: 'shoot', w: 2, rays: [[2 / l, (ty - 1.7) / l, -300 / l]] });
+    for (let i = 0; i < 12; i++) { clock += 50; g.stepBullets(); }   // the same 30 Hz-ish stepping both times
+    const b = A.last('bhit'); g.stop(); return b && JSON.stringify(b);
+  };
+  const r1 = run(), r2 = run();
+  ok(r1 && r1 === r2, 'two identical games land the bullet at the identical point', r1 + ' / ' + r2);
 }
 {
   // the refined freePath on its own

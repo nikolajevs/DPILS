@@ -3,7 +3,7 @@
    speed of its level, waits its reaction time, and fires in bursts with the error of its level; the server then judges
    its shots as it judges everybody's. It walks to waypoints round the arena, goes round houses and keeps out of the water,
    strafes in a fight, falls back when hurt, throws a grenade now and then and comes back after the death by itself. */
-import { FALL, HIT } from './combat.mjs';
+import { FALL, HIT, bulletDrop } from './combat.mjs';
 const NAMES = ['Андрис', 'Янис', 'Артур', 'Лиена', 'Виктор', 'Ольга', 'Эдгар', 'Дайна', 'Максим', 'Илзе', 'Роман', 'Кристап', 'Анна', 'Игорь', 'Мартиньш', 'Светлана'];
 // sigma: the aim error in radians — tuned for the small hitboxes (a torso half a metre wide, a head 0.36 m), so the
 // error is about half of what it was against the old metre-wide capsule; head: the share of shots aimed at the head
@@ -100,7 +100,7 @@ export function createBrain(g) {
     let aimYaw = p.yaw, aimPitch = 0, dist = 0;
     if (q && b.target) {
       b.path = null;   // after the fight a new route from the new place
-      const dx = q.x - p.x, dz = q.z - p.z; dist = Math.hypot(dx, dz); aimYaw = Math.atan2(-dx, -dz); aimPitch = Math.atan2((q.y - 0.4) - p.y, dist);
+      const dx = q.x - p.x, dz = q.z - p.z; dist = Math.hypot(dx, dz); aimYaw = Math.atan2(-dx, -dz); aimPitch = Math.atan2((q.y - 0.4) - p.y + bulletDrop(dist, (g.WEAPONS[p.wep] || {}).vel || 560), dist);   // the barrel looks above the target by the bullet's drop
       if (b.retreatUntil > now) { walk(p, p.x - dx, p.z - dz, speed, dt); }   // away from the enemy
       else {
         const want = p.wep === 1 ? 8 : p.wep === 2 ? 90 : 28;   // the distance the weapon likes
@@ -139,11 +139,12 @@ export function createBrain(g) {
     if (L.nades && p.nades > 0 && dist > 12 && dist < 26 && Math.random() < L.nades) { const d = [q.x - p.x, 0.28 * dist / 20, q.z - p.z], l = Math.hypot(...d); g.throwNade(p, d.map(x => x / l)); return; }
     if (now < b.pauseUntil || now < b.nextShot) return;
     const W = g.WEAPONS[w], aimY = q.y - (Math.random() < L.head ? HIT.headDrop : 0.56 * (q.eye / 1.7));   // the head centre, otherwise the chest (lower on a crouched target)
-    const dx = q.x - p.x, dz = q.z - p.z, dy2 = aimY - p.y, d3 = Math.hypot(dx, dy2, dz), sig = L.sigma * (b.moving ? 1.3 : 1) * (w === 2 ? 0.5 : 1) * (1 + dist / 150);   // the hit is judged at the click (the bullet only delays the damage), so no lead is needed
+    const dx = q.x - p.x, dz = q.z - p.z, dy2 = aimY - p.y, d3 = Math.hypot(dx, dy2, dz), sig = L.sigma * (b.moving ? 1.3 : 1) * (w === 2 ? 0.5 : 1) * (1 + dist / 150);   // the hit is judged at the click (the bullet only delays the damage), so no lead is needed — but the bullet falls, so the aim is lifted by its drop
+    const hold = bulletDrop(d3, W.vel || 560);   // the same arc the server flies (combat.mjs): aim this much above the target
     const rays = [];
     for (let i = 0; i < W.pellets; i++) {
       const e1 = gauss() * sig + (W.pellets > 1 ? gauss() * 0.03 : 0), e2 = gauss() * sig + (W.pellets > 1 ? gauss() * 0.03 : 0);
-      const yaw = Math.atan2(-dx, -dz) + e1, pitch = Math.asin(dy2 / d3) + e2, cp = Math.cos(pitch);
+      const yaw = Math.atan2(-dx, -dz) + e1, pitch = Math.asin(Math.max(-1, Math.min(1, (dy2 + hold) / d3))) + e2, cp = Math.cos(pitch);
       rays.push([-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp, d3, q.id]);
     }
     g.shoot(p, w, rays, 0);

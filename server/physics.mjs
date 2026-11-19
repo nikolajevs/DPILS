@@ -1,19 +1,25 @@
 /* The physics of the shots and the grenades, for the server and for the training game in the page: the same rules over
    two functions the caller brings, which house stands at a point (with its height in .top) and how high the ground is. */
+import { bulletDrop } from './combat.mjs';
 export function makePhysics(buildingAt, ground) {
   // how far from o along d (unit) a shot flies before the ground, a hill slope or a roof line stops it; len if it does
-  // not. The coarse scan steps 1.5 m; once a step is blocked, the wall is bisected to ~2 cm, so a hit just in front of
-  // the wall counts and one just behind it does not (the grace is HIT.grace in combat.mjs).
-  function freePath(o, d, len) {
+  // not. The scan starts at 0.3 m and steps 0.5 m through the first three metres, so a wall the shooter leans on stops
+  // the shot too (a 2 m start let point-blank walls and corner clips through); beyond that the step widens to 1.5 m.
+  // Once a step is blocked, the wall is bisected to ~2 cm, so a hit just in front of the wall counts and one just behind
+  // it does not (the grace is HIT.grace in combat.mjs). An origin already inside stone returns 0: the shot dies there.
+  // v (m/s), when given, bends the path down by the bullet's gravity (combat.mjs bulletDrop): the scan follows the same
+  // arc the bullet flies, so a long shot meets the ground sooner than the straight line would. Sight lines pass no v.
+  function freePath(o, d, len, v) {
     const block = t => {
-      const x = o[0] + d[0] * t, y = o[1] + d[1] * t, z = o[2] + d[2] * t, gr = ground(x, z);
+      const x = o[0] + d[0] * t, y = o[1] + d[1] * t - (v ? bulletDrop(t, v) : 0), z = o[2] + d[2] * t, gr = ground(x, z);
       if (y < gr) return true;   // the ground itself, a hill slope included
       const b = buildingAt(x, z);
       return !!(b && y < gr + (b.top || 12) - 1);
     };
-    for (let t = 2; t < len; t += 1.5) {
-      if (!block(t)) continue;
-      let lo = Math.max(0, t - 1.5), hi = t;
+    if (block(0)) return 0;
+    for (let t = 0.3, step = 0.5; t < len; t += step) {
+      if (!block(t)) { if (t >= 3) step = 1.5; continue; }
+      let lo = Math.max(0, t - step), hi = t;
       for (let i = 0; i < 6; i++) { const m = (lo + hi) / 2; if (block(m)) hi = m; else lo = m; }
       return hi;
     }

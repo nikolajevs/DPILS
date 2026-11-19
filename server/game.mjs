@@ -8,12 +8,13 @@
    (WEAPONS.vel) and the damage lands when the bullet arrives, not at the click. The hit is still judged against the target
    as the shooter saw it at the click (the position rewound by the shooter's lag, frozen for the flight), so “shoot where
    you see” holds while the bullet takes its time to get there. */
-import { FALL, HIT, INV, ITEMS, NADE, RELOAD_MS, RESERVE, RULES as R, WEAPONS, W_FALL, W_NADE, rayHit } from './combat.mjs';
+import { FALL, HIT, INV, ITEMS, NADE, RELOAD_MS, RESERVE, RULES as R, WEAPONS, W_FALL, W_NADE, bulletAt, bulletDir, rayHit } from './combat.mjs';
 import { LEVELS, botName, createBrain } from './bots.mjs';
 
 const TEAMS = ['Красные', 'Синие'], HX = 5200, HY = 4200;   // bounds a bit wider than the city
 const num = (v, lim) => (typeof v === 'number' && isFinite(v) ? Math.max(-lim, Math.min(lim, v)) : 0);
 const okWeapon = w => Number.isInteger(w) && w >= 0 && w < WEAPONS.length;
+export const MUZZLE = 0.6;   // the barrel stands this far along the ray from the eye; a wall nearer rests the muzzle on it (keep src/game/mp.js in step)
 
 export function createGame(opts) {
   const world = opts.world, FFA = opts.mode === 'ffa', MODE = FFA ? 'ffa' : 'team', WIN = opts.win || (FFA ? 20 : 30), NAME = opts.name || 'Даугавпилс', MAX = opts.maxPlayers || R.maxPlayers;
@@ -144,7 +145,10 @@ export function createGame(opts) {
   // forward in game time (advanceBullets, called by the 30 Hz clock and before every new shot). The geometry of the hit is
   // frozen at the click — every living enemy as the shooter saw them then (poseAt rewound by the shooter's lag), the same
   // lag compensation the instant shot used — so “shoot where you see” holds; but the damage and the report land only when
-  // the bullet gets there. A wall (freePath at the muzzle) ends the flight. Pellets of one shot that hit the same body are
+  // the bullet gets there. The path is the ballistic arc of combat.mjs (bulletAt/bulletDir): gravity pulls the bullet down
+  // ½·g·t² while it flies, so a 400 m sniper shot sinks ~1.17 m and needs holdover. Each substep tests the body along the
+  // arc's tangent at its start (over one 60 Hz substep the arc bends less than 2 mm — well inside HIT.grace). A wall or the
+  // ground (freePath along the same arc at the muzzle) ends the flight. Pellets of one shot that hit the same body are
   // summed and reported once (the shotgun reads as one blow).
   function advanceBullets(to) {
     if (!bullets.size) return;
@@ -157,17 +161,17 @@ export function createGame(opts) {
       while (t < to - 1e-4 && !gone) {   // the 1e-4 ms slack eats the float residual of the last substep, so it is not mistaken for the wall
         const nt = Math.min(to, t + 1000 / 60), seg = b.speed * (nt - t) / 1000, reach = Math.min(seg, b.max - dist);
         if (reach <= 1e-6) { gone = true; break; }
-        const o = [b.o[0] + b.d[0] * dist, b.o[1] + b.d[1] * dist, b.o[2] + b.d[2] * dist];
+        const o = bulletAt(b.o, b.d, dist, b.speed), dir = bulletDir(b.d, dist, b.speed);   // where the arc is now, and the way it goes
         let best = null;
         if (!roundOver) for (const { v, pose } of b.shot.poses) {   // the poses the shooter saw at the click, frozen
           if (!v.alive || nt <= v.protectUntil) continue;
-          const h = rayHit(o, b.d, reach + HIT.grace, pose);
+          const h = rayHit(o, dir, reach + HIT.grace, pose);
           if (h && h.t <= reach + HIT.grace && (!best || h.t < best.t)) best = { t: Math.min(h.t, reach), zone: h.zone, v };
         }
         if (best) {
           const total = dist + best.t, k = 1 - W.falloff * Math.min(1, total / W.range);
           const dmg = (best.zone === 1 ? W.head : best.zone === 2 ? W.dmg * HIT.legMul : W.dmg) * k;
-          const at = [b.o[0] + b.d[0] * total, b.o[1] + b.d[1] * total, b.o[2] + b.d[2] * total], s = b.shot;
+          const at = bulletAt(b.o, b.d, total, b.speed), s = b.shot;
           if (!s.hit) { s.hit = true; shooter.st.hitShots++; if (shooter.prof) shooter.prof.add('hits'); }
           const h = s.hits.get(best.v.id) || { v: best.v, dmg: 0, head: false, zone: 0, top: 0 };
           h.dmg += dmg; h.head = h.head || best.zone === 1; if (dmg > h.top) { h.top = dmg; h.zone = best.zone; } s.hits.set(best.v.id, h);
@@ -185,8 +189,10 @@ export function createGame(opts) {
     }
   }
   // a shot of p with weapon wi: rays [[dx, dy, dz], ...] (the page no longer claims a hit — the bullet judges for itself);
-  // lagMs: how far back the targets are looked at along the flight (0 for a bot). The 'shot' message carries the wall
-  // distance and a bullet id per ray so the page can fly its tracer and cut it at the body when 'bhit' comes.
+  // lagMs: how far back the targets are looked at along the flight (0 for a bot). The ray leaves the barrel, MUZZLE along
+  // the view, not the eye: a wall nearer than that rests the muzzle on it and the shot dies at the face. The 'shot'
+  // message carries the eye, the wall distance from the barrel and a bullet id per ray so the page can fly its tracer
+  // from the muzzle and cut it at the body when 'bhit' comes.
   function shoot(p, wi, rays, lagMs) {
     const W = WEAPONS[wi], t0 = now(); if (!Array.isArray(rays) || !rays.length || !p.alive) return;
     if (t0 - p.lastShot < W.gapMs) return;
@@ -194,22 +200,23 @@ export function createGame(opts) {
     if (p.mag[wi] <= 0) { if (p.bot) beginReload(p, wi, t0); return; }   // a bot reloads by itself; a player asks with 'reload'
     p.mag[wi]--; p.lastShot = t0;
     advanceBullets(t0);   // land the bullets already in the air before loosing new ones
-    const o = [p.x, p.y, p.z], out = [];
+    const eye = [p.x, p.y, p.z], out = [];
     // every living enemy as the shooter saw them at the click (lag-compensated), frozen for the whole flight: the page
     // aims at the same past, and a claim that drifted (lag, a crouch) must not cost a hit that was really there
     const foes = roundOver ? [] : [...players.values()].filter(v => v !== p && v.alive && (FFA || v.team !== p.team) && t0 > v.protectUntil);
-    const shot = { by: p.id, w: wi, o, hit: false, hits: new Map(), pending: 0, poses: foes.map(v => ({ v, pose: poseAt(v, t0 - lagMs) })) };
+    const shot = { by: p.id, w: wi, o: eye, hit: false, hits: new Map(), pending: 0, poses: foes.map(v => ({ v, pose: poseAt(v, t0 - lagMs) })) };
     for (const ray of rays.slice(0, W.pellets)) {   // a rifle shot is one ray, a shotgun shot is up to eight pellets
       if (!Array.isArray(ray)) continue;
       const d = [num(ray[0], 1), num(ray[1], 1), num(ray[2], 1)], l = Math.hypot(...d); if (l < 0.5) continue; d.forEach((x, i) => d[i] = x / l);
-      const wall = world.freePath(o, d, W.range), bid = nextBid++;
+      const wallEye = world.freePath(eye, d, W.range, W.vel || 560), mz = Math.min(MUZZLE, wallEye);   // the wall along the falling arc; pressed to a wall the barrel rests on it, the flight is zero
+      const o = [eye[0] + d[0] * mz, eye[1] + d[1] * mz, eye[2] + d[2] * mz], wall = wallEye - mz, bid = nextBid++;
       bullets.set(bid, { bid, by: p.id, w: wi, o, d, speed: W.vel || 560, last: t0, dist: 0, max: wall, shot });
       shot.pending++;
       out.push([+d[0].toFixed(4), +d[1].toFixed(4), +d[2].toFixed(4), +wall.toFixed(1), bid]);
     }
     if (!out.length) return;
     p.st.shots++; if (p.prof) p.prof.add('shots');
-    all({ t: 'shot', id: p.id, w: wi, o, rays: out });
+    all({ t: 'shot', id: p.id, w: wi, o: eye, rays: out });
   }
   function throwNade(p, u, sp = NADE.speed) {
     const t0 = now(); if (!p.alive || p.nades <= 0 || t0 - p.lastNade < NADE.cooldownMs || roundOver) return;
