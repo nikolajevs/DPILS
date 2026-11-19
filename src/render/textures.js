@@ -182,7 +182,16 @@ function roofAtlas() {
   g.putImageData(id, 0, 0);
   const t = toTex(cv, false, false); t.minFilter = THREE.LinearMipmapLinearFilter; return t;
 }
-function detailTex(kind) { // grey ≈ 128 means "no change"
+const DETAIL_FILES = ['grass', 'asph', 'pave', 'gravel'], detailCache = [];
+// Photographic detail (ambientCG CC0, textures/detail_*.webp, grey ≈ 128 means "no change"). The procedural noise below stands in
+// until the photograph has come; the texture object is kept, only its image swaps. One texture per kind is shared by all materials.
+function detailTex(kind) {
+  if (detailCache[kind]) return detailCache[kind];
+  const t = detailCache[kind] = detailNoise(kind);
+  new THREE.TextureLoader().load(`textures/detail_${DETAIL_FILES[kind]}.webp`, img => { t.image = img.image; t.needsUpdate = true; }, undefined, () => {});
+  return t;
+}
+function detailNoise(kind) {
   const S = 256, cv = mkCanvas(S, S), g = cv.getContext('2d'), id = g.createImageData(S, S), d = id.data;
   const n1 = fbm(S, [4, 8, 16, 32], kind * 17 + 3), n2 = valueNoise(S, 64, kind * 5 + 1);
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
