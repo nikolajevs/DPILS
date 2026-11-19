@@ -12,7 +12,7 @@ import { FLASH_SIZE, makeFlash } from './muzzle.js';
 import { SET, keyName, onChange } from './settings.js';
 import { firstGames } from './help.js';
 import { rememberServer } from '../ui/servers.js';
-import { addNade, blastGlow, boomNade, clearBlasts, clearNades, nadeSamples, tickNades, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
+import { addNade, blastGlow, boomNade, clearBlasts, clearNades, nadeSamples, tickNades, onNadeBounce, liveNades, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
 import { KINDS, SLOT_SVG, bindInv, setItems, itemBack, itemTook, tickItems, renderInv, invTick, closeInv, toggleInv } from './inventory.js';
 import { terrainH } from '../world/terrain.js';
 import { camera, canvas, renderer, scene } from '../render/renderer.js';
@@ -25,7 +25,7 @@ import { playerKey, boardOn, setBoardOn, account } from './identity.js';
 import { initLeaders } from './leaders.js';
 import { rest } from '../core/pause.js';
 import { $ } from '../core/env.js';
-import { boomSound, crackSound, hitSound, loadSounds, shotSound, stepSound } from './sfx.js';
+import { boomSound, crackSound, hitSound, loadSounds, nadeBounce, shotSound, stepSound } from './sfx.js';
 import { carAt, carPath } from '../world/car-hit.js';
 import { fxSamples, tracerShot, bindTracer, hitTracer, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke } from './impacts.js';
 
@@ -631,7 +631,7 @@ function join(local) {   // local: { bots, level, mode, arena } for the game aga
   ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, team: MP.wantTeam, key: local ? undefined : playerKey() || undefined, ...s })); };
   ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (err) { console.error(err); } };
   ws.onerror = () => { if (!MP.started) msg.textContent = 'Не удалось подключиться к ' + url; };
-  ws.onclose = () => { nadeCancel(); if (MP.started) { el('mpDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; if (!msg.textContent.startsWith('На сервере') && !msg.textContent.startsWith('Не удалось')) msg.textContent = 'Соединение закрыто.'; } };
+  ws.onclose = () => { nadeCancel(); el('nadeWarn').hidden = true; if (MP.started) { el('mpDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; if (!msg.textContent.startsWith('На сервере') && !msg.textContent.startsWith('Не удалось')) msg.textContent = 'Соединение закрыто.'; } };
 }
 let uiReady = false;
 function initUi() {   // the fields of the player and of the training: once, when the start card first needs them (or when the city is ready)
@@ -716,6 +716,45 @@ function crossTick(dt, now) {
   else crossEl.classList.remove('reloading');
 }
 
+// the clink of a grenade touching down, heard from where you stand (the page flies its own copy, so every touch is known
+// without a message): the impact speed and the distance set the volume, the side and the delay of the sound
+onNadeBounce((p, b) => {
+  if (!MP.on || MP.dead) return;
+  const d = Math.hypot(p[0] - P.x, p[2] - P.z); if (d > 50) return;
+  const s = spot(p[0], p[1], p[2]), vol = Math.min(1, b.sp / 12) * (1 - d / 50);
+  let real = false; try { real = nadeBounce(ac(), actx.master, b.kind, vol, d, s.pan); } catch (e) {}
+  if (!real) tone(1100, 650, 0.05, 0.16 * vol, 'triangle');
+});
+// the danger indicator: a live enemy grenade near you is marked on the screen, or at its edge with a pointer when it is
+// off to the side or behind; it pulses faster as the fuse runs out, so you know to move before it goes off
+const NW = new THREE.Vector3();
+function nadeWarnTick() {
+  const w = el('nadeWarn');
+  let best = null, bd = 1e9;
+  for (const n of liveNades()) {
+    if (n.by === MP.id) continue;
+    const r = remotes.get(n.by); if (!MP.ffa && r && r.team === MP.team) continue;
+    const d = Math.hypot(n.p[0] - P.x, n.p[1] - P.y, n.p[2] - P.z);
+    if (d < 12 && d < bd) { bd = d; best = n; }
+  }
+  if (!best || MP.dead) { w.hidden = true; return; }
+  w.hidden = false;
+  const left = Math.max(0, 2.5 - best.age), pulse = 0.55 + 0.45 * Math.sin(performance.now() / 1000 * (6 + (2.5 - left) * 7));
+  w.style.opacity = ((0.4 + 0.6 * (1 - bd / 12)) * pulse).toFixed(2);
+  NW.set(best.p[0], best.p[1], best.p[2]).project(camera);
+  const W = innerWidth, H = innerHeight, m = 52, cx = W / 2, cy = H / 2;
+  let x = (NW.x * 0.5 + 0.5) * W, y = (-NW.y * 0.5 + 0.5) * H;
+  const behind = NW.z > 1; if (behind) { x = W - x; y = H - y; }
+  const on = !behind && x > m && x < W - m && y > m && y < H - m;
+  if (!on) {
+    const ang = Math.atan2(y - cy, x - cx), hw = cx - m, hh = cy - m;
+    const t = Math.min(hw / Math.max(1e-6, Math.abs(Math.cos(ang))), hh / Math.max(1e-6, Math.abs(Math.sin(ang))));
+    x = cx + Math.cos(ang) * t; y = cy + Math.sin(ang) * t;
+    w.dataset.edge = '1'; w.style.setProperty('--ang', ang + 'rad');
+  } else w.dataset.edge = '0';
+  w.style.left = x + 'px'; w.style.top = y + 'px';
+}
+
 /* ---------- every frame ---------- */
 function mpTick(dt) {
   if (!MP.on) return;
@@ -737,7 +776,7 @@ function mpTick(dt) {
     if (el('mpDot').hidden === dot) el('mpDot').hidden = !dot;   // the red dot of the collimator; the crosshair hides itself in crossTick
     if (el('mpScope').hidden === (scoped && !dot)) el('mpScope').hidden = !(scoped && !dot);
     gun.visible = !MP.dead && !nv && (mode === 'sight' || MP.zoom < 0.5); }   // the grenade in hand (and the throw) replaces the gun; the long zoom hides the arms, the red dot keeps them
-  ownSteps(dt); tickNades(dt); tickItems(dt, now); spectate(now); nadeAimTick(now); nadeHandTick(nv);
+  ownSteps(dt); tickNades(dt); nadeWarnTick(); tickItems(dt, now); spectate(now); nadeAimTick(now); nadeHandTick(nv);
   if (MP.reloadAt && now - MP.reloadAt >= WEAPONS[MP.reloadW].reloadMs) {   // the local picture of the reload; the server's 'inv' message is the truth. It finishes on the weapon that started it, even if another is in hand now
     const rw = MP.reloadW; MP.reloadAt = 0; const k = Math.min(WEAPONS[rw].mag - MP.ammo[rw], MP.reserve[rw]);
     MP.ammo[rw] += k; MP.reserve[rw] -= k; updatePanel();

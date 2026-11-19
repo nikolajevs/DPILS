@@ -19,18 +19,46 @@ export function makePhysics(buildingAt, ground) {
     }
     return len;
   }
-  // one step of a grenade n = { p: [x, y, z], v: [vx, vy, vz] }: gravity, bounces on the ground, the roofs and the walls of houses
+  // one step of a grenade n = { p: [x, y, z], v: [vx, vy, vz] }: gravity, bounces on the ground, the roofs and the walls of
+  // houses. On a slope the bounce reflects about the ground's normal and the settled grenade rolls downhill, so a rampart
+  // throws it back the way it should instead of straight up. A real touch sets n.bounce = { sp, kind } (the impact speed and
+  // 'ground' | 'roof' | 'wall') for the page to clink; flat ground keeps exactly the old feel.
   function stepNade(n, dt, g) {
     const [px, py, pz] = n.p; n.v[1] -= g * dt;
     let x = px + n.v[0] * dt, y = py + n.v[1] * dt, z = pz + n.v[2] * dt;
     const b = buildingAt(x, z), gr = ground(x, z);
+    n.bounce = null;
     if (b) {
       const top = gr + (b.top || 12);
-      if (py >= top - 0.05) { if (y < top + 0.1) { y = top + 0.1; if (n.v[1] < 0) n.v[1] *= -0.35; n.v[0] *= 0.8; n.v[2] *= 0.8; } }   // lands on the roof
-      else {   // hits a wall: the axis that leads into the house is turned back
-        if (!buildingAt(px, z)) { x = px; n.v[0] *= -0.4; } else if (!buildingAt(x, pz)) { z = pz; n.v[2] *= -0.4; } else { x = px; z = pz; n.v[0] *= -0.4; n.v[2] *= -0.4; }
+      if (py >= top - 0.05) {   // lands on the roof
+        if (y < top + 0.1) {
+          y = top + 0.1;
+          if (n.v[1] < 0) { const sp = -n.v[1]; n.v[1] *= -0.35; n.v[0] *= 0.8; n.v[2] *= 0.8; if (sp > 1.2) n.bounce = { sp, kind: 'roof' }; if (Math.abs(n.v[1]) < 0.8) n.v[1] = 0; }
+        }
+      } else {   // hits a wall: the axis that leads into the house is turned back
+        let sp;
+        if (!buildingAt(px, z)) { x = px; sp = Math.abs(n.v[0]); n.v[0] *= -0.4; }
+        else if (!buildingAt(x, pz)) { z = pz; sp = Math.abs(n.v[2]); n.v[2] *= -0.4; }
+        else { x = px; z = pz; sp = Math.hypot(n.v[0], n.v[2]); n.v[0] *= -0.4; n.v[2] *= -0.4; }
+        if (sp > 1.2) n.bounce = { sp, kind: 'wall' };
       }
-    } else if (y < gr + 0.12) { y = gr + 0.12; if (n.v[1] < 0) n.v[1] *= -0.4; n.v[0] *= 0.7; n.v[2] *= 0.7; if (Math.abs(n.v[1]) < 0.8) n.v[1] = 0; }   // on the ground
+    } else if (y < gr + 0.12) {
+      y = gr + 0.12;
+      const e = 0.5, hx = (ground(x + e, z) - ground(x - e, z)) / (2 * e), hz = (ground(x, z + e) - ground(x, z - e)) / (2 * e);
+      if (hx * hx + hz * hz > 0.0064) {   // a slope: reflect about its normal, then roll downhill
+        const L = Math.hypot(hx, 1, hz), nx = -hx / L, ny = 1 / L, nz = -hz / L;
+        const vn = n.v[0] * nx + n.v[1] * ny + n.v[2] * nz;
+        if (vn < 0) {
+          const sp = -vn, tx = n.v[0] - vn * nx, ty = n.v[1] - vn * ny, tz = n.v[2] - vn * nz;
+          let rn = sp * 0.4; if (rn < 0.8) rn = 0; else if (sp > 1.2) n.bounce = { sp, kind: 'ground' };
+          n.v[0] = tx * 0.7 + rn * nx; n.v[1] = ty * 0.7 + rn * ny; n.v[2] = tz * 0.7 + rn * nz;
+        }
+        const k = g / (1 + hx * hx + hz * hz);   // gravity along the slope, into the horizontal
+        n.v[0] -= hx * k * dt; n.v[2] -= hz * k * dt;
+      } else if (n.v[1] < 0) {   // flat: the old bounce
+        const sp = -n.v[1]; n.v[1] *= -0.4; n.v[0] *= 0.7; n.v[2] *= 0.7; if (sp > 1.2) n.bounce = { sp, kind: 'ground' }; if (Math.abs(n.v[1]) < 0.8) n.v[1] = 0;
+      } else { n.v[0] *= 0.7; n.v[2] *= 0.7; }
+    }
     n.p = [x, y, z];
   }
   // where a person can stand: no house, not in the river, a pond or a moat (the ground more than two metres under the square)
