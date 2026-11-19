@@ -6,9 +6,12 @@
       so each shot is given the time to reach its target before the hit is read.
    2c. The blast push (g.stepNades drives the fuse by the test clock): the explosion throws the living away and up,
       the push fades with distance, stops at walls, spares teammates and the dead; a bot slides on the server.
+   2d. The fall damage: the client reports the height it landed from, the server caps it by the drop it saw itself;
+      a jump is free, a long fall kills, the spawn protection does not shield from one's own fall; a bot walks off
+      an edge and falls for real (g.stepBots drives its think by the test clock), a slope is walked without damage.
    3. A real bot fight on a flat arena (12 s of real time): with the small hitboxes the bots must still see,
       shoot and kill each other. */
-import { HIT, WEAPONS, NADE, rayHit } from '../server/combat.mjs';
+import { FALL, HIT, WEAPONS, NADE, W_FALL, rayHit } from '../server/combat.mjs';
 import { createGame } from '../server/game.mjs';
 import { makePhysics } from '../server/physics.mjs';
 
@@ -328,6 +331,70 @@ console.log('blast push (explode):');
   clock += 300;   // the think tick takes dt 0.2 of it: the bot slides and the push decays
   await new Promise(r => setTimeout(r, 250));   // let the real think clock fire
   ok(Math.hypot(bot.bot.kx, bot.bot.kz) < k0, 'the bot slide decays');
+  g.stop();
+}
+
+/* ---------- 2d. the fall damage: a landing from above the safe height hurts ---------- */
+console.log('fall damage (fall):');
+{
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), now: () => clock, name: 'fall' });
+  const A = seat(g, conn());
+  msg(A, { t: 'join', name: 'Прыгун', team: 0, x: 0, z: 0, yaw: 0 });
+  clock += 3000;   // past the spawn protection
+  const p = A.handle.player, st = y => msg(A, { t: 'state', x: 0, y, z: 0, yaw: 0, pitch: 0 });
+  // up on a 10 m wall (the server accepts the height: the ramparts are the client's knowledge), then the fall and the landing
+  st(11.7);
+  for (const y of [10.5, 8, 4.5, 1.7]) { clock += 100; st(y); }
+  msg(A, { t: 'fall', h: 10 });
+  ok(p.hp === 100 - Math.round((10 - FALL.safe) * FALL.k), 'a 10 m fall costs 56 hp', String(p.hp));
+  const hu = A.last('hurt');
+  ok(hu && hu.fall === 1 && hu.by === p.id, 'the hurt is marked as a fall, from oneself', JSON.stringify(hu));
+  msg(A, { t: 'fall', h: 10 });
+  ok(p.hp === 44, 'a second report without a new drop is free', String(p.hp));
+  st(2.6); clock += 80; st(1.7);
+  msg(A, { t: 'fall', h: 0.9 });
+  ok(p.hp === 44, 'a jump landing (under 3 m) is free', String(p.hp));
+  msg(A, { t: 'fall', h: 50 });
+  ok(p.hp === 44, 'a fall report without a seen drop cannot hurt', String(p.hp));
+  st(21.7);
+  for (const y of [18, 12, 6, 1.7]) { clock += 120; st(y); }
+  msg(A, { t: 'fall', h: 20 });
+  ok(!p.alive && p.hp <= 0, 'a 20 m fall kills', String(p.hp));
+  const k = A.last('kill');
+  ok(k && k.w === W_FALL && k.killer === k.victim, 'the kill feed calls it a fall, no killer credited', JSON.stringify(k));
+  // the spawn protection shields from the enemy, not from one's own fall (as the self blast)
+  const B = seat(g, conn());
+  msg(B, { t: 'join', name: 'Новичок', team: 1, x: 5, z: 0, yaw: 0 });
+  msg(B, { t: 'state', x: 5, y: 11.7, z: 0, yaw: 0, pitch: 0 });
+  msg(B, { t: 'state', x: 5, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(B, { t: 'fall', h: 10 });
+  ok(B.handle.player.hp === 44, 'the spawn protection does not shield from one\'s own fall', String(B.handle.player.hp));
+  g.stop();
+}
+{
+  // a bot walks off a 10 m edge and falls for real: gravity in think(), the landing hurts by the same rule
+  let clock = 1e6;
+  const cliff = (x, z) => (x < 0 ? 10 : 0);
+  const g = createGame({ world: flatWorld(() => null, cliff), arena: { cx: 0, cz: 0, r: 60, bases: [base(0, -25, 4), base(0, 25, 4)] }, now: () => clock, name: 'fallbot' });
+  const bot = g.addBot('easy');
+  bot.x = -2; bot.z = 0; bot.y = 11.7; bot.fallTop = 11.7;
+  bot.bot.path = [[5, 0]]; bot.bot.pi = 0; bot.bot.wpAt = clock;   // straight towards the edge and over it
+  for (let i = 0; i < 60; i++) { clock += 50; g.stepBots(0.05); }
+  ok(bot.alive && bot.hp === 44, 'the bot walked off the 10 m edge, fell and took 56', String(bot.hp));
+  ok(Math.abs(bot.y - 1.7) < 0.01, 'the bot stands on the ground below the edge', String(bot.y));
+  g.stop();
+}
+{
+  // a slope is walked down as before: no false fall, no damage
+  let clock = 1e6;
+  const slope = (x, z) => -0.25 * x;
+  const g = createGame({ world: flatWorld(() => null, slope), arena: { cx: 0, cz: 0, r: 60, bases: [base(0, -25, 4), base(0, 25, 4)] }, now: () => clock, name: 'fallslope' });
+  const bot = g.addBot('easy');
+  bot.x = -2; bot.z = 0; bot.y = slope(-2, 0) + 1.7; bot.fallTop = bot.y;
+  bot.bot.path = [[6, 0]]; bot.bot.pi = 0; bot.bot.wpAt = clock;
+  for (let i = 0; i < 60; i++) { clock += 50; g.stepBots(0.05); }
+  ok(bot.hp === 100, 'a slope is walked down without fall damage', String(bot.hp));
   g.stop();
 }
 

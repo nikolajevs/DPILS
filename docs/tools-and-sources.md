@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Chatbox | chatbox/fall-damage | Урон от падения: игрок и боты | src/game/player.js, src/game/mp.js, src/game/loop.js, server/combat.mjs, server/game.mjs, server/bots.mjs, tools/combat-test.mjs, README.md |
 
 ## Автономный цикл улучшений
 
