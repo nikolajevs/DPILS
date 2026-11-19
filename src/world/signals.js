@@ -4,6 +4,7 @@ import { COL, inBuilding, matPlain } from './data.js';
 import { STATE } from '../core/state.js';
 import { U, hook, scene } from '../render/renderer.js';
 import { GB, box, lathe, polyA } from '../core/geometry.js';
+import { walkH } from './walkgrid.js';
 import { hb } from '../core/util.js';
 
 /* ---------- traffic lights on 18. novembra iela ----------
@@ -50,13 +51,14 @@ function buildSignals(sorted, ZR, ZB, marks, WHITE, N18) {
   // a signal on a post at (bx, bz), its head facing (fx, fz): three lenses for traffic, two for pedestrians
   function signal(bx, bz, fx, fz, ped, role) {
     if (inBuilding(bx, bz)) return;
-    const y0 = ped ? 1.95 : 2.3, y1 = ped ? 2.65 : 3.4, hx = bx + fx * 0.05, hz = bz + fz * 0.05;
-    lathe(post, bx, bz, 0, [[0.07, 0], [0.06, y1 + 0.15]], 6, 0, POLE);
+    const lift = walkH(bx, bz);   // the post stands on the raised sidewalk
+    const y0 = (ped ? 1.95 : 2.3) + lift, y1 = (ped ? 2.65 : 3.4) + lift, hx = bx + fx * 0.05, hz = bz + fz * 0.05;
+    lathe(post, bx, bz, lift, [[0.07, 0], [0.06, y1 + 0.15]], 6, 0, POLE);
     box(post, hx, hz, fx, fz, 0.12, ped ? 0.14 : 0.17, y0, y1, HEAD);
     if (!ped) box(post, hx - fx * 0.13, hz - fz * 0.13, fx, fz, 0.015, 0.3, y0 - 0.1, y1 + 0.1, HEAD);   // the backplate
     const lx = hx + fx * 0.125, lz = hz + fz * 0.125;
-    if (ped) { lensAt(lx, 2.45, lz, fx, fz, 0.1, 'r', role); lensAt(lx, 2.15, lz, fx, fz, 0.1, 'g', role); }
-    else { lensAt(lx, 3.12, lz, fx, fz, 0.11, 'r', role); lensAt(lx, 2.85, lz, fx, fz, 0.11, 'a', role); lensAt(lx, 2.58, lz, fx, fz, 0.11, 'g', role); }
+    if (ped) { lensAt(lx, 2.45 + lift, lz, fx, fz, 0.1, 'r', role); lensAt(lx, 2.15 + lift, lz, fx, fz, 0.1, 'g', role); }
+    else { lensAt(lx, 3.12 + lift, lz, fx, fz, 0.11, 'r', role); lensAt(lx, 2.85 + lift, lz, fx, fz, 0.11, 'a', role); lensAt(lx, 2.58 + lift, lz, fx, fz, 0.11, 'g', role); }
     COL.add(bx, bz, bx + 0.01, bz, 0.12, 0);
   }
   // the lines of the streets near (cx, cz): each with its point nearest the junction

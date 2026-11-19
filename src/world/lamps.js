@@ -4,6 +4,7 @@ import { COL, inBuilding, inWater, matPlain } from './data.js';
 import { glowTex } from '../render/textures.js';
 import { bridgeY, terrainH } from './terrain.js';
 import { upNoLamp } from './underpass.js';
+import { walkH } from './walkgrid.js';
 import { hook, scene } from '../render/renderer.js';
 import { GB, box, lathe } from '../core/geometry.js';
 import { hb, lin } from '../core/util.js';
@@ -35,9 +36,9 @@ function buildLamps() {
     bx.makeEmpty();
     list.forEach((i, k) => {
       const x = LAMPS[3 * i], z = LAMPS[3 * i + 1], a = LAMPS[3 * i + 2]; q.setFromAxisAngle(up, a);
-      const ld = [Math.cos(a), -Math.sin(a)], by = bridgeY(x, z, ld[0], ld[1]); M.compose(bp.set(x - cx, by, z - cz), q, S1); poles.setMatrixAt(k, M); heads.setMatrixAt(k, M);
+      const ld = [Math.cos(a), -Math.sin(a)], by = bridgeY(x, z, ld[0], ld[1]) + walkH(x, z); M.compose(bp.set(x - cx, by, z - cz), q, S1); poles.setMatrixAt(k, M); heads.setMatrixAt(k, M);
       const hx = x + Math.cos(-a) * 1.35, hz = z + Math.sin(-a) * 1.35;
-      M.compose(bp.set(hx - cx, 0.06 + bridgeY(hx, hz, ld[0], ld[1]), hz - cz), q, new THREE.Vector3(22, 1, 22)); pools.setMatrixAt(k, M);
+      M.compose(bp.set(hx - cx, 0.06 + bridgeY(hx, hz, ld[0], ld[1]) + walkH(hx, hz), hz - cz), q, new THREE.Vector3(22, 1, 22)); pools.setMatrixAt(k, M);
       // the culling sphere of the tile: the pools reach 11 m round the head, the poles 8.2 m up; the shaders lift all by the terrain
       const y = by + terrainH(x, z); bx.expandByPoint(bp.set(x - cx - 13, y - 1, z - cz - 13)); bx.expandByPoint(bp.set(x - cx + 13, y + 9, z - cz + 13));
       COL.add(x, z, x + 0.01, z, 0.15, 0);

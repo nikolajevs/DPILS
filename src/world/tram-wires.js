@@ -8,6 +8,7 @@ import { COL, TRAMLINES, inBuilding } from './data.js';
 import { groundMaterial } from '../render/materials.js';
 import { detailTex } from '../render/textures.js';
 import { bridgeY, vbLift } from './terrain.js';
+import { walkH } from './walkgrid.js';
 import { scene } from '../render/renderer.js';
 import { GB, SegGrid, box, polyA } from '../core/geometry.js';
 import { hb, sh } from '../core/util.js';
@@ -23,7 +24,7 @@ import { WL } from '../core/env.js';
    overpass like the vehicles do. */
 function lmTramWires(K) {
   const G = K.plain, POLE = hb('#7b8084'), WIRE = hb('#2b2d2f'), CW = 5.8, TL = TRAMLINES; if (!TL.length) return;
-  const lift = (x, z) => vbGround(x, z) + vbLift(x, z) + bridgeY(x, z), P3 = (x, z, y) => [x, y + lift(x, z), z];
+  const lift = (x, z) => vbGround(x, z) + vbLift(x, z) + bridgeY(x, z) + walkH(x, z), P3 = (x, z, y) => [x, y + lift(x, z), z];
   const grid = new SegGrid(20); TL.forEach((p, li) => { for (let i = 0; i < p.length - 2; i += 2) grid.add(p[i], p[i + 1], p[i + 2], p[i + 3], li, 0); });
   const inRoad = (x, z) => { let best = null, bd = 1e9; CARROAD.near(x, z, 10, (id, d) => { if (CARROAD.s[id * 6 + 5] <= 3 && d < CARROAD.s[id * 6 + 4] - 0.3 && d < bd) { bd = d; best = id; } }); return best; };
   // the carriageways along a track near (x, z): each one's extent across it, as offsets along the track's left normal
