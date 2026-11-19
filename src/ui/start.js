@@ -8,7 +8,7 @@ import { $ } from '../core/env.js';
    First a choice: a walk through the city, a training against bots, or a game on a server. Only then the settings of
    that choice, with a way back; and within them, a setting shows only when it means something: the team not in a
    training where everyone is for himself, the place to appear only in the open city (in an arena you appear on your
-   base), the hair only for a man or a woman (src/game/mp.js), the field for another server only when the list does not
+   base), the field for another server only when the list does not
    have it (src/ui/servers.js). The keys are folded under «Управление». The time of day is chosen on the first step,
    before any game, and kept in localStorage; mid-game (the card reopened by «?») its row is hidden. */
 const card = $('startCard'), home = $('stepHome'), form = $('play');
