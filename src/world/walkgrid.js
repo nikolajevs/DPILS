@@ -2,8 +2,8 @@ import { SegGrid } from '../core/geometry.js';
 
 /* ---------- raised sidewalks ----------
    The sidewalks are slabs WH above the road (src/world/streets.js lays them, with a kerb along the road edge).
-   Everything that walks or stands on them finds the extra height here: walkLift adds it for the player and the
-   walkers, the lamps, the signal posts, the stop shelters and the tram poles add it where they stand. The strips
+   Everything that walks or stands on them finds the extra height here: walkLift adds it for the player, and the
+   lamps, the signal posts, the stop shelters and the tram poles add it where they stand. The strips
    are registered per segment of the laid sidewalk, shifted to its own centre line, with the half width as the
    lateral bounds, so a query is a short lateral test. The bounds ride in the segment's extra fields. */
 const WH = 0.13;

@@ -78,7 +78,7 @@ function railBar(b, p, off, hw = 0.036, h = 0.17) {
    The sidewalk is a slab WH above the road: a paved top with a slight fall towards the kerb, concrete skirts down
    to the ground on both edges and caps at the ends, so it reads as a slab from the street, not a painted sheet. The
    top goes into the paving group, the skirts into the plain concrete one; the strip is registered for walkH, which
-   lifts the player, the walkers, the lamps, the signals and the stops onto it. The kerb is a stone CH high along the
+   lifts the player, the lamps, the signals and the stops onto it. The kerb is a stone CH high along the
    road edge, laid over the same clipped runs as its painted apron: a battered face towards the road, a flat top, a
    back face hidden in the sidewalk slab. Where the runs stop at a junction the slab's own skirt shows as the corner
    kerb. CH stands a little above WH so the kerb reads against the paving. */

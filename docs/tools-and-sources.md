@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/curbs-ground | Объёмные бордюры и приподнятые тротуары, bump/шероховатость земли | src/world/streets.js, src/render/materials.js, src/world/pedestrians.js, src/world/lamps.js, src/transit/transit.js |
 
 ## Автономный цикл улучшений
 
