@@ -5,7 +5,7 @@ import { PLACES } from '../ui/places.js';
 import { buildingAt, onRoad } from '../world/data.js';
 import { PERF } from './perf.js';
 import { worldSpace } from '../render/world-space.js';
-import { gunModel, gunSource, loadAvatar, loadHumans, makeAvatar, parseLook, humansReady } from './avatar.js';
+import { gunModel, gunSource, loadAvatar, makeAvatar } from './avatar.js';
 import { drawOver, loadAK, makeViewmodel } from './viewmodel.js';
 import { onProps, prop } from './props.js';
 import { FLASH_SIZE, makeFlash } from './muzzle.js';
@@ -125,31 +125,30 @@ function makeFigure(hue) {
   const head = new THREE.Mesh(GEO.head, ms); head.position.set(0, 1.58, 0); g.add(head);
   g.userData.head = head; g.userData.arm = arm; return g;
 }
-function addRemote(id, name, team, look) {
+function addRemote(id, name, team) {
   if (remotes.has(id) || id === MP.id) return remotes.get(id);
   const hue = MP.ffa ? (id * 0.381966) % 1 : (HUE[team] ?? 0.3), group = makeFigure(hue), tag = document.createElement('div'); tag.className = 'mp-tag ' + (MP.ffa ? 'tf' : 't' + team); if (MP.ffa) tag.style.background = 'hsla(' + Math.round(hue * 360) + ', 55%, 32%, .78)'; tag.textContent = name || '…'; group.visible = false; scene.add(group); $('mpTags').append(tag);
-  const r = { id, name, team, hue, group, buf: [], tag, look: parseLook(look) ? look : '', figHead: group.userData.head, figArm: group.userData.arm }; remotes.set(id, r); attachAvatar(r); return r;
+  const r = { id, name, team, hue, group, buf: [], tag, figHead: group.userData.head, figArm: group.userData.arm }; remotes.set(id, r); attachAvatar(r); return r;
 }
 /* ---------- the models of the game, loaded with the city ----------
-   The arms with the AK (viewmodel.js, their file also has the AK of the others), the soldier and the guns, the people
-   (avatar.js; the bots put them on at random) and the items of the map (props.js) are loaded while the city is built
-   (src/main.js), and the arms are put on the camera. One player of each look, with every gun, one of each item and one
+   The arms with the AK (viewmodel.js, their file also has the AK of the others), the soldier and the guns
+   (avatar.js) and the items of the map (props.js) are loaded while the city is built
+   (src/main.js), and the arms are put on the camera. One player with every gun, one of each item and one
    of each mark of a firefight join the scene for the warm-up of the city's shaders (render/post.js warmUp), their
    textures sent to the GPU. So a game starts with the
    ready models from its first frame, without a pause at the first player or the first shot. The samples leave the
-   scene after the first frame; their materials are not disposed, so the programs stay compiled for the players and
-   the people of the streets to come. The boxes of makeFigure and of the gun in hand remain for a file that did not come. */
+   scene after the first frame; their materials are not disposed, so the programs stay compiled for the players
+   to come. The boxes of makeFigure and of the gun in hand remain for a file that did not come. */
 let modelsP = null, modelsDone = false, samples = null;
-const SAMPLE_LOOKS = ['', 'm.0.0.1', 'm.1.1', 'm.2.2', 'f.0.3', 'f.1.4', 'f.2.0'];   // the soldier, every haircut (and the beard)
 // onPart(f): the share of the files that have come (the loading bar)
 function loadModels(onPart) {
   if (modelsP) return modelsP;
-  const files = [loadAK(), loadAvatar(), loadHumans(), new Promise(r => onProps(r))]; let n = 0;
+  const files = [loadAK(), loadAvatar(), new Promise(r => onProps(r))]; let n = 0;
   if (onPart) for (const f of files) f.then(() => onPart(++n / files.length));
   modelsP = Promise.all(files).then(([k, a]) => {
     if (k) upgradeAK(); if (a) upgradeViewmodels();
     samples = new THREE.Group(); samples.visible = false;
-    for (const look of SAMPLE_LOOKS) { const av = makeAvatar(HUE[0], look); if (av) samples.add(av.root); }
+    const av = makeAvatar(HUE[0]); if (av) samples.add(av.root);
     for (const o of [...fxSamples(), ...nadeSamples(), vm && vm.nadeSample(), prop('ammo'), prop('med'), prop('sight'), prop('optic')]) if (o) samples.add(o);
   }).catch(e => console.error(e)).finally(() => { modelsDone = true; });
   return modelsP;
@@ -164,22 +163,14 @@ async function warmSamples(on) {
   for (const root of [samples, camera]) root.traverse(o => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const v of Object.values(m)) if (v && v.isTexture) tex.add(v); });
   for (const t of tex) { await rest(); renderer.initTexture(t); }
 }
-// the ready animated model instead of the simple figure; look — the chosen person (the soldier if the people's files did not come)
+// the ready animated model instead of the simple figure (the soldier; the boxes remain if the file did not come)
 function attachAvatar(r) {
   if (r.av) return;
   if (!modelsDone) { loadModels().then(() => { if (!r.av && remotes.has(r.id)) attachAvatar(r); }); return; }   // only if the city was ready before the files
-  const av = makeAvatar(r.hue, humansReady() ? r.look : ''); if (!av) return;
+  const av = makeAvatar(r.hue); if (!av) return;
   for (const c of r.group.children) c.visible = false; r.group.add(av.root); r.av = av;
   (r.attach || []).forEach((k, w) => av.setAttach(w, k));   // the sights the server says this player mounted
   if (av.root.userData.head) { r.group.userData.head = av.root.userData.head; r.group.userData.arm = av.root.userData.arm; }   // the aim turns the proxies of the person
-}
-function rebuildAvatar(r) {   // the look changed on the board: the old model off, the new one on
-  if (r.av) {
-    r.group.remove(r.av.root);
-    r.av.root.traverse(o => { if (o.isMesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.dispose(); });
-    r.av = null; r.group.userData.head = r.figHead; r.group.userData.arm = r.figArm;
-  }
-  attachAvatar(r);
 }
 // the gun in your own hands: the ready models in place of the boxes
 function upgradeViewmodels() {
@@ -569,7 +560,7 @@ function respawn() {
 /* ---------- messages from the server ---------- */
 function onMsg(m) {
   switch (m.t) {
-    case 'hello': MP.ffa = m.mode === 'ffa'; document.body.classList.toggle('ffa', MP.ffa); if (MP.ffa) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } if (!MP.local) rememberServer(MP.url, m.server); voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team, e.look); document.body.dataset.team = m.team;
+    case 'hello': MP.ffa = m.mode === 'ffa'; document.body.classList.toggle('ffa', MP.ffa); if (MP.ffa) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } if (!MP.local) rememberServer(MP.url, m.server); voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team); document.body.dataset.team = m.team;
       MP.arena = m.arena || null; clearFx(); clearBlasts(); setItems(m.items);
       for (const [id, a] of Object.entries(m.attach || {})) { const r = remotes.get(+id); if (r && Array.isArray(a)) { r.attach = a; if (r.av) a.forEach((k, w) => r.av.setAttach(w, k)); } } if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
       if (MP.local) feed('Тренировка с ботами: ' + MP.board.filter(e => e.bot).length + ', уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || '') + '»', 'sys'); break;
@@ -600,7 +591,7 @@ function onMsg(m) {
     }
     case 'kill': { feed(m.kn + '  ➜  ' + m.vn + (m.w === 9 ? '  (граната)' : m.head ? '  (в голову)' : ''), m.killer === MP.id ? 'mine' : m.victim === MP.id ? 'dead' : ''); if (m.killer === MP.id) { MP.kills++; if (m.victim !== MP.id) statEvent('kill', m, !!MP.local); } if (m.victim === MP.id) { MP.deaths++; statEvent('death', {}, !!MP.local); if (!MP.dead) die(m.kn, m.killer); } else { const rv = remotes.get(m.victim); if (rv && rv.buf.length) { rv.fallT = performance.now(); rv.corpse = { ...rv.buf[rv.buf.length - 1] }; } } updatePanel(); break; }
     case 'alive': { const r = remotes.get(m.id); if (r) { r.buf.length = 0; r.fallT = 0; } break; }
-    case 'board': MP.board = m.board; MP.score = m.score; for (const e of m.board) { const r = addRemote(e.id, e.name, e.team, e.look); if (r) { r.name = e.name; r.tag.textContent = e.name; const look = parseLook(e.look) ? e.look : ''; if (look !== r.look) { r.look = look; rebuildAvatar(r); } } if (e.id === MP.id) { MP.kills = e.kills; MP.deaths = e.deaths; } } for (const id of [...remotes.keys()]) if (!m.board.some(e => e.id === id)) dropRemote(id); drawBoard(); updatePanel(); if (voice) voice.setPeers(m.board.filter(e => e.id !== MP.id && !e.bot).map(e => e.id)); break;
+    case 'board': MP.board = m.board; MP.score = m.score; for (const e of m.board) { const r = addRemote(e.id, e.name, e.team); if (r) { r.name = e.name; r.tag.textContent = e.name; } if (e.id === MP.id) { MP.kills = e.kills; MP.deaths = e.deaths; } } for (const id of [...remotes.keys()]) if (!m.board.some(e => e.id === id)) dropRemote(id); drawBoard(); updatePanel(); if (voice) voice.setPeers(m.board.filter(e => e.id !== MP.id && !e.bot).map(e => e.id)); break;
     case 'left': dropRemote(m.id); break;
     case 'nade': { const own = m.by === MP.id && !!NTHROW.at; addNade(m, own ? (vm && vm.canNade ? vm.nadeAt(MV) : nadeBall.getWorldPosition(MV)) : null); if (own) NTHROW.gone = true; } if (m.by !== MP.id) { const rt = remotes.get(m.by); if (rt) rt.throwAt = performance.now(); const dd = Math.hypot(m.p[0] - P.x, m.p[2] - P.z); if (dd < 40) tone(500, 300, 0.08, 0.1 * (1 - dd / 40), 'triangle'); } break;
     case 'item': itemBack(m); break;
@@ -642,26 +633,14 @@ function showGame() {
 function join(local) {   // local: { bots, level, mode, arena } for the game against bots in the page, with no server
   const name = el('mpName').value.trim(), url = local ? 'local:' : serverUrl(), msg = el('mpMsg');
   if (!url) { msg.textContent = 'Укажите адрес сервера (поле «Сервер»).'; return; }
-  const look = uiLook();
-  try { localStorage.setItem('dpils.mp', JSON.stringify({ name, server: el('mpServer').value.trim(), spawn: el('mpSpawn').value, team: el('mpTeam').value, look })); } catch (e) {}
+  try { localStorage.setItem('dpils.mp', JSON.stringify({ name, server: el('mpServer').value.trim(), spawn: el('mpSpawn').value, team: el('mpTeam').value })); } catch (e) {}
   MP.spawn = +el('mpSpawn').value; MP.wantTeam = +el('mpTeam').value; MP.url = url; MP.local = local || null; loadModels(); msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true; el('goTrain').disabled = true;
   let ws; try { ws = local ? openLocal(local) : new WebSocket(url); } catch (e) { msg.textContent = 'Неверный адрес сервера.'; el('goPlay').disabled = false; el('goTrain').disabled = false; return; }
   MP.ws = ws; MP.started = false;
-  ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, team: MP.wantTeam, look: look || undefined, key: local ? undefined : playerKey() || undefined, ...s })); };
+  ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, team: MP.wantTeam, key: local ? undefined : playerKey() || undefined, ...s })); };
   ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (err) { console.error(err); } };
   ws.onerror = () => { if (!MP.started) msg.textContent = 'Не удалось подключиться к ' + url; };
   ws.onclose = () => { nadeCancel(); if (MP.started) { el('mpDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; if (!msg.textContent.startsWith('На сервере') && !msg.textContent.startsWith('Не удалось')) msg.textContent = 'Соединение закрыто.'; } };
-}
-// the chosen person: sex, haircut, hair colour, beard — a short string for the join message and the memory of the browser
-const HAIR_NAMES = { m: ['Короткая', 'Ёжик', 'Пробор'], f: ['Длинные', 'Пучки', 'Короткие'] };
-function uiLook() {
-  const sex = el('mpChar').value; if (!sex) return '';
-  return sex + '.' + (el('mpHair').value || '0') + '.' + (el('mpHairCol').value || '0') + (sex === 'm' && el('mpBeard').checked ? '.1' : '');
-}
-function charUi() {
-  const sex = el('mpChar').value, hs = el('mpHair'); hs.textContent = '';
-  (HAIR_NAMES[sex] || []).forEach((n, i) => { const o = document.createElement('option'); o.value = i; o.textContent = n; hs.append(o); });
-  el('mpHairRow').hidden = el('mpHairColRow').hidden = !sex; el('mpBeardRow').hidden = sex !== 'm';
 }
 let uiReady = false;
 function initUi() {   // the fields of the player and of the training: once, when the start card first needs them (or when the city is ready)
@@ -669,10 +648,7 @@ function initUi() {   // the fields of the player and of the training: once, whe
   const sel = el('mpSpawn'); sel.textContent = '';
   PLACES.forEach((p, i) => { const o = document.createElement('option'); o.value = i; o.textContent = p[0]; sel.append(o); });
   const r = document.createElement('option'); r.value = -1; r.textContent = 'Случайное место'; sel.append(r);
-  el('mpChar').onchange = charUi;
-  try { const s = JSON.parse(localStorage.getItem('dpils.mp') || '{}'); if (s.name) el('mpName').value = s.name; if (s.server) el('mpServer').value = s.server; if (s.spawn != null) sel.value = s.spawn; if (s.team != null) el('mpTeam').value = s.team;
-    const L = parseLook(s.look); if (L) { el('mpChar').value = L.sex; charUi(); el('mpHair').value = L.hair; el('mpHairCol').value = L.col; el('mpBeard').checked = !!L.beard; }
-  } catch (e) {}
+  try { const s = JSON.parse(localStorage.getItem('dpils.mp') || '{}'); if (s.name) el('mpName').value = s.name; if (s.server) el('mpServer').value = s.server; if (s.spawn != null) sel.value = s.spawn; if (s.team != null) el('mpTeam').value = s.team; } catch (e) {}
   const acc = account(); if (acc) el('mpName').value = acc.name;   // the account's nick belongs to its key on the server
   el('mpName').placeholder = 'Игрок' + (100 + Math.floor(Math.random() * 900));
   if (!el('mpName').value) el('mpName').value = el('mpName').placeholder;

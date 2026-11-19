@@ -117,10 +117,6 @@
         <legend>Игрок</legend>
         <label>Ник<input id="mpName" maxlength="16" autocomplete="off"></label>
         <label id="mpTeamRow">Команда<select id="mpTeam"><option value="-1">Любая (по балансу)</option><option value="0">Красные</option><option value="1">Синие</option></select></label>
-        <label>Персонаж<select id="mpChar"><option value="">Солдат</option><option value="m">Мужчина</option><option value="f">Женщина</option></select></label>
-        <label id="mpHairRow" hidden>Причёска<select id="mpHair"></select></label>
-        <label id="mpHairColRow" hidden>Цвет волос<select id="mpHairCol"><option value="0">тёмный</option><option value="1">каштановый</option><option value="2">русый</option><option value="3">светлый</option><option value="4">седой</option></select></label>
-        <label class="chk" id="mpBeardRow" hidden><input type="checkbox" id="mpBeard"> Борода</label>
         <label id="mpSpawnRow">Где появиться<select id="mpSpawn"></select></label>
       </fieldset>
       <div class="step-part srv-part" data-for="online">
@@ -203,7 +199,7 @@
 <div class="mp-dead" id="mpOver" hidden><div class="panel"><h2>Соединение с сервером потеряно</h2><button class="go" id="mpOverBtn">Начать заново</button></div></div>
 <div class="joy" id="joy" hidden><i id="joyKnob"></i></div>
 
-<!-- three.js for the unbundled page (GitHub Pages serves the repository as it is); Vite bundles it from npm instead -->
+<!-- three.js for the unbundled page (legacy static hosting à la GitHub Pages); the production VPS serves the Vite build from dist/ instead -->
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/" } }</script>
 <script type="module" src="./src/boot.js"></script>
 </body>
