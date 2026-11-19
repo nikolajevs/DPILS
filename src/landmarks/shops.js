@@ -44,7 +44,7 @@ const SHOPS = [
   { id: 'n460001555', b: 'maxima', n: 'Maxima X', a: 'Strādnieku iela 103', k: 'in', p: [1215.2, 153.3], e: [1204, 165.7] },
   { id: 'n4128737289', b: 'maxima', n: 'Maxima X', a: 'Arhitektu iela 3', k: 'box', p: [1230.9, -1012.4], e: [1257.4, -1029.1] },
   { id: 'n8746469346', b: 'maxima', n: 'Maxima X', a: 'Kandavas iela 5', k: 'in', p: [-1688, 991.4], pk: [-1676.6, 999.1] },
-  { id: 'n1314059910', b: 'maxima', n: 'Maxima XX', a: 'Cietokšņa iela 60', k: 'box', p: [-1183.7, 844.8], pk: [-1151.2, 829.1] },
+  { id: 'n1314059910', b: 'maxima', n: 'Maxima XX', a: 'Cietokšņa iela 60', k: 'box', p: [-1183.7, 844.8], e: [-1224.4, 804.6], pk: [-1151.2, 829.1] },
   { id: 'w115783101', b: 'mego', n: 'Mego', a: 'Inženieru iela 3', k: 'box', p: [1332.6, -1149.9], pk: [1358, -1134] },   // the long side on the street (photographs)
   { id: 'w238279628', b: 'mego', n: 'Mego', a: 'Valkas iela 1A', k: 'box', p: [1295.4, 316.8], pk: [1280, 310.4] },
   { id: 'n9061242848', b: 'mego', n: 'Mego', a: 'Aveņu iela 26', k: 'osm', p: [-791.3, -2082.8], pk: [-823.8, -2101.3], o: [[-789.6, -2118], [-792.7, -2113.4], [-793.8, -2111.7], [-815.2, -2080.1], [-823.6, -2067.8], [-821.8, -2066.5], [-820.1, -2065.1], [-818.5, -2063.9], [-816.1, -2051], [-812, -2048.4], [-802.1, -2063.5], [-786.7, -2053.8], [-757.9, -2096.5], [-781.2, -2112.2], [-784.9, -2114.8], [-787.3, -2116.4]] },
@@ -308,14 +308,79 @@ function storeBox(K, S, r, H, gbc) {
     flat(Fw, s - w / 2, s + w / 2, yb, yb + hh, 0.25, t);
   } else {
     lmBoxW(G, Fw, sc - gw / 2 - 0.3, sc + gw / 2 + 0.3, st.gTop + 0.05, st.gTop + 0.35, -st.canopy, 0, hb(S.b === 'mego' ? '#2e3033' : '#d6d9db'));
-    const name = signOf(S), t = CT[name], room = H - 0.3 - (st.gTop + 0.55), h = Math.max(0.9, Math.min(t.h, room, (gw + 1) * t.h / t.w));
-    board(K, Fw, name, sc, st.gTop + 0.55, h, 0.12, S.b === 'beta' ? '#c9252c' : null);
+    const name = signOf(S), t = CT[name], yb = st.gTop + (S.b === 'maxima' && /XX/.test(S.n) ? 0.8 : 0.55), room = H - 0.3 - yb, h = Math.max(0.9, Math.min(t.h, room, (gw + 1) * t.h / t.w));
+    board(K, Fw, name, sc, yb, h, 0.12, S.b === 'beta' ? '#c9252c' : null);
   }
   // machines on the roof
   const [cx, cz] = inner(r); STATE.GBC = gbc;
   if (!st.pitched) for (const [a, b] of [[0, 0], [3.5, 1.5], [-3, -2]]) { const x = cx + Fw.tx * a - Fw.nx * b, z = cz + Fw.tz * a - Fw.nz * b; if (pip(x, z, r)) box(G, x, z, Fw.tx, Fw.tz, 1.1, 0.7, H - 0.45, H + 0.85, hb('#a7abae')); }
   if (S.slat) slatBlock(K, S);
+  if (S.b === 'maxima' && /XX/.test(S.n)) maximaXX(K, S, r, H, front, gbc);
   if (st.pylon && (S.b !== 'maxima' || /XX/.test(S.n)) && (S.b !== 'rimi' || /Hyper|Super/.test(S.n) || L > 30)) pylon(K, S, r, fi, signOf(S), gbc);
+}
+/* Maxima XX on Cietokšņa iela 60, the big store next to Ditton nams: over the plain walls of storeBox a glazed
+   vestibule of the entrance (two pairs of sliding doors, a white roof slab with a blue fascia), a shelter with the
+   shopping trolleys, bollards along the glazing, a bin and a bike rack; panel joints on the long walls;
+   steel service doors, lamps and downpipes on the other walls; on the roof rooftop units, condensers, vent stacks, hatches and rows of skylights. */
+function maximaXX(K, S, r, H, front, gbc) {
+  if (!front) return;
+  const G = K.plain, { Fw, L, sc, gw, i: fi } = front, n = r.length >> 1, BL = hb('#1d3d8f'), WH = hb('#f1f2f0'), GR = hb('#a7abae'), DG = hb('#6c7074');
+  let sd = 4177; const rr = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+  const freeAt = (F, s, d) => { const [x, , z] = F.at(s, 0, d); STATE.GBC = levelAt(x, z); return [x, z]; };
+  // the vestibule over the middle of the glazing: a glass front in four modules with the doors in the two middle ones, solid white sides, a roof slab with a blue fascia
+  const vw = Math.min(10, gw - 2), dp = 2.8, vh = 3.55, v0 = sc - vw / 2, v1 = sc + vw / 2, m = 4, mw = vw / m;
+  for (let k = 0; k < m; k++) flat(Fw, v0 + k * mw, v0 + (k + 1) * mw, 0.1, vh, -dp, k === 1 || k === 2 ? CT.door : CT.glass);
+  for (const s of [v0, v1 - 0.25]) lmBoxW(G, Fw, s, s + 0.25, 0, vh + 0.3, -dp - 0.05, -0.05, WH);
+  for (let k = 1; k < m; k++) lmBoxW(G, Fw, v0 + k * mw - 0.05, v0 + k * mw + 0.05, 0, vh, -dp - 0.07, -dp, hb('#b9bdc1'), false);
+  lmBoxW(G, Fw, v0 - 0.2, v1 + 0.2, vh, vh + 0.3, -dp - 0.3, 0, WH);
+  lmBoxW(G, Fw, v0 - 0.2, v1 + 0.2, vh - 0.05, vh + 0.3, -dp - 0.33, -dp - 0.3, BL);
+  lmBoxW(G, Fw, v0 - 0.2, v1 + 0.2, vh + 0.3, vh + 0.36, -dp - 0.3, 0, DG);
+  for (const q of [-2.2, 2.2]) { const [x, z] = freeAt(Fw, sc + q, -dp - 1.2); box(G, x, z, Fw.tx, Fw.tz, 0.12, 0.12, 0, 0.9, hb('#e0b020')); }
+  // the shelter for the trolleys on the plain wall beside the glazing (the side with more room), the trolleys nested in a row; a bin and a rack for bikes by the vestibule
+  { const room1 = L - (sc + gw / 2) - 1.5, room0 = sc - gw / 2 - 1.5, up = room1 >= room0, w = Math.min(7.5, Math.max(room0, room1)), a = up ? sc + gw / 2 + 0.7 : sc - gw / 2 - 0.7 - w, b = a + w;
+    if (w > 3.5) {
+      for (const [s, d] of [[a, -0.5], [b, -0.5], [a, -2.6], [b, -2.6]]) { const [x, z] = freeAt(Fw, s, d); lmLathe(G, x, z, 0, [[0.05, 0], [0.05, 1.85]], 6, GR); }
+      STATE.GBC = gbc;
+      lmBoxW(G, Fw, a - 0.15, b + 0.15, 1.85, 1.95, -2.75, -0.35, hb('#c6d4da'));
+      lmBoxW(G, Fw, a - 0.15, b + 0.15, 1.95, 2.02, -2.75, -0.35, DG);
+      for (let s = a + 0.4; s < b - 0.4; s += 0.62) { const [x, z] = freeAt(Fw, s, -1.6); box(G, x, z, Fw.tx, Fw.tz, 0.27, 0.48, 0.18, 0.88, GR); box(G, x, z, Fw.tx, Fw.tz, 0.27, 0.05, 0.88, 0.98, hb('#d8202c')); }
+    } }
+  { const [x, z] = freeAt(Fw, v0 - 3, -dp - 0.8); box(G, x, z, Fw.tx, Fw.tz, 0.3, 0.3, 0, 0.9, hb('#3a3d40'));
+    for (const q of [-1.2, 0, 1.2]) { const [bx, bz] = freeAt(Fw, v0 - 6 + q, -dp - 0.3); lmBar(G, [bx, 0, bz], [bx, 0.85, bz], 0.05, GR); }
+    lmBar(G, Fw.at(v0 - 7.2, 0.85, -dp - 0.3), Fw.at(v0 - 4.8, 0.85, -dp - 0.3), 0.05, GR); }
+  // bollards along the glazing on both sides of the vestibule
+  for (let s = sc - gw / 2; s <= sc + gw / 2; s += 3) { if (Math.abs(s - sc) < vw / 2 + 2.5) continue; const [x, z] = freeAt(Fw, s, -4.6); lmLathe(G, x, z, 0, [[0.09, 0], [0.09, 0.85], [0.07, 0.9]], 8, hb('#8b9095')); }
+  STATE.GBC = gbc;
+  // joints of the wall panels on the long walls, away from the glazing; steel service doors and downpipes on the other walls
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n, P = [r[2 * i], r[2 * i + 1]], Q = [r[2 * j], r[2 * j + 1]], F2 = lmWF(P, Q), L2 = F2.L; if (L2 < 8) continue;
+    for (let s = 2.4; s < L2 - 1; s += 2.4) { if (i === fi && s > sc - gw / 2 - 0.3 && s < sc + gw / 2 + 0.3) continue; lmBoxW(G, F2, s - 0.014, s + 0.014, 0.5, H - 0.2, -0.045, 0, hb('#c4c8ca'), false); }
+    if (i !== fi && L2 > 12) {
+      const s1 = 3 + rr() * (L2 - 8);
+      lmBoxW(G, F2, s1, s1 + 1.1, 0, 2.15, -0.1, 0, hb('#7b8186')); lmBoxW(G, F2, s1 - 0.3, s1 + 1.4, 2.3, 2.45, -0.9, 0, hb('#9aa0a4')); lmBoxW(G, F2, s1 + 0.3, s1 + 0.7, 2.6, 2.75, -0.25, 0, hb('#fff1c8'));
+      for (const s of [0.9, L2 - 0.9]) lmBar(G, F2.at(s, 0.1, -0.12), F2.at(s, H - 0.5, -0.12), 0.1, hb('#9ca1a5'));
+    }
+  }
+  // the roof: units on a grid at least 2–4 m inside the walls, of four kinds, and rows of skylights
+  const yR = H - 0.45, [cx, cz] = inner(r); let inn = null;
+  for (const d of [4, 3, 2]) { const q = offsetRing(r, -d); if (insetOk(r, q)) { inn = q; break; } }
+  const okp = (x, z) => pip(x, z, r) && (!inn || pip(x, z, inn)), PL = (u, v) => [cx + Fw.tx * u - Fw.nx * v, cz + Fw.tz * u - Fw.nz * v];
+  for (let u = -66; u <= 66; u += 12) for (let v = -44; v <= 44; v += 11) {
+    const [x0, z0] = PL(u + (rr() - 0.5) * 3, v + (rr() - 0.5) * 3), k = rr(); if (!okp(x0, z0)) continue;
+    if (k < 0.3) {
+      const w = 2.1 + rr() * 0.4, l = 4 + rr() * 1.5; if (![[1, 1], [-1, 1], [1, -1], [-1, -1]].every(([a, b]) => okp(...PL(u + a * l / 2, v + b * w / 2)))) continue;
+      box(G, x0, z0, Fw.tx, Fw.tz, l / 2, w / 2, yR, yR + 1.7, hb('#bfc3c6')); box(G, x0, z0, Fw.tx, Fw.tz, l / 2 + 0.05, w / 2 + 0.05, yR + 1.7, yR + 1.78, DG);
+      const [lx, lz] = PL(u, v + w / 2 + 0.01); box(G, lx, lz, Fw.tx, Fw.tz, l * 0.35, 0.03, yR + 0.3, yR + 1.2, hb('#4a4f53'));
+    } else if (k < 0.55) {
+      box(G, x0, z0, Fw.tx, Fw.tz, 2.1, 1.1, yR, yR + 0.25, DG);
+      for (const q of [-1.1, 1.1]) { const [fx, fz] = PL(u + q, v); lmLathe(G, fx, fz, yR + 0.25, [[0.95, 0], [0.95, 0.8], [0.04, 0.9]], 14, hb('#aeb2b5')); }
+    } else if (k < 0.75) lmLathe(G, x0, z0, yR, [[0.3, 0], [0.3, 2.2], [0.55, 2.2], [0.55, 2.28], [0.02, 2.5]], 10, hb('#9ca1a5'));
+    else if (k < 0.9) { box(G, x0, z0, Fw.tx, Fw.tz, 0.55, 0.55, yR, yR + 0.45, hb('#a7abae')); box(G, x0, z0, Fw.tx, Fw.tz, 0.48, 0.48, yR + 0.45, yR + 0.55, hb('#7c8184')); }
+  }
+  for (const v of [-18, 4, 26]) for (let u = -60; u <= 60; u += 3.2) {
+    if (rr() < 0.15) continue; const [x, z] = PL(u, v); if (!okp(x, z) || !okp(...PL(u + 1.2, v + 1.2)) || !okp(...PL(u - 1.2, v - 1.2))) continue;
+    box(G, x, z, Fw.tx, Fw.tz, 0.9, 0.9, yR, yR + 0.3, hb('#d5d9db')); box(G, x, z, Fw.tx, Fw.tz, 0.7, 0.7, yR + 0.3, yR + 0.45, hb('#bcd3dc'));
+  }
 }
 /* Rimi Hyper on Cietokšņa iela (photographs sent by the owner of the project): over the mouth of the recess with the
    main doors a block clad in brown wooden slats, the red board with the name standing up over the roof, the hours in
