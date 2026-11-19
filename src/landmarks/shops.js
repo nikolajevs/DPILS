@@ -65,8 +65,8 @@ const STY = {
   lidl: { h: 7.2, tex: 5, wall: '#dde0e3', plinth: '#62676b', glaze: 'all', gTop: 4.2, canopy: 4.2, pylon: 'lidl' },
   rimi: { h: 6.2, tex: 5, wall: '#eef0f0', plinth: '#73777b', glaze: 0.5, gTop: 3.4, bands: [[1.5, 0.9, '#d8202c']], canopy: 1.6, pylon: 'rimi' },
   // Maxima XX on Cietokšņa iela 60 (Mapillary photographs, 2020–25): buff brick walls under a dark brown fascia, a deep dark blue canopy over the corner entrance,
-  // the name in blue letters with a red X straight on the brown, and the white squares with the red X of the format
-  maximaXX: { h: 6.6, tex: 6, wall: '#ffffff', plinth: '#6e6a62', glaze: 0.55, gTop: 3.7, bands: [[0, 2.3, '#4a3b36']], canopy: 0, pylon: 'maxima' },
+  // the name in blue letters with a red X straight on the brown (the other walls carry grey-blue metal panels above the brick), and the white squares with the red X of the format
+  maximaXX: { h: 6.6, tex: 6, wall: '#ffffff', plinth: '#6e6a62', glaze: 0.55, gTop: 3.7, bands: [[0, 2.3, '#4a3b36']], bandSide: '#76828f', canopy: 0, pylon: 'maxima' },
   maxima: { h: 5.8, tex: 5, wall: '#f1f2f0', plinth: '#73777b', glaze: 0.4, gTop: 3.2, bands: [[0.75, 0.45, '#1d3d8f']], gBand: '#1d3d8f', canopy: 1.3, pylon: 'maxima' },
   // Mego (Inženieru iela 3 in Ķīmiķu ciemats, photographs sent by the owner of the project): light grey panels, a deep dark blue canopy along the
   // front with the hours in yellow, the name in big yellow letters on the wall above it
@@ -292,7 +292,7 @@ function storeBox(K, S, r, H, gbc) {
       front = { Fw, L, sc, gw, i };
     }
     lmWall(K, P, Q, 0, H, ops, wall);
-    for (const [top, hh, col] of st.bands || []) lmBoxW(G, Fw, -0.06, L + 0.06, H - top - hh, H - top, -0.07, 0, hb(col));
+    for (const [top, hh, col] of st.bands || []) lmBoxW(G, Fw, -0.06, L + 0.06, H - top - hh, H - top, -0.07, 0, hb(i !== fi && st.bandSide ? st.bandSide : col));
     if (!st.pitched) lmBoxW(G, Fw, -0.12, L + 0.12, H - 0.18, H, -0.12, 0.35, hb(st.b === 'mego' ? '#2e3033' : '#9aa0a4'));   // the coping of the parapet
   }
   if (!front) return;
