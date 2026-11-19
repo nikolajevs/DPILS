@@ -309,7 +309,12 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
 .mp-scope .sc-pr { left: calc(50% + 25.5vmin); clip-path: polygon(0 32%, 0 68%, 100% 100%, 100% 0); }
 .mp-scope s { width: 3px; height: 3px; margin: -1.5px 0 0 -1.5px; border-radius: 50%; }
 .mp-scope .t1 { left: 50%; top: calc(50% - 6vmin); } .mp-scope .t2 { left: 50%; top: calc(50% - 12vmin); } .mp-scope .t3 { left: 50%; top: calc(50% - 18vmin); }
-.mp-scope .b1 { left: 50%; top: calc(50% + 6vmin); } .mp-scope .b2 { left: 50%; top: calc(50% + 12vmin); } .mp-scope .b3 { left: 50%; top: calc(50% + 18vmin); }
+/* the lower marks are the BDC ladder: short hashes at the bullet's real holdover (mp.js scopeBdc places them by the
+   weapon's ballistics and the current zoom), the end ones labelled with their distance in metres */
+.mp-scope s.b1, .mp-scope s.b2, .mp-scope s.b3 { width: 9px; height: 1px; margin: 0 0 0 -4.5px; border-radius: 0; }
+.mp-scope .b1 { left: 50%; top: calc(50% + 4px); } .mp-scope .b2 { left: 50%; top: calc(50% + 7px); } .mp-scope .b3 { left: 50%; top: calc(50% + 9px); }
+.mp-scope s.b1::after, .mp-scope s.b3::after { content: attr(data-m); position: absolute; top: -4px; font: 600 8px/1 'Segoe UI', system-ui, sans-serif; letter-spacing: .3px; color: rgba(10, 10, 10, .85); background: none; }
+.mp-scope s.b1::after { right: 12px; } .mp-scope s.b3::after { left: 12px; }
 .mp-scope .l1 { top: 50%; left: calc(50% - 6vmin); } .mp-scope .l2 { top: 50%; left: calc(50% - 12vmin); } .mp-scope .l3 { top: 50%; left: calc(50% - 18vmin); }
 .mp-scope .r1 { top: 50%; left: calc(50% + 6vmin); } .mp-scope .r2 { top: 50%; left: calc(50% + 12vmin); } .mp-scope .r3 { top: 50%; left: calc(50% + 18vmin); }
 .mp-scope em { left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: #e03528; box-shadow: 0 0 3px rgba(224, 53, 40, .7); }
