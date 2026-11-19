@@ -29,7 +29,7 @@ function lmRailBridge(K) {
     for (const d of [-2.5, 2.5]) { bar(a, d, 0.95, b, d, 0.95, 0.07, RAIL); bar(a, d, 0.45, b, d, 0.45, 0.05, RAIL); for (let s = a; s <= b + 0.01; s += 1.5) bar(s, d, 0, s, d, 0.95, 0.05, RAIL); }
   }
   // the abutments of ashlar on the bank slopes under the ends of the trusses, with a course of dressed stone on top
-  for (const [a, b, sg] of [[s0 - 5, s0 + 0.4, 1], [s1 - 0.4, s1 + 5, -1]]) { box(a, b, -3.6, 3.6, -14, -1.3, STONE); box(a - 0.15 * sg, b + 0.15 * sg, -3.8, 3.8, -1.6, -1.3, STONE2);
+  for (const [a, b, sg] of [[s0 - 0.8, s0 + 0.4, 1], [s1 - 0.4, s1 + 5, -1]]) { box(a, b, -3.6, 3.6, -14, -1.3, STONE); box(a - 0.15 * sg, b + 0.15 * sg, -3.8, 3.8, -1.6, -1.3, STONE2);
     for (const e of [a, b]) for (let y = -12; y < -1.7; y += 0.55) for (const d of [-3.6, 3.6]) box(e - 0.01, e + 0.01, d - 0.0, d + 0.0, y, y + 0.03, STONE2, false); }
   // ---- the piers: ashlar shafts with pointed cutwaters (hexagonal plan), a cap stone under the trusses
   const prism = (cs, cd, hs, hd, y0, y1, col) => {   // a hexagon with points along d: half thickness hs, half length hd, points 2.0 m long

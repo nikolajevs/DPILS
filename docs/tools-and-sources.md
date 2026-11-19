@@ -176,6 +176,6 @@ https://data.gov.lv/dati/api/3/action/package_search?q=…
 
 ## Механизмы движка, появившиеся недавно
 
-- **Мелкая поправка рельефа** (`PATCH` в [src/world/terrain.js](../src/world/terrain.js)). Это сетка 1 м поверх сетки 20 м в небольшой рамке; её добавляют к высотам и шейдеры, и JS. Для мест, которые сетка 20 м не передаёт. Пример — [src/world/underpass.js](../src/world/underpass.js), разделы README «Daugavas iela под мостом Единства» и «Рельеф».
+- **Мелкая поправка рельефа** (`PATCHES` в [src/world/terrain.js](../src/world/terrain.js)). Это сетка 1 м поверх сетки 20 м в небольшой рамке; её добавляют к высотам и шейдеры, и JS. Для мест, которые сетка 20 м не передаёт. Областей не больше двух (`setPatch`), они не должны пересекаться. Примеры — [src/world/underpass.js](../src/world/underpass.js) и [src/world/underpass-rail.js](../src/world/underpass-rail.js), разделы README «Daugavas iela под мостом Единства» и «Рельеф».
 - **Улицы на дамбах** (`terrainDams`) — ровный гребень дамбы под улицей.
 - **Теги OSM по отдельным путям** ([src/world/street-tags.js](../src/world/street-tags.js)): полосы, загородные участки, односторонние съезды в одну полосу.
