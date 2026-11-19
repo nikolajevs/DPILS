@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/muzzle-wall | Выстрел в упор: луч от ствола, ближняя стена останавливает пулю | server/physics.mjs, server/game.mjs, src/game/mp.js, src/game/impacts.js, tools/combat-test.mjs |
 
 ## Автономный цикл улучшений
 
