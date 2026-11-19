@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { WATER, WMASK, waterMask } from './data.js';
+import { rest } from '../core/pause.js';
 import { pip } from '../core/util.js';
 import { sky } from './terrain.js';
 import { U, hook } from '../render/renderer.js';
@@ -99,6 +100,9 @@ function shoreTexture() {
   t.magFilter = t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; t.needsUpdate = true;
   return { tex: t, a: new THREE.Vector4(W.X0, W.Z0, 1 / (NX * S), 1 / (NZ * S)), data, NX, NZ, S, X0: W.X0, Z0: W.Z0 };
 }
+// the texture made ahead, the 4 m mask and the distances apart, with pauses between them (src/core/pause.js); the
+// build calls it once all the water areas are known
+async function prepShore() { await rest(); if (!WMASK) waterMask(); await rest(); if (!SHORE) SHORE = shoreTexture(); await rest(); }
 
 /* is water area a wide enough for the field? Its water has to fade in fully (3.5 m from the bank) over at least half of
    it, in a sample of at most about 400 cells of the grid. A pond too small or too narrow for the 8 m grid would show
@@ -132,4 +136,4 @@ function waterMat(shoreFix = -1) {
   return m;
 }
 
-export { SMALL_WATER, waterDeep, waterMat };
+export { SMALL_WATER, prepShore, waterDeep, waterMat };

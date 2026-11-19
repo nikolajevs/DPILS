@@ -3,6 +3,7 @@ import { lmBar } from './helpers.js';
 import { COL, M_LAND, M_PAVE, inWater } from '../world/data.js';
 import { TERR, subTris, terrainH, waterLevel } from '../world/terrain.js';
 import { camera, hook, scene } from '../render/renderer.js';
+import { due, pause } from '../core/pause.js';
 import { GB, box, polyA } from '../core/geometry.js';
 import { area2, bbox, hash, hb, pip, reversed, sh, triangulate } from '../core/util.js';
 
@@ -74,7 +75,7 @@ function tuftGeo() {
   for (let i = 0; i < g.attributes.normal.count; i++) g.attributes.normal.setXYZ(i, 0, 1, 0);   // lit as a soft clump, the same from both sides
   return g;
 }
-function reeds() {
+async function reeds() {
   // matte (Lambert): with the normals up, a standard material seen along the ground mirrors the sky (Fresnel) and the
   // blades turn white; both faces of a blade lit alike
   const geo = tuftGeo(), mat = hook(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), 'gub-reed',
@@ -86,15 +87,19 @@ function reeds() {
     const t0 = triangulate([r]), { flat, tris } = TERR.on ? subTris(t0.flat, t0.tris, 0.25) : t0, v0 = fillB.v; fillB.ensure(flat.length / 2);
     for (let i = 0; i < flat.length; i += 2) fillB.vert(flat[i], 0, flat[i + 1], 0, 1, 0, sh(col, 0.93 + hash(flat[i] * 0.3 + flat[i + 1]) * 0.12));
     for (let i = 0; i < tris.length; i += 3) fillB.triUp(v0 + tris[i], v0 + tris[i + 1], v0 + tris[i + 2]);
-    for (let x = bb[0] + step / 2; x < bb[2]; x += step) for (let z = bb[1] + step / 2; z < bb[3]; z += step) {
-      const px = x + (hash(x * 7.3 + z * 1.9) - 0.5) * step * 0.9, pz = z + (hash(x * 2.1 + z * 5.7) - 0.5) * step * 0.9; if (!pip(px, pz, r)) continue;
-      const h = tall ? 1.5 + hash(px * 3.3 + pz * 9.1) * 1.1 : 0.6 + hash(px * 3.3 + pz * 9.1) * 0.5; add(px, pz, 0.9 + hash(px + pz * 3) * 0.4, h);
+    for (let x = bb[0] + step / 2; x < bb[2]; x += step) {
+      if (due()) await pause();
+      for (let z = bb[1] + step / 2; z < bb[3]; z += step) {
+        const px = x + (hash(x * 7.3 + z * 1.9) - 0.5) * step * 0.9, pz = z + (hash(x * 2.1 + z * 5.7) - 0.5) * step * 0.9; if (!pip(px, pz, r)) continue;
+        const h = tall ? 1.5 + hash(px * 3.3 + pz * 9.1) * 1.1 : 0.6 + hash(px * 3.3 + pz * 9.1) * 0.5; add(px, pz, 0.9 + hash(px + pz * 3) * 0.4, h);
+      }
     }
   }
   const fm = fillB.mesh(M_LAND); if (fm) { fm.renderOrder = -38.6; fm.frustumCulled = false; fm.receiveShadow = true; scene.add(fm); }
   const M = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), col = new THREE.Color();
   let total = 0;
   for (const t of tiles.values()) {
+    if (due()) await pause();
     const n = t.l.length / 4, order = [...Array(n).keys()].sort((a, b) => hash(a * 2654435761 + t.cx) - hash(b * 2654435761 + t.cx));   // shuffled: the first k are a fair sample
     const m = new THREE.InstancedMesh(geo, mat, n); m.boundingSphere = new THREE.Sphere(new THREE.Vector3(t.cx, 1, t.cz), 95); m.receiveShadow = true;
     order.forEach((i, k) => { const x = t.l[4 * i], z = t.l[4 * i + 1], s = t.l[4 * i + 2], h = t.l[4 * i + 3];
@@ -170,8 +175,8 @@ function kugitis(K) {
 }
 
 const GUB_STAT = { tufts: 0, walk: 0 };   // for checks: window.__city.gubisce
-function lmGubisce(K) {
-  GUB_STAT.tufts = reeds(); GUB_STAT.walk = Math.round(boardwalk(K.plain)); promenade(); kugitis(K);
+async function lmGubisce(K) {
+  GUB_STAT.tufts = await reeds(); GUB_STAT.walk = Math.round(boardwalk(K.plain)); promenade(); kugitis(K);
 }
 
 export { GUB_STAT, gubOnLine, gubTick, lmGubisce };

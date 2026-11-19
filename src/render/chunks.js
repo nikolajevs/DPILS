@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { TERR, terrainH } from '../world/terrain.js';
+import { due, pause } from '../core/pause.js';
 
 /* ---------- big meshes cut into tiles ----------
    The ground layers, the street markings, the depth grid under the ground and the plain geometry of the landmarks
@@ -23,7 +24,7 @@ const CHUNK = 1500, MIN_TRIS = 40000;
 // what the cut mesh keeps: a valid geometry with nothing in it (it is not drawn any more)
 const IDENT = new THREE.Matrix4(), EMPTY = new THREE.BufferGeometry(); EMPTY.setAttribute('position', new THREE.Float32BufferAttribute([], 3)); EMPTY.setIndex([]);
 
-function splitGeometry(g, size, lift) {
+async function splitGeometry(g, size, lift) {
   const names = Object.keys(g.attributes), R = names.map(n => g.attributes[n].array), S = names.map(n => g.attributes[n].itemSize), NA = names.length;
   const INT = R.map(r => !(r instanceof Float32Array || r instanceof Float64Array)), PQ = names.indexOf('position');
   const idx = g.index.array, pos = R[PQ], nt = idx.length / 3;
@@ -47,6 +48,7 @@ function splitGeometry(g, size, lift) {
     return out;
   };
   for (let t = 0; t < nt; t++) {
+    if ((t & 4095) === 0 && due()) await pause();
     const v0 = idx[3 * t], v1 = idx[3 * t + 1], v2 = idx[3 * t + 2];
     const x0 = pos[3 * v0], x1 = pos[3 * v1], x2 = pos[3 * v2], z0 = pos[3 * v0 + 2], z1 = pos[3 * v1 + 2], z2 = pos[3 * v2 + 2];
     const i0 = Math.floor(Math.min(x0, x1, x2) / size), i1 = Math.floor(Math.max(x0, x1, x2) / size), j0 = Math.floor(Math.min(z0, z1, z2) / size), j1 = Math.floor(Math.max(z0, z1, z2) / size);
@@ -62,6 +64,7 @@ function splitGeometry(g, size, lift) {
   }
   const remap = new Int32Array(g.attributes[names[PQ]].count).fill(-1), out = [];
   for (const l of tiles.values()) {
+    if (due()) await pause();
     const used = []; let np = 0, ni = 0;
     for (const e of l) {
       if (e >= 0) { for (let m = 0; m < 3; m++) { const v = idx[3 * e + m]; if (remap[v] < 0) { remap[v] = used.length; used.push(v); } } ni += 3; }
@@ -90,7 +93,7 @@ function splitGeometry(g, size, lift) {
 }
 
 // cuts every big mesh of the scene that spans more than two tiles; returns how many meshes were cut
-function splitBigMeshes(scene) {
+async function splitBigMeshes(scene) {
   const todo = [];
   for (const o of scene.children) {
     if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || !o.geometry || !o.geometry.index || Array.isArray(o.material) || o.geometry.groups.length || o.geometry.morphAttributes.position || o.children.length) continue;
@@ -104,7 +107,7 @@ function splitBigMeshes(scene) {
   for (const o of todo) {
     // does the material lift its vertices by the terrain (all built-in ones do, through project_vertex)?
     const m = o.material, lifts = TERR.on && !m.userData.noTerr && (!m.isShaderMaterial || /terrainH|project_vertex/.test(m.vertexShader));
-    for (const g of splitGeometry(o.geometry, CHUNK, lifts ? terrainH : null)) {
+    for (const g of await splitGeometry(o.geometry, CHUNK, lifts ? terrainH : null)) {
       const c = new THREE.Mesh(g, o.material);
       c.renderOrder = o.renderOrder; c.castShadow = o.castShadow; c.receiveShadow = o.receiveShadow; c.customDepthMaterial = o.customDepthMaterial; c.customDistanceMaterial = o.customDistanceMaterial;
       c.onBeforeRender = o.onBeforeRender; c.onAfterRender = o.onAfterRender; c.userData = o.userData; c.frustumCulled = true;

@@ -17,7 +17,8 @@
    nodes first corrupts the cached world matrices), and only then the tree is rebuilt around the guns alone. The SVD
    arrives rigged: its vertices are authored in the bind pose the viewer shows, so the skin is stripped, not baked.
    The Makarov arrives on a display floor with a stand, a loose bullet and a suppressor: those go, the pistol stays
-   plain. Textures become WebP (the SVD keeps 2048 px, the rest 1024), geometry is packed with EXT_meshopt_compression. */
+   plain. It leaves here tilted as it lay on the stand (rolled 35°, the barrel 30° down and aside): the game levels it
+   when it loads it (MODEL.gunAxes in src/game/avatar.js), so a rebuild that levels it here must drop that entry. Textures become WebP (the SVD keeps 2048 px, the rest 1024), geometry is packed with EXT_meshopt_compression. */
 import fs from 'node:fs';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';

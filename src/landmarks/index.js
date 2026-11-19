@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { STATE } from '../core/state.js';
+import { rest } from '../core/pause.js';
 import { lmSchools } from './schools.js';
 import { lmChurchHill } from './church-hill.js';
 import { lmShops } from './shops.js';
@@ -64,8 +65,10 @@ if (!THREE.ShaderLib.physical.fragmentShader.includes('#include <opaque_fragment
 const LM_SAFE = s => { s.fragmentShader = s.fragmentShader.replace('#include <opaque_fragment>',
   'if (any(isnan(outgoingLight)) || any(isinf(outgoingLight))) outgoingLight = diffuseColor.rgb * 0.3;\noutgoingLight = min( outgoingLight, vec3( 40.0 ) );\n#include <opaque_fragment>'); };
 const lmStd = (opts, key, patch) => std(opts, key, s => { LM_SAFE(s); if (patch) patch(s); });
-function buildLandmarks() {
-  const [dc, dorm, dglow] = lmTiles(), [sc, sglow] = lmSigns(), WT = [0, 1, 2, 3, 4, 5, 6, 7].map(lmWallTex), ashT = WT[0], renT = WT[1];
+async function buildLandmarks() {
+  const [dc, dorm, dglow] = lmTiles(); await rest(); const [sc, sglow] = lmSigns(), WT = [];
+  for (let k = 0; k < 8; k++) { await rest(); WT.push(lmWallTex(k)); }
+  const ashT = WT[0], renT = WT[1];
   const litPatch = s => {
     s.vertexShader = 'attribute float aLit; varying float vLit;\n' + s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvLit = aLit;');
     s.fragmentShader = 'varying float vLit;\n' + s.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance *= vLit;');
@@ -87,8 +90,12 @@ function buildLandmarks() {
   LMM.clk = hook(new THREE.MeshStandardMaterial({ map: lmClk.tex, emissive: new THREE.Color(1, 1, 1), emissiveMap: lmClk.tex, roughness: 0.5, metalness: 0 }), 'lm-clk', LM_SAFE); allMats.push(LMM.clk); lmTick();
   const K = { ash: new LMB(), ren: new LMB(), det: new LMB(), txt: new LMB(), clk: new LMB(), plain: new GB(false), stone: new GB(false), globe: new GB(false) };
   K.walls = [K.ash, K.ren, new LMB(), new LMB(), new LMB(), new LMB(), new LMB(), new LMB()];
-  lmUnityHouse(K); lmLatgola(K); lmSquare(K); lmGrounds(K); lmDUMain(K); lmDUParades(K); lmDULab(K); lmRenesanse(K); lmRigas(K); lmVesma(K); lmTVTower(K); lmStation(K); lmStationYard(K); lmAutoosta(K); lmSpeedway(K); lmKP(K); lmSC(K); lmFuel(K, litPatch); lmOverpass(K); lmTramWires(K); lmAirBridge(K); lmJunction(K); lmSchools(K, litPatch); lmChurchHill(K, litPatch); lmShops(K, litPatch); STATE.GBC = TERR.on ? vbComp : null; lmVienibas(K); STATE.GBC = null;
-  lmParking(K); lmYards(K); lmGubisce(K); lmSubstation(K); lmHospital(K); lmParks(K); lmUnderpass(K);
+  // one landmark at a time, with a pause between them when the slice is used up (src/core/pause.js)
+  for (const f of [lmUnityHouse, lmLatgola, lmSquare, lmGrounds, lmDUMain, lmDUParades, lmDULab, lmRenesanse, lmRigas, lmVesma, lmTVTower, lmStation, lmStationYard, lmAutoosta, lmSpeedway, lmKP, lmSC]) { await rest(); f(K); }
+  for (const f of [lmFuel, lmOverpass, lmTramWires, lmAirBridge, lmJunction, lmSchools, lmChurchHill, lmShops]) { await rest(); f(K, litPatch); }
+  await rest(); STATE.GBC = TERR.on ? vbComp : null; lmVienibas(K); STATE.GBC = null;
+  for (const f of [lmParking, lmYards, lmGubisce, lmSubstation, lmHospital, lmParks, lmUnderpass]) { await rest(); await f(K); }
+  await rest();
   [LMM.ash, LMM.ren, LMM.duw, LMM.brick, LMM.tile, LMM.panel, LMM.buff, LMM.sil].forEach((m, k) => K.walls[k].mesh(m)); K.det.mesh(LMM.det); K.txt.mesh(LMM.txt, false); K.clk.mesh(LMM.clk, false);
   for (const [b, m] of [[K.plain, LMM.plain], [K.stone, LMM.stone]]) { const pm = b.mesh(m); if (pm) { pm.castShadow = pm.receiveShadow = true; scene.add(pm); } }
   const gm = K.globe.mesh(LMM.globe); if (gm) { gm.receiveShadow = true; scene.add(gm); }

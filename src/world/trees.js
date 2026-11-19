@@ -19,6 +19,7 @@ import { std } from '../render/materials.js';
 import { R, mkCanvas } from '../render/textures.js';
 import { terrainH } from './terrain.js';
 import { U, renderer, scene, terrUniforms } from '../render/renderer.js';
+import { due, pause, rest } from '../core/pause.js';
 import { hash, hb, pip, rnd } from '../core/util.js';
 import { C, HX, HY, TTILE } from '../core/env.js';
 
@@ -201,9 +202,9 @@ function bakeImpostors(geos, leaf) {
   renderer.setRenderTarget(null); renderer.autoClear = true; renderer.setClearColor(old, oldA); mat.dispose();
   return rt.texture;
 }
-function buildTrees() {
-  const leaf = leafAtlas(); treeMaterials(leaf);
-  const hi = [0, 1, 2, 3].map(treeGeo), imp = bakeImpostors(hi, leaf), gl = renderer.getContext();
+async function buildTrees() {
+  const leaf = leafAtlas(); treeMaterials(leaf); await rest();
+  const hi = [0, 1, 2, 3].map(treeGeo); await rest(); const imp = bakeImpostors(hi, leaf), gl = renderer.getContext(); await rest();
   // impostor: an upright quad that turns towards the camera plus a flat cap for the view from above
   matTreeFar = std({ roughness: 0.85, metalness: 0 }, 'treefar', s => {
     s.uniforms.uImp = { value: imp }; s.uniforms.uCap = { value: hi.map(g => new THREE.Vector2(g.userData.R / (g.userData.H / 2), g.userData.capY / g.userData.H)) };
@@ -252,6 +253,7 @@ function buildTrees() {
   if (LT) {
     const near = new Set(); for (let k = 0; k < HAND.length; k += 2) for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) near.add((Math.floor(HAND[k] / 4) + a) * 100000 + Math.floor(HAND[k + 1] / 4) + b);
     for (let k = 0; k < LT.length; k += 6) {
+      if (k % 3072 === 0 && due()) await pause();
       const x = (LT[k] | LT[k + 1] << 8) / 5 - 6600, z = (LT[k + 2] | LT[k + 3] << 8) / 5 - 6600, h = LT[k + 4] / 5, r = (LT[k + 5] >> 4) * 0.8, type = LT[k + 5] & 15;
       if (near.has(Math.floor(x / 4) * 100000 + Math.floor(z / 4))) continue;
       const p = treeRoom(x, z, r); if (!p) { LIDAR_STATS.out++; continue; } if (p.moved) LIDAR_STATS.moved++; if (p.r < r) LIDAR_STATS.narrower++;
@@ -265,17 +267,20 @@ function buildTrees() {
   const SCALE = { 1: [0.85, 0.5], 2: [0.35, 0.3], 4: [0.85, 0.65], 5: [0.8, 0.5], 8: [0.55, 0.45], 11: [0.45, 0.3], 3: [0.7, 0.5] };
   // the paved pedestrian squares (highway areas): no tree on them in a park
   const paved = AREAS.filter(a => a.cls === 12), onPaved = (x, z) => paved.some(a => x >= a.bb[0] && x <= a.bb[2] && z >= a.bb[1] && z <= a.bb[3] && pip(x, z, a.rings[0]));
-  AREAS.forEach((a, n) => {
-    const d = DENS[a.cls]; if (!d || (LT && a.cls !== 1 && a.cls !== 2)) return; const [s, keep, typ] = d, bb = a.bb;
-    for (let gx = Math.ceil(bb[0] / s); gx * s < bb[2]; gx++) for (let gz = Math.ceil(bb[1] / s); gz * s < bb[3]; gz++) {
-      const h1 = hash(gx * 73856093 ^ gz * 19349663 ^ n), h2 = hash(gx * 83492791 ^ gz * 2971215073 ^ n);
-      if (h1 > keep) continue;
-      const x = gx * s + (h2 - 0.5) * s * 0.9, z = gz * s + (hash(gx * 19 + gz * 7 + n) - 0.5) * s * 0.9;
-      if (!pip(x, z, a.rings[0])) continue; let hole = false; for (let k = 1; k < a.rings.length; k++) if (pip(x, z, a.rings[k])) { hole = true; break; } if (hole) continue;
-      if (onRoad(x, z, 2) || inBuilding(x, z) || inBuilding(x + 2, z) || inBuilding(x - 2, z) || inBuilding(x, z + 2) || inBuilding(x, z - 2) || (a.cls === 4 && onPaved(x, z)) || inParking(x, z)) continue;
-      const sc = SCALE[a.cls]; add(x, z, typ(h2), sc[0] + h1 * sc[1], h2);
+  for (let n = 0; n < AREAS.length; n++) {
+    const a = AREAS[n], d = DENS[a.cls]; if (!d || (LT && a.cls !== 1 && a.cls !== 2)) continue; const [s, keep, typ] = d, bb = a.bb;
+    for (let gx = Math.ceil(bb[0] / s); gx * s < bb[2]; gx++) {
+      if (due()) await pause();
+      for (let gz = Math.ceil(bb[1] / s); gz * s < bb[3]; gz++) {
+        const h1 = hash(gx * 73856093 ^ gz * 19349663 ^ n), h2 = hash(gx * 83492791 ^ gz * 2971215073 ^ n);
+        if (h1 > keep) continue;
+        const x = gx * s + (h2 - 0.5) * s * 0.9, z = gz * s + (hash(gx * 19 + gz * 7 + n) - 0.5) * s * 0.9;
+        if (!pip(x, z, a.rings[0])) continue; let hole = false; for (let k = 1; k < a.rings.length; k++) if (pip(x, z, a.rings[k])) { hole = true; break; } if (hole) continue;
+        if (onRoad(x, z, 2) || inBuilding(x, z) || inBuilding(x + 2, z) || inBuilding(x - 2, z) || inBuilding(x, z + 2) || inBuilding(x, z - 2) || (a.cls === 4 && onPaved(x, z)) || inParking(x, z)) continue;
+        const sc = SCALE[a.cls]; add(x, z, typ(h2), sc[0] + h1 * sc[1], h2);
+      }
     }
-  });
+  }
   // the parks as OpenStreetMap draws them, where the city data has no park: as dense as the parks above
   const parkAreas = AREAS.filter(a => a.cls === 4), inPark = (x, z) => parkAreas.some(a => x >= a.bb[0] && x <= a.bb[2] && z >= a.bb[1] && z <= a.bb[3] && pip(x, z, a.rings[0]));
   if (!LT) PARK_RINGS.forEach((r, n) => {
@@ -308,6 +313,7 @@ function buildTrees() {
   const a2cOn = () => { if (PP.msaa > 0) gl.enable(gl.SAMPLE_ALPHA_TO_COVERAGE); }, a2cOff = () => gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE);
   const tint = v => { const f = 0.84 + v * 0.3; return col.setRGB(f * (0.94 + (v * 13 % 1) * 0.14), f, f * (0.86 + (v * 29 % 1) * 0.12)); };
   for (const t of treeTiles.values()) {
+    if (due()) await pause();
     const l = t.list, n = l.length / 6; count += n; t.hi = []; t.lo = [];
     const cx = t.x0 + TTILE / 2, cz = t.z0 + TTILE / 2;
     const fg = farGeo.clone(), types = new Float32Array(n); fg.boundingSphere = tileSphere;

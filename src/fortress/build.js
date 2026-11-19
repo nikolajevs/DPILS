@@ -13,13 +13,14 @@ import { LMB } from '../landmarks/core.js';
 import { LINES } from '../world/data.js';
 import { LINE } from '../world/palette.js';
 import { scene } from '../render/renderer.js';
+import { rest } from '../core/pause.js';
 import { GB, polyA } from '../core/geometry.js';
 import { hb, pip } from '../core/util.js';
 
-function buildFortress() {
+async function buildFortress() {
   if (!FORT.ok) return;
-  fortPrep();
-  const bt = fortBrickTex(), [dt, ct] = fortAtlas(), TX4 = [0, 1, 2, 3, 4, 5, 6].map(fortTex);
+  fortPrep(); await rest();
+  const bt = fortBrickTex(), [dt, ct] = fortAtlas(), TX4 = []; for (let k = 0; k < 7; k++) { await rest(); TX4.push(fortTex(k)); }
   const M = {
     rub: lmStd({ vertexColors: true, map: TX4[0], roughness: 0.95, metalness: 0 }, 'ft-rub'), gra: lmStd({ vertexColors: true, map: TX4[1], roughness: 0.8, metalness: 0 }, 'ft-gra'),
     snd: lmStd({ vertexColors: true, map: TX4[2], roughness: 0.9, metalness: 0 }, 'ft-snd'), wood: lmStd({ vertexColors: true, map: TX4[3], roughness: 0.85, metalness: 0 }, 'ft-wood'),
@@ -27,7 +28,10 @@ function buildFortress() {
     roof: lmStd({ vertexColors: true, map: TX4[4], roughness: 0.62, metalness: 0.12 }, 'ft-roof'), pla: lmStd({ vertexColors: true, map: TX4[6], roughness: 0.93, metalness: 0 }, 'ft-pla'), brk: bt ? lmStd({ vertexColors: true, map: bt, roughness: 0.88, metalness: 0 }, 'ft-brk') : LMM.brick, cut: lmStd({ vertexColors: true, map: ct, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.6, metalness: 0 }, 'ft-cut')
   };
   const K = { rub: new LMB(), gra: new LMB(), snd: new LMB(), wood: new LMB(), brk: new LMB(), ren: new LMB(), det: new LMB(), cut: new LMB(), cnc: new LMB(), rus: new LMB(), roof: new LMB(), pla: new LMB(), cap2b: new LMB(), cap: new GB(false), cap2: new GB(false) };
-  fortField(K); fortFine(); fortWalls(K); fortDitches(); fortGateModels(K); fortBuildings(K); fortMagazines(K); fortReduits(K); fortMonuments(K); fortPaths();
+  // a part at a time, with a pause between them when the slice is used up (src/core/pause.js)
+  await rest(); await fortField(K);
+  for (const f of [fortFine, () => fortWalls(K), fortDitches, () => fortGateModels(K), () => fortBuildings(K), () => fortMagazines(K), () => fortReduits(K), () => fortMonuments(K), fortPaths]) { await rest(); f(); }
+  await rest();
   K.rub.mesh(M.rub); K.gra.mesh(M.gra); K.snd.mesh(M.snd); K.wood.mesh(M.wood); K.det.mesh(M.det); K.cut.mesh(M.cut, false); K.cnc.mesh(M.gra); K.rus.mesh(M.rus); K.roof.mesh(M.roof); K.pla.mesh(M.pla); K.cap2b.mesh(LMM.plain);
   K.brk.mesh(M.brk); K.ren.mesh(LMM.ren);
   for (const b of [K.cap, K.cap2]) { const m = b.mesh(LMM.plain); if (m) { m.castShadow = m.receiveShadow = true; scene.add(m); } }

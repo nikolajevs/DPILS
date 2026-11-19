@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { STATE } from '../core/state.js';
+import { due, pause, rest } from '../core/pause.js';
 import { fortGround } from '../fortress/ground-height.js';
 import { FORT, fss } from '../fortress/index.js';
 import { spwCap, spwGround } from '../landmarks/speedway.js';
@@ -169,13 +170,13 @@ function terrainDams(T, q) {
   }
   for (let c = 0; c < q.length; c++) if (dmin[c] < R) { const w = dmin[c] < R0 ? 1 : 1 - fss((dmin[c] - R0) / (R - R0)); q[c] = Math.round(q[c] * (1 - w) + tgt[c] * 10 * w); }
 }
-function terrainInit() {
+async function terrainInit() {
   const T = window.TERRAIN; if (!T || !T.h) return;
   const bin = atob(T.h), n = bin.length >> 1, q = new Int16Array(n);
   for (let k = 0; k < n; k++) q[k] = (bin.charCodeAt(2 * k) | bin.charCodeAt(2 * k + 1) << 8) << 16 >> 16;
   Object.assign(TERR, { x0: T.x0, z0: T.z0, s: T.step, nx: T.nx, nz: T.nz, q });
-  terrainRails(T, q);
-  terrainDams(T, q);   // streets on dams: a level crest
+  terrainRails(T, q); await rest();
+  terrainDams(T, q); await rest();   // streets on dams: a level crest
   // the fortress keeps a level site: inside it the height of the ground round it, blending out over 200 m
   if (FORT.ok) {
     const at = k => Math.hypot(T.x0 + (k % T.nx) * T.step - FORT.cx, T.z0 + Math.floor(k / T.nx) * T.step - FORT.cz);
@@ -187,12 +188,12 @@ function terrainInit() {
   { const at = k => spwCap(T.x0 + (k % T.nx) * T.step, T.z0 + Math.floor(k / T.nx) * T.step);
     let s = 0, m = 0; for (let k = 0; k < n; k++) if (at(k) < 50) { s += q[k]; m++; }
     if (m) { const c = s / m; for (let k = 0; k < n; k++) { const d = at(k); if (d < 140) q[k] = Math.round(c + (q[k] - c) * fss((d - 90) / 50)); } } }
-  cutCarve(T, q);   // Latgales iela in its cutting, deeper than the model shows it (src/world/cutting.js)
+  await rest(); cutCarve(T, q);   // Latgales iela in its cutting, deeper than the model shows it (src/world/cutting.js)
   TERR.on = true; TERR.ref = 0; TERR.ref = terrainH(-1487, 1263);
   const data = new Uint8Array(n * 4); for (let k = 0; k < n; k++) { const v = Math.max(0, q[k]); data[4 * k] = v >> 8; data[4 * k + 1] = v & 255; data[4 * k + 3] = 255; }
   const tex = new THREE.DataTexture(data, T.nx, T.nz, THREE.RGBAFormat, THREE.UnsignedByteType); tex.minFilter = tex.magFilter = THREE.NearestFilter; tex.generateMipmaps = false; tex.needsUpdate = true;
   U.tTerr.value = tex; U.uTerrA.value.set(T.x0, T.z0, 1 / T.step, 1); U.uTerrB.value.set(T.nx, T.nz, TERR.ref, 0);
-  const p = upPatch(); if (p) setPatch(p);   // Daugavas iela under the end of Vienības tilts (src/world/underpass.js)
+  await rest(); const p = upPatch(); if (p) setPatch(p);   // Daugavas iela under the end of Vienības tilts (src/world/underpass.js)
 }
 // a shift applied to the y of every vertex written into a GB while it is set (buildings standing level, bridge decks)
 STATE.GBC = null;
@@ -275,8 +276,12 @@ function densify(p, tol = 0.15) {
    hills inside big triangles (the base ground ran up to 4.5 m under them) and split flat ground on noise. A side keeps
    its middle point and its error, as the triangles on both sides of it and the halves of a split ask for them again:
    the new points are shared between the two triangles of a split side, and a side left whole lies on the ground to
-   within tol all along, so the points the triangle beyond it adds on it open no crack wider than that. */
-function subTris(flat, tris, tol) {
+   within tol all along, so the points the triangle beyond it adds on it open no crack wider than that.
+   The work is a generator that stops now and then: subTris runs it through, subTrisPaused lets the page answer in
+   between (the big layers of the ground, src/core/pause.js). */
+function subTris(flat, tris, tol) { const g = subTrisSteps(flat, tris, tol); let r; while (!(r = g.next()).done); return r.value; }
+async function subTrisPaused(flat, tris, tol) { const g = subTrisSteps(flat, tris, tol); let r; while (!(r = g.next()).done) if (due()) await pause(); return r.value; }
+function* subTrisSteps(flat, tris, tol) {
   const F = Array.from(flat), T = [], ed = [], Hc = [], q = TERR.q, nx = TERR.nx, nz = TERR.nz, S = TERR.s, X0 = TERR.x0, Z0 = TERR.z0, ref = TERR.ref;
   const hAt = i => { if (Hc[i] === undefined) Hc[i] = terrainH(F[2 * i], F[2 * i + 1]); return Hc[i]; };
   // the sides met so far, by their lower end: [upper end, middle point or -1, error or -1, …]
@@ -300,7 +305,9 @@ function subTris(flat, tris, tol) {
   const coarse = (i, j) => q[j * nx + i] * 0.1 - ref, onH = (i, j) => terrainH(X0 + i * S, Z0 + j * S), onPatch = (i, j) => terrainH(PATCH.x0 + i * PATCH.s, PATCH.z0 + j * PATCH.s);
   const off = (a, b, c, fine) => sideOff(a, b) || sideOff(b, c) || sideOff(c, a) || nodesOff(a, b, c, X0, Z0, S, nx, nz, fine ? onH : coarse) || fine && nodesOff(a, b, c, PATCH.x0, PATCH.z0, PATCH.s, PATCH.nx, PATCH.nz, onPatch);
   const st = []; for (let t = 0; t < tris.length; t += 3) st.push(tris[t], tris[t + 1], tris[t + 2], 0);
+  let k = 0;
   while (st.length) {
+    if ((++k & 1023) === 0) yield;
     const d = st.pop(), c = st.pop(), b = st.pop(), a = st.pop(), ax = F[2 * a], az = F[2 * a + 1], bx = F[2 * b], bz = F[2 * b + 1], cx = F[2 * c], cz = F[2 * c + 1];
     const lab = Math.hypot(bx - ax, bz - az), lbc = Math.hypot(cx - bx, cz - bz), lca = Math.hypot(ax - cx, az - cz), lm = Math.max(lab, lbc, lca);
     const fine = inPatch(Math.min(ax, bx, cx), Math.min(az, bz, cz), Math.max(ax, bx, cx), Math.max(az, bz, cz)), mn = fine ? 1.5 : 12, dm = fine ? 24 : 16;
@@ -365,4 +372,4 @@ sky.renderOrder = -100; sky.frustumCulled = false; scene.add(sky);
 const envScene = new THREE.Scene(); const envSky = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), skyMaterial()); envScene.add(envSky);
 const pmrem = new THREE.PMREMGenerator(renderer); STATE.envRT = null;
 
-export { BRIDGES, BRSEG, PATCH, TERR, bridgeDeck, bridgeOf, bridgeY, densify, envScene, envSky, inPatch, pmrem, sky, subTris, terrainH, terrainInit, vbComp, vbLift, walkLift, waterLevel };
+export { BRIDGES, BRSEG, PATCH, TERR, bridgeDeck, bridgeOf, bridgeY, densify, envScene, envSky, inPatch, pmrem, sky, subTris, subTrisPaused, terrainH, terrainInit, vbComp, vbLift, walkLift, waterLevel };
