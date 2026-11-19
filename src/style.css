@@ -556,7 +556,7 @@ body.mp .bar { background: var(--glass); border-color: var(--glass-line); color:
 .mp-board li.t0 span { border-left-color: var(--red); } .mp-board li.t1 span { border-left-color: var(--blue); } .mp-cols { color: rgba(255, 255, 255, .6); border-top-color: var(--glass-line); }
 /* death: a dark card with a big red caption */
 .mp-dead:not(#mpOver) .panel { background: rgba(18, 8, 8, .78); border-color: rgba(255, 90, 80, .35); } .mp-dead h2 { font: 700 20px/1.2 var(--f-display); }
-.mp-dead .mp-spec { color: rgba(255, 255, 255, .7); } .mp-at { color: rgba(255, 255, 255, .7); } .mp-at select { background: rgba(255, 255, 255, .1); color: #fff; border-color: var(--glass-line); } .mp-at select option { color: #111; }
+.mp-dead .mp-spec { color: rgba(255, 255, 255, .7); } .mp-dead #mpSpecCam { background: rgba(255, 255, 255, .1); color: #fff; border-color: var(--glass-line); } .mp-dead #mpSpecCam:hover { background: rgba(255, 255, 255, .22); } .mp-dead #mpSpecCam[aria-pressed="true"] { background: rgba(255, 90, 80, .3); border-color: rgba(255, 90, 80, .5); color: #fff; } .mp-at { color: rgba(255, 255, 255, .7); } .mp-at select { background: rgba(255, 255, 255, .1); color: #fff; border-color: var(--glass-line); } .mp-at select option { color: #111; }
 .mp-dead { background: radial-gradient(ellipse at center, transparent 35%, rgba(120, 0, 0, .55)); }
 .mp-dead#mpOver .panel { background: var(--panel-solid); color: var(--ink); }
 .mp-end .panel { border-radius: 16px; padding: 20px 24px; } .mp-end h2 { border-radius: 10px; letter-spacing: .01em; }
