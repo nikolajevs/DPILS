@@ -10,6 +10,7 @@
 |---|---|---|---|
 | Claude | claude/pine-sway | Медленнее качание и дрожь кроны деревьев | src/world/trees.js |
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Claude | claude/blissful-volta-qsvceh | Ж/д мост: проезд под ним, оба конца, фермы по лидару | src/landmarks/railway-bridge.js, src/world/bridge-railway.js, src/world/underpass-rail.js, src/world/terrain.js, src/world/street-tags.js |
 
 ## Автономный цикл улучшений
 
