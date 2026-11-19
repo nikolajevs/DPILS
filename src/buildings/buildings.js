@@ -11,6 +11,7 @@ import { band, church, flatPlain, flatRoof, roofFace, tileOf, tiles, vband, wall
 import { lidarOf } from './lidar.js';
 import { serBuild } from './series.js';
 import { ovDrops } from '../world/overpass.js';
+import { rbDrops } from '../world/bridge-railway.js';
 import { BGRID, BLD, COL, matFac, matGold, matPlain, matRoof } from '../world/data.js';
 import { BAY, PLINTH, PLINTH_H, ROOFPAL, WALLPAL } from '../world/palette.js';
 import { TERR, terrainH } from '../world/terrain.js';
@@ -26,7 +27,7 @@ async function buildBuildings(from, to) {
     const rings = []; for (let k = 7; k < rec.length; k++) { let r = dec(rec[k]); if (r.length < 6) continue; const A = area2(r); if ((k === 7) !== (A > 0)) r = reversed(r); rings.push(r); }
     if (!rings.length) continue;
     const outer = rings[0], bb = bbox(outer), cx = (bb[0] + bb[2]) / 2, cz = (bb[1] + bb[3]) / 2;
-    if (lmDrops(outer, bb) || fortDrops(outer, bb) || spwDrops(outer, bb) || fuelDrops(outer, bb, style) || ovDrops(outer, bb)) continue;   // drawn by buildLandmarks or buildFortress
+    if (lmDrops(outer, bb) || fortDrops(outer, bb) || spwDrops(outer, bb) || fuelDrops(outer, bb, style) || ovDrops(outer, bb) || rbDrops(outer, bb)) continue;   // drawn by buildLandmarks or buildFortress
     // on a slope a house stands level at the height of its upper side (no more than 2.5 m over its lowest point, the
     // rest goes into the ground), and the foot of its walls reaches down to the ground on the lower side: a plinth
     if (TERR.on) { let lo = 1e9, hi = -1e9; for (let i = 0; i < outer.length; i += 2) { const t = terrainH(outer[i], outer[i + 1]); lo = Math.min(lo, t); hi = Math.max(hi, t); }
