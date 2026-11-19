@@ -38,7 +38,7 @@ function frame(now) {
   // the full map covers the city: outside the game the 3D picture is not drawn while it is open (the last frame stays)
   if (!big.hidden) { mapFrame(); if (!STATE.mp) return; }
   const bob = (!P.fly && STATE.started && !reduceMotion) ? Math.sin(P.walked * 2.1) * 0.035 : 0;
-  camera.position.set(P.x, P.y + bob, P.z); camera.rotation.set(P.pitch, P.yaw, 0); aimPunch(camera); camShake(camera);   // the flinch of a hit on you, then the jolt of a grenade's blast near you
+  camera.position.set(P.x, P.y + bob - (reduceMotion ? 0 : P.land), P.z); camera.rotation.set(P.pitch, P.yaw, 0); aimPunch(camera); camShake(camera);   // the flinch of a hit on you, then the jolt of a grenade's blast near you; P.land: the dip of a hard landing
   const far = QUALITY[qi].far + Math.max(0, P.y - 2) * 9; scene.fog.far = far;
   const near = nearPlane();
   if (Math.abs(camera.far - (far + 100)) > 20 || Math.abs(camera.near - near) > near * 0.05) { camera.far = far + 100; camera.near = near; camera.updateProjectionMatrix(); }
