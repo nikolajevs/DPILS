@@ -124,6 +124,9 @@ const KIM_HOUSES = [
   [440.7, -1284, "Šaurā iela 28", {p: "G", c: "#d6d0c2", t: "p5"}],
   [407.8, -1214.8, "Šaurā iela 29", {p: "P", c: "#a9a8a2"}],
   [364.4, -1172.5, "Šaurā iela 29A", {p: "G", c: "#cfc6b4", t: "p5", fl: 5}],
+  // outside Ķīmija: the two blocks across the street from Maxima XX on Cietokšņa iela (Mapillary 2020–21: pebble-finish panels between red-brick pilasters, red-brick ends)
+  [-1135.7, 801.7, "Cietokšņa iela, opposite Maxima XX (west block)", {p: "P", c: "#aeaca5"}],
+  [-1084.4, 820, "Cietokšņa iela, opposite Maxima XX (east block)", {p: "P", c: "#aeaca5"}],
 ];
 
 export { KIM_HOUSES };
