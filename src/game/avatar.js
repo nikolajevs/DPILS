@@ -20,6 +20,10 @@ import { FLASH_SIZE, makeFlash } from './muzzle.js';
    The AK (null in MODEL.guns) is the rifle of the arms of viewmodel.js. Every gun is held in both hands: see heldGun and hold below. */
 const MODEL = {
   file: 'models/Soldier.glb', guns: [null, 'models/fp_shotgun.glb', 'models/fp_sniper.glb', 'models/fp_pistol.glb', 'models/fp_mg.glb'], gunLen: [1, 1, 1, 1.5, 1], gunYaw: [0, 0, 0, 0, 0], gunM: [false, true, true, true, true], height: 1.8, headScale: 1,   // one gun model for each weapon of the game; the fp_* guns are already in metres and point along +z (gunM), the pistol is a little bigger in the hand; the operator's head is already in proportion
+  // a gun whose file lies tilted: where its bore and its left side point in the file. The Makarov came off its display
+  // stand rolled by 35° and its barrel 30° down and aside (tools/fp-weapons.mjs did not level it): it is turned once on
+  // loading, about its grip, so that every clone has the muzzle along +z and the top along +y (axes of its faces)
+  gunAxes: [null, null, null, { bore: [0.289, -0.408, 0.866], left: [0.8165, 0.5774, 0] }, null],
   tint: ['helmet'], camo: ['uniform'],   // tint: painted in the colour of the team; camo: the jacket and the trousers get a camouflage pattern in its tones
   clips: { idle: 'Idle', walk: 'Walk', run: 'Run', jump: 'Jump', death: 'Death', hold: 'Carry' },   // hold: the pose of the arms with a rifle
   arms: ['ShoulderL', 'UpperArmL', 'LowerArmL', 'FistL', 'ShoulderR', 'UpperArmR', 'LowerArmR', 'FistR'], hand: 'FistR', head: 'Head',
@@ -39,7 +43,7 @@ function loadAvatar() {
       import('three/addons/libs/meshopt_decoder.module.js').then(({ MeshoptDecoder }) => {
         const L = new GLTFLoader(); L.setMeshoptDecoder(MeshoptDecoder);
         Promise.all([...new Set(MODEL.guns.filter(Boolean))].map(f => new Promise(r => L.load(f, x => r([f, x.scene]), undefined, () => r([f, null]))))).then(list => {
-          const by = Object.fromEntries(list); asset.guns = MODEL.guns.map(f => (f && by[f]) || null); res(asset);
+          const by = Object.fromEntries(list); asset.guns = MODEL.guns.map((f, i) => level((f && by[f]) || null, MODEL.gunAxes[i])); res(asset);
         });
       });
     }, undefined, () => res(null));
@@ -47,6 +51,15 @@ function loadAvatar() {
   return loading;
 }
 const ready = () => asset;
+// a tilted gun turned about its origin so that its bore is +z and its left side +x; two groups, because readyGun sets
+// the y turn of the outer one
+function level(src, ax) {
+  if (!src || !ax) return src;
+  const X = new THREE.Vector3(...ax.left).normalize(), Z = new THREE.Vector3(...ax.bore), turn = new THREE.Group(), outer = new THREE.Group();
+  Z.addScaledVector(X, -Z.dot(X)).normalize();
+  turn.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, new THREE.Vector3().crossVectors(Z, X), Z).invert());
+  turn.add(src); outer.add(turn); return outer;
+}
 
 // the fallback rifle of boxes, the muzzle along +z, the grip at the origin, in metres
 const GEO = new THREE.BoxGeometry(1, 1, 1), M1 = worldSpace(new THREE.MeshLambertMaterial({ color: 0x2a2d31 })), M2 = worldSpace(new THREE.MeshLambertMaterial({ color: 0x6b4a2b }));

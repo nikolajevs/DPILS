@@ -22,7 +22,8 @@ const EYE = new THREE.Vector3(0, 1.598, 0.022);
 // where a picked-up sight sits on each weapon, in the frame of its file (metres, lens +z, mount bottom y=0):
 // the AK in the coordinates of its own file (the arms' bone carries it), the others from their grip (HOLD).
 // The top of the receiver was measured off the models (tools/sights.mjs builds the sights to the same convention).
-const SIGHT_MOUNT = [[-0.13, 1.5, 0.24], [0, 0.088, 0.1], [0, 0.045, 0.05], [0, 0.086, -0.055], [0, 0.112, 0]];
+// The pistol's is on the top of its slide once avatar.js has levelled it.
+const SIGHT_MOUNT = [[-0.13, 1.5, 0.24], [0, 0.088, 0.1], [0, 0.045, 0.05], [0.01, 0.063, -0.055], [0, 0.112, 0]];
 let loading = null, ak = null, settled = false;
 function loadAK() {
   if (!loading) loading = new Promise(res => import('three/addons/libs/meshopt_decoder.module.js').then(({ MeshoptDecoder }) => {   // the decoder of the packed geometry comes only with the game
@@ -46,22 +47,31 @@ const akReady = () => ak, akSettled = () => settled;   // settled: the file has 
 // the muzzle of a gun: the middle of its front end, in the frame it stands in (a packed model keeps the scale of its
 // geometry in its node: the points go through the world matrix)
 function muzzleOf(obj) {
-  obj.updateMatrixWorld(true); const box = new THREE.Box3().setFromObject(obj), m = new THREE.Vector3(), v = new THREE.Vector3(); let n = 0;
+  obj.updateMatrixWorld(true); const box = new THREE.Box3().setFromObject(obj, true), m = new THREE.Vector3(), v = new THREE.Vector3(); let n = 0;   // the exact box: a turned model's rough one reaches past its muzzle
   obj.traverse(o => { if (!o.isMesh) return; const p = o.geometry.attributes.position; for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld); if (v.z > box.max.z - 0.012) { m.x += v.x; m.y += v.y; n++; } } });
   return m.set(m.x / Math.max(1, n), m.y / Math.max(1, n), box.max.z);
 }
 /* How the arms hold each weapon of the game, in the order of WEAPONS (mp.js), in the frame of its model: metres, the
-   muzzle along +z, the top +y, the origin at its grip (tools/fp-weapons.mjs). grip: where the right palm is on it;
-   fore: where the left palm is; shift: how far it is held from where the AK's grip is in the rest pose of the arms
-   (their frame: +z forward, +y up, +x to the left). The long guns are held where the AK is, the left hand on their
-   own handguard; the pistol is held out in front, the left hand cupped under the right. The players seen from the
-   side hold them the same way (avatar.js). */
+   muzzle along +z, the top +y, +x its left side, the origin at its grip (tools/fp-weapons.mjs; avatar.js levels a
+   tilted file). grip: where the right palm is on it; fore: where the left palm is; shift: how far it is held from
+   where the AK's grip is in the rest pose of the arms (their frame: +z forward, +y up, +x to the left); draw: more of
+   that for the view from the eyes only (the players seen from the side would push the stock out of their back).
+   A palm is the point between the wrist and the middle knuckle, inside the hand, and it is put where the arms of the
+   file have it on the AK: the right one 3.4 cm to the right of the pistol grip, just behind its back edge and three
+   fifths of the way down it (so the trigger is 9 cm ahead of it); the left one 2 cm under the handguard and 1 cm out
+   from its left side, the fingers wrapped round it. A palm on the middle of a gun would sink the hand into it and set
+   the whole gun 5 cm to the right of where the AK is. The long guns are held where the AK is; the shotgun's pump is
+   far out, so in the view from the eyes it is drawn 7 cm back and the left shoulder comes forward the rest of the way,
+   6 cm (reach in ik.js; the shoulder is out of sight). The
+   pistol is held out in front, the left hand cupped under the base of its grip. The players seen from the side hold
+   them the same way (avatar.js). */
 const HOLD = [null,
-  { grip: [0, -0.02, -0.03], fore: [0, 0.015, 0.45], shift: [0, 0, 0] },   // Remington 870: the left hand on the pump
-  { grip: [0, -0.02, -0.02], fore: [0, 0.02, 0.32], shift: [0, 0, 0] },   // SVD: on the wooden handguard
-  { grip: [0, -0.035, -0.075], fore: [0.04, -0.075, -0.085], shift: [0.025, 0.05, 0.17] },   // Makarov: held out, the left hand under the right
-  { grip: [0, -0.02, -0.03], fore: [0, 0.025, 0.32], shift: [0, 0, 0] },   // Minimi: on the handguard before the box
+  { grip: [-0.034, -0.025, -0.06], fore: [0.034, -0.027, 0.43], shift: [0, 0, 0], draw: [0, 0, -0.07] },   // Remington 870: round the wrist of the stock, the left hand under the pump
+  { grip: [-0.031, -0.053, -0.105], fore: [0.027, -0.025, 0.24], shift: [0, 0, 0] },   // SVD: the grip of the thumbhole stock, the left hand under the wooden handguard
+  { grip: [-0.023, -0.021, -0.098], fore: [0.036, -0.073, -0.077], shift: [0.025, 0.05, 0.17] },   // Makarov: held out, the left hand under the base of the grip
+  { grip: [-0.034, -0.033, -0.097], fore: [0.035, -0.021, 0.25], shift: [0, 0, 0] },   // Minimi: the pistol grip, the left hand under the handguard before the box
 ];
+const GIVE = 0.1;   // how far the left shoulder may come forward after the hand (metres)
 const V3 = a => new THREE.Vector3(...a);
 
 // over everything: the depth of each vertex squeezed into the near end, by its distance (up to 4 m)
@@ -94,6 +104,7 @@ function makeViewmodel(parent) {
   const B = re => { let f = null; rig.traverse(o => { if (!f && o.isBone && re.test(o.name)) f = o; }); return f; };
   const arm = s => [B(new RegExp('^DEF-upper_arm' + s + '_')), B(new RegExp('^DEF-forearm' + s + '_')), B(new RegExp('^DEF-hand' + s + '_'))];
   const ARM = { R: arm('R'), L: arm('L') }, KN = { L: B(/^DEF-f_middle01L/) }, ikOk = !!(ak.root && ARM.R.every(Boolean) && ARM.L.every(Boolean) && KN.L && ak.palm.R && ak.palm.L);
+  const shoulderL = ikOk ? ARM.L[0].position.clone() : null;   // where the left shoulder is put back before each clip (reach may draw it forward)
   // the rifle's bone at rest, in the frame of the arms: the other weapons ride it, from where the AK's grip is
   setFrame(rig); const restInv = ak.root ? relMatrix(ak.root, new THREE.Matrix4()).invert() : new THREE.Matrix4();
   const mixer = new THREE.AnimationMixer(rig), act = {};
@@ -111,13 +122,13 @@ function makeViewmodel(parent) {
   const guns = []; let cur = 0, adsT = 0;   // the other weapons: { box (the holder on the rifle's bone), muzzle, shift, dL }
   function addWeapon(i, src) {
     const sp = HOLD[i]; if (!sp || !src || guns[i] || !ikOk) return false;
-    const box = new THREE.Group(), inner = new THREE.Group(), model = src.clone(true), mz = new THREE.Object3D();
+    const box = new THREE.Group(), inner = new THREE.Group(), model = src.clone(true), mz = new THREE.Object3D(), shift = V3(sp.shift).add(V3(sp.draw || [0, 0, 0]));
     model.traverse(o => { if (!o.isMesh) return; o.frustumCulled = false; o.castShadow = false; o.receiveShadow = true; o.material = drawOver(worldSpace(o.material.clone())); });
     // the holder: the frame of the arms at rest, moved to the AK's grip (and out, for the pistol), carried by the rifle's bone
-    restInv.clone().multiply(new THREE.Matrix4().makeTranslation(ak.palm.R.clone().add(V3(sp.shift)))).decompose(box.position, box.quaternion, box.scale);
+    restInv.clone().multiply(new THREE.Matrix4().makeTranslation(ak.palm.R.clone().add(shift))).decompose(box.position, box.quaternion, box.scale);
     inner.position.copy(V3(sp.grip)).negate(); inner.add(model); box.add(inner); mz.position.copy(muzzleOf(src)).sub(V3(sp.grip)); box.add(mz); ak.root.add(box);
     FL.set(mz, { q: new THREE.Quaternion(), s: 1 });
-    guns[i] = { box, muzzle: mz, shift: V3(sp.shift), dL: ak.palm.R.clone().add(V3(sp.shift)).add(V3(sp.fore)).sub(V3(sp.grip)).sub(ak.palm.L) };
+    guns[i] = { box, muzzle: mz, shift, dL: ak.palm.R.clone().add(shift).add(V3(sp.fore)).sub(V3(sp.grip)).sub(ak.palm.L) };
     setWeapon(cur); return true;
   }
   function setWeapon(i) {
@@ -158,13 +169,13 @@ function makeViewmodel(parent) {
   // after the clip: the right wrist out with the pistol, the left onto the handguard of the weapon in hand while the
   // clip has it on the rifle's (not while it fetches a magazine); each hand keeps the turn the clip gave it
   const G = new THREE.Matrix4(), G3 = new THREE.Matrix3(), T = new THREE.Vector3(), D = new THREE.Vector3(), P1 = new THREE.Vector3(), P2 = new THREE.Vector3(), Qh = new THREE.Quaternion(), Qa = new THREE.Quaternion();
-  function moveHand(a, d) { at(a[2], T).add(d); turnOf(a[2], Qh); reach(a, T, null); turnOf(a[2], Qa); turnBy(a[2], Qa.invert().premultiply(Qh)); }
+  function moveHand(a, d, give) { at(a[2], T).add(d); turnOf(a[2], Qh); reach(a, T, null, give); turnOf(a[2], Qa); turnBy(a[2], Qa.invert().premultiply(Qh)); }
   function grip(gw) {
     setFrame(rig); relMatrix(ak.root, G).multiply(restInv); G3.setFromMatrix4(G);   // how the rifle's bone has moved from its rest
     if (gw.shift.lengthSq() > 0) moveHand(ARM.R, D.copy(gw.shift).applyMatrix3(G3));
     P1.copy(ak.palm.L).applyMatrix4(G); at(ARM.L[2], P2).lerp(at(KN.L, T), 0.5);
     const on = Math.min(1, Math.max(0, (0.2 - P1.distanceTo(P2)) / 0.12));
-    if (on > 0) moveHand(ARM.L, D.copy(gw.dL).applyMatrix3(G3).multiplyScalar(on));
+    if (on > 0) moveHand(ARM.L, D.copy(gw.dL).applyMatrix3(G3).multiplyScalar(on), GIVE);
   }
   const w = { idle: 1, walk: 0, run: 0, fire: 0, reload: 0, equip: 0 };
   let fireT = 9, equipT = 9, lastYaw = null, lastPitch = 0, swX = 0, swY = 0, glow = 0;
@@ -187,6 +198,7 @@ function makeViewmodel(parent) {
     if (act.fire) act.fire.time = Math.min(fireT, dur('fire') - 1e-3);
     if (act.walk) act.walk.timeScale = Math.max(0.6, Math.min(1.5, s.speed / 3.3));
     if (act.run) act.run.timeScale = Math.max(0.8, Math.min(1.3, s.speed / 9));
+    if (shoulderL) ARM.L[0].position.copy(shoulderL);
     mixer.update(dt);
     if (guns[cur]) grip(guns[cur]);
     // the rifle lags a little behind a turn of the view and settles back
