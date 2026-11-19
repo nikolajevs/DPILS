@@ -24,7 +24,7 @@ import { statEvent } from './stats.js';
 import { playerKey, boardOn, setBoardOn, account } from './identity.js';
 import { initLeaders } from './leaders.js';
 import { rest } from '../core/pause.js';
-import { $ } from '../core/env.js';
+import { $, reduceMotion } from '../core/env.js';
 import { boomSound, crackSound, hitSound, loadSounds, nadeBounce, shotSound, stepSound } from './sfx.js';
 import { carAt, carPath } from '../world/car-hit.js';
 import { fxSamples, tracerShot, bindTracer, hitTracer, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke } from './impacts.js';
@@ -364,7 +364,7 @@ function fire(now) {
   if (MP.reloadAt) return;
   if (MP.ammo[MP.weapon] <= 0) { reload(now); return; }
   statEvent('shot', {}, !!MP.local); MP.lastShot = now; MP.ammo[MP.weapon]--; MP.kick = 1;
-  const o = [P.x, P.y, P.z], rays = [], mine = [], yaw0 = P.yaw, pitch0 = P.pitch;   // the rays fly where the crosshair stood: the recoil kicks the view only after they are computed — kicking first lifted every sniper shot 0.03 rad (1.7°) over the target, a clean miss past ~40 m
+  const o = [P.x, P.y, P.z], rays = [], mine = [], yaw0 = P.yaw + punch.y, pitch0 = P.pitch + punch.p;   // the rays fly where the crosshair stands (the aim punch included): the shot's own recoil kicks the view only after they are computed — kicking first lifted every sniper shot 0.03 rad (1.7°) over the target, a clean miss past ~40 m
   for (let i = 0; i < w.pellets; i++) {
     const sp = spreadNow(), ang = Math.random() * 6.283, rad = sp * Math.sqrt(Math.random());
     const d = aim(yaw0 + Math.cos(ang) * rad, pitch0 + Math.sin(ang) * rad), clear = freePath(o, d, w.range, true);
@@ -398,7 +398,20 @@ function reload(now) {
 
 /* ---------- panels ---------- */
 const el = id => $(id);
-let hitT = 0, hurtT = 0;
+let hitT = 0, hitDur = 180, hurtT = 0, hurtAmp = 1, hurtBloom = 0;
+/* ---------- aim punch: the view flinches when a bullet lands on you ----------
+   The kick grows with the damage, throws the look up and away from the shooter's side and springs back in about a
+   third of a second. It is put on the camera after it is placed (aimPunch, loop.js), and fire() aims with it, so the
+   bullet flies where the flinching crosshair points. The gun in hand jolts (MP.kick), the crosshair blooms (hurtBloom),
+   the red vignette flares and fades (hurtAmp). */
+const punch = { p: 0, y: 0, r: 0 };
+function aimPunch(cam) {
+  if (reduceMotion || (!punch.p && !punch.y && !punch.r)) return;
+  cam.rotation.x += punch.p; cam.rotation.y += punch.y; cam.rotation.z += punch.r;
+}
+function punchReset() { punch.p = punch.y = punch.r = 0; hurtBloom = 0; hurtT = 0; el('mpHurt').hidden = true; }
+// the flinch of a body that took a hit: a sharp jolt in 45 ms, then a springy decay (mp.js puts it on the group, avatar.js on the bones)
+function flinchK(now, t) { if (!t) return 0; const a = (now - t) / 1000; if (a < 0 || a > 0.42) return 0; return a < 0.045 ? a / 0.045 : Math.exp(-(a - 0.045) * 8.5); }
 function updatePanel() {
   el('mpHp').style.width = Math.max(0, MP.hp) + '%'; el('mpHpN').textContent = Math.max(0, Math.ceil(MP.hp)); el('mpStat').dataset.hp = MP.hp <= 25 ? 'low' : MP.hp <= 60 ? 'mid' : 'ok';
   el('mpWeapon').textContent = W().name; el('mpAmmo').textContent = MP.reloadAt ? 'перезарядка…' : MP.ammo[MP.weapon] + ' / ' + MP.reserve[MP.weapon]; el('mpAmmo').title = 'в магазине / запас'; el('mpAmmo').dataset.empty = !MP.reloadAt && MP.ammo[MP.weapon] === 0 ? 1 : 0; el('mpAmmo').dataset.reload = MP.reloadAt ? 1 : 0;
@@ -423,7 +436,7 @@ function feed(text, cls) {
 }
 function die(byName, byId) {
   STATE.mpDead = true; document.body.classList.add('dead'); MP.spec = remotes.has(byId) ? byId : 0;   // watch the one who killed you first
-  MP.dead = true; MP.deadAt = performance.now(); MP.firing = false; MP.scope = false; gun.visible = false; closeInv(); nadeCancel();
+  MP.dead = true; MP.deadAt = performance.now(); MP.firing = false; MP.scope = false; gun.visible = false; closeInv(); nadeCancel(); punchReset();
   if (document.pointerLockElement) document.exitPointerLock();
   el('mpDead').hidden = false; el('mpDeadBy').textContent = byName ? 'Вас убил ' + byName : 'Вы погибли';
 }
@@ -563,7 +576,7 @@ function onMsg(m) {
       for (const [id, a] of Object.entries(m.attach || {})) { const r = remotes.get(+id); if (r && Array.isArray(a)) { r.attach = a; if (r.av) a.forEach((k, w) => r.av.setAttach(w, k)); } } if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
       if (MP.local) feed('Тренировка с ботами: ' + MP.board.filter(e => e.bot).length + ', уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || '') + '»', 'sys'); break;
     case 'spawn': {
-      nadeCancel();
+      nadeCancel(); punchReset();
       const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.kx = P.kz = 0; P.crouch = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
       MP.weapon = 0; MP.scope = false; models.forEach((mm, k) => { mm.visible = k === 0; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; MP.sights = m.sights ? { ...m.sights } : { sight: 0, optic: 0 }; MP.attach = Array.isArray(m.attach) ? m.attach.slice() : [null, null, null, null, null]; syncVm(); clearNades(); gun.visible = true; if (vm) { vm.setWeapon(0); vm.equip(); } el('mpDead').hidden = true; slotsT = performance.now() + 2600; updatePanel();   // the belt greets the spawn, then hides
@@ -580,11 +593,20 @@ function onMsg(m) {
       break;
     }
     case 'shot': { const rs = remotes.get(m.id); if (rs) rs.shotAt = performance.now(); if (m.id === MP.id) { if (ownTracers) { m.rays.forEach((r, i) => bindTracer(r[4], ownTracers[i])); ownTracers = null; } } else otherShot(m); break; }
-    case 'bhit': { const body = m.v && m.v !== MP.id; hitTracer(m.bid, m.d, body); if (body && m.by !== MP.id) { const s = spot(m.at[0], m.at[1], m.at[2]); if (s.d < 40) try { hitSound(ac(), actx.master, 'body', 0.6 * 4 / (4 + s.d) * (1 - s.d / 40), s.d, s.pan); } catch (e) {} } break; }   // the bullet reached a body: cut the tracer, bleed there; a bystander hears the impact (the shooter gets 'hit')
-    case 'hit': statEvent('hit', m, !!MP.local); hitT = performance.now(); if (m.kill) { tone(880, 880, 0.12, 0.25, 'triangle'); tone(1320, 1320, 0.25, 0.25, 'triangle', 0.1); } else tone(m.head ? 2600 : 1700, m.head ? 2200 : 1400, 0.07, 0.2, 'square'); { const r = remotes.get(m.id), g = r && r.group.visible ? r.group.position : null; if (g) { const s = spot(g.x, g.y + 1.2, g.z); try { hitSound(ac(), actx.master, m.head ? 'head' : 'body', 0.75 * 6 / (6 + s.d), s.d, s.pan); } catch (e) {} if (m.dmg > 0) dmgFloat(g.x, g.y + 1.9, g.z, String(m.dmg), m.head ? 'head' : m.kill ? 'kill' : ''); } } el('mpHit').className = m.head ? 'head' : m.kill ? 'kill' : ''; el('mpHit').hidden = false; break;
+    case 'bhit': { const body = m.v && m.v !== MP.id; hitTracer(m.bid, m.d, body);
+      if (body) { const rv = remotes.get(m.v); if (rv) { rv.flinchT = performance.now(); rv.flinchZone = m.zone; const rs = remotes.get(m.by), bp = rs && rs.buf.length ? rs.buf[rs.buf.length - 1] : null; let dx = bp ? m.at[0] - bp.x : Math.random() - 0.5, dz = bp ? m.at[2] - bp.z : Math.random() - 0.5; const l = Math.hypot(dx, dz) || 1; rv.flinchDX = dx / l; rv.flinchDZ = dz / l; } }   // the victim flinches away from the bullet's path
+      if (body && m.by !== MP.id) { const s = spot(m.at[0], m.at[1], m.at[2]); if (s.d < 40) try { hitSound(ac(), actx.master, 'body', 0.6 * 4 / (4 + s.d) * (1 - s.d / 40), s.d, s.pan); } catch (e) {} } break; }   // the bullet reached a body: cut the tracer, bleed there; a bystander hears the impact (the shooter gets 'hit')
+    case 'hit': statEvent('hit', m, !!MP.local); hitT = performance.now(); if (m.kill) { tone(880, 880, 0.12, 0.25, 'triangle'); tone(1320, 1320, 0.25, 0.25, 'triangle', 0.1); } else tone(m.head ? 2600 : 1700, m.head ? 2200 : 1400, 0.07, 0.2, 'square'); { const r = remotes.get(m.id), g = r && r.group.visible ? r.group.position : null; if (g) { const s = spot(g.x, g.y + 1.2, g.z); try { hitSound(ac(), actx.master, m.head ? 'head' : 'body', 0.75 * 6 / (6 + s.d), s.d, s.pan); } catch (e) {} if (m.dmg > 0) dmgFloat(g.x, g.y + 1.9, g.z, String(m.dmg), m.head ? 'head' : m.kill ? 'kill' : ''); } } { const hm = el('mpHit'); hm.className = m.head ? 'head' : m.kill ? 'kill' : ''; hm.hidden = false; hm.style.animation = 'none'; void hm.offsetWidth; hm.style.animation = ''; hitDur = m.kill ? 260 : 180; } break;   // every hit pops the marker afresh, even in a long burst
     case 'hurt': {
-      statEvent('taken', { dmg: Math.max(0, MP.hp - m.hp) }, !!MP.local); MP.hp = m.hp; hurtT = performance.now(); { let real = false; try { real = hitSound(ac(), actx.master, 'body', 1); } catch (e) {} if (!real) tone(160, 60, 0.18, 0.4, 'sawtooth'); } el('mpHurt').hidden = false; updatePanel();
+      const dmg = Math.max(0, MP.hp - m.hp);
+      statEvent('taken', { dmg }, !!MP.local); MP.hp = m.hp; hurtT = performance.now(); { let real = false; try { real = hitSound(ac(), actx.master, 'body', 1); } catch (e) {} if (!real) tone(160, 60, 0.18, 0.4, 'sawtooth'); } el('mpHurt').hidden = false; updatePanel();
       const a = Math.atan2(-m.dx, -m.dz) - P.yaw; el('mpHurtDir').style.transform = 'rotate(' + (-a) + 'rad)';   // the side the shot came from
+      const s = Math.min(1.5, 0.3 + dmg / 35), rel = Math.atan2(Math.sin(a), Math.cos(a));   // the aim punch: up and away from the shooter's side, scaled by the damage
+      punch.p = Math.min(0.085, punch.p + 0.026 * s + Math.random() * 0.006);
+      punch.y = Math.max(-0.045, Math.min(0.045, punch.y - Math.sign(rel || Math.random() - 0.5) * 0.011 * s + (Math.random() - 0.5) * 0.008));
+      punch.r = Math.max(-0.025, Math.min(0.025, punch.r + (Math.random() - 0.5) * 0.02 * s));
+      MP.kick = Math.max(MP.kick, 0.45 + 0.25 * s); hurtBloom = Math.min(26, hurtBloom + 7 * s);
+      hurtAmp = Math.min(1, 0.5 + dmg / 70); el('mpHurt').style.opacity = String(hurtAmp);
       if (m.hp <= 0) die(nameOf(m.by), m.by);
       break;
     }
@@ -718,8 +740,9 @@ function crossTick(dt, now) {
   if (show && crossEl.hidden) crossEl.hidden = false;   // whatever hid it (a lock release), the fight crosshair comes back
   if (!show) return;
   const K = canvas.clientHeight / (2 * Math.tan(camera.fov * Math.PI / 360));   // screen pixels per radian at this fov
-  const target = cfg.ring ? Math.max(10, spreadNow() * K) : Math.min(70, cfg.gap + (SET.crossDyn ? spreadNow() * K : 0));
+  const target = Math.min(80, (cfg.ring ? Math.max(10, spreadNow() * K) : Math.min(70, cfg.gap + (SET.crossDyn ? spreadNow() * K : 0))) + hurtBloom);   // a hit on you blooms the crosshair too
   crossGap += (target - crossGap) * Math.min(1, dt * 14);
+  hurtBloom *= Math.exp(-dt * 5); if (hurtBloom < 0.1) hurtBloom = 0;
   const mag = MP.ammo[MP.weapon];
   const col = NAIM.on ? '#ffd27a' : MP.reloadAt ? '#ffc24d' : mag === 0 ? '#ff5a4d' : mag <= w.mag * 0.25 ? '#ffc24d' : SET.crossCol;   // amber while the grenade is aimed
   const g = Math.round(crossGap * 2) / 2, key = MP.weapon + '|' + g + '|' + col + '|' + SET.crossDot;
@@ -799,6 +822,7 @@ function mpTick(dt) {
     MP.ammo[rw] += k; MP.reserve[rw] -= k; updatePanel();
   }
   MP.burst = Math.max(0, MP.burst - dt * 0.03); crossTick(dt, now);
+  { const pk = Math.exp(-dt * 8); punch.p *= pk; punch.y *= pk; punch.r *= pk; if (punch.p < 1e-4) punch.p = 0; if (Math.abs(punch.y) < 1e-4) punch.y = 0; if (Math.abs(punch.r) < 1e-4) punch.r = 0; }   // the aim punch springs back
   if ((MP.pingT = (MP.pingT || 0) - dt) <= 0 && MP.ws.readyState === 1) { MP.pingT = 2; MP.ws.send(JSON.stringify({ t: 'ping', c: now, rtt: MP.rtt })); }
   if (MP.firing && W().auto) fire(now);
   if (MP.dead) { const left = Math.max(0, 3 - (now - MP.deadAt) / 1000); el('mpRespawn').disabled = left > 0; el('mpRespawn').textContent = left > 0 ? 'Возрождение через ' + Math.ceil(left) : 'Возродиться (пробел)'; }
@@ -811,19 +835,25 @@ function mpTick(dt) {
       const c = r.corpse; g.visible = true; g.scale.y = 1; g.position.set(c.x, c.y - (c.h || 1.7) + 0.18 * Math.min(1, age / 350), c.z); g.rotation.y = c.yaw; g.rotation.x = 1.5 * Math.min(1, age / 350) * (2 - Math.min(1, age / 350)); continue;
     }
     const p = pose(r, t); if (!p) { g.visible = false; continue; }
-    remoteSteps(r, p, now); if (r.av) { if (r.gunW !== p.w) { r.gunW = p.w; r.av.setGun(p.w); } r.av.update(dt, { speed: r.speed || 0, air: !!r.air, dead: false, shotAt: r.shotAt || 0, throwAt: r.throwAt || 0 }); } g.visible = true; g.position.set(p.x, p.y - p.h, p.z); g.scale.y = p.h / 1.7; g.rotation.y = p.yaw; g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
+    remoteSteps(r, p, now);
+    const fk = flinchK(now, r.flinchT), side = fk ? (r.flinchDX || 0) * Math.cos(p.yaw) - (r.flinchDZ || 0) * Math.sin(p.yaw) : 0;   // the body jolts away from the bullet's path
+    if (r.av) { if (r.gunW !== p.w) { r.gunW = p.w; r.av.setGun(p.w); } r.av.update(dt, { speed: r.speed || 0, air: !!r.air, dead: false, shotAt: r.shotAt || 0, throwAt: r.throwAt || 0, flinch: fk ? { k: fk, zone: r.flinchZone, side } : null }); }
+    g.visible = true; g.position.set(p.x, p.y - p.h - 0.05 * fk * (r.flinchZone === 2 ? 1 : 0.3), p.z); g.scale.y = p.h / 1.7;
+    g.rotation.y = p.yaw; g.rotation.x = 0.075 * fk * (r.flinchZone === 1 ? 1.35 : r.flinchZone === 2 ? 0.55 : 1); g.rotation.z = -side * 0.07 * fk;   // the flinch: the torso snaps back, a leg hit buckles the knees
+    g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
+    if (!r.av && r.figHead) r.figHead.rotation.x = p.pitch - 0.35 * fk;   // the simple figure's head snaps back too
     if (MP.dead && MP.specFP && r.id === MP.spec) g.visible = false;   // the first-person spectate: the watched body must not cover the eye
   }
   tickFx(dt);
-  MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06;
+  MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06; gun.rotation.z = punch.r * 1.6;   // the gun tilts with the flinch of the view
   if (MP.reloadAt) gun.rotation.x = -0.5 * Math.sin(Math.min(1, (now - MP.reloadAt) / WEAPONS[MP.reloadW].reloadMs) * Math.PI);
   if (vm) {   // the arms with the weapon in hand: your speed over the ground chooses the clip of the steps; the reload follows its progress
     vmSpeed += (Math.hypot(P.x - vmX, P.z - vmZ) / Math.max(dt, 1e-3) - vmSpeed) * Math.min(1, dt * 8); vmX = P.x; vmZ = P.z; if (vmSpeed > 40) vmSpeed = 0;
     vm.update(dt, { show: gun.visible && vm.has(MP.weapon), nade: nv, speed: vmSpeed, reload: MP.reloadAt && MP.reloadW === MP.weapon ? (now - MP.reloadAt) / WEAPONS[MP.weapon].reloadMs : -1, yaw: P.yaw, pitch: P.pitch, kick: MP.kick, ads: MP.attach[MP.weapon] === 'sight' ? MP.zoom : 0 });
   }
   flashLit(dt);
-  if (hitT && now - hitT > 140) { hitT = 0; el('mpHit').hidden = true; }
-  if (hurtT && now - hurtT > 600) { hurtT = 0; el('mpHurt').hidden = true; }
+  if (hitT && now - hitT > hitDur) { hitT = 0; el('mpHit').hidden = true; }
+  if (hurtT) { const ha = now - hurtT; if (ha > 600) { hurtT = 0; el('mpHurt').hidden = true; } else el('mpHurt').style.opacity = (hurtAmp * (1 - ha / 600)).toFixed(3); }   // the red vignette flares, then fades
 }
 const V = new THREE.Vector3(), BLAST_AT = new THREE.Vector3(), BLAST_COL = new THREE.Color();
 // the light of the flashes: at the muzzle in your hands while your flash shines, else at the shot of someone near; a grenade's
@@ -914,4 +944,4 @@ STATE.mapOverlay = (ctx, cx, cz, ppm, w, h) => {
 PERF.notice = text => feed(text, 'sys');
 function enablePlay() { initUi(); el('goPlay').disabled = false; el('goTrain').disabled = false; }
 
-export { MP, initUi as prepareUi, enablePlay, loadModels, mpLabels, mpTick, warmSamples };
+export { MP, initUi as prepareUi, enablePlay, loadModels, mpLabels, mpTick, warmSamples, aimPunch };
