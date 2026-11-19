@@ -69,6 +69,7 @@ import './render/textures.js';
 import { TERR, terrainH, terrainInit, walkLift } from './world/terrain.js';
 import { GPU, U, camera, renderer, scene } from './render/renderer.js';
 import { GB } from './core/geometry.js';
+import { due, pause, rest } from './core/pause.js';
 import './core/util.js';
 import { $, C } from './core/env.js';
 
@@ -90,31 +91,34 @@ const step = (text, w, reported) => {
     // the players and the guns of the game: their files come while the city is built (src/game/mp.js loadModels)
     let modelsF = 0, modelsStep = false;
     const models = loadModels(f => { modelsF = f; if (modelsStep) loading.part(f); });
-    await step('Рисую фасады и крыши…', W.materials); makeMaterials(); STATE.goldGB = new GB(false);
+    await step('Рисую фасады и крыши…', W.materials); await makeMaterials(); STATE.goldGB = new GB(false); await rest();
     // time of day: the choice of the start card is kept in the browser; the first visit follows the theme of the page
     let t0 = matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark' ? 2 : 0;
     try { const s = localStorage.getItem('dpils-time'); if (s != null) { const v = +s; if (Number.isInteger(v) && v >= 0 && v < TIMES.length) t0 = v; } } catch (e) {}
-    setTime(t0);
+    setTime(t0); await rest();
     setQuality(qi);
-    terrainInit();
-    await step('Заливаю Даугаву и озёра…', W.ground); buildGround();
-    await step('Прокладываю улицы, тротуары и рельсы…', W.lines); buildLines();
+    await terrainInit();
+    await step('Заливаю Даугаву и озёра…', W.ground); await buildGround();
+    await step('Прокладываю улицы, тротуары и рельсы…', W.lines); await buildLines();
     const N = C.b.length;
-    for (let i = 0; i < N; i += 4000) { const j = Math.min(N, i + 4000); await step('Строю дома: ' + j.toLocaleString('ru') + ' из ' + N.toLocaleString('ru') + '…', W.houses * (j - i) / N); buildBuildings(i, j); }
+    for (let i = 0; i < N; i += 4000) { const j = Math.min(N, i + 4000); await step('Строю дома: ' + j.toLocaleString('ru') + ' из ' + N.toLocaleString('ru') + '…', W.houses * (j - i) / N); await buildBuildings(i, j); }
     await step('Собираю кварталы…', W.blocks); finishBuildings();
-    await step('Строю Дом Единства, «Латголу», университет и школы…', W.landmarks); buildLandmarks();
-    await step('Насыпаю валы и копаю рвы крепости…', W.fortress); buildFortress();
-    groundDepth();   // the depth grids under the ground layers, now that all of them are drawn (src/world/ground.js)
-    const lamps = buildLamps(); setTime(timeI);
-    await step('Сажаю деревья…', W.trees); const trees = buildTrees();
+    await step('Строю Дом Единства, «Латголу», университет и школы…', W.landmarks); await buildLandmarks();
+    await step('Насыпаю валы и копаю рвы крепости…', W.fortress); await buildFortress();
+    await groundDepth();   // the depth grids under the ground layers, now that all of them are drawn (src/world/ground.js)
+    await rest(); const lamps = buildLamps(); setTime(timeI);
+    await step('Сажаю деревья…', W.trees); const trees = await buildTrees();
     await step('Сажаю цветы в парках…', W.flora); await plantFlora();   // their files were asked for with the parks
     await step('Ставлю машины на парковки…', W.cars); await placeParkingCars(); await placeStaticCars();   // the BMW models were asked for on import
-    await step('Выпускаю трамваи и автобусы на линии…', W.transit); const tripsN = buildTransit();
-    await step('Делю землю и улицы на участки…', W.split); splitBigMeshes(scene);   // the meshes over the whole city, cut into tiles that can be culled (src/render/chunks.js)
-    if (TERR.on) scene.traverse(o => { if (!o.isMesh || !o.frustumCulled || !o.geometry) return; const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere(); if (g.boundingSphere && !g.userData.terrGrown) { g.boundingSphere.radius += 70; g.userData.terrGrown = true; } });
+    await step('Выпускаю трамваи и автобусы на линии…', W.transit); const tripsN = await buildTransit();
+    await step('Делю землю и улицы на участки…', W.split); await splitBigMeshes(scene);   // the meshes over the whole city, cut into tiles that can be culled (src/render/chunks.js)
+    if (TERR.on) {
+      const ms = []; scene.traverse(o => { if (o.isMesh && o.frustumCulled && o.geometry) ms.push(o); });
+      for (const o of ms) { if (due()) await pause(); const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere(); if (g.boundingSphere && !g.userData.terrGrown) { g.boundingSphere.radius += 70; g.userData.terrGrown = true; } }
+    }
     // the players and the guns join the scene for the warm-up: the game starts with them ready (a minute at most for slow files)
     await step('Одеваю игроков и раздаю оружие…', W.models, true); modelsStep = true; loading.part(modelsF);
-    await Promise.race([models, new Promise(r => setTimeout(r, 60000))]); modelsStep = false; warmSamples(true);
+    await Promise.race([models, new Promise(r => setTimeout(r, 60000))]); modelsStep = false; await warmSamples(true);
     // the shaders of every material, a few at a time, then the first frame (shadow map, environment, post-processing)
     await step('Готовлю шейдеры…', W.shaders, true); await warmUp(f => loading.part(f), loading.frame);
     await step('Рисую первый кадр…', W.frame); frame(performance.now());

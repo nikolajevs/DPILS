@@ -1,7 +1,8 @@
 /* The loading bar of the start card.
 
-   Most of the build runs in long synchronous steps that keep the page busy, so the bar cannot be redrawn from script
-   while a step runs. Instead, when a step begins, the bar is given its whole path through the step as an animation
+   The build runs on the main thread. Its steps pause every few tens of milliseconds (src/core/pause.js), but the first
+   frame and some parts of the steps still keep the page busy for a while, so the bar is not redrawn from script while a
+   step runs. Instead, when a step begins, the bar is given its whole path through the step as an animation
    of its transform (Web Animations): such an animation runs on the compositor, so the bar keeps moving while the main
    thread is busy. The expected time of a step is its weight (its time on a reference machine, src/main.js) times how
    fast the steps of the city so far ran on this one. The bar reaches 75 % of the step by the expected time and then
