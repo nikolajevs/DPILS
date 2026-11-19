@@ -37,15 +37,22 @@ This work is based on the models above, each by its author, licensed under [CC-B
 
 Итог: дробовик 0.19 МБ / 6.2 тыс. треугольников, снайперская 1.40 МБ / 40.4 тыс., пистолет 0.60 МБ / 12.1 тыс., пулемёт 0.63 МБ / 26.8 тыс. Модели в метрах (в отличие от старых моделей Quaternius в «единицах солдата»). Где на каждой рукоятка и цевьё, записано в таблице `HOLD` в [src/game/viewmodel.js](../src/game/viewmodel.js). По ней стволы держат обеими руками и руки в перчатках из `fp_ak47.glb` (вид от первого лица), и другие игроки ([src/game/avatar.js](../src/game/avatar.js)). Вспышка выстрела ставится у края дула. Для скачивания с Sketchfab нужен аккаунт и его API-токен.
 
-## Солдат
+## Персонажи
 
-Реалистичный оператор спецназа — единственный персонаж игры (прежние мужчина и женщина Quaternius и пешеходы удалены). Тело и анимации — **CC BY 4.0** (Sketchfab), атрибуции ниже. Сборка — [tools/soldier.mjs](../tools/soldier.mjs): штатное оружие оператора (витринный M4 с патчами), магазины и подсумки вырезаны, текстуры сжаты в WebP ≤1024 px, клипы ретаргетятся на скелет Mixamo (тело и ноги — дельтой от rest-позы, руки клипа Carry — по абсолютной мировой ориентации источника), файл пакуется meshopt. Итог: 2,4 МБ, 35 тыс. треугольников, 8 материалов, рост 1,8 м.
+Четыре выбираемых персонажа игры (прежние мужчина и женщина Quaternius и пешеходы удалены). Тела и анимации — **CC BY 4.0** (Sketchfab), атрибуции ниже. Сборка — [tools/character.mjs](../tools/character.mjs) (обобщён из [tools/soldier.mjs](../tools/soldier.mjs)): штатное оружие и витринные подставки вырезаны, текстуры сжаты в WebP ≤1024 px, клипы ретаргетятся на скелет каждого тела (Mixamo напрямую, 2B — через таблицу костей 3ds Max biped; тело и ноги — дельтой от rest-позы, руки клипа Carry — по абсолютной мировой ориентации источника), файл пакуется meshopt. **Модели не перекрашиваются** — текстуры сохраняются как есть ради качества; в будущем у двух команд будут свои модели.
 
-**Тело** — «S.W.A.T. Operator», автор SpatialNeglect, [CC BY 4.0](https://sketchfab.com/models/9e82fabf26194896b5ad4a364d864eab): каска с ПНВ, маска, тактическая форма, перчатки и ботинки. Скачивание источников — [tools/sf-dl.mjs](../tools/sf-dl.mjs) (токен аккаунта в `sketchfab.token`, команды в шапке `soldier.mjs`).
+| Файл | Персонаж | Автор | Лицензия | Итог |
+|---|---|---|---|---|
+| `Soldier.glb` | [S.W.A.T. Operator](https://sketchfab.com/models/9e82fabf26194896b5ad4a364d864eab) — каска с ПНВ, маска, форма | SpatialNeglect | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) | 2,4 МБ, 35 тыс. трис, рост 1,8 м |
+| `Spartan.glb` | [Spartan Armour MKV — Halo Reach](https://sketchfab.com/3d-models/spartan-armour-mkv-halo-reach-57070b2fd9ff472c8988e76d8c5cbe66) — броня спартанца (фан-арт) | McCarthy3D | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) | 3,4 МБ, 40 тыс. трис, рост 2,0 м |
+| `Alien.glb` | [Free Mixamo retextured Model](https://sketchfab.com/3d-models/free-mixamo-retextured-model-62990b050faf48dd8590d5d15872857c) — пришелец в скафандре | JonnyMANSON | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) | 1,1 МБ, 40 тыс. трис, рост 1,9 м |
+| `2B.glb` | [NieR:Automata 2B](https://sketchfab.com/3d-models/nierautomata-2b-cec89dce88cf4b3082c73c07ab5613e7) — платье, повязка, юбка на костях (риг LeoZack) | Negin | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) | 0,7 МБ, 40 тыс. трис, рост 1,68 м |
+
+Скачивание источников — [tools/sf-dl.mjs](../tools/sf-dl.mjs) (токен аккаунта в `sketchfab.token`, uid и команды в шапке `character.mjs`).
 
 **Анимации** — Mixamo-клипы автора fauze (CC BY 4.0):
 
-| Клип в `Soldier.glb` | Источник |
+| Клип во всех файлах персонажей | Источник |
 |---|---|
 | Idle, Carry | [Rifle Idle](https://sketchfab.com/3d-models/rifle-idle-d9ed346ee92c4606baca727b0ad6ed7b) |
 | Walk | [ST Pistol Walk](https://sketchfab.com/3d-models/st-pistol-walk-94486ec326714092aec96746e3315c3c) |
@@ -53,7 +60,7 @@ This work is based on the models above, each by its author, licensed under [CC-B
 | Jump | [Jumping](https://sketchfab.com/3d-models/jumping-9d8127cec9f04c3db3287cab301b4529) |
 | Death | [Falling Back Death(1)](https://sketchfab.com/3d-models/falling-back-death1-61732876c5ad4d548c433252be7f2d25) |
 
-Используется в [src/game/avatar.js](../src/game/avatar.js): материал `helmet` красится в цвет команды или игрока, `uniform` получает камуфляж в его тонах. Чтобы взять другого персонажа, достаточно заменить файл и поправить блок `MODEL` (имена клипов, костей и материалов) в `avatar.js`.
+Используется в [src/game/avatar.js](../src/game/avatar.js): реестр `CHARS` (файл, имя в панели, рост, поворот), выбор ездит в протоколе ключом `char`. Чтобы добавить персонажа, достаточно собрать его файл `tools/character.mjs` и добавить строку в `CHARS` (и в список сервера `server/game.mjs`).
 
 Старые стволы Quaternius (`Pistol.glb`, `Rifle.glb`, `Shotgun.glb`, `Sniper.glb` — CC0, наборы Zombie Apocalypse Kit и Toon Shooter Game Kit) заменены моделями `fp_*` выше и больше не загружаются; файлы оставлены в репозитории как запасные.
 

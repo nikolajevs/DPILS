@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/characters | Персонажи: Спартанец MKV, Пришелец Mixamo, 2B; выбор в панели | src/game/avatar.js, src/game/mp.js, index.html, server/game.mjs, models/, tools/character.mjs |
 
 ## Автономный цикл улучшений
 

@@ -33,13 +33,17 @@ export function createGame(opts) {
     return n;
   }
   const validKey = k => typeof k === 'string' && /^[0-9a-f]{16,64}$/i.test(k), lb = opts.board || null;   // the leaderboard (leaderboard.mjs): only the humans who sent a key are in it
-  const board = () => [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, bot: !!p.bot }));
+  // the chosen character rides the board: a key of CHARS in src/game/avatar.js; empty — the operator
+  const CHARS = ['soldier', 'spartan', 'alien', '2b'];
+  const cleanChar = s => (typeof s === 'string' && CHARS.includes(s) ? s : '');
+  const botChar = () => CHARS[Math.random() * CHARS.length | 0];
+  const board = () => [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, bot: !!p.bot, char: p.char }));
   const sendBoard = () => all({ t: 'board', board: board(), score: FFA ? [] : teamScore });
   const count = k => [...players.values()].filter(p => p.team === k).length;
   function pickTeam(want, id) {
     if (FFA) return id; const a = count(0), b = count(1); if (a !== b) return a < b ? 0 : 1; return want === 0 || want === 1 ? want : Math.random() < 0.5 ? 0 : 1;
   }
-  const newPlayer = () => ({ id: nextId++, conn: null, bot: null, name: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, st: { shots: 0, hitShots: 0, dmg: 0, heads: 0 }, wep: 0, lastShot: 0, lastNade: 0, nades: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(),
+  const newPlayer = () => ({ id: nextId++, conn: null, bot: null, name: '', char: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, st: { shots: 0, hitShots: 0, dmg: 0, heads: 0 }, wep: 0, lastShot: 0, lastNade: 0, nades: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(),
     mag: WEAPONS.map(w => w.mag), reserve: RESERVE.slice(), meds: 0, reloadDone: 0, reloadW: 0, lastMed: 0,
     sights: { sight: 0, optic: 0 }, attach: WEAPONS.map(() => null) });   // loose sights in the pocket and the one mounted on each weapon
   // where the player stood at time t (the shooter saw the target 120 ms in the past plus half the round trip);
@@ -165,7 +169,7 @@ export function createGame(opts) {
   let botN = 0;
   function addBot(level) {
     if (players.size >= MAX) return null;
-    const p = newPlayer(); let nm = botName(botN++); while ([...players.values()].some(q => q.name === nm)) nm = botName(botN++); p.name = nm; p.team = pickTeam(-1, p.id); p.joined = true; brain.make(level || opts.level, p); players.set(p.id, p);
+    const p = newPlayer(); let nm = botName(botN++); while ([...players.values()].some(q => q.name === nm)) nm = botName(botN++); p.name = nm; p.char = botChar(); p.team = pickTeam(-1, p.id); p.joined = true; brain.make(level || opts.level, p); players.set(p.id, p);
     spawn(p); sendBoard(); all({ t: 'chat', text: p.name + ' в игре' }); return p;
   }
   function removeBot() { const b = [...players.values()].reverse().find(p => p.bot); if (!b) return false; players.delete(b.id); all({ t: 'left', id: b.id }); sendBoard(); return true; }
@@ -183,7 +187,7 @@ export function createGame(opts) {
         if (m.t === 'join' && !p.joined) {
           if (players.size >= MAX && !removeBot()) { send(p, { t: 'full' }); conn.close(); return; }
           if (lb && validKey(m.key) && ![...players.values()].some(q => q.key === m.key)) { p.key = m.key; const r = lb.identify(m.key, nameBase(m.name), n => !taken(n)); p.name = r.name; p.prof = r.prof; } else p.name = cleanName(m.name);
-          p.team = pickTeam(m.team, p.id); p.joined = true; players.set(p.id, p);
+          p.team = pickTeam(m.team, p.id); p.char = cleanChar(m.char); p.joined = true; players.set(p.id, p);
           send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])) });
           spawn(p, m.x, m.z, m.yaw); sendBoard(); all({ t: 'chat', text: p.name + (FFA ? ' в игре' : ' в игре, ' + TEAMS[p.team]) });
           return;

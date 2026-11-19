@@ -56,10 +56,10 @@ for (const side of ['left', 'right']) { const s = side === 'left' ? 'l' : 'r';
   for (const [n, fn] of Object.entries(fingers)) for (const [i, c] of [['a', '01'], ['b', '02'], ['c', '03']]) BIPED[`arm ${side} finger ${n}${i}`] = `${fn}_${c}_${s}`; }
 
 const CHARS = {
-  swat: { body: SB + 'swat/x/scene.gltf', out: 'Soldier.glb', map: MIXAMO, killMats: ['lambert1.003', 'pouch', 'patch'], killStatic: true, tint: ['helmet'], camo: ['uniform'] },
-  spartan: { body: SB + 'cand/57070b2f.glb', out: 'Spartan.glb', map: MIXAMO, killMats: ['lambert2'], killStatic: true, tint: ['Spartan_Helmet_Mat'], camo: ['Spartan_Chest_Mat', 'Spartan_Arms_Mat', 'Spartan_Legs_Mat', 'Spartan_Shoulders_Mat'] },
-  alien: { body: SB + 'cand/62990b05.glb', out: 'Alien.glb', map: MIXAMO, killMats: [], killStatic: true, tint: ['Ch44_Body'], camo: ['Ch44_body1'] },
-  '2b': { body: SB + 'cand/cec89dce.glb', out: '2B.glb', map: BIPED, killMats: [], killStatic: true, tint: ['Material_26'], camo: ['Material_25'] },
+  swat: { body: SB + 'swat/x/scene.gltf', out: 'Soldier.glb', map: MIXAMO, killMats: ['lambert1.003', 'pouch', 'patch'], killStatic: true },
+  spartan: { body: SB + 'cand/57070b2f.glb', out: 'Spartan.glb', map: MIXAMO, killMats: ['lambert2'], killStatic: true },
+  alien: { body: SB + 'cand/62990b05.glb', out: 'Alien.glb', map: MIXAMO, killMats: [], killStatic: true },
+  '2b': { body: SB + 'cand/cec89dce.glb', out: '2B.glb', map: BIPED, killMats: [], killStatic: true },
 };
 
 await Promise.all([MeshoptDecoder.ready, MeshoptEncoder.ready, MeshoptSimplifier.ready]);
@@ -225,7 +225,7 @@ async function build(name) {
   }
   await io.write(OUT, doc);
   let finalTris = 0; for (const m of root.listMeshes()) for (const p of m.listPrimitives()) finalTris += (p.getIndices()?.getCount() || 0) / 3;
-  console.log('wrote', OUT, 'tris', finalTris, 'clips', root.listAnimations().map(a => a.getName()).join(','), 'tint', cfg.tint.join(','), 'camo', cfg.camo.join(','));
+  console.log('wrote', OUT, 'tris', finalTris, 'clips', root.listAnimations().map(a => a.getName()).join(','));
 }
 
 const which = process.argv[2] || 'all';
