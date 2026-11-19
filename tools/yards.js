@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /* Builds yards.js — what stands in the yards of the blocks of flats of a district, from OSM API map extracts.
 
-   Usage: node tools/yards.js <citydata.js> yards.js --relation 5464161 [--relation …] map1.osm map2.osm …
+   Usage: node tools/yards.js <citydata.js> yards.js --relation 5464161 [--relation …] [--box x0,z0,x1,z1 …] [--merge] map1.osm map2.osm …
+   - --box: a district by a rectangle in the frame of citydata.js (metres); --merge: add to the yards.js already there
    - the districts are boundary relations of OpenStreetMap (5464161: Ķīmiķu ciemats), read from the maps (the OSM API
      squares of README.md, «Как обновить parking.js»);
    - left out is what lies on a school ground (schools.js) or in a park (parks.js), next to citydata.js: those draw
@@ -16,10 +17,10 @@
    (the sandpits) and bins (the container sites). Metres in the frame of citydata.js, rounded to 0.1 m. */
 'use strict';
 const fs = require('fs'), path = require('path');
-const args = process.argv.slice(2), rels = [], files = [];
-for (let i = 2; i < args.length; i++) { if (args[i] === '--relation') rels.push(args[++i]); else files.push(args[i]); }
+const args = process.argv.slice(2), rels = [], files = [], boxes = []; let merge = false;
+for (let i = 2; i < args.length; i++) { if (args[i] === '--relation') rels.push(args[++i]); else if (args[i] === '--box') boxes.push(args[++i].split(',').map(Number)); else if (args[i] === '--merge') merge = true; else files.push(args[i]); }
 const [cityFile, outFile] = args;
-if (!cityFile || !outFile || !rels.length || !files.length) { console.error('usage: node tools/yards.js <citydata.js> yards.js --relation <id> map.osm …'); process.exit(1); }
+if (!cityFile || !outFile || !(rels.length || boxes.length) || !files.length) { console.error('usage: node tools/yards.js <citydata.js> yards.js --relation <id> map.osm …'); process.exit(1); }
 const city = fs.readFileSync(cityFile, 'utf8'), num = k => +city.slice(0, 400).match(new RegExp('"' + k + '":(-?[0-9.e+-]+)'))[1];
 const LAT0 = num('lat0'), LON0 = num('lon0'), KX = num('kx'), KY = num('ky');
 const attr = (s, k) => { const m = s.match(new RegExp('\\b' + k + '="([^"]*)"')); return m ? m[1] : null; };
@@ -39,12 +40,12 @@ const pip = ([x, z], pts) => { let c = false; for (let i = 0, j = pts.length - 1
 const centre = pts => { const n = pts.length - 1; let x = 0, z = 0; for (let i = 0; i < n; i++) { x += pts[i][0]; z += pts[i][1]; } return [x / n, z / n]; };
 const r1 = v => Math.round(v * 10) / 10, enc = pts => pts.flat().map(r1);
 // the districts
-const districts = rels.map(id => {
+const districts = boxes.map(([x0, z0, x1, z1]) => [[x0, z0], [x1, z0], [x1, z1], [x0, z1]]).concat(rels.map(id => {
   const members = relations.get(id); if (!members) { console.error('relation', id, 'is not in the maps'); process.exit(1); }
   const segs = members.map(w => ways.get(w)).filter(Boolean).map(w => w.refs.slice()); let cur = segs.shift();
   while (segs.length) { const k = segs.findIndex(s => s[0] === cur[cur.length - 1] || s[s.length - 1] === cur[cur.length - 1]); if (k < 0) break; const s = segs.splice(k, 1)[0]; cur = cur.concat(s[0] === cur[cur.length - 1] ? s.slice(1) : s.slice().reverse().slice(1)); }
   return cur.map(n => nodes.get(n)).filter(Boolean);
-});
+}));
 // what the schools and the parks draw
 const others = [], load = (file, key) => { const f = path.join(path.dirname(cityFile), file); if (!fs.existsSync(f)) return null; const w = {}; new Function('window', fs.readFileSync(f, 'utf8'))(w); return w[key]; };
 const S = load('schools.js', 'SCHOOLS'), P = load('parks.js', 'PARKS');
@@ -72,6 +73,10 @@ for (const [id, t] of nodeTags) {
   if (t.amenity === 'waste_disposal' || (t.amenity === 'recycling' && t.recycling_type !== 'centre')) { if (keep(p)) out.bins.push([...p.map(r1), 0]); continue; }
   const k = KIND(t); if (!k) continue; if (!keep(p)) { drop.other++; continue; }
   out.points.push([0, k, ...p.map(r1)]);
+}
+if (merge && fs.existsSync(outFile)) {   // add to what the file already holds (another district), without doubles
+  const old = {}; new Function('window', fs.readFileSync(outFile, 'utf8'))(old); const Y = old.YARDS;
+  for (const k of Object.keys(out)) { const seen = new Set((Y[k] || []).map(e => JSON.stringify(e))); out[k] = (Y[k] || []).concat(out[k].filter(e => !seen.has(JSON.stringify(e)))); }
 }
 fs.writeFileSync(outFile, '/* The yards of the blocks of flats from OpenStreetMap (© OpenStreetMap contributors, ODbL), built by tools/yards.js */\nwindow.YARDS = ' + JSON.stringify(out) + ';\n');
 const kinds = {}; for (const p of out.points) kinds[p[1]] = (kinds[p[1]] || 0) + 1;
