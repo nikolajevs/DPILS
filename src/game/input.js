@@ -74,7 +74,7 @@ onBuild(panes => {
   sel.onchange = () => setQualityMode(sel.value === 'auto' ? 'auto' : +sel.value);
   row.append(t, sel); g.append(row);
   const hint = document.createElement('p'); hint.className = 'set-hint';
-  hint.textContent = 'Авто: разрешение подстраивается под FPS, в бою уровень графики снижается при нехватке кадров и повышается, когда запас есть. Фиксированное: выбранный уровень и полное разрешение, без автоматических изменений.';
+  hint.textContent = 'Авто: разрешение подстраивается под FPS, уровень графики снижается при нехватке кадров и повышается, когда запас есть, — и в городе, и в бою. Фиксированное: выбранный уровень и полное разрешение, без автоматических изменений.';
   const cur = document.createElement('p'); cur.className = 'set-hint';
   g.append(hint, cur); panes.video.append(g);
   qSel = sel; qCur = cur; qShow();

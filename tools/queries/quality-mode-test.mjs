@@ -43,7 +43,7 @@ await ev(() => document.getElementById('bSet').click());
 const panel = await ev(() => {
   const sel = document.querySelector('#mpSetBody .set-row.sel select');
   const hints = [...document.querySelectorAll('#mpSetBody .set-hint')].map(p => p.textContent);
-  const h = [...document.querySelectorAll('#mpSetBody h3')].map(x => x.textContent);
+  const h = [...document.querySelectorAll('#mpSetBody h3')].map(x => x.textContent).concat([...document.querySelectorAll('#mpSetTabs .set-tab span')].map(x => x.textContent));   // «Графика» — вкладка панели (settings.js), не заголовок h3 в теле
   return { has: !!sel, opts: sel ? [...sel.options].map(o => o.value + ':' + o.textContent) : [], val: sel ? sel.value : null, hints, h };
 });
 ok('группа «Графика» в настройках', panel.has && panel.h.includes('Графика') && panel.val === 'auto', JSON.stringify(panel));
@@ -85,12 +85,12 @@ ok('сброс настроек → авто', s.mode === 'auto' && selVal3 === 
 await ev(() => document.getElementById('mpSetClose').click());
 
 // 8. in the fight auto lowers the level by itself under the low fps
-await ev(() => { window.__city.setQualityMode('auto'); window.__city.setQuality(0); });   // start the fight from the top level
+await ev(() => { window.__city.setQualityMode('auto'); window.__city.setQuality(0); window.__city.PERF.dyn = false; });   // start the fight from the top level; the resolution dance is checked in the city (test 6) — here, on SwiftShader frames of tens of seconds, it would eat the whole timeout before the level moves
 await ev(() => document.getElementById('chTrain').click());
 await ev(() => document.getElementById('goTrain').click());
 await page.waitForFunction(() => window.__city.STATE.mp, null, { timeout: 180000 });
 ok('тренировка началась', true);
-await page.waitForFunction(() => localStorage.getItem('dpils-quality2') === '3' && window.__city.qualityMode() === 'auto', null, { timeout: 180000 });
+await page.waitForFunction(() => localStorage.getItem('dpils-quality2') === '3' && window.__city.qualityMode() === 'auto', null, { timeout: 420000 });   // SwiftShader frames are tens of seconds: three levels take minutes
 s = await state();
 const feed = await ev(() => document.getElementById('mpFeed').textContent);
 ok('авто снизило графику до минимума', s.mode === 'auto' && s.btn === 'Графика: авто' && s.lvl === '3', JSON.stringify(s));
@@ -103,6 +103,7 @@ await page.waitForTimeout(25000);
 s = await state();
 ok('фиксированная в бою не меняется', s.mode === 1 && s.lvl === lvlBefore && s.scale === 1, JSON.stringify(s));
 
+await ev(() => { try { document.fonts.clear(); } catch (e) {} });   // the web fonts may never come on a slow net: the screenshot must not wait for them
 try { await page.screenshot({ path: 'tools/queries/quality-mode.png', timeout: 60000 }); ok('скриншот снят', true); } catch (e) { ok('скриншот снят', false, e.message.slice(0, 120)); }
 
 const realErrors = errors.filter(t => !/favicon|404|net::ERR/i.test(t));
