@@ -92,6 +92,14 @@ function upUnder(x, z, dx = 0, dz = 0, prev = null) {
   const l = Math.hypot(dx, dz); if (!l) return false;
   const k = Math.max(0, Math.min(UP.X.length - 1, Math.round(UP.sc / STEP))); return Math.abs((dx * UP.TX[k] + dz * UP.TZ[k]) / l) > 0.7;
 }
+// a walker under the deck at the north end of the bridge: at the box over the street and its wings, 2 m or more below the
+// deck (feet = the height he stands at). COL walls of tag 1 (rails of the deck) do not stop him, tag 2 (the walls of the
+// box) stop only him
+function upLow(x, z, feet) {
+  if (!UP.ok) return false;
+  const [sb, db] = vbLocal(x, z); if (sb < UP.gap[0] - 3 || sb > VB.L + 3 || Math.abs(db) > VB.HW + 4) return false;
+  return feet < upDeck(Math.min(sb, VB.L)) - 2;
+}
 // the stretch of the bridge's embankment left open over the street (lmVienibas leaves out its slopes there)
 const upGap = s => UP.ok && s > UP.gap[0] && s < UP.gap[1];
 // no street lamp in the box or by its mouths (a pole of 8 m stood through the deck)
@@ -135,7 +143,7 @@ function lmUnderpass(K) {
     for (let db = -wd; db < wd - 1e-6; db += 1) { const d2 = Math.min(wd, db + 1), A = deckP(sb, db, 0), B = deckP(sb, d2, 0);
       const ra = upH(upLocal(A[0], A[2])[0]) - 0.2, rb = upH(upLocal(B[0], B[2])[0]) - 0.2, ta = Math.abs(db) <= VB.HW ? top(sb) : gnd2(db), tb = Math.abs(d2) <= VB.HW ? top(sb) : gnd2(d2);
       polyA(G, [[A[0], ra, A[2]], [B[0], rb, B[2]], [B[0], Math.max(rb, tb), B[2]], [A[0], Math.max(ra, ta), A[2]]], sh(CONC, sg > 0 ? 0.97 : 1), n[0], 0, n[2]);
-      COL.add(A[0], A[2], B[0], B[2], 0.2, 0); }
+      COL.add(A[0], A[2], B[0], B[2], 0.2, 2); }   // tag 2: a wall under the deck, no obstacle for one walking on it
     const A = deckP(sb, -VB.HW - 0.5, 0), B = deckP(sb, VB.HW + 0.5, 0), c0 = deckP(sb - sg * 0.6, -VB.HW - 0.5, 0), c1 = deckP(sb - sg * 0.6, VB.HW + 0.5, 0), y = top(sb);   // a ledge under the beam
     polyA(G, [[A[0], y, A[2]], [B[0], y, B[2]], [c1[0], y, c1[2]], [c0[0], y, c0[2]]], CONC2, 0, -1, 0);
   }
@@ -164,4 +172,4 @@ function lmUnderpass(K) {
   STATE.GBC = null;
 }
 
-export { UP, lmUnderpass, upDeck, upGap, upNoLamp, upNoTree, upPatch, upUnder };
+export { UP, lmUnderpass, upDeck, upGap, upLow, upNoLamp, upNoTree, upPatch, upUnder };
