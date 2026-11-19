@@ -6,6 +6,7 @@ import { HOLD, SIGHT_MOUNT, akReady, muzzleOf } from './viewmodel.js';
 import { prop, onProps } from './props.js';
 import { alignHand, at, reach, relMatrix, setFrame } from './ik.js';
 import { FLASH_SIZE, makeFlash } from './muzzle.js';
+import { makeRagdoll } from './ragdoll.js';
 
 /* ---------- the ready models of the players ----------
    Four characters (CC BY 4.0, see models/README.md), each a rigged body with the same fauze Mixamo clips
@@ -176,7 +177,8 @@ function scopeKit(guns, getGun) {
   return { setAttach, refresh };
 }
 const HOLD_OFS = new THREE.Vector3(0, 0, 0);   // the holder from the shoulder joint of the skeleton
-// one player's model: update(dt, { speed, air, dead, shotAt, throwAt, flinch }) every frame (shotAt: the time of the last shot, a new one flashes; throwAt: of the last grenade thrown, the arm swings; flinch: { k, zone, side } of a hit just taken — the head snaps back, the spine jolts);
+// one player's model: update(dt, { speed, air, dead, shotAt, throwAt, flinch, fall, vel }) every frame (shotAt: the time of the last shot, a new one flashes; throwAt: of the last grenade thrown, the arm swings; flinch: { k, zone, side } of a hit just taken — the head snaps back, the spine jolts);
+// on death the skeleton falls by physics (ragdoll.js): fall — the direction of the killing blow { x, z, head, nade }, vel — the speed the player had; without the bones for it the death clip plays as before.
 // char — the chosen character of CHARS ('' = the operator); if its file did not come, the operator stands in
 function makeAvatar(char) {
   const key = parseChar(char) || 'soldier', cfg = CHARS[key], asset = assets[key] || assets.soldier;
@@ -196,15 +198,19 @@ function makeAvatar(char) {
   const armQ = armBones.map(o => o.quaternion.clone()); holdMixer.stopAllAction(); holdMixer.uncacheRoot(root);
   const spine = root.getObjectByName('Spine1') || root.getObjectByName('Spine');   // the flinch bends the spine and the head on top of the clip
   const flHeadQ = head ? head.quaternion.clone() : null, flSpineQ = spine ? spine.quaternion.clone() : null; let flOn = false;
-  let deadT = -1, tied = null; const shot = { at: 0, w: 0, dt: 0 };
+  let deadT = -1, tied = null, ragdoll = null; const shot = { at: 0, w: 0, dt: 0 };
   const want = s => s.dead ? { [C.death]: 1 } : s.air ? { [C.jump]: 1 } : s.speed > 5 ? { [C.run]: 1 } : s.speed > 0.5 ? { [C.walk]: 1 } : { [C.idle]: 1 };
   function update(dt, s) {
-    const w = want(s);
-    if (s.dead && deadT < 0) { deadT = 0; if (act[C.death]) { act[C.death].reset(); act[C.death].play(); } tied = H && gun.userData.both ? tieToHand(H, inner, gun) : null; } else if (!s.dead) deadT = -1;
+    if (s.dead && deadT < 0) {
+      deadT = 0; tied = H && gun.userData.both ? tieToHand(H, inner, gun) : null;
+      ragdoll = makeRagdoll(inner, n => root.getObjectByName(n), { fall: s.fall, vel: s.vel });   // the body falls from the pose it had, thrown by the blow
+      if (!ragdoll && act[C.death]) { act[C.death].reset(); act[C.death].play(); }
+    } else if (!s.dead) { deadT = -1; ragdoll = null; }
+    const w = ragdoll ? { [C.idle]: 1 } : want(s);   // under the ragdoll the clips wait in the idle pose: the rise on respawn blends out of it
     for (const n in act) { const t = w[n] || 0; act[n].weight += (t - act[n].weight) * Math.min(1, dt * 10); }
     if (act[C.walk]) act[C.walk].timeScale = Math.max(0.6, Math.min(1.8, s.speed / 1.7));
     if (act[C.run]) act[C.run].timeScale = Math.max(0.7, Math.min(1.6, s.speed / 6));
-    mixer.update(dt);
+    if (ragdoll) ragdoll.step(dt); else mixer.update(dt);
     if (!s.dead) armBones.forEach((o, i) => o.quaternion.copy(armQ[i]));
     if (head) head.scale.setScalar(MODEL.headScale);
     // the flinch of a hit (the bhit of mp.js): the mixer rewrote the bones this frame, so the offset is fresh every
@@ -214,7 +220,7 @@ function makeAvatar(char) {
       if (head) { head.rotation.x -= (zn === 1 ? 0.4 : 0.15) * k; head.rotation.z -= s.flinch.side * 0.12 * k; }
       if (spine) { spine.rotation.x += (zn === 2 ? 0.05 : 0.13) * k; spine.rotation.z -= s.flinch.side * 0.09 * k; }
       flOn = true;
-    } else if (flOn) { if (head && flHeadQ) head.quaternion.copy(flHeadQ); if (spine && flSpineQ) spine.quaternion.copy(flSpineQ); flOn = false; }
+    } else if (flOn && !s.dead) { if (head && flHeadQ) head.quaternion.copy(flHeadQ); if (spine && flSpineQ) spine.quaternion.copy(flSpineQ); flOn = false; }
     if (H && gun.userData.both) { if (!s.dead) hold(H, inner, gun, headProxy.rotation.x); else if (tied) carry(H, inner, gun, tied); }
     if (H && !s.dead && s.throwAt) throwArm(H, inner, (performance.now() - s.throwAt) / 1000);
     shot.dt = dt; shotFlash(flash, s, shot);
