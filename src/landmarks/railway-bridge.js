@@ -32,15 +32,15 @@ function lmRailBridge(K) {
   for (const [a, b, sg] of [[s0 - 5, s0 + 0.4, 1], [s1 - 0.4, s1 + 5, -1]]) { box(a, b, -3.6, 3.6, -14, -1.3, STONE); box(a - 0.15 * sg, b + 0.15 * sg, -3.8, 3.8, -1.6, -1.3, STONE2);
     for (const e of [a, b]) for (let y = -12; y < -1.7; y += 0.55) for (const d of [-3.6, 3.6]) box(e - 0.01, e + 0.01, d - 0.0, d + 0.0, y, y + 0.03, STONE2, false); }
   // ---- the piers: ashlar shafts with pointed cutwaters (hexagonal plan), a cap stone under the trusses
-  const prism = (cs, cd, hs, hd, y0, y1, col) => {   // a hexagon with points along d: half thickness hs, half length hd, points 2.4 m long
-    const o = [[-hs, -hd + 2.4], [-hs, hd - 2.4], [0, hd], [hs, hd - 2.4], [hs, -hd + 2.4], [0, -hd]], n = o.length;
+  const prism = (cs, cd, hs, hd, y0, y1, col) => {   // a hexagon with points along d: half thickness hs, half length hd, points 2.0 m long
+    const o = [[-hs, -hd + 2.0], [-hs, hd - 2.0], [0, hd], [hs, hd - 2.0], [hs, -hd + 2.0], [0, -hd]], n = o.length;
     const q = o.map(([u, v]) => [cs + u, cd + v]);
     for (let i = 0; i < n; i++) { const a = q[i], b = q[(i + 1) % n], ds = b[0] - a[0], dd = b[1] - a[1], l = Math.hypot(ds, dd), ns = dd / l, nd = -ds / l;   // outward normal in (s, d)
       polyA(G, [P(a[0], a[1], y0), P(b[0], b[1], y0), P(b[0], b[1], y1), P(a[0], a[1], y1)], col, T[0] * ns + N[0] * nd, 0, T[1] * ns + N[1] * nd); }
     polyA(G, q.map(([s, d]) => P(s, d, y1)), sh(col, 1.06), 0, 1, 0);
   };
   for (let k = 1; k < SPANS; k++) { const s = s0 + k * span;
-    prism(s, 0, 1.25, 4.6, -12, -1.35, STONE); for (let y = -11.4; y < -1.7; y += 0.55) prism(s, 0, 1.262, 4.64, y, y + 0.05, STONE2); prism(s, 0, 1.45, 4.85, -1.65, -1.3, STONE2);
+    prism(s, 0, 1.15, 3.7, -12, -1.35, STONE); for (let y = -11.4; y < -1.7; y += 0.55) prism(s, 0, 1.17, 3.74, y, y + 0.05, STONE2); prism(s, 0, 1.4, 4.0, -1.65, -1.3, STONE2);
     box(s - 1.0, s + 1.0, -2.1, 2.1, -1.3, -0.95, STEEL2); }   // the shoes
   // ---- the trusses: plate floor, lower and upper chords, Warren web with verticals, portals, bracing
   for (let k = 0; k < SPANS; k++) { const a = s0 + k * span, b = a + span;
