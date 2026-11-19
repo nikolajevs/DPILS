@@ -82,6 +82,12 @@ export function createBrain(g) {
       return;
     }
     if (g.roundOver()) return;
+    if (b.kx || b.kz) {   // the blast knockback (explode in game.mjs): a decaying slide away from the explosion, over the bot's own walk
+      const nx = p.x + b.kx * dt, nz = p.z + b.kz * dt;
+      if (world.walkable(nx, nz) && inArea(nx, nz)) { p.x = nx; p.z = nz; } else { b.kx = b.kz = 0; }
+      const kd = Math.exp(-5 * dt); b.kx *= kd; b.kz *= kd;
+      if (Math.hypot(b.kx, b.kz) < 0.05) b.kx = b.kz = 0;
+    }
     // look for the nearest enemy that can be seen (not every tick)
     if ((b.look -= dt) <= 0) {
       b.look = 0.25; let best = 0, bd = 1e9;
@@ -134,6 +140,6 @@ export function createBrain(g) {
     b.nextShot = now + W.gapMs * (W.auto === false ? 1.3 : 1.1) + (w === 2 ? 400 : 0);
     if (--b.burstLeft <= 0) { b.burstLeft = Math.round(rnd(L.burst[0], L.burst[1])); b.pauseUntil = now + L.pause * 1000 * rnd(0.6, 1.4); }
   }
-  const make = (level, p) => { p.bot = { level: LEVELS[level] ? level : 'normal', target: 0, react: 0, look: rnd(0, 0.25), nextShot: 0, pauseUntil: 0, burstLeft: 3, path: null, pi: 0, wpAt: 0, strafe: Math.random() < 0.5 ? 1 : -1, strafeT: 1, stuckT: 1.5, sx: 0, sz: 0, moving: false, retreatUntil: 0, respawnExtra: rnd(0, 2000) }; };
+  const make = (level, p) => { p.bot = { level: LEVELS[level] ? level : 'normal', target: 0, react: 0, look: rnd(0, 0.25), nextShot: 0, pauseUntil: 0, burstLeft: 3, path: null, pi: 0, wpAt: 0, strafe: Math.random() < 0.5 ? 1 : -1, strafeT: 1, stuckT: 1.5, sx: 0, sz: 0, moving: false, retreatUntil: 0, respawnExtra: rnd(0, 2000), kx: 0, kz: 0 }; };
   return { think, make, route };
 }

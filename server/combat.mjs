@@ -24,7 +24,10 @@ export const WEAPONS = [
 // throw of the bots and of a message without a speed.
 // the number put in a kill message for a grenade (the weapons are 0 … WEAPONS.length − 1)
 export const W_NADE = 9;
-export const NADE = { count: 2, speed: 15, minSpeed: 6, maxSpeed: 24, loft: 0.17, g: 18, fuseMs: 2500, radius: 8, dmg: 100, cooldownMs: 900, self: 0.5 };
+// push: the knockback — the blast throws the living with a velocity (m/s) that fades from `push` at the centre to 0 at
+// the radius, like the damage, plus a `pushUp` kick up so even a blast at chest height lifts one off the ground. The
+// server sends it to the player ('push'), the client adds it to the jump and a decaying slide; a bot slides on the server.
+export const NADE = { count: 2, speed: 15, minSpeed: 6, maxSpeed: 24, loft: 0.17, g: 18, fuseMs: 2500, radius: 8, dmg: 100, cooldownMs: 900, self: 0.5, push: 15, pushUp: 3 };
 // the inventory (keep src/game/mp.js and src/game/inventory.js in step): the reserve each weapon starts with, the time
 // of its reload, and the items that lie on the map and are picked up by walking over them
 export const RESERVE = [90, 24, 15, 36, 200];

@@ -4,9 +4,11 @@
       walls and hill slopes (the refined freePath), the spawn protection, teammates, and the lag compensation of
       the position, the eye height and the heading. The bullets fly (g.stepBullets drives them by the test clock),
       so each shot is given the time to reach its target before the hit is read.
+   2c. The blast push (g.stepNades drives the fuse by the test clock): the explosion throws the living away and up,
+      the push fades with distance, stops at walls, spares teammates and the dead; a bot slides on the server.
    3. A real bot fight on a flat arena (12 s of real time): with the small hitboxes the bots must still see,
       shoot and kill each other. */
-import { BULLET_G, HIT, WEAPONS, bulletAt, bulletDir, bulletDrop, rayHit } from '../server/combat.mjs';
+import { BULLET_G, HIT, WEAPONS, NADE, bulletAt, bulletDir, bulletDrop, rayHit } from '../server/combat.mjs';
 import { createGame } from '../server/game.mjs';
 import { makePhysics } from '../server/physics.mjs';
 
@@ -332,6 +334,83 @@ console.log('grenade physics (stepNade):');
   const r = { p: [0, 13, 0], v: [0, -5, 0] };
   const re = run(R, r, 30);
   ok(re && re.kind === 'roof', 'roof: the touch reports a roof', JSON.stringify(re));
+}
+
+/* ---------- 2c. the blast push: the explosion throws the living ---------- */
+console.log('blast push (explode):');
+{
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'push' });
+  const A = seat(g, conn()), B = seat(g, conn()), E = seat(g, conn()), T = seat(g, conn());
+  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -3, yaw: 0 });
+  msg(E, { t: 'join', name: 'Далеко', team: 1, x: 0, z: -6.5, yaw: 0 });
+  msg(T, { t: 'join', name: 'Свой', team: 0, x: 1, z: -1, yaw: 0 });
+  clock += 3000;   // past the spawn protection
+  for (const [c, x, z] of [[A, 0, 0], [B, 0, -3], [E, 0, -6.5], [T, 1, -1]]) msg(c, { t: 'state', x, y: 1.7, z, yaw: 0, pitch: 0 });
+  msg(A, { t: 'throw', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });   // straight down: it settles at the thrower's feet
+  for (let i = 0; i < 90; i++) { clock += 1000 / 30; g.stepNades(); }   // 3 s: past the 2.5 s fuse
+  const pb = B.last('push'), pa = A.last('push'), pe = E.last('push');
+  ok(pb && pb.vz < -5 && pb.vy > 1, 'the blast 3 m away throws away and up', JSON.stringify(pb));
+  ok(pa && pa.vy > 4, 'the thrower is thrown up too (the self blast, half force)', JSON.stringify(pa));
+  ok(pe && Math.hypot(pe.vx, pe.vy, pe.vz) < Math.hypot(pb.vx, pb.vy, pb.vz), 'the push fades with distance', JSON.stringify(pe));
+  ok(T.all('push').length === 0 && T.all('hurt').length === 0, 'the teammate is not pushed');
+  ok(B.handle.player.hp > 0 && B.handle.player.hp < 100, 'the blast at 3 m hurts but does not kill', String(B.handle.player.hp));
+  g.stop();
+}
+{
+  // the wall shields from the push as from the damage
+  let clock = 1e6;
+  const house = (x, z) => (Math.abs(x) < 4 && z > -4 && z < -2) ? { top: 12 } : null;
+  const g = createGame({ world: flatWorld(house), area: { cx: 0, cz: 0 }, now: () => clock, name: 'pushwall' });
+  const A = seat(g, conn()), B = seat(g, conn());
+  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -6, yaw: 0 });
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(B, { t: 'state', x: 0, y: 1.7, z: -6, yaw: 0, pitch: 0 });
+  msg(A, { t: 'throw', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });
+  for (let i = 0; i < 90; i++) { clock += 1000 / 30; g.stepNades(); }
+  ok(B.all('push').length === 0 && B.all('hurt').length === 0, 'the wall shields from the push as from the damage');
+  g.stop();
+}
+{
+  // the dead are not thrown: a pre-damaged target dies to the blast and gets no push
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'pushdead' });
+  const A = seat(g, conn()), D = seat(g, conn());
+  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(D, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -1, yaw: 0 });
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(D, { t: 'state', x: 0, y: 1.7, z: -1, yaw: 0, pitch: 0 });
+  const L = Math.hypot(0.6, 1);
+  msg(A, { t: 'shoot', w: 0, rays: [[0, -0.6 / L, -1 / L]] });
+  clock += 120; g.stepBullets();
+  ok(D.handle.player.hp === 100 - WEAPONS[0].dmg, 'the pre-damage landed', String(D.handle.player.hp));
+  msg(A, { t: 'throw', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });
+  for (let i = 0; i < 90; i++) { clock += 1000 / 30; g.stepNades(); }
+  ok(!D.handle.player.alive && D.all('push').length === 0, 'the dead are not thrown');
+  g.stop();
+}
+{
+  // a bot slides on the server: the knockback lands in its brain and decays as it slides
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, arena: { cx: 0, cz: 0, r: 60, bases: [base(0, -25, 4), base(0, 25, 4)] }, mode: 'team', now: () => clock, name: 'pushbot' });
+  const A = seat(g, conn());
+  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  const bot = g.addBot('easy');   // easy: no grenades of its own
+  bot.x = 0; bot.z = -3; bot.y = 1.7;
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(A, { t: 'throw', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });
+  for (let i = 0; i < 90; i++) { clock += 1000 / 30; g.stepNades(); }
+  const k0 = Math.hypot(bot.bot.kx, bot.bot.kz);
+  ok(bot.alive && k0 > 2, 'the bot got the knockback', String(k0));
+  clock += 300;   // the think tick takes dt 0.2 of it: the bot slides and the push decays
+  await new Promise(r => setTimeout(r, 250));   // let the real think clock fire
+  ok(Math.hypot(bot.bot.kx, bot.bot.kz) < k0, 'the bot slide decays');
+  g.stop();
 }
 
 /* ---------- 3. a real bot fight ---------- */
