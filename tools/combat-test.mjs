@@ -6,7 +6,9 @@
       so each shot is given the time to reach its target before the hit is read.
    2c. The blast push (g.stepNades drives the fuse by the test clock): the explosion throws the living away and up,
       the push fades with distance, stops at walls, spares teammates and the dead; a bot slides on the server.
-   2d. The fall damage: the client reports the height it landed from, the server caps it by the drop it saw itself;
+   2d. The grenade meets the players and the bullets: it bounces off a body (enemy or teammate, not the thrower)
+      without hurting, and a bullet that meets it in the air detonates it — the blast stays the thrower's.
+   2e. The fall damage: the client reports the height it landed from, the server caps it by the drop it saw itself;
       a jump is free, a long fall kills, the spawn protection does not shield from one's own fall; a bot walks off
       an edge and falls for real (g.stepBots drives its think by the test clock), a slope is walked without damage.
    3. A real bot fight on a flat arena (12 s of real time): with the small hitboxes the bots must still see,
@@ -459,7 +461,149 @@ console.log('blast push (explode):');
   g.stop();
 }
 
-/* ---------- 2d. the fall damage: a landing from above the safe height hurts ---------- */
+/* ---------- 2d. the grenade meets the players and the bullets ---------- */
+console.log('grenade: the body bounce and the shot-down:');
+{
+  // the thrown grenade bounces off the player it meets, without hurting or pushing them
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'nadebody' });
+  const A = seat(g, conn()), B = seat(g, conn());
+  msg(A, { t: 'join', name: 'Thrower', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Target', team: 1, x: 0, z: -6, yaw: 0 });
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(B, { t: 'state', x: 0, y: 1.7, z: -6, yaw: 0, pitch: 0 });
+  msg(A, { t: 'throw', dx: 0, dy: 0, dz: -1, sp: 15 });
+  let nb = null;
+  for (let i = 0; i < 30 && !nb; i++) { clock += 1000 / 30; g.stepNades(); nb = A.last('nbounce'); }
+  ok(nb && nb.v[2] > 2, 'the grenade bounces back off the body', JSON.stringify(nb));
+  ok(nb && nb.p[2] > -6.5, 'it stopped at the body, not inside it', JSON.stringify(nb && nb.p));
+  ok(B.handle.player.hp === 100 && B.all('hurt').length === 0 && B.all('push').length === 0, 'the touch neither hurts nor pushes');
+  for (let i = 0; i < 90; i++) { clock += 1000 / 30; g.stepNades(); }
+  ok(A.all('boom').length === 1, 'the bounced grenade still goes off on its fuse');
+  g.stop();
+}
+{
+  // a teammate's body bounces it too, and the thrower's own body never stops their own grenade
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'nadeteam' });
+  const A = seat(g, conn()), T = seat(g, conn());
+  msg(A, { t: 'join', name: 'Thrower', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(T, { t: 'join', name: 'Mate', team: 0, x: 0, z: -6, yaw: 0 });
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(T, { t: 'state', x: 0, y: 1.7, z: -6, yaw: 0, pitch: 0 });
+  msg(A, { t: 'throw', dx: 0, dy: 0, dz: -1, sp: 15 });
+  for (let i = 0; i < 30; i++) { clock += 1000 / 30; g.stepNades(); }
+  ok(A.last('nbounce'), 'a teammate\'s body bounces it too');
+  g.stop();
+}
+{
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'nadeself' });
+  const A = seat(g, conn());
+  msg(A, { t: 'join', name: 'Thrower', team: 0, x: 0, z: 0, yaw: 0 });
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(A, { t: 'throw', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });   // straight down at own feet: the old feel must hold
+  for (let i = 0; i < 90; i++) { clock += 1000 / 30; g.stepNades(); }
+  ok(A.all('nbounce').length === 0 && A.all('boom').length === 1, 'the thrower\'s own body does not stop the grenade');
+  g.stop();
+}
+{
+  // the shot-down: a bullet that meets the grenade in the air detonates it at once
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'nadeshot' });
+  const A = seat(g, conn()), B = seat(g, conn());
+  msg(A, { t: 'join', name: 'Shooter', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Far', team: 1, x: 0, z: -40, yaw: 0 });
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(B, { t: 'state', x: 0, y: 1.7, z: -40, yaw: 0, pitch: 0 });
+  msg(A, { t: 'ping', rtt: 0, c: 1 });   // no lag: the test aims at the live grenade
+  msg(A, { t: 'throw', dx: 0, dy: 0, dz: -1, sp: 15 });
+  let gy = 1.5, gv = NADE.loft * 15, gz = -0.6;
+  for (let i = 0; i < 9; i++) { clock += 1000 / 30; g.stepNades(); gv -= NADE.g / 30; gy += gv / 30; gz -= 15 / 30; }   // 0.3 s of flight, mirrored step by step
+  const L = Math.hypot(gy - 1.7, gz);
+  msg(A, { t: 'shoot', w: 0, rays: [[0, (gy - 1.7) / L, gz / L]] });
+  clock += 60; g.stepBullets();
+  const ns = A.last('nshot');
+  ok(ns && near(ns.d, L - MUZZLE, 0.3), 'the bullet met the grenade in the air', JSON.stringify(ns));
+  ok(A.all('boom').length === 1, 'the shot-down grenade detonates at once');
+  ok(A.last('hit') && A.last('hit').nade === true, 'the shooter gets the hitmarker');
+  ok(B.handle.player.hp === 100, 'the far player is untouched');
+  for (let i = 0; i < 90; i++) { clock += 1000 / 30; g.stepNades(); }
+  ok(A.all('boom').length === 1, 'the grenade is gone: no second blast on the fuse');
+  g.stop();
+}
+{
+  // a bullet a metre aside misses: the grenade lives out its fuse
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'nademiss' });
+  const A = seat(g, conn());
+  msg(A, { t: 'join', name: 'Shooter', team: 0, x: 0, z: 0, yaw: 0 });
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(A, { t: 'ping', rtt: 0, c: 1 });
+  msg(A, { t: 'throw', dx: 0, dy: 0, dz: -1, sp: 15 });
+  let gy = 1.5, gv = NADE.loft * 15, gz = -0.6;
+  for (let i = 0; i < 9; i++) { clock += 1000 / 30; g.stepNades(); gv -= NADE.g / 30; gy += gv / 30; gz -= 15 / 30; }
+  const L = Math.hypot(1, gy - 1.7, gz);
+  msg(A, { t: 'shoot', w: 0, rays: [[1 / L, (gy - 1.7) / L, gz / L]] });
+  clock += 60; g.stepBullets();
+  ok(A.all('nshot').length === 0, 'a bullet a metre aside misses the grenade');
+  for (let i = 0; i < 90; i++) { clock += 1000 / 30; g.stepNades(); }
+  ok(A.all('boom').length === 1, 'the missed grenade lives out its fuse');
+  g.stop();
+}
+{
+  // the shotgun: the first pellet detonates the grenade, the rest fly on — one blast, not eight
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'nadeshotgun' });
+  const A = seat(g, conn());
+  msg(A, { t: 'join', name: 'Shooter', team: 0, x: 0, z: 0, yaw: 0 });
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(A, { t: 'ping', rtt: 0, c: 1 });
+  msg(A, { t: 'throw', dx: 0, dy: 0, dz: -1, sp: 15 });
+  let gy = 1.5, gv = NADE.loft * 15, gz = -0.6;
+  for (let i = 0; i < 9; i++) { clock += 1000 / 30; g.stepNades(); gv -= NADE.g / 30; gy += gv / 30; gz -= 15 / 30; }
+  const L = Math.hypot(gy - 1.7, gz), dir = [0, (gy - 1.7) / L, gz / L];
+  msg(A, { t: 'shoot', w: 1, rays: Array.from({ length: 8 }, () => dir) });
+  clock += 60; g.stepBullets();
+  ok(A.all('nshot').length === 1 && A.all('boom').length === 1, 'one pellet detonates it, the rest fly on');
+  g.stop();
+}
+{
+  // the blast of a shot-down grenade stays the thrower's: a third player's bullet only lights the fuse early
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'nadecredit' });
+  const A = seat(g, conn()), B = seat(g, conn()), C = seat(g, conn());
+  msg(A, { t: 'join', name: 'Thrower', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Victim', team: 1, x: 0, z: -6, yaw: 0 });
+  msg(C, { t: 'join', name: 'Shooter', team: 1, x: 8, z: -3, yaw: 0 });
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(B, { t: 'state', x: 0, y: 1.7, z: -6, yaw: 0, pitch: 0 });
+  msg(C, { t: 'state', x: 8, y: 1.7, z: -3, yaw: 0, pitch: 0 });
+  msg(C, { t: 'ping', rtt: 0, c: 1 });
+  const L0 = Math.hypot(0.6, 6);
+  msg(A, { t: 'shoot', w: 0, rays: [[0, -0.6 / L0, -6 / L0]] });   // pre-damage the victim so the blast kills
+  clock += 120; g.stepBullets();
+  ok(B.handle.player.hp === 100 - WEAPONS[0].dmg, 'the pre-damage landed', String(B.handle.player.hp));
+  msg(A, { t: 'throw', dx: 0, dy: 0, dz: -1, sp: 15 });
+  let gy = 1.5, gv = NADE.loft * 15, gz = -0.6;
+  for (let i = 0; i < 9; i++) { clock += 1000 / 30; g.stepNades(); gv -= NADE.g / 30; gy += gv / 30; gz -= 15 / 30; }
+  const dx = 0 - 8, dy = gy - 1.7, dz = gz - (-3), L = Math.hypot(dx, dy, dz);
+  msg(C, { t: 'shoot', w: 0, rays: [[dx / L, dy / L, dz / L]] });
+  clock += 60; g.stepBullets();
+  ok(C.last('nshot'), 'the third player shot the grenade down');
+  const kill = A.all('kill').find(m => m.victim === B.handle.player.id);
+  ok(kill && kill.killer === A.handle.player.id && kill.w === 9, 'the kill is the thrower\'s, by grenade', JSON.stringify(kill));
+  g.stop();
+}
+
+/* ---------- 2e. the fall damage: a landing from above the safe height hurts ---------- */
 console.log('fall damage (fall):');
 {
   let clock = 1e6;

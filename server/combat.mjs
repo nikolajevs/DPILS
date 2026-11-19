@@ -19,7 +19,9 @@ export const WEAPONS = [
   { name: 'Пулемёт', mag: 100, gapMs: 60, pellets: 1, dmg: 16, head: 28, range: 140, falloff: 0.25, vel: 560 },
 ];   // mag: the magazine size (keep src/game/mp.js in step); the reserve and the reload time are below
 // the grenade (keep src/game/nades.js in step): thrown along the aim lifted by `loft`, falls with `g`, bounces on the
-// ground and off walls, goes off after `fuseMs`; damage falls linearly from `dmg` at the blast to 0 at `radius`.
+// ground, off walls and off players (bodyR + r is the capsule it meets), goes off after `fuseMs`; damage falls linearly
+// from `dmg` at the blast to 0 at `radius`. A bullet that meets it in the air detonates it: hitR is the radius the
+// bullet judges by (a little wider than the drawn body, so the shot is possible), r is the physical radius of the body.
 // The player charges the throw with the mouse held down: the speed grows from `minSpeed` to `maxSpeed`; `speed` is the
 // throw of the bots and of a message without a speed.
 // the number put in a kill message for a grenade (the weapons are 0 … WEAPONS.length − 1)
@@ -31,7 +33,7 @@ export const FALL = { safe: 3, k: 8, g: 21, maxH: 80 };
 // push: the knockback — the blast throws the living with a velocity (m/s) that fades from `push` at the centre to 0 at
 // the radius, like the damage, plus a `pushUp` kick up so even a blast at chest height lifts one off the ground. The
 // server sends it to the player ('push'), the client adds it to the jump and a decaying slide; a bot slides on the server.
-export const NADE = { count: 2, speed: 15, minSpeed: 6, maxSpeed: 24, loft: 0.17, g: 18, fuseMs: 2500, radius: 8, dmg: 100, cooldownMs: 900, self: 0.5, push: 15, pushUp: 3 };
+export const NADE = { count: 2, speed: 15, minSpeed: 6, maxSpeed: 24, loft: 0.17, g: 18, fuseMs: 2500, radius: 8, dmg: 100, cooldownMs: 900, self: 0.5, push: 15, pushUp: 3, r: 0.1, hitR: 0.25, bodyR: 0.3 };
 // the inventory (keep src/game/mp.js and src/game/inventory.js in step): the reserve each weapon starts with, the time
 // of its reload, and the items that lie on the map and are picked up by walking over them
 export const RESERVE = [90, 24, 15, 36, 200];
@@ -69,6 +71,19 @@ export function rayToSegment(o, d, len, a, b) {
   t = Math.max(0, Math.min(len, (B * s - D) / A));
   const px = o[0] + d[0] * t, py = o[1] + d[1] * t, pz = o[2] + d[2] * t, qx = a[0] + ux * s, qy = a[1] + uy * s, qz = a[2] + uz * s;
   return { dist: Math.hypot(px - qx, py - qy, pz - qz), t };
+}
+// closest points of two segments a–b and c–d: { dist, pa, pb }, pa on a–b, pb on c–d. The grenade's bounce off a
+// player reads the normal from pa − pb (the body's capsule is the second segment).
+export function segToSegment(a, b, c, d) {
+  const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = d[0] - c[0], vy = d[1] - c[1], vz = d[2] - c[2];
+  const wx = a[0] - c[0], wy = a[1] - c[1], wz = a[2] - c[2];
+  const A = ux * ux + uy * uy + uz * uz, B = ux * vx + uy * vy + uz * vz, C = vx * vx + vy * vy + vz * vz;
+  const D = ux * wx + uy * wy + uz * wz, E = vx * wx + vy * wy + vz * wz, den = A * C - B * B;
+  let s = den > 1e-9 ? Math.max(0, Math.min(1, (B * E - C * D) / den)) : 0;
+  let t = C > 1e-9 ? Math.max(0, Math.min(1, (B * s + E) / C)) : 0;
+  s = A > 1e-9 ? Math.max(0, Math.min(1, (B * t - D) / A)) : 0;
+  const pa = [a[0] + ux * s, a[1] + uy * s, a[2] + uz * s], pb = [c[0] + vx * t, c[1] + vy * t, c[2] + vz * t];
+  return { dist: Math.hypot(pa[0] - pb[0], pa[1] - pb[1], pa[2] - pb[2]), pa, pb };
 }
 // the hitboxes of a person (the server judges by them and the page predicts by the same code, src/game/mp.js):
 // a head sphere, a torso capsule and two leg capsules, all in metres. The pose p = { x, y, z, eye, yaw } carries the

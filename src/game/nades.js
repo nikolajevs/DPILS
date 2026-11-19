@@ -20,9 +20,13 @@ const list = new Map();
 const GEO = new THREE.SphereGeometry(0.1, 10, 8), MAT = worldSpace(new THREE.MeshLambertMaterial({ color: 0x3d5a2a }));
 // the flight is the server's own step (server/physics.mjs), so the copy, the aim arc and the server never drift apart;
 // it also reports each touch (n.bounce) for the clink, and rolls a settled grenade downhill on a slope
-const stepNade = (() => { const s = makePhysics(buildingAt, terrainH).stepNade; return (n, dt) => s(n, dt, NADE.g); })();
+const stepNade = (() => { const s = makePhysics(buildingAt, terrainH).stepNade; return (n, dt) => s(n, dt, NADE.g, bodiesFn ? bodiesFn(n) : undefined); })();
 let bounceCb = null;
 const onNadeBounce = cb => { bounceCb = cb; };   // mp.js plays the clink of a touch it can hear
+let bodiesFn = null;
+const setNadeBodies = fn => { bodiesFn = fn; };   // mp.js gives the living bodies the grenade bounces off (the thrower is left out, as on the server)
+// the server's bounce off a body ('nbounce'): put the copy back onto the server's flight, the trail starts afresh
+function syncNade(id, p, v) { const n = list.get(id); if (!n) return; n.p = p.slice(); n.v = v.slice(); n.hist.length = 0; }
 const liveNades = () => [...list.values()].map(n => ({ p: n.p, age: n.age, by: n.by }));   // for the danger indicator
 /* модель гранаты посажена дном в ноль (так она стоит на карте); в полёте центруем её вокруг точки сервера. На карте она
    вдвое крупнее настоящей, чтобы её было видно; в полёте — почти настоящего размера, как в руке (viewmodel.js) */
@@ -420,7 +424,7 @@ function clearBlasts() {
 const FUSE = 2.5, BLAST_R = 8;   // keep server/combat.mjs NADE.fuseMs and NADE.radius in step
 let clock = 0;   // seconds, for the running pulses
 function predictNade(p, v, maxT = FUSE) {
-  const n = { p: p.slice(), v: v.slice() }, pts = [n.p.slice()], dt = 1 / 30;
+  const n = { p: p.slice(), v: v.slice(), preview: true }, pts = [n.p.slice()], dt = 1 / 30;   // preview: the aim arc bends round the bodies too, but not round your own
   let first = -1, wall = false;
   for (let t = 0; t < maxT - 1e-6; t += dt) {
     const vx = n.v[0], vy = n.v[1], vz = n.v[2];
@@ -563,4 +567,4 @@ function nadeSamples() {
   return [flyNade() || new THREE.Mesh(GEO, MAT), cloudSample(SMOKE), cloudSample(FIRE), new THREE.Mesh(scorchGeo, scorchMat()), ...aim, new THREE.Mesh(trails[0].geo, trailMat), new THREE.Mesh(spoonLong, spoonMat)];
 }
 
-export { nadeSamples, addNade, boomNade, blastGlow, camShake, clearBlasts, clearNades, tickNades, onNadeBounce, liveNades, NADE_THROW, showNadePreview, hideNadePreview };
+export { nadeSamples, addNade, boomNade, blastGlow, camShake, clearBlasts, clearNades, tickNades, onNadeBounce, setNadeBodies, syncNade, liveNades, NADE_THROW, showNadePreview, hideNadePreview };

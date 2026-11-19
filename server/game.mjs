@@ -8,7 +8,7 @@
    (WEAPONS.vel) and the damage lands when the bullet arrives, not at the click. The hit is still judged against the target
    as the shooter saw it at the click (the position rewound by the shooter's lag, frozen for the flight), so “shoot where
    you see” holds while the bullet takes its time to get there. */
-import { FALL, HIT, INV, ITEMS, NADE, RELOAD_MS, RESERVE, RULES as R, WEAPONS, W_FALL, W_NADE, bulletAt, bulletDir, rayHit } from './combat.mjs';
+import { FALL, HIT, INV, ITEMS, NADE, RELOAD_MS, RESERVE, RULES as R, WEAPONS, W_FALL, W_NADE, bulletAt, bulletDir, rayHit, rayToSegment } from './combat.mjs';
 import { LEVELS, botName, createBrain } from './bots.mjs';
 
 const TEAMS = ['Красные', 'Синие'], HX = 5200, HY = 4200;   // bounds a bit wider than the city
@@ -163,12 +163,29 @@ export function createGame(opts) {
         if (reach <= 1e-6) { gone = true; break; }
         const o = bulletAt(b.o, b.d, dist, b.speed), dir = bulletDir(b.d, dist, b.speed);   // where the arc is now, and the way it goes
         let best = null;
-        if (!roundOver) for (const { v, pose } of b.shot.poses) {   // the poses the shooter saw at the click, frozen
-          if (!v.alive || nt <= v.protectUntil) continue;
-          const h = rayHit(o, dir, reach + HIT.grace, pose);
-          if (h && h.t <= reach + HIT.grace && (!best || h.t < best.t)) best = { t: Math.min(h.t, reach), zone: h.zone, v };
+        if (!roundOver) {
+          for (const { v, pose } of b.shot.poses) {   // the poses the shooter saw at the click, frozen
+            if (!v.alive || nt <= v.protectUntil) continue;
+            const h = rayHit(o, dir, reach + HIT.grace, pose);
+            if (h && h.t <= reach + HIT.grace && (!best || h.t < best.t)) best = { t: Math.min(h.t, reach), zone: h.zone, v };
+          }
+          for (const n of nades.values()) {   // a grenade in the air can be shot down: the bullet detonates it where they meet
+            const ta = (t - b.nadeLag - n.simT) / 1000, tb = (nt - b.nadeLag - n.simT) / 1000;   // rewound by the shooter's lag and swept over the substep
+            const a = [n.p[0] + n.v[0] * ta, n.p[1] + n.v[1] * ta, n.p[2] + n.v[2] * ta];
+            const c = [n.p[0] + n.v[0] * tb, n.p[1] + n.v[1] * tb, n.p[2] + n.v[2] * tb];
+            const h = rayToSegment(o, dir, reach + HIT.grace, a, c);
+            if (h.dist <= NADE.hitR && h.t <= reach + HIT.grace && (!best || h.t < best.t)) best = { t: Math.min(h.t, reach), nade: n };
+          }
         }
-        if (best) {
+        if (best && best.nade) {
+          const total = dist + best.t, at = bulletAt(b.o, b.d, total, b.speed), s = b.shot;
+          if (!s.hit) { s.hit = true; shooter.st.hitShots++; if (shooter.prof) shooter.prof.add('hits'); }
+          all({ t: 'nshot', bid: b.bid, by: b.by, id: best.nade.id, d: +total.toFixed(2), at });   // the page cuts the tracer here and strikes sparks
+          send(shooter, { t: 'hit', id: 0, head: false, zone: 0, kill: false, dmg: 0, nade: true });   // the shooter's hitmarker: the grenade is down
+          best.nade.p = [at[0], at[1], at[2]];
+          explode(best.nade);   // the blast stays the thrower's: the bullet only lit the fuse early
+          gone = true;
+        } else if (best) {
           const total = dist + best.t, k = 1 - W.falloff * Math.min(1, total / W.range);
           const dmg = (best.zone === 1 ? W.head : best.zone === 2 ? W.dmg * HIT.legMul : W.dmg) * k;
           const at = bulletAt(b.o, b.d, total, b.speed), s = b.shot;
@@ -210,7 +227,10 @@ export function createGame(opts) {
       const d = [num(ray[0], 1), num(ray[1], 1), num(ray[2], 1)], l = Math.hypot(...d); if (l < 0.5) continue; d.forEach((x, i) => d[i] = x / l);
       const wallEye = world.freePath(eye, d, W.range, W.vel || 560), mz = Math.min(MUZZLE, wallEye);   // the wall along the falling arc; pressed to a wall the barrel rests on it, the flight is zero
       const o = [eye[0] + d[0] * mz, eye[1] + d[1] * mz, eye[2] + d[2] * mz], wall = wallEye - mz, bid = nextBid++;
-      bullets.set(bid, { bid, by: p.id, w: wi, o, d, speed: W.vel || 560, last: t0, dist: 0, max: wall, shot });
+      // the grenade's copy on the page flies without the interpolation buffer the bodies have, so it is seen a whole rtt
+      // in the past: lagMs is 120 + rtt/2, and 2·(lagMs − 120) gives that rtt back (0 for a bot, which sees the live world)
+      const nadeLag = lagMs > 0 ? Math.min(600, Math.max(0, 2 * (lagMs - 120))) : 0;
+      bullets.set(bid, { bid, by: p.id, w: wi, o, d, speed: W.vel || 560, last: t0, dist: 0, max: wall, shot, nadeLag });
       shot.pending++;
       out.push([+d[0].toFixed(4), +d[1].toFixed(4), +d[2].toFixed(4), +wall.toFixed(1), bid]);
     }
@@ -221,7 +241,7 @@ export function createGame(opts) {
   function throwNade(p, u, sp = NADE.speed) {
     const t0 = now(); if (!p.alive || p.nades <= 0 || t0 - p.lastNade < NADE.cooldownMs || roundOver) return;
     p.nades--; p.lastNade = t0; sp = Math.max(NADE.minSpeed, Math.min(NADE.maxSpeed, sp)); const id = nextNade++;   // the charged throw: the client sends the speed it gathered holding the mouse
-    const n = { id, by: p.id, p: [p.x + u[0] * 0.6, p.y - 0.2 + u[1] * 0.6, p.z + u[2] * 0.6], v: [u[0] * sp, u[1] * sp + NADE.loft * sp, u[2] * sp], t: t0 + NADE.fuseMs };
+    const n = { id, by: p.id, p: [p.x + u[0] * 0.6, p.y - 0.2 + u[1] * 0.6, p.z + u[2] * 0.6], v: [u[0] * sp, u[1] * sp + NADE.loft * sp, u[2] * sp], t: t0 + NADE.fuseMs, simT: t0 };
     nades.set(id, n); all({ t: 'nade', id, by: p.id, p: n.p, v: n.v, fuse: NADE.fuseMs });
   }
   // the end of a round: the table of the round goes to everybody, ten seconds later the scores are cleared and the next round starts
@@ -346,7 +366,15 @@ export function createGame(opts) {
     if (players.size) all({ t: 'snap', now: now(), p: list });
   }, 1000 / R.tickHz));
   timers.push(setInterval(() => { for (const p of players.values()) if (p.prof) p.prof.add('secs'); }, 1000));   // the time played
-  function stepNades() { const t = now(); for (const n of [...nades.values()]) { world.stepNade(n, 1 / 30, NADE.g); if (t >= n.t) explode(n); } }
+  function stepNades() {
+    const t = now();
+    for (const n of [...nades.values()]) {
+      const bodies = [...players.values()].filter(v => v.alive && v.id !== n.by).map(v => ({ x: v.x, y: v.y, z: v.z, eye: v.eye }));   // the thrower's own body does not stop their grenade
+      world.stepNade(n, 1 / 30, NADE.g, bodies); n.simT = t;
+      if (n.bounce && n.bounce.kind === 'body') all({ t: 'nbounce', id: n.id, p: n.p, v: n.v });   // the page resyncs its copy onto the bounced flight
+      if (t >= n.t) explode(n);
+    }
+  }
   timers.push(setInterval(stepNades, 1000 / 30));
   timers.push(setInterval(() => advanceBullets(now()), 1000 / 30));   // the bullets in the air fly on the same clock
   function stepBots(dt) { for (const p of [...players.values()]) if (p.bot) brain.think(p, dt); }
