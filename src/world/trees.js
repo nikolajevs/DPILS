@@ -64,18 +64,20 @@ function leafAtlas() {
   const t = new THREE.DataTexture(new Uint8Array(d.buffer), S * 2, S * 2, THREE.RGBAFormat);
   t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.needsUpdate = true; return t;
 }
+const BARK_TILE = 0.7;   // metres of trunk one repeat of the bark photograph covers
 // type: 0 pine, 1 broadleaf, 2 birch, 3 spruce
 function treeGeo(type) {
   const P = [], N = [], Cc = [], K = []; let H = 0, Rm = 0, seq = 0;
-  const solid = (geo, col, m) => {
+  const solid = (geo, col, m, bark) => {   // bark: [u repeats, v repeats] to lay the bark photograph on it (carried in aCard.xyz of a solid, whose w is 0)
     const g = geo.index ? geo.toNonIndexed() : geo; g.applyMatrix4(m);
-    const p = g.attributes.position.array, nn = g.attributes.normal.array, c = hb(col);
-    for (let i = 0; i < p.length; i += 3) { P.push(p[i], p[i + 1], p[i + 2]); N.push(nn[i], nn[i + 1], nn[i + 2]); const f = 0.82 + 0.18 * hash(Math.round(p[i + 1] * 3) * 31 + type); Cc.push(c[0] / 255 * f, c[1] / 255 * f, c[2] / 255 * f); K.push(0, 0, 0, 0); H = Math.max(H, p[i + 1]); }
+    const p = g.attributes.position.array, nn = g.attributes.normal.array, uv = g.attributes.uv.array, c = hb(col);
+    for (let i = 0, j = 0; i < p.length; i += 3, j += 2) { P.push(p[i], p[i + 1], p[i + 2]); N.push(nn[i], nn[i + 1], nn[i + 2]); const f = 0.82 + 0.18 * hash(Math.round(p[i + 1] * 3) * 31 + type); Cc.push(c[0] / 255 * f, c[1] / 255 * f, c[2] / 255 * f); K.push(bark ? uv[j] * bark[0] : 0, bark ? uv[j + 1] * bark[1] : 0, bark ? 1 : 0, 0); H = Math.max(H, p[i + 1]); }
   };
   const UP = new THREE.Vector3(0, 1, 0), ONE = new THREE.Vector3(1, 1, 1);
   const limb = (ax, ay, az, bx, by, bz, r0, r1, col, seg = 6, arc) => {
     const d = new THREE.Vector3(bx - ax, by - ay, bz - az), L = d.length(), g = new THREE.CylinderGeometry(r1, r0, L, seg, 1, true, arc ? arc[0] : 0, arc ? arc[1] : Math.PI * 2);
-    solid(g, col, new THREE.Matrix4().compose(new THREE.Vector3((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2), new THREE.Quaternion().setFromUnitVectors(UP, d.normalize()), ONE));
+    const bark = type === 2 ? [Math.max(1, Math.round(Math.PI * (r0 + r1) * (arc ? arc[1] / 6.283 : 1) / BARK_TILE)), L / BARK_TILE] : null;   // birch: whole repeats round the trunk so the seam matches
+    solid(g, col, new THREE.Matrix4().compose(new THREE.Vector3((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2), new THREE.Quaternion().setFromUnitVectors(UP, d.normalize()), ONE), bark);
   };
   const card = (x, y, z, size, nx, ny, nz, shade, cellIdx) => {
     const rot = hash(seq * 7 + type * 131 + 5) * 6.283, l = Math.hypot(nx, ny, nz) || 1; seq++;
@@ -110,7 +112,7 @@ function treeGeo(type) {
     capY = crown([[0, 5.7, 0, 2.6], [1.35, 4.9, 0.4, 1.9], [-1.15, 5.0, -0.6, 2.0], [0.3, 6.9, -0.5, 1.8], [-0.4, 4.6, 1.25, 1.7]], 0.9, 4.2, 0.95, 0);
   } else if (type === 2) {
     limb(0, 0, 0, 0.12, 7.4, 0.08, 0.16, 0.05, '#e7e4dc', 6);
-    for (let k = 0; k < 7; k++) { const y = 0.5 + k * 0.8 + hash(k * 17) * 0.4, r = 0.165 - y * 0.012; limb(y * 0.016, y, y * 0.011, y * 0.016, y + 0.12 + hash(k * 3) * 0.14, y * 0.011, r, r, '#2a2826', 6, [hash(k * 29) * 6.283, 1.2 + hash(k * 5) * 1.6]); }
+    // (the dark marks on the trunk are in the bark texture, no longer black patches of geometry)
     limb(0.08, 4.8, 0.05, 0.6, 6.0, 0.3, 0.05, 0.02, '#cfcbc2', 4); limb(0.08, 4.4, 0.05, -0.4, 5.6, -0.6, 0.05, 0.02, '#cfcbc2', 4);
     capY = crown([[0.05, 7.4, 0, 1.8], [0.6, 6.1, 0.3, 1.5], [-0.5, 8.6, -0.2, 1.3], [-0.35, 5.7, -0.6, 1.3]], 1.25, 5.2, 0.85, 1);
   } else {
@@ -140,7 +142,7 @@ const TREE_VERT = `
   vec4 tWorld = modelMatrix * mvPosition; mvPosition.y += terrainH(tWorld.xz);
   mvPosition.xz += vec2(0.8, 0.45) * ((sin(uTime * 0.45 + tWorld.x * 0.05 + tWorld.z * 0.07) + 0.5 * sin(uTime * 0.9 + tWorld.x * 0.13)) * max(transformed.y - 1.2, 0.0) * 0.006 * tScale);
   mvPosition = modelViewMatrix * mvPosition;
-  vCard = vec3(0.5, 0.5, 0.0);
+  vCard = vec3(0.5, 0.5, 0.0); vBark = aCard.w > 0.5 ? vec3(0.0) : aCard.xyz;
   if (aCard.w > 0.5) {
     float tA = aCard.z + sin(uTime * 0.9 + aCard.z * 40.0 + tWorld.x * 0.3 + tWorld.z * 0.3) * 0.04;
     vec2 tC = aCard.xy * tScale, tO = vec2(tC.x * cos(tA) - tC.y * sin(tA), tC.x * sin(tA) + tC.y * cos(tA));
@@ -150,18 +152,26 @@ const TREE_VERT = `
   }
   gl_Position = projectionMatrix * mvPosition;`;
 let matTree, matTreeDepth, matTreeFar;
+// the birch bark: a colour texture (white with black lenticels, made by tools/gen-birch-bark.py, textures/bark_birch.webp); a white pixel stands in until it has come
+function barkTex() {
+  const c = mkCanvas(1, 1), g = c.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, 1, 1);
+  const t = new THREE.Texture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true;
+  new THREE.TextureLoader().load('textures/bark_birch.webp', img => { t.image = img.image; t.needsUpdate = true; }, undefined, () => {});
+  return t;
+}
 function treeMaterials(leaf) {
   matTree = std({ vertexColors: true, roughness: 0.78, metalness: 0 }, 'tree', s => {
-    s.uniforms.uLeaf = { value: leaf }; s.uniforms.uTime = U.time; s.uniforms.uSunW = U.sunDir; s.uniforms.uSunC = U.sunCol;
-    s.vertexShader = 'attribute vec4 aCard; uniform float uTime; varying vec3 vCard;\n' + s.vertexShader.replace('#include <project_vertex>', TREE_VERT.replace('/*NORMAL*/', 'vNormal = normalize(vNormal + vec3(tO, 0.0) * (0.55 / max(length(tC), 1e-3)));'));
-    s.fragmentShader = 'uniform sampler2D uLeaf; uniform vec3 uSunW; uniform vec3 uSunC; varying vec3 vCard;\n' + LEAF_GLSL + s.fragmentShader.replace('#include <map_fragment>', `
+    s.uniforms.uBark = { value: barkTex() }; s.uniforms.uLeaf = { value: leaf }; s.uniforms.uTime = U.time; s.uniforms.uSunW = U.sunDir; s.uniforms.uSunC = U.sunCol;
+    s.vertexShader = 'attribute vec4 aCard; uniform float uTime; varying vec3 vCard; varying vec3 vBark;\n' + s.vertexShader.replace('#include <project_vertex>', TREE_VERT.replace('/*NORMAL*/', 'vNormal = normalize(vNormal + vec3(tO, 0.0) * (0.55 / max(length(tC), 1e-3)));'));
+    s.fragmentShader = 'uniform sampler2D uLeaf; uniform sampler2D uBark; uniform vec3 uSunW; uniform vec3 uSunC; varying vec3 vCard; varying vec3 vBark;\n' + LEAF_GLSL + s.fragmentShader.replace('#include <map_fragment>', `
         vec4 lt = leafTex(vCard); float isLeaf = step(0.5, vCard.z);
         if (isLeaf > 0.5) {
           float cut = mix(0.45, 0.2, smoothstep(30.0, 220.0, length(vViewPosition)));
           diffuseColor.rgb *= pow(lt.rgb, vec3(2.2));
           diffuseColor.a = clamp((lt.a - cut) / max(fwidth(lt.a), 1e-3) + 0.5, 0.0, 1.0);
           if (diffuseColor.a < 0.05) discard;
-        }`).replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        } else if (vBark.z > 0.5) diffuseColor.rgb *= min(texture2D(uBark, vBark.xy).rgb * 1.25, vec3(1.0));   // the birch bark colour (white, black lenticels) over the vertex colour
+        `).replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         if (isLeaf > 0.5) {   // sunlight shining through the leaves when looking towards the sun
           float tr = pow(max(dot(-normalize(vViewPosition), (viewMatrix * vec4(uSunW, 0.0)).xyz), 0.0), 3.0);
           totalEmissiveRadiance += diffuseColor.rgb * uSunC * vec3(1.0, 1.15, 0.45) * (tr * 0.3);
@@ -171,7 +181,7 @@ function treeMaterials(leaf) {
   matTreeDepth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
   matTreeDepth.onBeforeCompile = s => { terrUniforms(s);
     s.uniforms.uLeaf = { value: leaf }; s.uniforms.uTime = U.time;
-    s.vertexShader = 'attribute vec4 aCard; uniform float uTime; varying vec3 vCard;\n' + s.vertexShader.replace('#include <project_vertex>', TREE_VERT);
+    s.vertexShader = 'attribute vec4 aCard; uniform float uTime; varying vec3 vCard; varying vec3 vBark;\n' + s.vertexShader.replace('#include <project_vertex>', TREE_VERT);
     s.fragmentShader = 'uniform sampler2D uLeaf; varying vec3 vCard;\n' + LEAF_GLSL + s.fragmentShader.replace('#include <map_fragment>', 'float la = leafTex(vCard).a; if (vCard.z > 0.5 && la < 0.4) discard;');
   };
 }
