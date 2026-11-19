@@ -1,4 +1,5 @@
 import { STATE } from '../core/state.js';
+import { due, pause } from '../core/pause.js';
 import { CARROAD, TRAMGRID } from '../transit/transit.js';
 import { fortBridgeLine, fortSkipLine } from '../fortress/index.js';
 import { airOnLine } from '../landmarks/air-bridge.js';
@@ -81,7 +82,7 @@ function ovWidths(dp, hw) {
   return W.map((_, i) => { let a = 0, k = 0; for (let j = Math.max(0, i - 3); j <= Math.min(m - 1, i + 3); j++) { a += W[j]; k++; } return a / k; });
 }
 const LAMPS = [];
-function buildLines() {
+async function buildLines() {
   if (TERR.on) ovPrep();
   const groups = [0, 1, 2, 3, 4, 5].map(() => new GB(false)), lineCol = {}; for (const k in LINE) lineCol[k] = hb(LINE[k][1]);
   const walk = groups[1], marks = groups[5], extra = new GB(false);
@@ -342,6 +343,7 @@ function buildLines() {
     return [sm(A, Math.max), sm(B, Math.min)];   // a neighbour that comes and goes for a point or two makes no notch
   };
   for (let li = 0; li < sorted.length; li++) {
+    if (due()) await pause();
     const l = sorted[li], { cls, pts } = l; const n = pts.length >> 1;
     if (cls === 12 || cls === 13 || cls === 14) {
       if (fortSkipLine(cls, pts)) continue;   // the fortress draws its own walls and earthworks
@@ -473,6 +475,7 @@ function buildLines() {
      the overpass and along most streets); on a track bed of its own, ballast with sleepers and steel rails on them. */
   const TSLAB = hb('#57585a'), TSTEEL = hb('#a19d96');
   for (const T of tramLater) {
+    if (due()) await pause();
     STATE.GBC = T.gbc; const p = T.dp, m = p.length >> 1; let run = [p[0], p[1]], emb = null;
     const flush = () => { if (run.length < 4) return;
       if (emb) { ribbon(groups[4], run, 0, 1.25, TSLAB); for (const o of [0.76, -0.76]) { ribbon(marks, run, o, 0.04, TSTEEL); ribbon(marks, run, o - Math.sign(o) * 0.07, 0.015, RAIL); } }
@@ -497,8 +500,8 @@ function buildLines() {
       marks.triUp(v, v + 1, v + 3); marks.triUp(v, v + 3, v + 2); }
   }
   zSeen = new Int32Array(ZR.s.length / 6);
-  for (const J of JOBS) { STATE.GBC = J.gbc; for (const run of clipRuns(J)) { if (J.dash) dashes(marks, run, 0, J.w, J.dash[0], J.dash[1], J.col); else ribbon(marks, run, 0, J.w, J.col); } }
-  for (const Hh of HATCH) { STATE.GBC = Hh.gbc; hatch(marks, Hh.p, Hh.A, Hh.B, Hh.s, WHITE, (x, z, tx, tz) => inZones(zonesNear(Hh.li, x, z, 0.2, tx, tz), 'c', x, z)); }
+  for (const J of JOBS) { if (due()) await pause(); STATE.GBC = J.gbc; for (const run of clipRuns(J)) { if (J.dash) dashes(marks, run, 0, J.w, J.dash[0], J.dash[1], J.col); else ribbon(marks, run, 0, J.w, J.col); } }
+  for (const Hh of HATCH) { if (due()) await pause(); STATE.GBC = Hh.gbc; hatch(marks, Hh.p, Hh.A, Hh.B, Hh.s, WHITE, (x, z, tx, tz) => inZones(zonesNear(Hh.li, x, z, 0.2, tx, tz), 'c', x, z)); }
   STATE.GBC = null;
   buildSignals(sorted, ZR, ZB, marks, WHITE, N18);   // traffic lights and stop lines on 18. novembra iela, give way at the roundabouts
   const orders = [-37, -37, -36, -35, -34, -33], mats = [M_LAND, M_PAVE, M_DIRT, M_BALLAST, M_ASPH, M_MARK];

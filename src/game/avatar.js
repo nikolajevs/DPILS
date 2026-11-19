@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { worldSpace } from '../render/world-space.js';
-import { HOLD, akReady, muzzleOf } from './viewmodel.js';
+import { HOLD, SIGHT_MOUNT, akReady, muzzleOf } from './viewmodel.js';
+import { prop, onProps } from './props.js';
 import { alignHand, at, reach, relMatrix, setFrame } from './ik.js';
 import { FLASH_SIZE, makeFlash } from './muzzle.js';
 
@@ -100,7 +101,7 @@ function heldGun(i) {
   shift.add(g); holder.add(shift);
   const dR = i ? V3(sp.shift) : new THREE.Vector3(), dL = i ? k.palm.R.clone().add(V3(sp.shift)).add(V3(sp.fore)).sub(V3(sp.grip)).sub(k.palm.L) : new THREE.Vector3();
   const rel = (h, d) => h && Object.fromEntries(Object.entries(h).map(([n, v]) => [n, v.clone().sub(k.shoulder).add(d)]));
-  holder.userData = { both: true, hands: { R: rel(k.hands.R, dR), L: rel(k.hands.L, dL) }, flashAt: (i ? muzzleAt(src) : k.muzzle).clone().add(shift.position) };
+  holder.userData = { both: true, hands: { R: rel(k.hands.R, dR), L: rel(k.hands.L, dL) }, flashAt: (i ? muzzleAt(src) : k.muzzle).clone().add(shift.position), scopeAt: (i ? V3(SIGHT_MOUNT[i]).add(shift.position) : V3(SIGHT_MOUNT[0]).sub(k.shoulder)) };
   return holder;
 }
 const POLE = { R: new THREE.Vector3(-0.7, -1, -0.3).normalize(), L: new THREE.Vector3(0.5, -1, -0.2).normalize() };   // where the elbows point
@@ -126,6 +127,32 @@ function placeFlash(gun, flash, mount) {
 // a new shot (its time changed): the flash of the weapon in hand
 function shotFlash(flash, s, st) { if (s.shotAt && s.shotAt !== st.at) { st.at = s.shotAt; if (!s.dead) flash.fire(1, FLASH_SIZE[st.w] || 1); } flash.tick(st.dt); }
 const makeGun = i => heldGun(i) || (asset && asset.guns[i] ? readyGun(asset.guns[i], MODEL.gunLen[i], MODEL.gunYaw[i], MODEL.gunM[i]) : boxRifle());
+// the picked-up sights on a player seen from the side: one node per gun, on the receiver where heldGun put scopeAt.
+// The item models come with the city (props.js); until then the guns stay bare and refresh() puts the sights on later.
+function scopeKit(guns, getGun) {
+  const nodes = guns.map(() => null), kinds = guns.map(() => null);
+  function refresh() {
+    guns.forEach((g, i) => {
+      const kind = kinds[i];
+      if (kind && !nodes[i] && g.userData.scopeAt) {
+        const src = prop(kind);
+        if (src) {
+          const n = src.clone(true); n.userData.sight = kind;
+          n.traverse(o => { if (o.isMesh) { o.frustumCulled = false; o.material = worldSpace(o.material.clone()); } });
+          n.position.copy(g.userData.scopeAt); g.add(n); nodes[i] = n;
+        }
+      }
+      if (nodes[i]) nodes[i].visible = !!kind && getGun() === g;
+    });
+  }
+  function setAttach(i, kind) {
+    i = Math.max(0, Math.min(guns.length - 1, i | 0)); kinds[i] = kind || null;
+    if (!kinds[i] && nodes[i]) { nodes[i].removeFromParent(); nodes[i].traverse(o => { if (o.isMesh) o.material.dispose(); }); nodes[i] = null; }
+    refresh();
+  }
+  onProps(refresh);
+  return { setAttach, refresh };
+}
 const HOLD_OFS = { human: new THREE.Vector3(0, 0, 0), soldier: new THREE.Vector3(0, 0, 0) };   // the holder from the shoulder joint of each skeleton
 // the camouflage: blotches of three tones of the colour of the team (a smooth noise of the position on the body at rest,
 // cut at two levels), on the material of the file; the vertex position before the skeleton moves it keeps the pattern on the body
@@ -257,7 +284,7 @@ function makeHuman(hue, L, civilian) {
     if (H && gun && gun.userData.both) { if (!s.dead) hold(H, inner, gun, headProxy.rotation.x); else if (tied) carry(H, inner, gun, tied); }
     if (flash) { shot.dt = dt; shotFlash(flash, s, shot); }
   }
-  let mount = null, gun = null, setGun = () => {};
+  let mount = null, gun = null, setGun = () => {}, setAttach = () => {};
   if (!civilian) {   // the gun in the right hand: the fingers of the rig point along +Y, the back of the hand along +X
     const hand = bones.hand_r; mount = new THREE.Group();
     const guns = MODEL.guns.map((f, i) => makeGun(i));
@@ -265,14 +292,15 @@ function makeHuman(hue, L, civilian) {
     if (hand) { inner.updateMatrixWorld(true); const k = hand.getWorldScale(new THREE.Vector3()).x || 1; mount.scale.setScalar(1 / k); hand.add(mount); }
     mount.rotation.set(-Math.PI / 2, 0, -Math.PI / 2); mount.position.set(-0.01, 0.09, 0.015);   // the muzzle along the fingers, the slide to the back of the hand
     guns.forEach((g, i) => { g.visible = i === 0; (g.userData.both ? inner : mount).add(g); });
-    setGun = i => { i = Math.max(0, Math.min(guns.length - 1, i | 0)); guns.forEach((g, k) => { g.visible = k === i; }); gun = guns[i]; shot.w = i; placeFlash(gun, flash, mount); };
+    const kit = scopeKit(guns, () => gun); setAttach = kit.setAttach;
+    setGun = i => { i = Math.max(0, Math.min(guns.length - 1, i | 0)); guns.forEach((g, k) => { g.visible = k === i; }); gun = guns[i]; shot.w = i; placeFlash(gun, flash, mount); kit.refresh(); };
     const B = n => bones[n], all = a => a.every(Boolean) ? a : null;
     const R = all(['upperarm_r', 'lowerarm_r', 'hand_r'].map(B)), L = all(['upperarm_l', 'lowerarm_l', 'hand_l'].map(B)), fR = all(['middle_01_r', 'index_01_r', 'pinky_01_r'].map(B)), fL = all(['middle_01_l', 'index_01_l', 'pinky_01_l'].map(B));
     if (R && L) H = { R, L, fingers: fR && fL ? { R: fR, L: fL } : null, ofs: HOLD_OFS.human };
     setGun(0);
     inner.userData.head = headProxy; inner.userData.arm = armProxy;
   }
-  return { root: inner, update, mount, setGun, mixer, get gun() { return gun; } };
+  return { root: inner, update, mount, setGun, setAttach, mixer, get gun() { return gun; } };
 }
 
 // one player's model: update(dt, { speed, air, dead, shotAt }) every frame (shotAt: the time of the last shot, a new one flashes); look — the chosen person ('' = the soldier);
@@ -311,15 +339,16 @@ function makeAvatar(hue, look, civilian) {
   // a mount on the hand in metres: the skeleton of the file is in other units, so the mount is scaled back
   const hand = root.getObjectByName(MODEL.hand), mount = new THREE.Group(), guns = MODEL.guns.map((f, i) => makeGun(i));
   const flash = makeFlash(); let gun = guns[0];
+  const kit = scopeKit(guns, () => gun);
   if (hand) { inner.updateMatrixWorld(true); const k = hand.getWorldScale(new THREE.Vector3()).x || 1; mount.scale.setScalar(1 / k); hand.add(mount); }
   mount.quaternion.setFromAxisAngle(new THREE.Vector3(1, 1, 1).normalize(), Math.PI * 2 / 3);   // the axes of the fist: x forward, z up; the gun's muzzle is z, its top y
   guns.forEach((g, i) => { g.visible = i === 0; (g.userData.both ? inner : mount).add(g); });
-  function setGun(i) { i = Math.max(0, Math.min(guns.length - 1, i | 0)); guns.forEach((g, k) => { g.visible = k === i; }); gun = guns[i]; shot.w = i; placeFlash(gun, flash, mount); }
+  function setGun(i) { i = Math.max(0, Math.min(guns.length - 1, i | 0)); guns.forEach((g, k) => { g.visible = k === i; }); gun = guns[i]; shot.w = i; placeFlash(gun, flash, mount); kit.refresh(); }
   const arm = n => MODEL.arms.slice(n, n + 4).map(b => root.getObjectByName(b)), aL = arm(0), aR = arm(4);   // [shoulder, upper arm, forearm, fist]
   const H = aL.every(Boolean) && aR.every(Boolean) ? { R: aR.slice(1), L: aL.slice(1), fingers: null, ofs: HOLD_OFS.soldier } : null;
   const headProxy = new THREE.Object3D(), armProxy = new THREE.Object3D(); inner.userData.head = headProxy; inner.userData.arm = armProxy;   // mp.js turns these with the aim
   setGun(0);
-  return { root: inner, update, mount, setGun, mixer, get gun() { return gun; } };
+  return { root: inner, update, mount, setGun, setAttach: kit.setAttach, mixer, get gun() { return gun; } };
 }
 
 // the model of a weapon as its file has it (metres, the muzzle along +z, the grip at the origin): the arms of viewmodel.js hold a clone of it

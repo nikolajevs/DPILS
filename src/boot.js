@@ -8,6 +8,14 @@ import { PHASE, loading } from './ui/loading.js';
 // compresses them on the fly, as GitHub Pages does)
 const FILES = [['citydata.js', 4.33e6], ['transit.js', 2.7e5], ['fortress.js', 2.6e4], ['terrain.js', 1.07e6], ['schools.js', 3.4e4], ['parks.js', 8.4e4], ['lidar.js', 3.3e5], ['lidar-trees.js', 1.18e6], ['trains.js', 2.2e4], ['intercity.js', 2.8e5], ['parking.js', 7e4], ['yards.js', 1e4]];
 const mb = n => (n / 1048576).toLocaleString('ru', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+/* The signs of the landmarks are drawn on canvases in Golos Text, with the Latvian letters (Ā, Ē, Ī, Ģ…) of its
+   latin-ext part, which nothing on the start card uses. The browser asked for that file only when the first sign was
+   drawn, in the middle of the build: the letters of the signs came out in a fallback font, and the font arrived while
+   the page was busy, the text of the card laid out anew. The parts the canvases use are asked for with the data, and
+   the build waits for them (three seconds at most). */
+const FONTS = document.fonts && document.fonts.load
+  ? Promise.all(['400', '500', '600'].map(w => document.fonts.load(`${w} 16px "Golos Text"`, 'ĀāČčĒēĢģĪīĶķĻļŅņŠšŪūŽž'))).catch(() => {})
+  : Promise.resolve();
 
 async function download() {
   const got = FILES.map(() => 0), size = FILES.map(f => f[1]);
@@ -41,6 +49,7 @@ async function download() {
     let texts;
     try { texts = await download(); }
     catch (e) { console.error(e); loading.fail('Не удалось загрузить данные города — проверьте подключение к интернету и обновите страницу.'); return; }
+    await Promise.race([FONTS, new Promise(r => setTimeout(r, 3000))]);
     await loading.step('Читаю данные и загружаю код…', PHASE.code[0], PHASE.code[1], 400);
     FILES.forEach(([name], k) => { const s = document.createElement('script'); s.text = texts[k] + '\n//# sourceURL=' + name; document.head.appendChild(s); });
     texts = null;

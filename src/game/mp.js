@@ -22,7 +22,9 @@ import { openLocal } from './local.js';
 import { ambStart, ambTick } from './ambience.js';
 import { statEvent } from './stats.js';
 import { playerKey, boardOn, setBoardOn, account } from './identity.js';
+import { rayHit } from '../../server/combat.mjs';
 import { initLeaders } from './leaders.js';
+import { rest } from '../core/pause.js';
 import { $ } from '../core/env.js';
 import { boomSound, crackSound, hitSound, loadSounds, shotSound, stepSound } from './sfx.js';
 import { fxSamples, tracerShot, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke } from './impacts.js';
@@ -30,9 +32,8 @@ import { fxSamples, tracerShot, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmo
 /* ---------- online shooter: deathmatch on the city map ----------
    The server (server/index.mjs) owns health, kills and respawns. This module: the connection, the other players
    (simple procedural figures, drawn 120 ms in the past between two snapshots), the gun in hand, shooting with the
-   line of fire checked against terrain and buildings, and the game panels. Keep RULES and rayToSegment in step with
-   server/combat.mjs. */
-const RULES = { hitR: 0.4, headR: 0.28, bodyBottom: 1.6, bodyTop: 0.05 };
+   line of fire checked against terrain and buildings, and the game panels. The hitboxes are the server's own
+   (rayHit from server/combat.mjs): the page predicts a hit by exactly the geometry the server judges by. */
 // the weapons (keep server/combat.mjs in step; the server has the damage): the rifle fires bursts, the shotgun
 // throws eight pellets in a cone, one shot per click
 const WEAPONS = [
@@ -52,12 +53,15 @@ const DMG = [
   { dmg: 20, head: 42 },
   { dmg: 16, head: 28 },
 ];
-const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, lastNade: 0, spec: 0, scope: false, zoom: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0 };
+const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, lastNade: 0, spec: 0, specFP: true, scope: false, zoom: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0, sights: { sight: 0, optic: 0 }, attach: [null, null, null, null, null] };   // the picked-up sights: loose in the pocket and mounted per weapon (server/combat.mjs INV)
 // the pockets (keep server/combat.mjs in step: RESERVE and INV): the server owns them, the page only shows and predicts
 const RESERVE = [90, 24, 15, 36, 200], NADE_MAX = 3, MED_MAX = 2;
 // the aimed grenade throw: G takes the grenade in hand, the mouse aims it, the left button held down charges the power
 const NAIM = { on: false, charging: false, t0: 0, power: 0, full: false };
-bindInv({ useMed, switchWeapon, beep: kind => { if (kind === 'pick') tone(660, 990, 0.09, 0.22, 'triangle'); else if (kind === 'med') tone(440, 660, 0.16, 0.25, 'sine'); else tone(180, 120, 0.12, 0.2, 'square'); } });
+try { MP.specFP = localStorage.getItem('dpils.specfp') !== '0'; } catch (e) {}   // the dead man's camera: from the eyes by default, the choice is remembered
+bindInv({ useMed, switchWeapon, attach: (w, kind) => { if (MP.dead || !MP.ws || MP.ws.readyState !== 1) return; MP.ws.send(JSON.stringify({ t: 'attach', w, kind })); tone(kind ? 520 : 300, kind ? 780 : 200, 0.08, 0.2, 'triangle'); }, beep: kind => { if (kind === 'pick') tone(660, 990, 0.09, 0.22, 'triangle'); else if (kind === 'med') tone(440, 660, 0.16, 0.25, 'sine'); else tone(180, 120, 0.12, 0.2, 'square'); } });
+// the mounted sights of every weapon onto the arms in hand (and back, when a weapon is swapped or a sight taken off)
+function syncVm() { if (vm) MP.attach.forEach((k, w) => vm.attach(w, k)); }
 function useMed() {
   const now = performance.now();
   if (MP.dead || MP.meds <= 0 || MP.hp >= 100 || now - MP.lastMed < 800 || !MP.ws || MP.ws.readyState !== 1) return;
@@ -69,22 +73,19 @@ const remotes = new Map();   // id → { name, group, buf: [{ t, x, y, z, yaw, p
 const DEFAULT_SERVER = '';   // e.g. 'wss://dpils-game.example.com'; empty: ?server=…, the saved address, or localhost
 
 /* ---------- geometry ---------- */
-function rayToSegment(o, d, len, a, b) {
-  const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], wx = o[0] - a[0], wy = o[1] - a[1], wz = o[2] - a[2];
-  const A = d[0] * d[0] + d[1] * d[1] + d[2] * d[2], B = d[0] * ux + d[1] * uy + d[2] * uz, C = ux * ux + uy * uy + uz * uz;
-  const D = d[0] * wx + d[1] * wy + d[2] * wz, E = ux * wx + uy * wy + uz * wz, den = A * C - B * B;
-  let t = den > 1e-9 ? (B * E - C * D) / den : 0, s;
-  t = Math.max(0, Math.min(len, t)); s = C > 0 ? Math.max(0, Math.min(1, (B * t + E) / C)) : 0;
-  t = Math.max(0, Math.min(len, (B * s - D) / A));
-  const px = o[0] + d[0] * t, py = o[1] + d[1] * t, pz = o[2] + d[2] * t, qx = a[0] + ux * s, qy = a[1] + uy * s, qz = a[2] + uz * s;
-  return { dist: Math.hypot(px - qx, py - qy, pz - qz), t };
-}
-// how far the shot flies before the ground or a roof line stops it
+// how far the shot flies before the ground or a roof line stops it; the coarse 1.5 m scan is bisected to ~3 mm
+// (the same refinement impacts.js uses for the mark), so the tracer stops at the wall, not up to 1.5 m inside it
 function freePath(o, d, len) {
-  for (let t = 1.5; t < len; t += 1.5) {
+  const block = t => {
     const x = o[0] + d[0] * t, y = o[1] + d[1] * t, z = o[2] + d[2] * t, g = terrainH(x, z);
-    if (y < g) return t;
-    const b = buildingAt(x, z); if (b && y < g + (b.top || 12)) return t;
+    if (y < g) return true;
+    const b = buildingAt(x, z); return !!(b && y < g + (b.top || 12));
+  };
+  for (let t = 1.5; t < len; t += 1.5) {
+    if (!block(t)) continue;
+    let lo = Math.max(0.2, t - 1.5), hi = t;
+    for (let i = 0; i < 9; i++) { const m = (lo + hi) / 2; if (block(m)) hi = m; else lo = m; }
+    return hi;
   }
   return len;
 }
@@ -92,10 +93,16 @@ const aim = (yaw = P.yaw, pitch = P.pitch) => { const cp = Math.cos(pitch); retu
 // how wide the shots scatter now: a little always, more when walking or running, more after each shot of a burst
 const MOVE = () => [SET.keys.forward, SET.keys.back, SET.keys.left, SET.keys.right];
 function spreadNow() {
-  if (W().scope) return (MP.zoom > 0.9 ? 0.0004 : 0.04) + (MOVE().some(k => keys.has(k)) ? 0.03 : 0) + (P.up > 0.02 ? 0.04 : 0);   // steady only when scoped and still
+  const at = MP.attach[MP.weapon], aimed = MP.zoom > 0.9;
   const moving = MOVE().some(k => keys.has(k)), run = keys.has(SET.keys.run) || keys.has('ShiftRight');
-  if (W().cone) return W().cone * (P.crouch ? 0.8 : 1) + (moving ? 0.01 : 0) + (P.up > 0.02 ? 0.03 : 0);   // the shotgun's pellets spread in a wide cone
-  return ((W().base ?? 0.002) + (moving ? (run ? 0.022 : 0.008) : 0) + MP.burst) * (P.crouch ? 0.5 : 1) + (P.up > 0.02 ? 0.03 : 0);   // crouching steadies the aim, a jump spoils it
+  const hip = () => W().cone
+    ? W().cone * (P.crouch ? 0.8 : 1) * (at === 'sight' && aimed ? 0.75 : 1) + (moving ? 0.01 : 0) + (P.up > 0.02 ? 0.03 : 0)   // the shotgun's pellets spread in a wide cone
+    : ((W().base ?? 0.002) + (moving ? (run ? 0.022 : 0.008) : 0) + MP.burst) * (P.crouch ? 0.5 : 1) * (at === 'sight' && aimed ? 0.35 : 1) + (P.up > 0.02 ? 0.03 : 0);   // crouching steadies the aim, a jump spoils it; the red dot tightens it more
+  if (at === 'optic' || (W().scope && !at)) {   // the long zoom (mounted optic or the sniper's own): steady only when scoped and still
+    if (aimed) return 0.0004 + (moving ? 0.03 : 0) + (P.up > 0.02 ? 0.04 : 0);
+    if (W().scope && !at) return 0.04 + (moving ? 0.03 : 0) + (P.up > 0.02 ? 0.04 : 0);
+  }
+  return hip();
 }
 
 /* ---------- figures of the other players ---------- */
@@ -137,16 +144,19 @@ function loadModels(onPart) {
     if (k) upgradeAK(); if (a) upgradeViewmodels();
     samples = new THREE.Group(); samples.visible = false;
     for (const look of SAMPLE_LOOKS) { const av = makeAvatar(HUE[0], look); if (av) samples.add(av.root); }
-    for (const o of [...fxSamples(), ...nadeSamples(), prop('ammo'), prop('med')]) if (o) samples.add(o);
+    for (const o of [...fxSamples(), ...nadeSamples(), prop('ammo'), prop('med'), prop('sight'), prop('optic')]) if (o) samples.add(o);
   }).catch(e => console.error(e)).finally(() => { modelsDone = true; });
   return modelsP;
 }
-// on: the samples into the scene just before its warm-up, their textures (and those of the arms) to the GPU; off: out again
-function warmSamples(on) {
+// on: the samples into the scene just before its warm-up, their textures (and those of the arms) to the GPU, one at a
+// time with a pause between them when the slice is used up (src/core/pause.js); off: out again
+async function warmSamples(on) {
   if (!samples) return;
   if (!on) { scene.remove(samples); samples = null; return; }
   scene.add(samples);
-  for (const root of [samples, camera]) root.traverse(o => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const v of Object.values(m)) if (v && v.isTexture) renderer.initTexture(v); });
+  const tex = new Set();
+  for (const root of [samples, camera]) root.traverse(o => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const v of Object.values(m)) if (v && v.isTexture) tex.add(v); });
+  for (const t of tex) { await rest(); renderer.initTexture(t); }
 }
 // the ready animated model instead of the simple figure; look — the chosen person (the soldier if the people's files did not come)
 function attachAvatar(r) {
@@ -154,6 +164,7 @@ function attachAvatar(r) {
   if (!modelsDone) { loadModels().then(() => { if (!r.av && remotes.has(r.id)) attachAvatar(r); }); return; }   // only if the city was ready before the files
   const av = makeAvatar(r.hue, humansReady() ? r.look : ''); if (!av) return;
   for (const c of r.group.children) c.visible = false; r.group.add(av.root); r.av = av;
+  (r.attach || []).forEach((k, w) => av.setAttach(w, k));   // the sights the server says this player mounted
   if (av.root.userData.head) { r.group.userData.head = av.root.userData.head; r.group.userData.arm = av.root.userData.arm; }   // the aim turns the proxies of the person
 }
 function rebuildAvatar(r) {   // the look changed on the board: the old model off, the new one on
@@ -182,7 +193,7 @@ function upgradeViewmodels() {
 let vm = null, vmX = 0, vmZ = 0, vmSpeed = 0;
 function upgradeAK() {
   if (vm) return; vm = makeViewmodel(camera); if (!vm) return;
-  models[0].clear(); MP.vm = vm; vm.setWeapon(MP.weapon); if (vm.has(MP.weapon) && !MP.dead) vm.equip();
+  models[0].clear(); MP.vm = vm; vm.setWeapon(MP.weapon); syncVm(); if (vm.has(MP.weapon) && !MP.dead) vm.equip();
 }
 function dropRemote(id) { const r = remotes.get(id); if (!r) return; scene.remove(r.group); r.tag.remove(); remotes.delete(id); }
 function nameOf(id) { const b = MP.board.find(e => e.id === id); return b ? b.name : '?'; }
@@ -341,8 +352,8 @@ function fire(now) {
     for (const [id, r] of remotes) {
       if (isMate(r)) continue;   // no friendly fire: shots pass through teammates
       const p = pose(r, t); if (!p || !r.group.visible) continue;
-      const a = [p.x, p.y - (p.h || 1.7) + 0.1, p.z], b = [p.x, p.y + RULES.bodyTop, p.z], h = rayToSegment(o, d, clear, a, b);
-      if (h.dist <= RULES.hitR && (!best || h.t < best.t)) best = { id, t: h.t };
+      const h = rayHit(o, d, clear, { x: p.x, y: p.y, z: p.z, eye: p.h || 1.7, yaw: p.yaw });
+      if (h && (!best || h.t < best.t)) best = { id, t: h.t };
     }
     const len = best ? best.t : clear; rays.push([+d[0].toFixed(4), +d[1].toFixed(4), +d[2].toFixed(4), +len.toFixed(1), best ? best.id : 0]);
     const kind = best ? 'body' : (clear < w.range - 0.5 ? 'surface' : 'air');
@@ -358,10 +369,11 @@ function fire(now) {
   if (MP.ammo[MP.weapon] <= 0) reload(now);
   updatePanel();
 }
+let slotsT = 0;   // the weapon belt stays visible until this moment: a switch (keys, wheel, inventory) or a spawn shows it, then it fades away
 function switchWeapon(i) {
   nadeCancel();
   if (MP.dead || i === MP.weapon || i < 0 || i >= WEAPONS.length) return;
-  MP.weapon = i; MP.firing = false; MP.scope = false; crossGap = CROSS[i].ring ? 20 : CROSS[i].gap; models.forEach((m, k) => { m.visible = k === i; }); if (vm) { vm.setWeapon(i); vm.equip(); } tone(300, 200, 0.06, 0.15, 'square'); updatePanel();   // the reload keeps running: the server locks every weapon until it ends (server/game.mjs shoot)
+  MP.weapon = i; MP.firing = false; MP.scope = false; crossGap = CROSS[i].ring ? 20 : CROSS[i].gap; models.forEach((m, k) => { m.visible = k === i; }); if (vm) { vm.setWeapon(i); vm.equip(); } tone(300, 200, 0.06, 0.15, 'square'); slotsT = performance.now() + 1600; updatePanel();   // the reload keeps running: the server locks every weapon until it ends (server/game.mjs shoot)
 }
 function reload(now) {
   const w = W(); MP.scope = false;
@@ -381,7 +393,7 @@ function updatePanel() {
   el('mpMeds').textContent = '×' + Math.max(0, MP.meds); el('mpMedsBox').dataset.empty = MP.meds > 0 ? 0 : 1; el('mpMedsBox').title = 'Аптечки (' + mk + ')'; el('mpMedKey').textContent = mk;
   const sl = el('mpSlots'); if (sl.children.length !== WEAPONS.length) { sl.textContent = ''; WEAPONS.forEach((w, i) => { const d = document.createElement('span'), b = document.createElement('b'), r = document.createElement('i'); d.title = w.name; d.innerHTML = SLOT_SVG[i]; b.textContent = i + 1; d.append(b, r); sl.append(d); }); }
   [...sl.children].forEach((d, i) => { d.classList.toggle('on', i === MP.weapon); d.querySelector('i').textContent = MP.reserve[i]; d.title = WEAPONS[i].name + ' · запас ' + MP.reserve[i]; });
-  renderInv({ weapons: WEAPONS.map((w, i) => ({ name: w.name, mag: MP.ammo[i], magSize: w.mag, reserve: MP.reserve[i], on: i === MP.weapon, key: keyName(SET.keys['w' + (i + 1)]), dmg: DMG[i].dmg, head: DMG[i].head, pellets: w.pellets, gapMs: w.gapMs, range: w.range, reloadMs: w.reloadMs, auto: w.auto, scope: !!w.scope })), nades: MP.nades, nadeMax: NADE_MAX, meds: MP.meds, medMax: MED_MAX, hp: MP.hp, medKey: keyName(SET.keys.med), nadeKey: keyName(SET.keys.grenade), reloadKey: keyName(SET.keys.reload), reloadW: MP.reloadAt ? MP.reloadW : -1, reloadAt: MP.reloadAt, name: MP.name, team: MP.team, ffa: MP.ffa, kills: MP.kills, deaths: MP.deaths });
+  renderInv({ weapons: WEAPONS.map((w, i) => ({ name: w.name, mag: MP.ammo[i], magSize: w.mag, reserve: MP.reserve[i], on: i === MP.weapon, key: keyName(SET.keys['w' + (i + 1)]), dmg: DMG[i].dmg, head: DMG[i].head, pellets: w.pellets, gapMs: w.gapMs, range: w.range, reloadMs: w.reloadMs, auto: w.auto, scope: !!w.scope, attach: MP.attach[i] })), nades: MP.nades, nadeMax: NADE_MAX, meds: MP.meds, medMax: MED_MAX, sights: MP.sights, hp: MP.hp, medKey: keyName(SET.keys.med), nadeKey: keyName(SET.keys.grenade), reloadKey: keyName(SET.keys.reload), reloadW: MP.reloadAt ? MP.reloadW : -1, reloadAt: MP.reloadAt, name: MP.name, team: MP.team, ffa: MP.ffa, kills: MP.kills, deaths: MP.deaths });
   el('mpScore').textContent = MP.kills + ' · ' + MP.deaths; el('mpFps').textContent = PERF.fps + ' кадр/с' + (PERF.scale < 1 ? ' · разрешение ' + Math.round(PERF.scale * 100) + ' %' : '');
   el('mpMeName').textContent = MP.name || 'Вы'; el('mpMeDot').className = 'dot ' + (MP.ffa ? 'tf' : 't' + MP.team);
   const tm = el('mpTeams'); tm.textContent = '';
@@ -461,19 +473,28 @@ function nadeAimTick(now) {
   nadeHand.position.set(0.2 + 0.1 * pw, -0.18 + 0.16 * pw + Math.sin(now / 320) * 0.004, -0.45 - 0.08 * pw);   // the wind-up: the hand rises back over the shoulder, away from the eye
   nadeHand.rotation.x = -0.7 * pw;
 }
-const specList = () => [...remotes.entries()].filter(([, r]) => r.group.visible && !r.fallT).sort((a, b) => isMate(b[1]) - isMate(a[1])).map(e => e[0]);
+const specAble = r => !r.fallT && r.buf.length > 0;   // alive with a fresh snapshot: the first-person view hides the body, so group.visible is not the test
+const specList = () => [...remotes.entries()].filter(([, r]) => specAble(r)).sort((a, b) => isMate(b[1]) - isMate(a[1])).map(e => e[0]);
 function specNext(dir) {
   const l = specList(); if (!l.length) { MP.spec = 0; return; }
   const i = l.indexOf(MP.spec); MP.spec = l[i < 0 ? 0 : (i + dir + l.length) % l.length];
 }
-// dead: the camera follows a living player from behind (the killer first, then teammates), until the respawn
+function specCam() {   // F or the button on the death panel: the eyes ↔ behind the back
+  MP.specFP = !MP.specFP;
+  try { localStorage.setItem('dpils.specfp', MP.specFP ? '1' : '0'); } catch (e) {}
+  specCamUi();
+}
+function specCamUi() { const b = el('mpSpecCam'); b.textContent = MP.specFP ? 'Из-за спины (F)' : 'От первого лица (F)'; b.setAttribute('aria-pressed', String(MP.specFP)); }
+// dead: the camera rides a living player's eyes (first person, the default) or follows from behind — the killer first,
+// then teammates — until the respawn; F switches the two views
 function spectate(now) {
   if (!MP.dead) return;
-  let r = remotes.get(MP.spec); if (!r || !r.group.visible || r.fallT) { specNext(1); r = remotes.get(MP.spec); }
+  let r = remotes.get(MP.spec); if (!r || !specAble(r)) { specNext(1); r = remotes.get(MP.spec); }
   const label = el('mpSpec'); if (!r) { label.textContent = 'Некого показывать'; return; }
   const p = pose(r, now - 120); if (!p) return;
-  P.yaw = p.yaw; P.pitch = -0.14; P.x = p.x + Math.sin(p.yaw) * 3.2; P.z = p.z + Math.cos(p.yaw) * 3.2; P.y = p.y + 0.6;
-  const t = 'Наблюдение: ' + r.name + (isMate(r) ? ' (свой)' : MP.ffa ? '' : ' (враг)') + ' · ← → или щелчок — другой'; if (label.textContent !== t) label.textContent = t;
+  if (MP.specFP) { P.x = p.x; P.y = p.y; P.z = p.z; P.yaw = p.yaw; P.pitch = p.pitch; }   // from the eyes: the watched body is hidden in mpTick
+  else { P.yaw = p.yaw; P.pitch = -0.14; P.x = p.x + Math.sin(p.yaw) * 3.2; P.z = p.z + Math.cos(p.yaw) * 3.2; P.y = p.y + 0.6; }
+  const t = 'Наблюдение: ' + r.name + (isMate(r) ? ' (свой)' : MP.ffa ? '' : ' (враг)') + ' · ← → или щелчок — другой · F — ' + (MP.specFP ? 'из-за спины' : 'от первого лица'); if (label.textContent !== t) label.textContent = t;
 }
 // ---------- the arena: the choices of the respawn, the edge, the ring and the bases on the maps ----------
 function arenaChoices() {   // in an arena you come back on your base (or next to a teammate), not where you like
@@ -492,13 +513,14 @@ function respawn() {
 function onMsg(m) {
   switch (m.t) {
     case 'hello': MP.ffa = m.mode === 'ffa'; document.body.classList.toggle('ffa', MP.ffa); if (MP.ffa) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } if (!MP.local) rememberServer(MP.url, m.server); voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team, e.look); document.body.dataset.team = m.team;
-      MP.arena = m.arena || null; clearFx(); setItems(m.items); if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
+      MP.arena = m.arena || null; clearFx(); setItems(m.items);
+      for (const [id, a] of Object.entries(m.attach || {})) { const r = remotes.get(+id); if (r && Array.isArray(a)) { r.attach = a; if (r.av) a.forEach((k, w) => r.av.setAttach(w, k)); } } if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
       if (MP.local) feed('Тренировка с ботами: ' + MP.board.filter(e => e.bot).length + ', уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || '') + '»', 'sys'); break;
     case 'spawn': {
       nadeCancel();
       const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.crouch = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
-      MP.weapon = 0; MP.scope = false; models.forEach((mm, k) => { mm.visible = k === 0; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; clearNades(); gun.visible = true; if (vm) { vm.setWeapon(0); vm.equip(); } el('mpDead').hidden = true; updatePanel();
+      MP.weapon = 0; MP.scope = false; models.forEach((mm, k) => { mm.visible = k === 0; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; MP.sights = m.sights ? { ...m.sights } : { sight: 0, optic: 0 }; MP.attach = Array.isArray(m.attach) ? m.attach.slice() : [null, null, null, null, null]; syncVm(); clearNades(); gun.visible = true; if (vm) { vm.setWeapon(0); vm.equip(); } el('mpDead').hidden = true; slotsT = performance.now() + 2600; updatePanel();   // the belt greets the spawn, then hides
       MP.ws.send(JSON.stringify({ t: 'state', x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch }));   // the server has the point as asked: tell it where the player really stands
       if (canvas.requestPointerLock) { canvas.focus(); try { const pr = canvas.requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} }
       break;
@@ -526,7 +548,8 @@ function onMsg(m) {
     case 'nade': addNade(m); if (m.by !== MP.id) { const dd = Math.hypot(m.p[0] - P.x, m.p[2] - P.z); if (dd < 40) tone(500, 300, 0.08, 0.1 * (1 - dd / 40), 'triangle'); } break;
     case 'item': itemBack(m); break;
     case 'took': itemTook(m.id); if (m.to === MP.id) { feed('+ ' + KINDS[m.kind].name, 'sys'); tone(660, 990, 0.09, 0.22, 'triangle'); } break;
-    case 'inv': MP.ammo = m.mag.slice(); MP.reserve = m.reserve.slice(); MP.nades = m.nades; MP.meds = m.meds; updatePanel(); break;
+    case 'inv': MP.ammo = m.mag.slice(); MP.reserve = m.reserve.slice(); MP.nades = m.nades; MP.meds = m.meds; if (m.sights) MP.sights = { ...m.sights }; if (Array.isArray(m.attach)) { MP.attach = m.attach.slice(); syncVm(); } updatePanel(); break;
+    case 'attach': if (m.id === MP.id) { MP.attach = m.attach.slice(); syncVm(); updatePanel(); } else { const r = remotes.get(m.id); if (r) { r.attach = m.attach; if (r.av) m.attach.forEach((k, w) => r.av.setAttach(w, k)); } } break;
     case 'heal': { const got = m.hp - MP.hp; MP.hp = m.hp; MP.meds = m.meds; feed('Аптечка: +' + got + ' HP', 'sys'); tone(440, 660, 0.16, 0.25, 'sine'); updatePanel(); break; }
     case 'boom': {
       boomNade(m); const dd = Math.hypot(m.x - P.x, m.z - P.z), hear = 300; if (dd < hear) { const v = 1 - dd / hear; let real = false; try { real = boomSound(ac(), actx.master, 1.1 * v, dd, spot(m.x, P.y, m.z).pan); } catch (e) {} if (!real) { bang(1.1 * v, true); tone(80, 35, 0.6, 0.5 * v, 'sine'); } }
@@ -595,7 +618,7 @@ function initUi() {   // the fields of the player and of the training: once, whe
   const rs = el('mpRespawnAt'); rs.textContent = ''; for (const [v, t] of [['mate', 'Рядом с товарищем'], ['rand', 'Случайное место']].concat(PLACES.map((p, i) => [i, p[0]]))) { const o = document.createElement('option'); o.value = v; o.textContent = t; rs.append(o); }
   el('mpNoBoard').checked = !boardOn(); el('mpNoBoard').onchange = () => setBoardOn(!el('mpNoBoard').checked); initLeaders(() => (MP.on ? (MP.local ? '' : MP.url) : serverUrl()));
   el('goPlay').onclick = () => join(); el('goTrain').onclick = () => { const o = { bots: +el('trBots').value, level: el('trLevel').value, mode: el('trMode').value, arena: el('trArena').value }; try { localStorage.setItem('dpils.train', JSON.stringify(o)); } catch (e) {} join(o); };
-  try { const t = JSON.parse(localStorage.getItem('dpils.train') || '{}'); for (const [k, id] of [['bots', 'trBots'], ['level', 'trLevel'], ['mode', 'trMode'], ['arena', 'trArena']]) if (t[k] != null && [...el(id).options].some(o => o.value === String(t[k]))) el(id).value = t[k]; } catch (e) {} el('mpRespawn').onclick = respawn; el('mpLeave').onclick = () => location.reload(); el('mpOverBtn').onclick = () => location.reload();
+  try { const t = JSON.parse(localStorage.getItem('dpils.train') || '{}'); for (const [k, id] of [['bots', 'trBots'], ['level', 'trLevel'], ['mode', 'trMode'], ['arena', 'trArena']]) if (t[k] != null && [...el(id).options].some(o => o.value === String(t[k]))) el(id).value = t[k]; } catch (e) {} el('mpRespawn').onclick = respawn; el('mpSpecCam').onclick = specCam; specCamUi(); el('mpLeave').onclick = () => location.reload(); el('mpOverBtn').onclick = () => location.reload();
   el('bLeave').onclick = () => location.reload();
 }
 
@@ -603,7 +626,7 @@ function initUi() {   // the fields of the player and of the training: once, whe
 canvas.addEventListener('wheel', e => { if (MP.on && !MP.dead) switchWeapon((MP.weapon + (e.deltaY > 0 ? 1 : WEAPONS.length - 1)) % WEAPONS.length); }, { passive: true });
 canvas.addEventListener('contextmenu', e => { if (MP.on) e.preventDefault(); });
 canvas.addEventListener('mousedown', e => {
-  if (MP.on && e.button === 2) { if (NAIM.on) { nadeCancel(); return; } if (W().scope && !MP.dead && !MP.reloadAt) MP.scope = true; }
+  if (MP.on && e.button === 2) { if (NAIM.on) { nadeCancel(); return; } if ((W().scope || MP.attach[MP.weapon]) && !MP.dead && !MP.reloadAt) MP.scope = true; }   // right button: the sniper's own scope, or the sight mounted on any weapon
   if (!MP.on || e.button !== 0) return;
   if (MP.dead) { specNext(1); return; }
   if (NAIM.on) { if (STATE.locked) { NAIM.charging = true; NAIM.t0 = performance.now(); NAIM.power = 0; NAIM.full = false; } return; }   // the held left button gathers the throw instead of firing
@@ -620,6 +643,7 @@ window.addEventListener('keydown', e => {
   else if (!MP.dead && (e.code === SET.keys.chat || e.code === SET.keys.teamChat || e.code === 'Enter')) { e.preventDefault(); nadeCancel(); openChat(e.code === SET.keys.teamChat && !MP.ffa); }
   else if (MP.dead && (e.code === 'ArrowRight' || e.code === 'KeyE')) specNext(1);
   else if (MP.dead && (e.code === 'ArrowLeft' || e.code === 'KeyQ')) specNext(-1);
+  else if (MP.dead && e.code === 'KeyF') specCam();
   else if (e.code === SET.keys.inv) { if (!MP.dead) { nadeCancel(); toggleInv(); } }
   else if (e.code === SET.keys.med) useMed();
   else if (e.code === SET.keys.grenade) { closeInv(); nadePrep(); }
@@ -673,11 +697,17 @@ function mpTick(dt) {
   if ((MP.fpsT = (MP.fpsT || 0) - dt) <= 0) { MP.fpsT = 1; updatePanel(); }
   el('mpReloadFill').style.width = (MP.reloadAt ? Math.min(1, (now - MP.reloadAt) / WEAPONS[MP.reloadW].reloadMs) * 100 : 0).toFixed(1) + '%';   // the reload bar under the rounds, every frame (the crosshair ring keeps its own)
   invTick(now);   // the reload bar of the inventory panel, if it is open
+  el('mpSlots').classList.toggle('show', now < slotsT);   // the belt of weapons: shown by a switch or the wheel, hidden once the choice settles
   // the scope: the picture closes in (the field of view 66° → 20°) and the gun goes out of sight
-  { const want = MP.scope && W().scope && !MP.dead && !MP.reloadAt ? 1 : 0; MP.zoom += (want - MP.zoom) * Math.min(1, dt * 14); if (Math.abs(MP.zoom - want) < 0.01) MP.zoom = want;
-    const fov = SET.fov - (SET.fov - 20) * MP.zoom; if (Math.abs(camera.fov - fov) > 0.05) { camera.fov = fov; camera.updateProjectionMatrix(); }
-    const scoped = MP.zoom > 0.6; if (el('mpScope').hidden === scoped) el('mpScope').hidden = !scoped;   // the crosshair hides itself in crossTick
-    gun.visible = !MP.dead && MP.zoom < 0.5 && !NAIM.on; }   // the grenade in hand replaces the gun
+  { const at = MP.attach[MP.weapon], mode = at || (W().scope ? 'optic' : null);   // the mounted sight, or the sniper's own scope
+    const want = MP.scope && mode && !MP.dead && !MP.reloadAt ? 1 : 0;
+    MP.zoom += (want - MP.zoom) * Math.min(1, dt * (mode === 'sight' ? 18 : 14)); if (Math.abs(MP.zoom - want) < 0.01) MP.zoom = want;   // the red dot comes up quicker than the long scope
+    const fovT = mode === 'sight' ? 50 : at === 'optic' ? 10 : 20;   // red dot ~1.5x, mounted optic ~7x, the sniper's own ~3.5x
+    const fov = SET.fov - (SET.fov - fovT) * MP.zoom; if (Math.abs(camera.fov - fov) > 0.05) { camera.fov = fov; camera.updateProjectionMatrix(); }
+    const scoped = MP.zoom > 0.6, dot = scoped && mode === 'sight';
+    if (el('mpDot').hidden === dot) el('mpDot').hidden = !dot;   // the red dot of the collimator; the crosshair hides itself in crossTick
+    if (el('mpScope').hidden === (scoped && !dot)) el('mpScope').hidden = !(scoped && !dot);
+    gun.visible = !MP.dead && !NAIM.on && (mode === 'sight' || MP.zoom < 0.5); }   // the grenade in hand replaces the gun; the long zoom hides the arms, the red dot keeps them
   ownSteps(dt); tickNades(dt); tickItems(dt, now); spectate(now); nadeAimTick(now);
   if (MP.reloadAt && now - MP.reloadAt >= WEAPONS[MP.reloadW].reloadMs) {   // the local picture of the reload; the server's 'inv' message is the truth. It finishes on the weapon that started it, even if another is in hand now
     const rw = MP.reloadW; MP.reloadAt = 0; const k = Math.min(WEAPONS[rw].mag - MP.ammo[rw], MP.reserve[rw]);
@@ -697,13 +727,14 @@ function mpTick(dt) {
     }
     const p = pose(r, t); if (!p) { g.visible = false; continue; }
     remoteSteps(r, p, now); if (r.av) { if (r.gunW !== p.w) { r.gunW = p.w; r.av.setGun(p.w); } r.av.update(dt, { speed: r.speed || 0, air: !!r.air, dead: false, shotAt: r.shotAt || 0 }); } g.visible = true; g.position.set(p.x, p.y - p.h, p.z); g.scale.y = p.h / 1.7; g.rotation.y = p.yaw; g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
+    if (MP.dead && MP.specFP && r.id === MP.spec) g.visible = false;   // the first-person spectate: the watched body must not cover the eye
   }
   tickFx(dt);
   MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06;
   if (MP.reloadAt) gun.rotation.x = -0.5 * Math.sin(Math.min(1, (now - MP.reloadAt) / WEAPONS[MP.reloadW].reloadMs) * Math.PI);
   if (vm) {   // the arms with the weapon in hand: your speed over the ground chooses the clip of the steps; the reload follows its progress
     vmSpeed += (Math.hypot(P.x - vmX, P.z - vmZ) / Math.max(dt, 1e-3) - vmSpeed) * Math.min(1, dt * 8); vmX = P.x; vmZ = P.z; if (vmSpeed > 40) vmSpeed = 0;
-    vm.update(dt, { show: gun.visible && vm.has(MP.weapon), speed: vmSpeed, reload: MP.reloadAt && MP.reloadW === MP.weapon ? (now - MP.reloadAt) / WEAPONS[MP.weapon].reloadMs : -1, yaw: P.yaw, pitch: P.pitch, kick: MP.kick });
+    vm.update(dt, { show: gun.visible && vm.has(MP.weapon), speed: vmSpeed, reload: MP.reloadAt && MP.reloadW === MP.weapon ? (now - MP.reloadAt) / WEAPONS[MP.weapon].reloadMs : -1, yaw: P.yaw, pitch: P.pitch, kick: MP.kick, ads: MP.attach[MP.weapon] === 'sight' ? MP.zoom : 0 });
   }
   flashLit(dt);
   if (hitT && now - hitT > 140) { hitT = 0; el('mpHit').hidden = true; }

@@ -11,6 +11,7 @@ import { std } from '../render/materials.js';
 import { detailTex } from '../render/textures.js';
 import { TERR } from '../world/terrain.js';
 import { scene } from '../render/renderer.js';
+import { due, pause } from '../core/pause.js';
 import { polyA } from '../core/geometry.js';
 import { hash, hb } from '../core/util.js';
 
@@ -25,16 +26,19 @@ function fortTerrainMaterial(tex, over = false) {   // over: drawn over the grid
       diffuseColor.rgb *= mix(1.0, dt, 0.5) * mix(1.0, dt2, 0.3);`);
   });
 }
-function fortField(K) {
+async function fortField(K) {
   const c = 2, R = FORT.R + 40, X0 = FORT.cx - R, Z0 = FORT.cz - R, N = Math.ceil(2 * R / c) + 1, NN = N * N;
   const H = new Float32Array(NN), B = new Uint8Array(NN), WET = new Uint8Array(NN);
   if (!WMASK) waterMask();
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-    const x = X0 + i * c, z = Z0 + j * c, k = j * N + i;
-    const wm = WMASK.m[Math.floor((z - WMASK.Z0) / WMASK.S) * WMASK.NX + Math.floor((x - WMASK.X0) / WMASK.S)];
-    if (wm === 1 || (wm === 2 && inWater(x, z))) { WET[k] = 1; continue; }
-    const p = fortPoint(x, z); H[k] = p.h; B[k] = p.b;
-    if (konZone(x, z)) B[k] |= 8 | 128;   // the Konstantin gate: its cells are left out, fortFine draws the ground there
+  for (let j = 0; j < N; j++) {
+    if (due()) await pause();
+    for (let i = 0; i < N; i++) {
+      const x = X0 + i * c, z = Z0 + j * c, k = j * N + i;
+      const wm = WMASK.m[Math.floor((z - WMASK.Z0) / WMASK.S) * WMASK.NX + Math.floor((x - WMASK.X0) / WMASK.S)];
+      if (wm === 1 || (wm === 2 && inWater(x, z))) { WET[k] = 1; continue; }
+      const p = fortPoint(x, z); H[k] = p.h; B[k] = p.b;
+      if (konZone(x, z)) B[k] |= 8 | 128;   // the Konstantin gate: its cells are left out, fortFine draws the ground there
+    }
   }
   // under a gate block a vertex takes the highest height of its neighbours outside, so that the cells on the edge
   // of the block run on into it (where its walls hide them) instead of leaving notches along a diagonal edge
