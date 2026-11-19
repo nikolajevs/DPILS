@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Chatbox | chatbox/bullet-flight | Время полёта пули: серверные снаряды вместо хитскана | server/combat.mjs, server/game.mjs, server/bots.mjs, src/game/mp.js, src/game/impacts.js, tools/combat-test.mjs |
 
 ## Автономный цикл улучшений
 

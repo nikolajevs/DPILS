@@ -4,8 +4,10 @@
    one for the game against bots with no server at all (src/game/local.js). Players move on their own machines (the game
    limits their speed and keeps them in the arena); the game owns health, shots, kills, scores and respawns. It reads the
    city through `world` (freePath, ground, walkable, buildingAt, stepNade): a shot that would pass through a building does
-   not hit, and its tracer stops at the wall. Hits are checked against fire rate, range and the target's position as the
-   game knows it. */
+   not hit, and its tracer stops at the wall. Bullets are real projectiles: they fly at the weapon's muzzle velocity
+   (WEAPONS.vel) and the damage lands when the bullet arrives, not at the click. The hit is still judged against the target
+   as the shooter saw it at the click (the position rewound by the shooter's lag, frozen for the flight), so “shoot where
+   you see” holds while the bullet takes its time to get there. */
 import { HIT, INV, ITEMS, NADE, RELOAD_MS, RESERVE, RULES as R, WEAPONS, W_NADE, rayHit } from './combat.mjs';
 import { LEVELS, botName, createBrain } from './bots.mjs';
 
@@ -16,8 +18,8 @@ const okWeapon = w => Number.isInteger(w) && w >= 0 && w < WEAPONS.length;
 export function createGame(opts) {
   const world = opts.world, FFA = opts.mode === 'ffa', MODE = FFA ? 'ffa' : 'team', WIN = opts.win || (FFA ? 20 : 30), NAME = opts.name || 'Даугавпилс', MAX = opts.maxPlayers || R.maxPlayers;
   const now = opts.now || (() => Date.now()), teamScore = [0, 0], players = new Map();
-  let nextId = 1, roundOver = false, nextNade = 1;
-  const nades = new Map(), timers = [];
+  let nextId = 1, roundOver = false, nextNade = 1, nextBid = 1;
+  const nades = new Map(), bullets = new Map(), timers = [];
   // the arena: its bases stood on something walkable; without an arena bots roam round the square
   const walkSpot = (x, z) => { if (world.walkable(x, z)) return [x, z]; for (let r = 4; r < 80; r += 4) for (let k = 0; k < 12; k++) { const a = k / 12 * 6.283, nx = x + Math.cos(a) * r, nz = z + Math.sin(a) * r; if (world.walkable(nx, nz)) return [nx, nz]; } return [x, z]; };
   const arena = opts.arena ? { ...opts.arena, bases: opts.arena.bases.map(b => b.map(([x, z]) => walkSpot(x, z))) } : null;
@@ -112,37 +114,76 @@ export function createGame(opts) {
     p.lastMed = t0; p.meds--; p.hp = Math.min(R.hp, p.hp + ITEMS.med.heal);
     send(p, { t: 'heal', hp: p.hp, meds: p.meds }); return true;
   }
-  // a shot of p with weapon wi: rays [[dx, dy, dz, length, claimed target id], ...]; lagMs: how far back the targets are looked at (0 for a bot)
+  // ---- the bullets in the air: a shot is no longer applied at the click, it flies. Each pellet is a projectile stepped
+  // forward in game time (advanceBullets, called by the 30 Hz clock and before every new shot). The geometry of the hit is
+  // frozen at the click — every living enemy as the shooter saw them then (poseAt rewound by the shooter's lag), the same
+  // lag compensation the instant shot used — so “shoot where you see” holds; but the damage and the report land only when
+  // the bullet gets there. A wall (freePath at the muzzle) ends the flight. Pellets of one shot that hit the same body are
+  // summed and reported once (the shotgun reads as one blow).
+  function advanceBullets(to) {
+    if (!bullets.size) return;
+    const touched = new Set();
+    for (const b of [...bullets.values()]) {
+      const shooter = players.get(b.by);
+      if (!shooter) { bullets.delete(b.bid); b.shot.pending--; touched.add(b.shot); continue; }   // the shooter left: the bullet dies with him
+      const W = WEAPONS[b.w];
+      let t = b.last, dist = b.dist, gone = false;
+      while (t < to && !gone) {
+        const nt = Math.min(to, t + 1000 / 60), seg = b.speed * (nt - t) / 1000, reach = Math.min(seg, b.max - dist);
+        if (reach <= 1e-6) { gone = true; break; }
+        const o = [b.o[0] + b.d[0] * dist, b.o[1] + b.d[1] * dist, b.o[2] + b.d[2] * dist];
+        let best = null;
+        if (!roundOver) for (const { v, pose } of b.shot.poses) {   // the poses the shooter saw at the click, frozen
+          if (!v.alive || nt <= v.protectUntil) continue;
+          const h = rayHit(o, b.d, reach + HIT.grace, pose);
+          if (h && h.t <= reach + HIT.grace && (!best || h.t < best.t)) best = { t: Math.min(h.t, reach), zone: h.zone, v };
+        }
+        if (best) {
+          const total = dist + best.t, k = 1 - W.falloff * Math.min(1, total / W.range);
+          const dmg = (best.zone === 1 ? W.head : best.zone === 2 ? W.dmg * HIT.legMul : W.dmg) * k;
+          const at = [b.o[0] + b.d[0] * total, b.o[1] + b.d[1] * total, b.o[2] + b.d[2] * total], s = b.shot;
+          if (!s.hit) { s.hit = true; shooter.st.hitShots++; if (shooter.prof) shooter.prof.add('hits'); }
+          const h = s.hits.get(best.v.id) || { v: best.v, dmg: 0, head: false, zone: 0, top: 0 };
+          h.dmg += dmg; h.head = h.head || best.zone === 1; if (dmg > h.top) { h.top = dmg; h.zone = best.zone; } s.hits.set(best.v.id, h);
+          all({ t: 'bhit', bid: b.bid, by: b.by, d: +total.toFixed(2), v: best.v.id, zone: best.zone, at });   // the page cuts the tracer here and shows the blood
+          gone = true;
+        } else { dist += seg; if (dist >= b.max) gone = true; }
+        t = nt;
+      }
+      if (gone) { b.shot.pending--; touched.add(b.shot); bullets.delete(b.bid); } else { b.last = to; b.dist = dist; }
+    }
+    for (const s of touched) if (s.pending <= 0 && s.hits.size) {   // every pellet of the shot has landed: report the summed blow
+      const shooter = players.get(s.by);
+      if (shooter) for (const { v, dmg, zone } of s.hits.values()) hurt(shooter, v, Math.round(dmg), zone, s.w, s.o);
+      s.hits.clear();
+    }
+  }
+  // a shot of p with weapon wi: rays [[dx, dy, dz], ...] (the page no longer claims a hit — the bullet judges for itself);
+  // lagMs: how far back the targets are looked at along the flight (0 for a bot). The 'shot' message carries the wall
+  // distance and a bullet id per ray so the page can fly its tracer and cut it at the body when 'bhit' comes.
   function shoot(p, wi, rays, lagMs) {
     const W = WEAPONS[wi], t0 = now(); if (!Array.isArray(rays) || !rays.length || !p.alive) return;
     if (t0 - p.lastShot < W.gapMs) return;
     if (t0 < p.reloadDone) return;   // still reloading
     if (p.mag[wi] <= 0) { if (p.bot) beginReload(p, wi, t0); return; }   // a bot reloads by itself; a player asks with 'reload'
     p.mag[wi]--; p.lastShot = t0;
-    const o = [p.x, p.y, p.z], out = [], hits = new Map(), lag = t0 - lagMs;
-    // every living enemy is tested, not only the one the shooter claimed: the page predicts by the same hitboxes,
-    // but the server is the judge, and a claim that drifted (lag, a crouch) must not cost a hit that was really there
+    advanceBullets(t0);   // land the bullets already in the air before loosing new ones
+    const o = [p.x, p.y, p.z], out = [];
+    // every living enemy as the shooter saw them at the click (lag-compensated), frozen for the whole flight: the page
+    // aims at the same past, and a claim that drifted (lag, a crouch) must not cost a hit that was really there
     const foes = roundOver ? [] : [...players.values()].filter(v => v !== p && v.alive && (FFA || v.team !== p.team) && t0 > v.protectUntil);
-    const poses = foes.map(v => ({ v, pose: poseAt(v, lag) }));
+    const shot = { by: p.id, w: wi, o, hit: false, hits: new Map(), pending: 0, poses: foes.map(v => ({ v, pose: poseAt(v, t0 - lagMs) })) };
     for (const ray of rays.slice(0, W.pellets)) {   // a rifle shot is one ray, a shotgun shot is up to eight pellets
       if (!Array.isArray(ray)) continue;
       const d = [num(ray[0], 1), num(ray[1], 1), num(ray[2], 1)], l = Math.hypot(...d); if (l < 0.5) continue; d.forEach((x, i) => d[i] = x / l);
-      const wall = world.freePath(o, d, W.range), reach = Math.min(W.range, wall + HIT.grace);
-      let best = null;
-      for (const { v, pose } of poses) { const h = rayHit(o, d, reach, pose); if (h && (!best || h.t < best.t)) best = { t: h.t, zone: h.zone, v }; }
-      let len = Math.min(wall, Math.max(1, num(ray[3], W.range)));
-      if (best) {
-        len = Math.min(wall, best.t);   // the tracer stops at the body it hit
-        const k = 1 - W.falloff * Math.min(1, best.t / W.range), dmg = (best.zone === 1 ? W.head : best.zone === 2 ? W.dmg * HIT.legMul : W.dmg) * k;
-        const h = hits.get(best.v.id) || { v: best.v, dmg: 0, head: false, zone: 0, top: 0 };
-        h.dmg += dmg; h.head = h.head || best.zone === 1; if (dmg > h.top) { h.top = dmg; h.zone = best.zone; } hits.set(best.v.id, h);
-      }
-      out.push([+d[0].toFixed(4), +d[1].toFixed(4), +d[2].toFixed(4), +len.toFixed(1)]);
+      const wall = world.freePath(o, d, W.range), bid = nextBid++;
+      bullets.set(bid, { bid, by: p.id, w: wi, o, d, speed: W.vel || 560, last: t0, dist: 0, max: wall, shot });
+      shot.pending++;
+      out.push([+d[0].toFixed(4), +d[1].toFixed(4), +d[2].toFixed(4), +wall.toFixed(1), bid]);
     }
     if (!out.length) return;
-    p.st.shots++; if (hits.size) p.st.hitShots++; if (p.prof) { p.prof.add('shots'); if (hits.size) p.prof.add('hits'); }
+    p.st.shots++; if (p.prof) p.prof.add('shots');
     all({ t: 'shot', id: p.id, w: wi, o, rays: out });
-    for (const { v, dmg, zone } of hits.values()) hurt(p, v, Math.round(dmg), zone, wi, o);
   }
   function throwNade(p, u, sp = NADE.speed) {
     const t0 = now(); if (!p.alive || p.nades <= 0 || t0 - p.lastNade < NADE.cooldownMs || roundOver) return;
@@ -271,9 +312,11 @@ export function createGame(opts) {
   }, 1000 / R.tickHz));
   timers.push(setInterval(() => { for (const p of players.values()) if (p.prof) p.prof.add('secs'); }, 1000));   // the time played
   timers.push(setInterval(() => { const t = now(); for (const n of [...nades.values()]) { world.stepNade(n, 1 / 30, NADE.g); if (t >= n.t) explode(n); } }, 1000 / 30));
+  timers.push(setInterval(() => advanceBullets(now()), 1000 / 30));   // the bullets in the air fly on the same clock
   timers.push(setInterval(() => { const t = now(), dt = Math.min(0.2, (t - last) / 1000); last = t; for (const p of [...players.values()]) if (p.bot) brain.think(p, dt); }, 50));
   return {
     attach, addBot, removeBot, players, arena, mode: MODE,
+    stepBullets: () => advanceBullets(now()),   // the tests drive the flight by their own clock
     stop() { for (const t of timers) { clearInterval(t); clearTimeout(t); } timers.length = 0; },
     health() { return { ok: true, mode: MODE, name: NAME, players: humans().length, bots: players.size - humans().length, max: MAX, score: teamScore, win: WIN, teams: TEAMS, round: roundOver ? 'end' : 'play', arena: arena ? arena.name : null, leaderboard: !!lb }; },
   };

@@ -1,8 +1,9 @@
-/* The combat tests, no browser needed: node tools/combat-test.mjs (CI runs it after npm run check).
+﻿/* The combat tests, no browser needed: node tools/combat-test.mjs (CI runs it after npm run check).
    1. The hitbox geometry (rayHit from server/combat.mjs): the zones, the crouch, the legs apart, the heading.
    2. The server rules (createGame over a fake flat world with a controlled clock): damage by zone, the shotgun,
       walls and hill slopes (the refined freePath), the spawn protection, teammates, and the lag compensation of
-      the position, the eye height and the heading.
+      the position, the eye height and the heading. The bullets fly (g.stepBullets drives them by the test clock),
+      so each shot is given the time to reach its target before the hit is read.
    3. A real bot fight on a flat arena (12 s of real time): with the small hitboxes the bots must still see,
       shoot and kill each other. */
 import { HIT, WEAPONS, rayHit } from '../server/combat.mjs';
@@ -10,7 +11,7 @@ import { createGame } from '../server/game.mjs';
 import { makePhysics } from '../server/physics.mjs';
 
 let pass = 0, fail = 0;
-const ok = (cond, name, extra = '') => { if (cond) { pass++; console.log('  ok   ' + name); } else { fail++; console.log('  FAIL ' + name + (extra ? ' — ' + extra : '')); } };
+const ok = (cond, name, extra = '') => { if (cond) { pass++; console.log('  ok   ' + name); } else { fail++; console.log('  FAIL ' + name + (extra ? ' вЂ” ' + extra : '')); } };
 const near = (a, b, eps) => Math.abs(a - b) <= eps;
 
 /* ---------- 1. the geometry ---------- */
@@ -55,15 +56,15 @@ console.log('server rules (createGame, controlled clock):');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'test' });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -20, yaw: 0 });
+  msg(A, { t: 'join', name: 'РЎС‚СЂРµР»РѕРє', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'РњРёС€РµРЅСЊ', team: 1, x: 0, z: -20, yaw: 0 });
   const bid = B.handle.player.id;
   ok(B.handle.player.team === 1, 'the second player got the other team');
   clock += 3000;   // past the spawn protection
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(B, { t: 'state', x: 0, y: 1.7, z: -20, yaw: 0, pitch: 0 });
   const aim = (tx, ty, tz) => { const dx = tx, dy = ty - 1.7, dz = tz, l = Math.hypot(dx, dy, dz); return [dx / l, dy / l, dz / l, +l.toFixed(2), bid]; };
-  const shootAt = (tx, ty, tz, w = 0) => { const n = A.all('hit').length; msg(A, { t: 'shoot', w, rays: [aim(tx, ty, tz)] }); clock += 100; const h = A.all('hit'); return h.length > n ? h[h.length - 1] : null; };
+  const shootAt = (tx, ty, tz, w = 0) => { const n = A.all('hit').length; msg(A, { t: 'shoot', w, rays: [aim(tx, ty, tz)] }); clock += 120; g.stepBullets(); const h = A.all('hit'); return h.length > n ? h[h.length - 1] : null; };
   const hp = () => B.handle.player.hp;
 
   let h = shootAt(0, 1.6, -20);
@@ -94,7 +95,7 @@ console.log('server rules (createGame, controlled clock):');
 
   // a teammate between the shooter and the target does not stop the bullet
   const C = seat(g, conn());
-  msg(C, { t: 'join', name: 'Свой', team: 0, x: 0, z: -10, yaw: 0 });
+  msg(C, { t: 'join', name: 'РЎРІРѕР№', team: 0, x: 0, z: -10, yaw: 0 });
   clock += 3000;
   h = shootAt(0, 1.1, -20);
   ok(h && h.id === bid, 'the bullet passes through a teammate');
@@ -106,13 +107,13 @@ console.log('server rules (createGame, controlled clock):');
   const house = (x, z) => (Math.abs(x) < 3 && z > -13 && z < -7) ? { top: 12 } : null;
   const g = createGame({ world: flatWorld(house), area: { cx: 0, cz: 0 }, now: () => clock, name: 'wall' });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -20, yaw: 0 });
+  msg(A, { t: 'join', name: 'РЎС‚СЂРµР»РѕРє', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'РњРёС€РµРЅСЊ', team: 1, x: 0, z: -20, yaw: 0 });
   const bid = B.handle.player.id;
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   const aim = (tx, ty, tz) => { const dx = tx, dy = ty - 1.7, dz = tz, l = Math.hypot(dx, dy, dz); return [dx / l, dy / l, dz / l, +l.toFixed(2), bid]; };
-  const shootAt = (tx, ty, tz) => { const n = A.all('hit').length; msg(A, { t: 'shoot', w: 0, rays: [aim(tx, ty, tz)] }); clock += 100; const h = A.all('hit'); return h.length > n ? h[h.length - 1] : null; };
+  const shootAt = (tx, ty, tz) => { const n = A.all('hit').length; msg(A, { t: 'shoot', w: 0, rays: [aim(tx, ty, tz)] }); clock += 120; g.stepBullets(); const h = A.all('hit'); return h.length > n ? h[h.length - 1] : null; };
   ok(shootAt(0, 1.1, -20) === null, 'the house stops the hit');
   const len = A.last('shot').rays[0][3];
   ok(near(len, 7, 0.15), 'the tracer stops at the wall face (~7 m)', String(len));
@@ -129,13 +130,13 @@ console.log('server rules (createGame, controlled clock):');
   const hill = (x, z) => z < -10 ? (-z - 10) * 0.5 : 0;
   const g = createGame({ world: flatWorld(() => null, hill), area: { cx: 0, cz: 0 }, now: () => clock, name: 'hill' });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -20, yaw: 0 });
+  msg(A, { t: 'join', name: 'РЎС‚СЂРµР»РѕРє', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'РњРёС€РµРЅСЊ', team: 1, x: 0, z: -20, yaw: 0 });
   const bid = B.handle.player.id;
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   const aim = (tx, ty, tz) => { const dx = tx, dy = ty - 1.7, dz = tz, l = Math.hypot(dx, dy, dz); return [dx / l, dy / l, dz / l, +l.toFixed(2), bid]; };
-  const shootAt = (tx, ty, tz) => { const n = A.all('hit').length; msg(A, { t: 'shoot', w: 0, rays: [aim(tx, ty, tz)] }); clock += 100; const h = A.all('hit'); return h.length > n ? h[h.length - 1] : null; };
+  const shootAt = (tx, ty, tz) => { const n = A.all('hit').length; msg(A, { t: 'shoot', w: 0, rays: [aim(tx, ty, tz)] }); clock += 120; g.stepBullets(); const h = A.all('hit'); return h.length > n ? h[h.length - 1] : null; };
   ok(shootAt(0, 1.1, -20) === null, 'the hill slope stops a flat shot');
   const len = A.last('shot').rays[0][3];
   ok(near(len, 12.64, 0.2), 'the tracer stops on the slope (~12.6 m for the slightly downward aim)', String(len));
@@ -148,14 +149,14 @@ console.log('server rules (createGame, controlled clock):');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'lag' });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -20, yaw: 0 });
+  msg(A, { t: 'join', name: 'РЎС‚СЂРµР»РѕРє', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'РњРёС€РµРЅСЊ', team: 1, x: 0, z: -20, yaw: 0 });
   const bid = B.handle.player.id;
   msg(A, { t: 'ping', rtt: 60 });   // the lag becomes 120 + 30 = 150 ms
   clock += 3000;
   const aim = (tx, ty, tz) => { const dx = tx, dy = ty - 1.7, dz = tz, l = Math.hypot(dx, dy, dz); return [dx / l, dy / l, dz / l, +l.toFixed(2), bid]; };
-  const shootAt = (tx, ty, tz) => { const n = A.all('hit').length; msg(A, { t: 'shoot', w: 0, rays: [aim(tx, ty, tz)] }); clock += 100; const h = A.all('hit'); return h.length > n ? h[h.length - 1] : null; };
-  const two = (r1, r2) => { const n = A.all('hit').length; msg(A, { t: 'shoot', w: 0, rays: [r1, r2] }); clock += 100; const h = A.all('hit'); return h.length > n ? h[h.length - 1] : null; };
+  const shootAt = (tx, ty, tz) => { const n = A.all('hit').length; msg(A, { t: 'shoot', w: 0, rays: [aim(tx, ty, tz)] }); clock += 120; g.stepBullets(); const h = A.all('hit'); return h.length > n ? h[h.length - 1] : null; };
+  const two = (r1, r2) => { const n = A.all('hit').length; msg(A, { t: 'shoot', w: 0, rays: [r1, r2] }); clock += 120; g.stepBullets(); const h = A.all('hit'); return h.length > n ? h[h.length - 1] : null; };
   const t0 = clock;
   msg(B, { t: 'state', x: 0, y: 1.7, z: -20, yaw: 0, pitch: 0 });
   clock = t0 + 100;
@@ -178,14 +179,15 @@ console.log('server rules (createGame, controlled clock):');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'shotgun' });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -20, yaw: 0 });
+  msg(A, { t: 'join', name: 'РЎС‚СЂРµР»РѕРє', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'РњРёС€РµРЅСЊ', team: 1, x: 0, z: -20, yaw: 0 });
   const bid = B.handle.player.id;
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(B, { t: 'state', x: 0, y: 1.7, z: -20, yaw: 0, pitch: 0 });
   const W = WEAPONS[1], l = Math.hypot(0.6, 20), d = [0, -0.6 / l, -20 / l];
   msg(A, { t: 'shoot', w: 1, rays: Array.from({ length: W.pellets }, () => [d[0], d[1], d[2], +l.toFixed(2), bid]) });
+  clock += 120; g.stepBullets();   // let the pellets fly the 20 m and land
   const h = A.last('hit');
   const want = Math.round(W.pellets * W.dmg * (1 - W.falloff * l / W.range));
   ok(h && h.dmg === want && B.handle.player.hp === 100 - want, `eight pellets at 20 m: ${want} damage`, JSON.stringify(h));
@@ -205,7 +207,7 @@ console.log('bot fight (8 hard bots, 12 s of real time):');
 {
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, arena: { cx: 0, cz: 0, r: 60, bases: [base(0, -25, 4), base(0, 25, 4)] }, mode: 'team', botLevel: 'hard', name: 'bots' });
   const S = seat(g, conn());
-  msg(S, { t: 'join', name: 'Зритель', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(S, { t: 'join', name: 'Р—СЂРёС‚РµР»СЊ', team: 0, x: 0, z: 0, yaw: 0 });
   for (let i = 0; i < 4; i++) { g.addBot(0); g.addBot(1); }
   await new Promise(r => setTimeout(r, 12000));
   const kills = S.all('kill'), heads = kills.filter(m => m.head).length, shots = S.all('shot').length;
