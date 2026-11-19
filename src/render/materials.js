@@ -26,6 +26,7 @@ function std(opts, key, patch) {
   allMats.push(m); return m;
 }
 
+const FACADE_RELIEF = 3.0;   // strength of the facade relief (slope per unit of atlas grey difference)
 function facadeMaterial() {
   const m = std({ roughness: 0.9, metalness: 0 }, 'facade', s => {
     s.uniforms.uAtlas = { value: STATE.facTex }; s.uniforms.uMask = { value: STATE.facMask }; s.uniforms.uNight = U.night;
@@ -63,7 +64,20 @@ function facadeMaterial() {
         diffuseColor.rgb = tcol * mix(vec3(1.0), vTint, fm.r);
         diffuseColor.rgb *= mix(0.55, 1.0, smoothstep(0.0, 2.4, vWy));
       `).replace('#include <roughnessmap_fragment>', 'float roughnessFactor = mix(roughness, 0.06, fm.g);')
-        .replace('#include <emissivemap_fragment>', `
+        .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        {   // relief from the atlas itself: the grey of the colour atlas is the height (mortar, joints, frames and trim sit lower), the slope is
+            // the difference of two atlas samples, laid on a tangent frame taken from the wall's uv; none on glass, fading out with distance
+          vec2 ae = vec2(1.5 / 1024.0, 1.5 / 2048.0);
+          vec3 lw = vec3(0.299, 0.587, 0.114);
+          float hu = dot(ATLAS(uAtlas, auv + vec2(ae.x, 0.0), gx, gy).rgb - ATLAS(uAtlas, auv - vec2(ae.x, 0.0), gx, gy).rgb, lw);
+          float hv = dot(ATLAS(uAtlas, auv + vec2(0.0, ae.y), gx, gy).rgb - ATLAS(uAtlas, auv - vec2(0.0, ae.y), gx, gy).rgb, lw);
+          vec3 pp = -vViewPosition, dp1 = dFdx(pp), dp2 = dFdy(pp); vec2 du1 = dFdx(vCellUv), du2 = dFdy(vCellUv);
+          vec3 p2 = cross(dp2, normal), p1 = cross(normal, dp1);
+          vec3 tT = p2 * du1.x + p1 * du2.x, tB = p2 * du1.y + p1 * du2.y;
+          float im = inversesqrt(max(max(dot(tT, tT), dot(tB, tB)), 1e-12));
+          float bw = (1.0 - step(0.1, fm.g)) * (blank ? 0.0 : 1.0) * (1.0 - smoothstep(15.0, 80.0, length(vViewPosition)));
+          normal = normalize(normal - (hu * tT + hv * tB) * im * ${FACADE_RELIEF.toFixed(2)} * bw);
+        }`).replace('#include <emissivemap_fragment>', `
         float lit = step(0.5, h12(cell + sd * 13.1 + 5.0));
         vec3 lc = mix(vec3(1.0, 0.68, 0.36), vec3(0.62, 0.78, 1.0), step(0.92, hc2));
         totalEmissiveRadiance += fm.g * lit * uNight * lc * (1.2 + hc2);

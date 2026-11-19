@@ -86,6 +86,8 @@ This work is based on the models above, each by its author, licensed under [CC-B
 
 Кирпич фасадов: строки 1 (красный) и 2 (силикатный) атласа фасадов в `facadeAtlas` ([src/render/textures.js](../src/render/textures.js)) рисуют не процедурную кладку, а серые 256 px плитки `textures/brick_red.webp` и `textures/brick_white.webp` (ambientCG, **CC0**: Bricks097 и Bricks016); цвет даёт тон здания. Плитки грузятся до сборки атласа (`brickPhotos`), если файла нет, остаётся прежняя нарисованная кладка.
 
+Рельеф фасадов: `facadeMaterial` ([src/render/materials.js](../src/render/materials.js)) берёт серое цветового атласа за высоту (швы, наличники и рамы — ниже) и наклоняет нормаль по разности двух выборок атласа на касательном базисе из uv стены. На стёклах рельефа нет, с 15 до 80 м он гаснет. Сила — `FACADE_RELIEF`.
+
 ## Машины (`bmw_*.glb`)
 
 Готовые модели **BMW** вместо прежних процедурных коробок. Все четыре — **CC BY 4.0**, атрибуции обязательны:
