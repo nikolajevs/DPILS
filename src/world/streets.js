@@ -16,6 +16,7 @@ import { COL, LINES, M_ASPH, M_BALLAST, M_DIRT, M_LAND, M_MARK, M_PAVE, ROAD, ST
 import { LINE } from './palette.js';
 import { TERR, bridgeDeck, bridgeOf, densify } from './terrain.js';
 import { WH, walkStrip, walkStripV } from './walkgrid.js';
+import { buildStreetWear, wearMat } from './streetwear.js';
 import { scene } from '../render/renderer.js';
 import { GB, SegGrid, box, polyA } from '../core/geometry.js';
 import { bbox, dec, hb, rnd, sh } from '../core/util.js';
@@ -90,7 +91,7 @@ function skirt(sk, q, y, col, flip) {
   for (let i = 0; i < n; i++) {
     const a = Math.max(0, i - 1), c = Math.min(n - 1, i + 1), h = typeof y === 'number' ? y : y[i];
     let tx = q[2 * c] - q[2 * a], tz = q[2 * c + 1] - q[2 * a + 1]; const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
-    sk.vert(q[2 * i], 0, q[2 * i + 1], -tz * s, 0, tx * s, col); sk.vert(q[2 * i], h, q[2 * i + 1], -tz * s, 0, tx * s, col);
+    sk.vert(q[2 * i], 0, q[2 * i + 1], -tz * s, 0, tx * s, sh(col, 0.85)); sk.vert(q[2 * i], h, q[2 * i + 1], -tz * s, 0, tx * s, col);   // dirt at the foot
   }
   for (let i = 0; i < n - 1; i++) { const k = v0 + 2 * i;
     if (flip) { sk.tri(k, k + 1, k + 3); sk.tri(k, k + 3, k + 2); } else { sk.tri(k, k + 2, k + 3); sk.tri(k, k + 3, k + 1); } }
@@ -141,10 +142,11 @@ function curbBar(b, p, w, sA, col) {
   const top = sh(col, 1.06), face = sh(col, 0.88), back = sh(col, 0.78);
   for (let i = 0; i < n; i++) {
     const [tx, tz, m] = frame(q, i, n, null), nx = -tz, nz = tx, x = q[2 * i], z = q[2 * i + 1], P = (t, y) => [x + nx * t * m, y, z + nz * t * m];
+    const f = 0.95 + rnd(i, 7) * 0.1, fc = sh(face, f), tc = sh(top, f), bc = sh(back, f), dirty = sh(fc, 0.8);   // each stone weathers its own way, dirt at its foot
     const a = P(-w, 0), c = P(-w + 0.03, CH), d = P(w, CH), e = P(w, 0);
-    b.vert(a[0], a[1], a[2], -nx, 0, -nz, face); b.vert(c[0], c[1], c[2], -nx, 0, -nz, face);
-    b.vert(c[0], c[1], c[2], 0, 1, 0, top); b.vert(d[0], d[1], d[2], 0, 1, 0, top);
-    b.vert(d[0], d[1], d[2], nx, 0, nz, back); b.vert(e[0], e[1], e[2], nx, 0, nz, back);
+    b.vert(a[0], a[1], a[2], -nx, 0, -nz, dirty); b.vert(c[0], c[1], c[2], -nx, 0, -nz, fc);
+    b.vert(c[0], c[1], c[2], 0, 1, 0, tc); b.vert(d[0], d[1], d[2], 0, 1, 0, tc);
+    b.vert(d[0], d[1], d[2], nx, 0, nz, bc); b.vert(e[0], e[1], e[2], nx, 0, nz, sh(bc, 0.85));
   }
   for (let i = 0; i < n - 1; i++) { const k = v0 + 6 * i, r = k + 6;
     b.tri(k, k + 1, r); b.tri(k + 1, r + 1, r); b.tri(k + 2, k + 3, r + 2); b.tri(k + 3, r + 3, r + 2); b.tri(k + 5, r + 5, k + 4); b.tri(k + 4, r + 5, r + 4); }
@@ -165,8 +167,9 @@ const LAMPS = [];
 async function buildLines() {
   if (TERR.on) ovPrep();
   const groups = [0, 1, 2, 3, 4, 5].map(() => new GB(false)), lineCol = {}; for (const k in LINE) lineCol[k] = hb(LINE[k][1]);
-  const walk = groups[1], marks = groups[5], extra = new GB(false);
+  const walk = groups[1], marks = groups[5], extra = new GB(false), wear = new GB(false);
   const PAVE = hb('#8f897e'), CURB = hb('#a9a69e'), WHITE = hb('#e8e6df'), RAIL = hb('#4a4440'), SLEEP = hb('#635d56'), GRAVEL = hb('#8b8475');
+  const TRACK = hb('#6a6a6a'), GUT = hb('#0a0a0a');   // wheel polish and the gutter shadow: transparent ribbons over the asphalt (src/world/streetwear.js)
   const sorted = C.l.map(l => ({ cls: l[0], name: l[1], pts: dec(l[2]), bridge: !!l[3] }));
   // the carriageways from the least to the main streets, so a main street is laid over the service roads that join it
   // (the comparator used to leave the other lines in between, which left that order to the sort and let some service roads lie over 18. novembra iela)
@@ -344,7 +347,7 @@ async function buildLines() {
     ZEB.near(x, z, r + 3, id => put(id * 6, e, e[id * 6 + 5], 2));
     return out; }
   function inZones(Z, kind, x, z) {
-    for (let j = 0; j < Z.length; j++) { const c = Z[j]; if ((c[6] === 1 && kind !== 'k') || (c[6] === 2 && kind !== 'c')) continue;
+    for (let j = 0; j < Z.length; j++) { const c = Z[j]; if ((c[6] === 1 && kind !== 'k' && kind !== 'g') || (c[6] === 2 && kind !== 'c')) continue;
       let t = ((x - c[0]) * c[2] + (z - c[1]) * c[3]) / c[4]; t = t < 0 ? 0 : t > 1 ? 1 : t; const ex = x - c[0] - c[2] * t, ez = z - c[1] - c[3] * t; if (ex * ex + ez * ez < c[5]) return true; }
     return false; }
   // the zones near segment i of the polyline p that line li is drawn along, found once for all the markings of the line
@@ -375,7 +378,7 @@ async function buildLines() {
     for (let i = 0; i < n - 1; i++) {
       const ax = q[2 * i], az = q[2 * i + 1], bx = q[2 * i + 2], bz = q[2 * i + 3], dx = bx - ax, dz = bz - az; if (dx * dx + dz * dz < 1e-8) continue;
       const Z = segZones(J.li, J.p, J.i0 + i); let iv = null;
-      for (let j = 0; j < Z.length; j++) { const c = Z[j]; if ((c[6] === 1 && kind !== 'k') || (c[6] === 2 && kind !== 'c')) continue; const r = capInt(ax, az, dx, dz, c); if (r) (iv || (iv = [])).push(r); }
+      for (let j = 0; j < Z.length; j++) { const c = Z[j]; if ((c[6] === 1 && kind !== 'k' && kind !== 'g') || (c[6] === 2 && kind !== 'c')) continue; const r = capInt(ax, az, dx, dz, c); if (r) (iv || (iv = [])).push(r); }
       if (!iv) { if (!cur) cur = [ax, az]; cur.push(bx, bz); continue; }
       iv.sort((a, b) => a[0] - b[0]); let t = 0;
       for (const [u, v] of iv) { if (v <= t) continue; if (u > t + 1e-6) { if (!cur) cur = [ax + dx * t, az + dz * t]; cur.push(ax + dx * u, az + dz * u); } end(); t = v; }
@@ -477,6 +480,7 @@ async function buildLines() {
     l.gbc = STATE.GBC;
     l.isDual = false;
     const tags = cls <= 3 ? streetTags(pts) : null, lanes4 = !!tags && tags.lanes >= 4, rural = !!tags && !!tags.rural, one = !!tags && !!tags.oneway; l.one = one;
+    l.hw = hw; l.rural = rural; l.lanes4 = lanes4;   // read by the street wear (covers, patches, weeds)
     const dual = cls <= 3 && l.name >= 0 && !jn && !one ? dualOf(li, pts, dp, tags && tags.lanes) : null; l.isDual = !!dual; l.side = dual ? dual.side : 0;   // side: where the other carriageway of a pair is (+1 right of the line, the way it runs)
     let je = jointEnds(li, dp); l.dp = dp; l.je = je;   // after dualOf, which may move the ends of dp
     // four lanes: across the overpass from guard rail to guard rail, elsewhere 13 m where OSM says so
@@ -503,6 +507,9 @@ async function buildLines() {
       const wk = H.map((h, i) => dual.bed[i] ? h + 0.1 : h + 2.7);   // a sidewalk of no width beside a tram bed
       walkSlabV(walk, extra, dp, H.map((h, i) => s > 0 ? -wk[i] : h + 0.1), H.map((h, i) => s > 0 ? -(h + 0.1) : wk[i]), PAVE, je);
       mark(li, dp, H.map(h => -s * (h + 0.08)), 0.06, CURB, 'k');
+      { const nL = hwC >= 3 ? 2 : 1;   // the wheel polish along each lane of this carriageway, and the gutter at its kerb
+        for (let i = 0; i < nL; i++) for (const t of [-0.72, 0.72]) mark(li, dp, H.map(h => -h + (2 * h / nL) * (i + 0.5) + t), 0.20, TRACK, 'w');
+        mark(li, dp, H.map(h => -s * (h - 0.02)), 0.09, GUT, 'g'); }
     } else if (W) {   // 18. novembra iela with four lanes: a double centre line, broken lines between the lanes, the trams in the inner two
       const H = W, four = H.map(h => h >= 6);
       ribbonV(groups[def[2]], dp, H.map(h => -h), H, lineCol[cls], je);
@@ -513,6 +520,10 @@ async function buildLines() {
         mark(li, dp, H.map(h => sg * h / 2), 0.07, WHITE, 'c', [3, 9], four); }                           // between the lanes
       mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9], four.map(f => !f));                                         // past the overpass, two lanes again
       hwC = H.slice().sort((a, b) => a - b)[H.length >> 1];
+      for (const sg of [1, -1]) {   // wheel polish: four lanes where wide, two past the overpass; the gutter at each kerb
+        for (const t of [-0.72, 0.72]) { mark(li, dp, H.map(h => sg * h / 2 + t), 0.20, TRACK, 'w', null, four.map(f => !f));
+          mark(li, dp, H.map(h => sg * h / 4 + t), 0.20, TRACK, 'w', null, four); mark(li, dp, H.map(h => sg * 3 * h / 4 + t), 0.20, TRACK, 'w', null, four); }
+        mark(li, dp, H.map(h => sg * (h - 0.02)), 0.09, GUT, 'g'); }
     } else if (one) {   // a one-way ramp (OSM oneway): its lanes of 3.5 m with margins, kerbs and edge lines, no sidewalk
       const h1 = tags.hw || Math.max(2.6, tags.lanes * 1.75 + 0.85);
       splitApart(li, pts, dp, h1); l.je = je = jointEnds(li, dp);
@@ -520,7 +531,10 @@ async function buildLines() {
       for (const sg of [1, -1]) { mark(li, dp, sg * (h1 + 0.08), 0.12, CURB, 'k'); mark(li, dp, sg * (h1 - 0.35), 0.07, WHITE, 'e'); }
       if (tags.lanes >= 2) mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9]);
       if (tags.hatch) { const m = dp.length >> 1; HATCH.push({ li, p: dp, A: new Array(m).fill(h1 - 2.25), B: new Array(m).fill(h1 - 0.35), s: tags.hatch, gbc: STATE.GBC }); }   // the hatched margin
-      hwC = h1;
+      hwC = h1; l.h1 = h1;
+      { const nL = Math.max(1, tags.lanes || 1);
+        for (let i = 0; i < nL; i++) for (const t of [-0.72, 0.72]) mark(li, dp, -h1 + (2 * h1 / nL) * (i + 0.5) + t, 0.20, TRACK, 'w');
+        for (const sg of [1, -1]) mark(li, dp, sg * (h1 - 0.02), 0.09, GUT, 'g'); }
     } else {
       if (rural) { ribbon(groups[2], dp, hw + 0.6, 0.6, GRAVEL, 0, je); ribbon(groups[2], dp, -hw - 0.6, 0.6, GRAVEL, 0, je); }   // a country road: gravel shoulders, no kerb or sidewalk
       else if (cls <= 3) { walkSlab(walk, extra, dp, hw + 1.4, 1.3, PAVE, je); walkSlab(walk, extra, dp, -hw - 1.4, 1.3, PAVE, je); mark(li, dp, hw + 0.08, 0.12, CURB, 'k'); mark(li, dp, -hw - 0.08, 0.12, CURB, 'k'); }
@@ -528,6 +542,9 @@ async function buildLines() {
       else if (cls !== 9) ribbon(groups[def[2]], dp, 0, hw, lineCol[cls], 0, je);
       if (cls <= 2 && !(tags && tags.noCentre)) mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9]);   // no centre line where OSM says lane_markings=no
       if (cls === 0) { mark(li, dp, hw - 0.45, 0.07, WHITE, 'e'); mark(li, dp, -hw + 0.45, 0.07, WHITE, 'e'); }
+      if (cls <= 4 && !rural) {   // wheel polish in both lanes, the gutter where a kerb stands
+        for (const c of [-hw / 2, hw / 2]) for (const t of [-0.72, 0.72]) mark(li, dp, c + t, 0.20, TRACK, 'w');
+        if (cls <= 3) for (const sg of [1, -1]) mark(li, dp, sg * (hw - 0.02), 0.09, GUT, 'g'); }
     }
     if (cls <= 4) { l.zone = hwC; for (let i = 0; i < n - 1; i++) addZone(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], li, hwC); }
     if (cls === 8) { dashes(marks, dp, 0, 1.25, 0.25, 0.6, SLEEP); railBar(extra, dp, 0.76); railBar(extra, dp, -0.76); }   // steel rails on the sleepers
@@ -580,13 +597,16 @@ async function buildLines() {
       marks.triUp(v, v + 1, v + 3); marks.triUp(v, v + 3, v + 2); }
   }
   zSeen = new Int32Array(ZR.s.length / 6);
-  for (const J of JOBS) { if (due()) await pause(); STATE.GBC = J.gbc; for (const run of clipRuns(J)) { if (J.dash) dashes(marks, run, 0, J.w, J.dash[0], J.dash[1], J.col); else ribbon(marks, run, 0, J.w, J.col); if (J.kind === 'k') curbBar(extra, run, J.w, J.sA, CURB); } }
+  for (const J of JOBS) { if (due()) await pause(); STATE.GBC = J.gbc; const tgt = J.kind === 'w' || J.kind === 'g' ? wear : marks;   // wheel polish and gutter shadow go to the transparent wear sheet
+    for (const run of clipRuns(J)) { if (J.dash) dashes(marks, run, 0, J.w, J.dash[0], J.dash[1], J.col); else ribbon(tgt, run, 0, J.w, J.col); if (J.kind === 'k') curbBar(extra, run, J.w, J.sA, CURB); } }
   for (const Hh of HATCH) { if (due()) await pause(); STATE.GBC = Hh.gbc; hatch(marks, Hh.p, Hh.A, Hh.B, Hh.s, WHITE, (x, z, tx, tz) => inZones(zonesNear(Hh.li, x, z, 0.2, tx, tz), 'c', x, z)); }
   STATE.GBC = null;
   buildSignals(sorted, ZR, ZB, marks, WHITE, N18);   // traffic lights and stop lines on 18. novembra iela, give way at the roundabouts
   const orders = [-37, -37, -36, -35, -34, -33], mats = [M_LAND, M_PAVE, M_DIRT, M_BALLAST, M_ASPH, M_MARK];
   groups.forEach((g, k) => { const m = g.mesh(mats[k]); if (m) { m.renderOrder = orders[k] + (k === 0 ? -0.5 : 0); m.frustumCulled = false; m.receiveShadow = true; scene.add(m); } });
   const em = extra.mesh(matPlain); if (em) { em.castShadow = em.receiveShadow = true; scene.add(em); }
+  const wm = wear.mesh(wearMat()); if (wm) { wm.renderOrder = -33.6; wm.frustumCulled = false; wm.receiveShadow = true; scene.add(wm); }
+  await buildStreetWear(sorted);   // covers, patches, stains and the weeds of the kerbs (src/world/streetwear.js)
 }
 function bridge(b, p, hw) {
   const n = p.length >> 1, CON = hb('#9d9a92'), RAILC = hb('#5f6266');
