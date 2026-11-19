@@ -28,6 +28,7 @@ import { $ } from '../core/env.js';
 import { boomSound, crackSound, hitSound, loadSounds, nadeBounce, shotSound, stepSound } from './sfx.js';
 import { carAt, carPath } from '../world/car-hit.js';
 import { fxSamples, tracerShot, bindTracer, hitTracer, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke } from './impacts.js';
+import { WEAPONS as WSRV, bulletAt, bulletDrop } from '../../server/combat.mjs';   // the server's own ballistics: the muzzle velocities and the bullet's fall
 
 /* ---------- online shooter: deathmatch on the city map ----------
    The server (server/index.mjs) owns health, kills and respawns. This module: the connection, the other players
@@ -76,14 +77,15 @@ const DEFAULT_SERVER = '';   // e.g. 'wss://dpils-game.example.com'; empty: ?ser
 
 /* ---------- geometry ---------- */
 // how far the shot flies before the ground or a roof line stops it; the coarse 1.5 m scan is bisected to ~3 mm
-// (the same refinement impacts.js uses for the mark), so the tracer stops at the wall, not up to 1.5 m inside it
-function freePath(o, d, len, cars = false) {   // cars: parked and standing cars stop it too (shots only; sight lines look over them)
-  const wall = wallPath(o, d, len);
-  return cars ? carPath(o, d, wall) : wall;
+// (the same refinement impacts.js uses for the mark), so the tracer stops at the wall, not up to 1.5 m inside it.
+// v (m/s) bends the scan down by the bullet's gravity — the same arc the server flies (server/combat.mjs bulletDrop)
+function freePath(o, d, len, cars = false, v = 0) {   // cars: parked and standing cars stop it too (shots only; sight lines look over them)
+  const wall = wallPath(o, d, len, v);
+  return cars ? carPath(o, d, wall, v) : wall;
 }
-function wallPath(o, d, len) {
+function wallPath(o, d, len, v) {
   const block = t => {
-    const x = o[0] + d[0] * t, y = o[1] + d[1] * t, z = o[2] + d[2] * t, g = terrainH(x, z);
+    const x = o[0] + d[0] * t, y = o[1] + d[1] * t - (v ? bulletDrop(t, v) : 0), z = o[2] + d[2] * t, g = terrainH(x, z);
     if (y < g) return true;
     const b = buildingAt(x, z); return !!(b && y < g + (b.top || 12));
   };
@@ -310,8 +312,8 @@ const SHOT_VOL = [0.55, 0.7, 0.75, 0.45, 0.55];
 // what a bullet hits, by the facade style of the cadastre (tools/process.js): wood, brick, plaster or metal
 const WALL_MAT = { 0: 'concrete', 1: 'stone', 2: 'stone', 3: 'concrete', 4: 'concrete', 5: 'wood', 6: 'metal', 12: 'metal', 13: 'metal', 14: 'concrete' };
 // a bullet stopped by a wall or the ground at distance len along d from o: the sound of the hit, if it is near enough to hear
-function wallHit(o, d, len, hear = 45) {
-  const x = o[0] + d[0] * len, y = o[1] + d[1] * len, z = o[2] + d[2] * len, s = spot(x, y, z);
+function wallHit(o, d, len, hear = 45, v = 0) {
+  const [x, y, z] = v ? bulletAt(o, d, len, v) : [o[0] + d[0] * len, o[1] + d[1] * len, o[2] + d[2] * len], s = spot(x, y, z);
   if (s.d > hear) return;
   const car = !!carAt(x, y, z), ground = !car && y - terrainH(x, z) < 0.5;
   if (car) { try { hitSound(ac(), actx.master, 'metal', 0.8 * 4 / (4 + s.d) * (1 - s.d / hear), s.d, s.pan); } catch (e) {} return; }
@@ -329,14 +331,15 @@ function otherShot(m) {
   }
   let heard = 0, crack = false;
   for (const r of m.rays) {
-    const len = carPath(m.o, r, r[3]);   // the server does not know the cars: its bullet stops in one here too
+    const vel = (WSRV[m.w] || WSRV[0]).vel || 560;   // the muzzle velocity lives in the server's table (the page's copy above has no vel)
+    const len = carPath(m.o, r, r[3], vel);   // the server does not know the cars: its bullet stops in one here too
     const kind = len < wf.range - 0.5 ? 'surface' : 'air';   // a body hit arrives as 'bhit' and cuts the tracer there
-    const cb = kind === 'surface' && heard < 2 ? (heard++, () => wallHit(m.o, r, len)) : null;   // of a shotgun's pellets, two are heard
+    const cb = kind === 'surface' && heard < 2 ? (heard++, () => wallHit(m.o, r, len, 45, vel)) : null;   // of a shotgun's pellets, two are heard
     bindTracer(r[4], tracerShot(m.o, r, len, m.w, kind, 0xffb060, cb));
     if (crack || MP.dead) continue;
     const t = (P.x - m.o[0]) * r[0] + (P.y - m.o[1]) * r[1] + (P.z - m.o[2]) * r[2];   // the point of the bullet's path nearest to your head
     if (t < 6 || t > len + 1) continue;
-    const cx = m.o[0] + r[0] * t, cy = m.o[1] + r[1] * t, cz = m.o[2] + r[2] * t, near = Math.hypot(cx - P.x, cy - P.y, cz - P.z);
+    const cx = m.o[0] + r[0] * t, cy = m.o[1] + r[1] * t - bulletDrop(t, vel), cz = m.o[2] + r[2] * t, near = Math.hypot(cx - P.x, cy - P.y, cz - P.z);
     if (near < 2.5) { crack = true; try { crackSound(ac(), actx.master, 0.25 + 0.5 * (1 - near / 2.5), spot(cx, cy, cz).pan); } catch (e) {} }
   }
 }
@@ -359,10 +362,10 @@ function fire(now) {
   const o = [P.x, P.y, P.z], rays = [], mine = [], yaw0 = P.yaw, pitch0 = P.pitch;   // the rays fly where the crosshair stood: the recoil kicks the view only after they are computed — kicking first lifted every sniper shot 0.03 rad (1.7°) over the target, a clean miss past ~40 m
   for (let i = 0; i < w.pellets; i++) {
     const sp = spreadNow(), ang = Math.random() * 6.283, rad = sp * Math.sqrt(Math.random());
-    const d = aim(yaw0 + Math.cos(ang) * rad, pitch0 + Math.sin(ang) * rad), clear = freePath(o, d, w.range, true);
+    const d = aim(yaw0 + Math.cos(ang) * rad, pitch0 + Math.sin(ang) * rad), clear = freePath(o, d, w.range, true, WSRV[MP.weapon].vel || 560);   // the wall along the falling arc, as the server sees it
     rays.push([+d[0].toFixed(4), +d[1].toFixed(4), +d[2].toFixed(4)]);   // the server judges the hit itself, when the bullet arrives
     const kind = clear < w.range - 0.5 ? 'surface' : 'air';   // a body, if the bullet finds one, comes back as 'bhit'
-    mine.push(tracerShot(o, d, clear, MP.weapon, kind, 0xffe9a0, kind === 'surface' && i < 2 ? () => wallHit(o, d, clear) : null));   // the mark and the hit sound appear when the bullet arrives (of a shotgun's pellets, two are heard)
+    mine.push(tracerShot(o, d, clear, MP.weapon, kind, 0xffe9a0, kind === 'surface' && i < 2 ? () => wallHit(o, d, clear, 45, WSRV[MP.weapon].vel || 560) : null));   // the mark and the hit sound appear when the bullet arrives (of a shotgun's pellets, two are heard)
   }
   ownTracers = mine;
   P.pitch = Math.min(1.5, P.pitch + (w.pellets > 1 ? 0.02 : w.scope ? 0.03 : (w.kick ?? FEEL.kick))); P.yaw += (Math.random() - 0.5) * (w.pellets > 1 ? 0.006 : 0.0016); if (w.auto) MP.burst = Math.min(w.cap ?? 0.03, MP.burst + (w.burst ?? 0.0045));
@@ -775,6 +778,7 @@ function mpTick(dt) {
     const scoped = MP.zoom > 0.6, dot = scoped && mode === 'sight';
     if (el('mpDot').hidden === dot) el('mpDot').hidden = !dot;   // the red dot of the collimator; the crosshair hides itself in crossTick
     if (el('mpScope').hidden === (scoped && !dot)) el('mpScope').hidden = !(scoped && !dot);
+    if (scoped && !dot) scopeBdc(fov);
     gun.visible = !MP.dead && !nv && (mode === 'sight' || MP.zoom < 0.5); }   // the grenade in hand (and the throw) replaces the gun; the long zoom hides the arms, the red dot keeps them
   ownSteps(dt); tickNades(dt); nadeWarnTick(); tickItems(dt, now); spectate(now); nadeAimTick(now); nadeHandTick(nv);
   if (MP.reloadAt && now - MP.reloadAt >= WEAPONS[MP.reloadW].reloadMs) {   // the local picture of the reload; the server's 'inv' message is the truth. It finishes on the weapon that started it, even if another is in hand now
@@ -807,6 +811,25 @@ function mpTick(dt) {
   flashLit(dt);
   if (hitT && now - hitT > 140) { hitT = 0; el('mpHit').hidden = true; }
   if (hurtT && now - hurtT > 600) { hurtT = 0; el('mpHurt').hidden = true; }
+}
+/* ---------- the BDC ladder of the long scope ----------
+   The three lower marks are holdover hashes calibrated against the bullet's real fall (BULLET_G, the weapon's vel):
+   half, three quarters and the full range of the weapon in hand. The holdover angle at L metres is drop(L)/L radians;
+   the view maps the vertical fov onto the screen height, so the hash sits drop(L)/L · (h/2)/tan(fov/2) pixels below the
+   centre. The end hashes carry their distance in metres (200 and 400 for the sniper); aim with the hash on the target.
+   Recomputed only when the weapon, the zoom or the window changes. */
+let bdcKey = '';
+function scopeBdc(fov) {
+  const w = MP.weapon, vel = WSRV[w].vel || 560, range = WSRV[w].range;
+  const key = w + ':' + fov.toFixed(2) + ':' + window.innerHeight;
+  if (key === bdcKey) return; bdcKey = key;
+  const pxPerRad = (window.innerHeight / 2) / Math.tan(fov * Math.PI / 360);
+  const marks = el('mpScope').querySelectorAll('s.b1, s.b2, s.b3');
+  [0.5, 0.75, 1].forEach((k, i) => {
+    const L = range * k, px = bulletDrop(L, vel) / L * pxPerRad;
+    marks[i].style.top = 'calc(50% + ' + px.toFixed(1) + 'px)';
+    marks[i].dataset.m = String(Math.round(L));
+  });
 }
 const V = new THREE.Vector3(), BLAST_AT = new THREE.Vector3(), BLAST_COL = new THREE.Color();
 // the light of the flashes: at the muzzle in your hands while your flash shines, else at the shot of someone near; a grenade's

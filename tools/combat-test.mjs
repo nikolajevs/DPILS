@@ -6,7 +6,7 @@
       so each shot is given the time to reach its target before the hit is read.
    3. A real bot fight on a flat arena (12 s of real time): with the small hitboxes the bots must still see,
       shoot and kill each other. */
-import { HIT, WEAPONS, rayHit } from '../server/combat.mjs';
+import { BULLET_G, HIT, WEAPONS, bulletAt, bulletDir, bulletDrop, rayHit } from '../server/combat.mjs';
 import { createGame } from '../server/game.mjs';
 import { makePhysics } from '../server/physics.mjs';
 
@@ -213,6 +213,88 @@ console.log('server rules (createGame, controlled clock):');
   ok(h && h.dmg === WEAPONS[0].dmg && B.handle.player.hp === 100 - WEAPONS[0].dmg, 'the damage lands when the bullet arrives', JSON.stringify(h));
   ok(b && near(b.d, 56, 0.5) && b.v === B.handle.player.id, 'bhit reports the body at ~56 m', JSON.stringify(b));
   g.stop();
+}
+/* ---------- 2a. the bullet's fall: gravity on the arc, holdover, the ground catching a long flat shot ---------- */
+console.log('bullet drop (gravity, holdover, determinism):');
+{
+  // the arc itself: a 7.62 at 400 m (820 m/s, 0.49 s) sinks ~1.17 m, and the tangent bends down with it
+  ok(near(bulletDrop(400, 820), 0.5 * BULLET_G * (400 / 820) ** 2, 1e-9) && near(bulletDrop(400, 820), 1.167, 0.01), 'the sniper bullet falls ~1.17 m at 400 m', String(bulletDrop(400, 820)));
+  const p = bulletAt([0, 1.7, 0], [0, 0, -1], 400, 820);
+  ok(near(p[1], 1.7 - 1.167, 0.01) && p[2] === -400, 'bulletAt rides the arc, not the straight line', JSON.stringify(p));
+  const t = bulletDir([0, 0, -1], 400, 820);
+  ok(t[1] < -0.005 && near(Math.hypot(...t), 1, 1e-9), 'the tangent at 400 m points down and stays unit', JSON.stringify(t));
+  ok(bulletDrop(20, 560) < 0.01, 'at 20 m the rifle drop is under a centimetre — close fights unchanged');
+}
+{
+  // the sniper at 400 m: a flat aim at the chest hits the dirt; the same aim lifted by the drop hits the chest
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'drop' });
+  const A = seat(g, conn()), B = seat(g, conn());
+  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -400, yaw: 0 });
+  const bid = B.handle.player.id;
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(B, { t: 'state', x: 0, y: 1.7, z: -400, yaw: 0, pitch: 0 });
+  const aim = (tx, ty, tz) => { const dx = tx, dy = ty - 1.7, dz = tz, l = Math.hypot(dx, dy, dz); return [dx / l, dy / l, dz / l]; };
+  const fly = (ray, w, ms) => { const n = A.all('bhit').length; msg(A, { t: 'shoot', w, rays: [ray] }); clock += ms; g.stepBullets(); const b = A.all('bhit'); return b.length > n ? b[b.length - 1] : null; };
+  ok(fly(aim(0, 1.1, -400), 2, 600) === null, 'a flat sniper aim at 400 m misses: the bullet is ~1.17 m low');
+  const wall = A.last('shot').rays[0][3];
+  ok(wall < 400, 'the fallen bullet meets the ground before 400 m', String(wall));
+  clock += 1400;   // past the sniper's gapMs
+  const hold = bulletDrop(400, 820);
+  const b = fly(aim(0, 1.1 + hold, -400), 2, 600);
+  ok(b && b.v === bid && near(b.d, 400, 1) && near(b.at[1], 1.1, 0.06), 'the holdover aim hits the chest at 400 m', JSON.stringify(b));
+  const h = A.last('hit');
+  ok(h && h.dmg === WEAPONS[2].dmg, 'the damage is the sniper body damage', JSON.stringify(h));
+  clock += 1400;
+  const hb = fly(aim(0, 1.6 + bulletDrop(400, 820), -400), 2, 600);
+  ok(hb && hb.zone === 1 && A.last('hit').kill, 'the head holdover at 400 m kills', JSON.stringify(hb));
+  g.stop();
+}
+{
+  // the bot's formula: aim lifted by the drop of the straight distance hits at the hard bot's sniper range (130 m)
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'bothold' });
+  const A = seat(g, conn()), B = seat(g, conn());
+  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -130, yaw: 0 });
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(B, { t: 'state', x: 0, y: 1.7, z: -130, yaw: 0, pitch: 0 });
+  const aimY = 1.7 - 0.56, dy2 = aimY - 1.7, d3 = Math.hypot(130, dy2), hold = bulletDrop(d3, 820);
+  const pitch = Math.asin((dy2 + hold) / d3), cp = Math.cos(pitch);
+  msg(A, { t: 'shoot', w: 2, rays: [[0, Math.sin(pitch), -cp]] });
+  clock += 300; g.stepBullets();
+  ok(A.last('hit') && A.last('hit').dmg === WEAPONS[2].dmg, 'the bots\' holdover formula lands the 130 m chest shot', JSON.stringify(A.last('hit')));
+  g.stop();
+}
+{
+  // a long flat shot from low: the ground catches the arc sooner than the straight line (eye 1.0 m, 820 m/s → ~370 m)
+  const phys = makePhysics(() => null, () => 0);
+  const straight = phys.freePath([0, 1.0, 0], [0, 0, -1], 500);
+  const arc = phys.freePath([0, 1.0, 0], [0, 0, -1], 500, 820);
+  ok(straight === 500, 'the straight sight line stays open');
+  ok(near(arc, 820 * Math.sqrt(2 * 1.0 / BULLET_G), 1.5), 'the falling arc meets the ground at ~370 m', String(arc));
+}
+{
+  // determinism: the same shot in two identical games lands at the same point to the millimetre
+  const run = () => {
+    let clock = 1e6;
+    const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'det' });
+    const A = seat(g, conn()), B = seat(g, conn());
+    msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+    msg(B, { t: 'join', name: 'Мишень', team: 1, x: 2, z: -300, yaw: 0.4 });
+    clock += 3000;
+    msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+    msg(B, { t: 'state', x: 2, y: 1.7, z: -300, yaw: 0.4, pitch: 0 });
+    const ty = 1.2 + bulletDrop(300, 820), l = Math.hypot(2, ty - 1.7, 300);
+    msg(A, { t: 'shoot', w: 2, rays: [[2 / l, (ty - 1.7) / l, -300 / l]] });
+    for (let i = 0; i < 12; i++) { clock += 50; g.stepBullets(); }   // the same 30 Hz-ish stepping both times
+    const b = A.last('bhit'); g.stop(); return b && JSON.stringify(b);
+  };
+  const r1 = run(), r2 = run();
+  ok(r1 && r1 === r2, 'two identical games land the bullet at the identical point', r1 + ' / ' + r2);
 }
 {
   // the refined freePath on its own
