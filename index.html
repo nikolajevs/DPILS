@@ -203,7 +203,7 @@
 <div class="mp-dead" id="mpOver" hidden><div class="panel"><h2>Соединение с сервером потеряно</h2><button class="go" id="mpOverBtn">Начать заново</button></div></div>
 <div class="joy" id="joy" hidden><i id="joyKnob"></i></div>
 
-<!-- three.js for the unbundled page (GitHub Pages serves the repository as it is); Vite bundles it from npm instead -->
+<!-- three.js for the unbundled page (legacy static hosting à la GitHub Pages); the production VPS serves the Vite build from dist/ instead -->
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/" } }</script>
 <script type="module" src="./src/boot.js"></script>
 </body>
