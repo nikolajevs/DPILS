@@ -42,15 +42,28 @@ function leafAtlas() {
   const disc = (n, spread, fn) => { for (let k = 0; k < n; k++) { const a = R() * 6.283, r = Math.pow(R(), 0.62) * S * spread; fn(S / 2 + Math.cos(a) * r, S / 2 + Math.sin(a) * r, k / n); } };
   cell(0, () => disc(250, 0.43, (x, y, t) => { const l = 13 + t * 24 + rr(-4, 4); leaf(x, y, rr(15, 24), rr(7, 10), R() * 6.283, hsl(rr(86, 112), rr(38, 56), l), hsl(95, 35, l + 9)); }));
   cell(1, () => disc(260, 0.44, (x, y, t) => { const l = 17 + t * 26 + rr(-4, 4); leaf(x, y, rr(10, 15), rr(5.5, 8), R() * 6.283, hsl(rr(72, 98), rr(40, 58), l), hsl(80, 40, l + 8)); }));
-  cell(2, () => disc(30, 0.36, (x, y, t) => {
-    g.strokeStyle = '#4a3626'; g.lineWidth = 2; g.beginPath(); g.moveTo(x, y); g.lineTo(x + rr(-14, 14), y + rr(-14, 14)); g.stroke();
-    for (let k = 0; k < 26; k++) { const a = R() * 6.283, len = rr(14, 26); g.strokeStyle = hsl(rr(98, 128), rr(24, 40), 12 + t * 16 + rr(-3, 6)); g.lineWidth = rr(1, 1.7); g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * len, y + Math.sin(a) * len); g.stroke(); }
-  }));
+  cell(2, () => {
+    // Scots pine: fine glaucous blue-green needles along many short twigs, a continuous needle mass
+    for (let b = 0; b < 60; b++) {
+      const a = R() * 6.283, x0 = S / 2 + rr(-0.14, 0.14) * S, y0 = S / 2 + rr(-0.14, 0.14) * S, len = S * rr(0.13, 0.24), ca = Math.cos(a), sa = Math.sin(a), l0 = 13 + (b % 5) * 3;
+      g.strokeStyle = '#5a4030'; g.lineWidth = 1.3; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x0 + ca * len, y0 + sa * len); g.stroke();
+      for (let k = 1; k < len; k += 1.6) {
+        const x = x0 + ca * k, y = y0 + sa * k;
+        for (const sd of [-1, 1]) { const na = a + sd * rr(0.4, 0.95), nl = rr(8, 15) * (1 - k / len * 0.3); g.strokeStyle = hsl(rr(100, 140), rr(20, 42), l0 + rr(0, 12)); g.lineWidth = rr(0.9, 1.3); g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(na) * nl, y + Math.sin(na) * nl); g.stroke(); }
+      }
+      for (let k = 0; k < 4; k++) { const na = a + rr(-0.45, 0.45), nl = rr(8, 14); g.strokeStyle = hsl(rr(95, 130), rr(26, 44), l0 + rr(6, 16)); g.lineWidth = 1; g.beginPath(); g.moveTo(x0 + ca * len, y0 + sa * len); g.lineTo(x0 + ca * len + Math.cos(na) * nl, y0 + sa * len + Math.sin(na) * nl); g.stroke(); }
+    }
+  });
   cell(3, () => {
-    for (let b = 0; b < 24; b++) {
-      const a = R() * 6.283, x0 = S / 2 + rr(-0.13, 0.13) * S, y0 = S / 2 + rr(-0.13, 0.13) * S, len = S * rr(0.16, 0.34), ca = Math.cos(a), sa = Math.sin(a), l0 = 8 + (b % 4) * 4.5;
-      g.strokeStyle = '#3d2e22'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x0 + ca * len, y0 + sa * len); g.stroke();
-      for (let k = 0; k < len; k += 1.5) for (const sd of [-1, 1]) { const x = x0 + ca * k, y = y0 + sa * k, na = a + sd * rr(0.6, 1.2), nl = rr(8, 14) * (1 - k / len * 0.4); g.strokeStyle = hsl(rr(110, 138), rr(26, 40), l0 + rr(0, 11)); g.lineWidth = 1.4; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(na) * nl, y + Math.sin(na) * nl); g.stroke(); }
+    // a spruce bough: short dense needles all along the twig, both sides, and a lighter tuft of new growth at the tip
+    for (let b = 0; b < 30; b++) {
+      const a = R() * 6.283, x0 = S / 2 + rr(-0.12, 0.12) * S, y0 = S / 2 + rr(-0.12, 0.12) * S, len = S * rr(0.16, 0.30), ca = Math.cos(a), sa = Math.sin(a), l0 = 7 + (b % 5) * 3.5;
+      g.strokeStyle = '#3a2c20'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x0, y0); g.lineTo(x0 + ca * len, y0 + sa * len); g.stroke();
+      for (let k = 2; k < len; k += 1.2) {
+        const x = x0 + ca * k, y = y0 + sa * k;
+        for (const sd of [-1, 1]) { const na = a + sd * rr(0.5, 1.15), nl = rr(6, 12) * (1 - k / len * 0.35); g.strokeStyle = hsl(rr(108, 140), rr(24, 42), l0 + rr(0, 12)); g.lineWidth = 1.3; g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(na) * nl, y + Math.sin(na) * nl); g.stroke(); }
+      }
+      for (let k = 0; k < 7; k++) { const na = a + rr(-0.7, 0.7), nl = rr(7, 12); g.strokeStyle = hsl(rr(105, 135), rr(28, 44), l0 + rr(6, 16)); g.lineWidth = 1.2; g.beginPath(); g.moveTo(x0 + ca * len, y0 + sa * len); g.lineTo(x0 + ca * len + Math.cos(na) * nl, y0 + sa * len + Math.sin(na) * nl); g.stroke(); }
     }
   });
   // give see-through texels the mean leaf colour of their cell, so mip levels do not grow dark fringes
@@ -70,8 +83,8 @@ function treeGeo(type) {
   const P = [], N = [], Cc = [], K = []; let H = 0, Rm = 0, seq = 0;
   const solid = (geo, col, m, bark) => {   // bark: [u repeats, v repeats] to lay the bark photograph on it (carried in aCard.xyz of a solid, whose w is 0)
     const g = geo.index ? geo.toNonIndexed() : geo; g.applyMatrix4(m);
-    const p = g.attributes.position.array, nn = g.attributes.normal.array, uv = g.attributes.uv.array, c = hb(col);
-    for (let i = 0, j = 0; i < p.length; i += 3, j += 2) { P.push(p[i], p[i + 1], p[i + 2]); N.push(nn[i], nn[i + 1], nn[i + 2]); const f = 0.82 + 0.18 * hash(Math.round(p[i + 1] * 3) * 31 + type); Cc.push(c[0] / 255 * f, c[1] / 255 * f, c[2] / 255 * f); K.push(bark ? uv[j] * bark[0] : 0, bark ? uv[j + 1] * bark[1] : 0, bark ? 1 : 0, 0); H = Math.max(H, p[i + 1]); }
+    const p = g.attributes.position.array, nn = g.attributes.normal.array, uv = g.attributes.uv.array, cf = typeof col === 'function' ? col : null, c = cf ? null : hb(col);
+    for (let i = 0, j = 0; i < p.length; i += 3, j += 2) { P.push(p[i], p[i + 1], p[i + 2]); N.push(nn[i], nn[i + 1], nn[i + 2]); const cc = cf ? cf(p[i + 1]) : c, f = 0.82 + 0.18 * hash(Math.round(p[i + 1] * 3) * 31 + type); Cc.push(cc[0] / 255 * f, cc[1] / 255 * f, cc[2] / 255 * f); K.push(bark ? uv[j] * bark[0] : 0, bark ? uv[j + 1] * bark[1] : 0, bark ? 1 : 0, 0); H = Math.max(H, p[i + 1]); }
   };
   const UP = new THREE.Vector3(0, 1, 0), ONE = new THREE.Vector3(1, 1, 1);
   const limb = (ax, ay, az, bx, by, bz, r0, r1, col, seg = 6, arc) => {
@@ -101,10 +114,31 @@ function treeGeo(type) {
   };
   let capY = 5;
   if (type === 0) {
-    limb(0, 0, 0, 0.1, 5, 0.05, 0.27, 0.19, '#6b5546', 7); limb(0.1, 5, 0.05, 0.15, 11.4, 0.1, 0.19, 0.08, '#a8683f', 7);
-    limb(0.14, 9.4, 0.1, 1.1, 10.1, 0.6, 0.07, 0.03, '#8d5a3a', 5); limb(0.14, 9.8, 0.1, -0.9, 10.4, -0.7, 0.07, 0.03, '#8d5a3a', 5);
-    limb(0.1, 6.6, 0.05, 0.9, 7.0, -0.5, 0.04, 0.015, '#6b5546', 4);
-    capY = crown([[0.1, 11.3, 0.1, 2.5], [1.2, 10.2, 0.6, 1.8], [-1.0, 10.5, -0.7, 1.9], [0.2, 12.4, 0.2, 1.5]], 0.6, 4.4, 0.9, 2);
+    // Scots pine: a bare bole, grey-brown below and orange above, a few self-pruned dead stubs, and an
+    // open crown of separate needle pads on spreading limbs — sky between the layers, not one solid ball.
+    const bark = y => { const t = Math.min(1, Math.max(0, (y - 2.5) / 8.5)), e = t * t * (3 - 2 * t); return [93 + 83 * e, 74 + 37 * e, 58 + 8 * e]; };   // grey-brown below, orange above, gradual
+    limb(0, 0, 0, 0.06, 4.2, 0.03, 0.28, 0.22, bark, 7); limb(0.06, 4.2, 0.03, 0.12, 7.6, 0.07, 0.22, 0.15, bark, 7);
+    limb(0.12, 7.6, 0.07, 0.18, 12.2, 0.12, 0.15, 0.05, bark, 7);
+    for (let k = 0; k < 5; k++) {
+      const y = 2.4 + k * 1.15 + hash(k * 11) * 0.5, a = hash(k * 29 + 3) * 6.283, L = 0.35 + hash(k * 7 + 1) * 0.4;
+      limb(Math.cos(a) * 0.16, y, Math.sin(a) * 0.16, Math.cos(a) * (0.16 + L), y - L * 0.35, Math.sin(a) * (0.16 + L), 0.05, 0.018, '#6b5a4a', 4);
+    }
+    const pad = (cx, cy, cz, pr, n, sz, top) => {
+      for (let i = 0; i < n; i++) {
+        const t = (i + 0.5) / n, phi = Math.acos(1 - 2 * t), th = i * 2.39996 + cx * 7, rr = 0.35 + 0.65 * Math.sqrt(hash(seq * 13 + 5));
+        const ux = Math.sin(phi) * Math.cos(th), uy = Math.cos(phi), uz = Math.sin(phi) * Math.sin(th);
+        const x = cx + ux * pr * rr, y = cy + uy * pr * 0.32 * rr, z = cz + uz * pr * rr, up = uy > -0.15;
+        card(x, y, z, sz * (0.8 + 0.4 * hash(seq * 5 + 3)), ux * 0.45, up ? 0.85 : -0.5, uz * 0.45, (up ? 0.72 + 0.28 * rr : 0.42 + 0.2 * rr) * (0.85 + 0.15 * top), 2);
+      }
+    };
+    for (let i = 0; i < 6; i++) {
+      const a = i * 2.39996 + hash(i * 17 + 2) * 0.7, y = 8.6 + i * 0.62, R = 2.5 - i * 0.28 + hash(i * 13 + 4) * 0.45, rise = 0.45 + hash(i * 7 + 6) * 0.4;
+      const tx = Math.cos(a) * R, tz = Math.sin(a) * R, ty = y + rise;
+      limb(0.14, y, 0.08, tx, ty, tz, 0.07, 0.025, '#8d5a3a', 5);
+      pad(tx, ty + 0.25, tz, 1.1 + (5 - i) * 0.11, 15, 0.85, i / 5);
+    }
+    pad(0.15, 12.5, 0.1, 0.85, 9, 0.75, 1); pad(0.1, 13.1, 0.05, 0.55, 6, 0.65, 1);
+    card(0.1, 13.5, 0.05, 0.45, 0, 1, 0, 1, 2); capY = 10.8;
   } else if (type === 1) {
     limb(0, 0, 0, 0, 3.5, 0, 0.25, 0.17, '#5b4a3c', 7);
     limb(0, 3.0, 0, 1.3, 4.9, 0.4, 0.12, 0.05, '#55463a', 5); limb(0, 3.2, 0, -1.1, 5.0, -0.6, 0.12, 0.05, '#55463a', 5);
@@ -116,12 +150,32 @@ function treeGeo(type) {
     limb(0.08, 4.8, 0.05, 0.6, 6.0, 0.3, 0.05, 0.02, '#cfcbc2', 4); limb(0.08, 4.4, 0.05, -0.4, 5.6, -0.6, 0.05, 0.02, '#cfcbc2', 4);
     capY = crown([[0.05, 7.4, 0, 1.8], [0.6, 6.1, 0.3, 1.5], [-0.5, 8.6, -0.2, 1.3], [-0.35, 5.7, -0.6, 1.3]], 1.25, 5.2, 0.85, 1);
   } else {
-    limb(0, 0, 0, 0, 9.8, 0, 0.2, 0.03, '#4f3d30', 6);
-    for (let k = 0; k < 10; k++) {
-      const y = 1.3 + k * 0.92, r = 2.45 * (1 - k / 10.5) + 0.12, m = Math.max(3, Math.round(r * 3.4));
-      for (let j = 0; j < m; j++) { const a = j / m * 6.283 + k * 0.83, rr = r * (0.55 + 0.25 * hash(k * 31 + j)); card(Math.cos(a) * rr, y - 0.18 * r, Math.sin(a) * rr, 0.42 + r * 0.34, Math.cos(a) * 0.8, 0.55, Math.sin(a) * 0.8, 0.55 + 0.45 * k / 9, 3); }
+    // Norway spruce: whorls of drooping limbs, each carrying a row of bough cards from the bole out to
+    // the tip, dense enough to hide the trunk, ragged and layered rather than a smooth cone of stars.
+    limb(0, 0, 0, 0, 10.1, 0, 0.22, 0.035, '#4a3a2c', 6);
+    for (let k = 0; k < 11; k++) {
+      const y = 0.9 + k * 0.82 + (hash(k * 7 + 2) - 0.5) * 0.18;
+      const r = (2.2 * Math.pow(1 - k / 11.5, 0.9) + 0.1) * (0.85 + 0.3 * hash(k * 13 + 1));
+      const m = Math.max(3, Math.round(r * 2.2)), droop = 0.16 + 0.12 * (1 - k / 11), sz = 0.5 + r * 0.3;
+      for (let j = 0; j < m; j++) {
+        const a = j / m * 6.283 + k * 0.83 + (hash(k * 31 + j) - 0.5) * 0.35;
+        const L = r * (0.75 + 0.3 * hash(k * 17 + j * 3)), ca = Math.cos(a), sa = Math.sin(a);
+        limb(ca * 0.1, y, sa * 0.1, ca * L, y - droop * L, sa * L, 0.03 * (1 - k / 13) + 0.012, 0.006, '#3f3226', 4);
+        const cards = k < 7 ? 3 : 2;
+        for (let c = 0; c < cards; c++) {
+          const t = cards === 3 ? [0.45, 0.75, 1][c] : [0.6, 1][c];
+          const px = ca * L * t, pz = sa * L * t, py = y - droop * L * t * t + (hash(seq * 3 + 1) - 0.5) * 0.12;
+          const s = sz * (c === cards - 1 ? 0.78 : c === 0 ? 0.85 : 1) * (0.85 + 0.3 * hash(seq * 5 + 2));
+          card(px, py, pz, s, ca * 0.8, c === cards - 1 ? 0.2 : 0.5, sa * 0.8, (0.5 + 0.5 * k / 10) * (c === 0 ? 0.72 : 0.85 + 0.15 * hash(seq * 9 + 4)), 3);
+        }
+      }
+      for (let c = 0; c < 2; c++) {   // boughs close to the bole so the trunk does not show through
+        const a = hash(k * 41 + c * 7) * 6.283, ir = r * 0.28;
+        card(Math.cos(a) * ir, y + 0.1, Math.sin(a) * ir, sz * 0.8, Math.cos(a) * 0.3, 0.8, Math.sin(a) * 0.3, 0.42 + 0.3 * k / 10, 3);
+      }
     }
-    card(0, 10.3, 0, 0.5, 0, 1, 0, 1, 3); capY = 5.2;
+    for (let c = 0; c < 4; c++) card((hash(c * 3) - 0.5) * 0.15, 9.7 + c * 0.26, (hash(c * 5) - 0.5) * 0.15, 0.44 - c * 0.07, 0.2, 1, 0.2, 0.95, 3);
+    capY = 5.2;
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
