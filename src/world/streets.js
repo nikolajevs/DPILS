@@ -8,6 +8,7 @@ import { jnFix } from '../landmarks/junction.js';
 import { spwTrackLine } from '../landmarks/speedway.js';
 import { ovComp, ovDensify, ovPrep, ovRoadHW, ovTouches } from './overpass.js';
 import { vbOnLine } from './bridge-vienibas.js';
+import { rbOnLine } from './bridge-railway.js';
 import { CROSSINGS, CROSSINGS_LAT, streetTags } from './street-tags.js';
 import { cutComp, cutTouches } from './cutting.js';
 import { buildSignals } from './signals.js';
@@ -454,7 +455,7 @@ async function buildLines() {
     if (cls === 9) { TRAMLINES.push(pts); for (let i = 0; i < n - 1; i++) TRAMGRID.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], 0, 0); tramLater.push({ dp, gbc: STATE.GBC }); }   // drawn once all the roads are known
     if (cls <= 4) for (let i = 0; i < n - 1; i++) CARROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hwC, cls);
     if (cls < 10 || cls === 15) for (let i = 0; i < n - 1; i++) ROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hwC + (cls <= 3 ? 2.6 : 0), cls <= 7 ? l.name : -1);
-    if (l.bridge && cls !== 10 && cls !== 11 && !fortBridgeLine(pts) && !onOv && !jn) bridge(extra, dp, hw + (cls <= 3 ? 2.7 : 0.3));
+    if (l.bridge && cls !== 10 && cls !== 11 && !fortBridgeLine(pts) && !onOv && !jn && !(cls === 8 && rbOnLine(pts))) bridge(extra, dp, hw + (cls <= 3 ? 2.7 : 0.3));   // the railway bridge over the Daugava: lmRailBridge
     STATE.GBC = null;
     if (cls <= 3 && !rural) { // street lamps every ~32 m on one side (the outer side of a carriageway of a pair); none on a country road
       const side = dual ? -dual.side : rnd(lampSeq++, 5) < 0.5 ? 1 : -1, hw = hwC; let acc = 14;
