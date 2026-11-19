@@ -283,7 +283,7 @@ async function buildTrees() {
   const hi = [0, 1, 2, 3].map(treeGeo); await rest(); const imp = bakeImpostors(hi, leaf), gl = renderer.getContext(); await rest();
   // impostor: an upright quad that turns towards the camera plus a flat cap for the view from above
   matTreeFar = std({ roughness: 0.85, metalness: 0 }, 'treefar', s => {
-    s.uniforms.uImp = { value: imp }; s.uniforms.uCap = { value: hi.map(g => new THREE.Vector2(g.userData.R / (g.userData.H / 2), g.userData.capY / g.userData.H)) };
+    s.uniforms.uImp = { value: imp }; s.uniforms.uImpFar = U.impFar; s.uniforms.uCap = { value: hi.map(g => new THREE.Vector2(g.userData.R / (g.userData.H / 2), g.userData.capY / g.userData.H)) };
     s.vertexShader = 'attribute float aQ; attribute float aType; uniform vec2 uCap[4]; varying vec3 vImp;\n' + s.vertexShader.replace('#include <project_vertex>', `
       vec3 iC = (modelMatrix * vec4(instanceMatrix[3].xyz, 1.0)).xyz; iC.y += terrainH(iC.xz); float iW = instanceMatrix[0].x, iH = instanceMatrix[1].y;
       vec3 iTo = cameraPosition - iC; vec2 iR = normalize(vec2(iTo.z, -iTo.x) + vec2(1e-5, 0.0));
@@ -294,12 +294,13 @@ async function buildTrees() {
       vImp = vec3(uv, aType + aQ * 4.0);
       vec4 mvPosition = viewMatrix * vec4(iP, 1.0);
       gl_Position = projectionMatrix * mvPosition;`);
-    s.fragmentShader = 'uniform sampler2D uImp; varying vec3 vImp;\n' + s.fragmentShader.replace('#include <map_fragment>', `
+    s.fragmentShader = 'uniform sampler2D uImp; uniform float uImpFar; varying vec3 vImp;\n' + s.fragmentShader.replace('#include <map_fragment>', `
       float iq = step(3.5, vImp.z), it = vImp.z - iq * 4.0;
       vec4 it4 = texture2D(uImp, (vec2(it, iq) + clamp(vImp.xy, 0.01, 0.99)) * vec2(0.25, 0.5));
       float icut = mix(0.4, 0.14, smoothstep(250.0, 1400.0, length(vViewPosition)));
       diffuseColor.rgb *= pow(it4.rgb, vec3(2.2));
       diffuseColor.a = clamp((it4.a - icut) / max(fwidth(it4.a), 1e-3) + 0.5, 0.0, 1.0);
+      diffuseColor.a *= 1.0 - smoothstep(uImpFar - 500.0, uImpFar, length(vViewPosition));   // fade into the haze before the tile stops drawing (updateLod)
       if (diffuseColor.a < 0.05) discard;`).replace('reflectedLight.directSpecular + reflectedLight.indirectSpecular', '(reflectedLight.directSpecular + reflectedLight.indirectSpecular) * 0.12');
   });
   matTreeFar.extensions = { derivatives: true };

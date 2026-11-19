@@ -6,7 +6,7 @@ import { P } from '../game/player.js';
 import { treeTiles } from '../world/trees.js';
 import { tiles } from '../buildings/walls.js';
 import { terrainH } from '../world/terrain.js';
-import { LIGHTDIR, POST, camera, renderer, scene, sun } from './renderer.js';
+import { LIGHTDIR, POST, U, camera, renderer, scene, sun } from './renderer.js';
 import { TILE, TTILE, reduceMotion } from '../core/env.js';
 
 /* ---------- HDR post-processing: ambient occlusion from depth, bloom, tone mapping ---------- */
@@ -191,7 +191,12 @@ function updateLod() {
   const q = QUALITY[qi], x = camera.position.x, z = camera.position.z, y = Math.max(0, camera.position.y - terrainH(x, z));
   const dist = (x0, z0, s) => { const dx = Math.max(x0 - x, 0, x - x0 - s), dz = Math.max(z0 - z, 0, z - z0 - s); return Math.hypot(dx, dz, y * 0.5); };
   for (const t of tiles.values()) { const v = dist(t.x0, t.z0, TILE) < q.det; for (const m of t.det) m.visible = v; }
-  for (const t of treeTiles.values()) { const v = dist(t.x0, t.z0, TTILE) < q.tree; if (t.hi.length && t.hi[0].visible !== v) STATE.shadowDirty = true; for (const m of t.hi) m.visible = v; for (const m of t.lo) m.visible = !v; }
+  // Far-tree impostors fade into the haze and their tiles stop drawing past impFar: at eye level a few hundred tile
+  // draws of sub-pixel trees in fog were a large share of the frame (worst on Firefox, slow per draw). The radius
+  // grows with height so a flight still sees the forest out to where the haze closes; the shader fades over the last
+  // 500 m (uImpFar) so the cull is never a visible pop.
+  const impFar = Math.min(q.far, 2600 + y * 6); U.impFar.value = impFar;
+  for (const t of treeTiles.values()) { const d = dist(t.x0, t.z0, TTILE), v = d < q.tree; if (t.hi.length && t.hi[0].visible !== v) STATE.shadowDirty = true; for (const m of t.hi) m.visible = v; const lo = !v && d < impFar; for (const m of t.lo) m.visible = lo; }
 }
 
 export { PP, renderFrame, updateLod, updateSun, warmUp };

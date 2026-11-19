@@ -57,9 +57,15 @@ const QUALITY = [
 let qAuto = true;
 try { qAuto = localStorage.getItem('dpils-quality-mode') !== 'fixed'; } catch (e) {}
 const COARSE = matchMedia('(pointer: coarse)').matches;
+// Firefox's WebGL path is markedly slower per draw and per frame than Chromium's on the same GPU (measured: the city
+// at 20-28 fps in Firefox vs 60-80 in Chromium on an RTX 3050). In auto it therefore starts two levels down, where the
+// frame is cheap (no MSAA / AO / bloom, whole resolution, nearer far plane); auto raises it back only if there is real
+// headroom. Chromium keeps the top level.
+const FIREFOX = /firefox/i.test(navigator.userAgent);
 let qi = WEAK_GPU || COARSE ? 1 : 0;
 try { const s = localStorage.getItem('dpils-quality2'); if (s != null) qi = Math.max(0, Math.min(QUALITY.length - 1, +s)); } catch (e) {}
 if (qAuto && (WEAK_GPU || COARSE)) qi = Math.max(qi, 1);   // auto on a weak machine never starts at the top level, whatever was remembered
+if (qAuto && FIREFOX) qi = Math.max(qi, 2);   // auto in Firefox starts at «низкая»: its WebGL cannot afford the top levels
 const qWatch = [];
 const onQuality = f => { qWatch.push(f); };
 function qualityBtn() {
