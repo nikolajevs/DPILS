@@ -15,11 +15,11 @@ import { $ } from '../core/env.js';
    haze = fog density per metre at ground level, lit = share of windows with the light on. */
 const TIMES = [
   { name: 'день', dir: [-0.55, 0.62, 0.56], top: '#1f5fbf', hor: '#b9d0e6', glow: [0.9, 0.78, 0.55], gnd: '#737868', sun: '#fff0dc', sunI: 2.7, disc: 60, hemi: 0.08, exp: 0.8,
-    lit: 0, cover: 0.42, cloudLit: [1.35, 1.3, 1.22], cloudDark: [0.36, 0.43, 0.56], stars: 0, haze: 1 / 9000, thresh: 2.6, bloom: 0.45, lamps: false },
+    lit: 0, cover: 0.42, cloudLit: [1.35, 1.3, 1.22], cloudDark: [0.36, 0.43, 0.56], stars: 0, haze: 1 / 9000, thresh: 2.6, bloom: 0.45, rays: 0.12, lamps: false },
   { name: 'вечер', dir: [-0.9, 0.17, -0.4], top: '#2f5596', hor: '#e2b189', glow: [1.7, 0.72, 0.26], gnd: '#6a6052', sun: '#ffab63', sunI: 2.5, disc: 50, hemi: 0.1, exp: 0.95,
-    lit: 0.3, cover: 0.5, cloudLit: [1.5, 0.9, 0.55], cloudDark: [0.3, 0.3, 0.42], stars: 0, haze: 1 / 5500, thresh: 2.0, bloom: 0.6, lamps: true },
+    lit: 0.3, cover: 0.5, cloudLit: [1.5, 0.9, 0.55], cloudDark: [0.3, 0.3, 0.42], stars: 0, haze: 1 / 5500, thresh: 2.0, bloom: 0.6, rays: 0.6, lamps: true },
   { name: 'ночь', dir: [0.45, 0.7, -0.4], top: '#03060d', hor: '#111927', glow: [0.1, 0.12, 0.18], gnd: '#0b0f17', sun: '#8ea6f2', sunI: 0.34, disc: 3, hemi: 0.05, exp: 1.25,
-    lit: 0.5, cover: 0.38, cloudLit: [0.1, 0.115, 0.15], cloudDark: [0.02, 0.025, 0.035], stars: 1, haze: 1 / 5000, thresh: 1.1, bloom: 0.9, lamps: true }
+    lit: 0.5, cover: 0.38, cloudLit: [0.1, 0.115, 0.15], cloudDark: [0.02, 0.025, 0.035], stars: 1, haze: 1 / 5000, thresh: 1.1, bloom: 0.9, rays: 0.1, lamps: true }
 ];
 let timeI = 0;
 const ENV = [];   // PMREM environment per time of day
