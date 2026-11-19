@@ -1,7 +1,8 @@
-/* Combat geometry shared in spirit with src/game/mp.js (keep the two copies in step). */
+/* Combat geometry: the rules, the weapons and the hitboxes. The hitboxes (HIT, rayHit) are shared with the page
+   (src/game/mp.js imports them); the weapons table is kept in step with the copy there by hand. */
 export const RULES = {
   maxPlayers: 16, hp: 100, bodyDmg: 22, headDmg: 40, range: 160, fireGapMs: 85, respawnMs: 3000, protectMs: 2500,
-  runSpeed: 11, tolerance: 0.5, headTolerance: 0.45, bodyBottom: 1.6, bodyTop: 0.05, tickHz: 15,
+  runSpeed: 11, tickHz: 15,
 };
 // the weapons (keep src/game/mp.js in step): pellets per shot, damage of a pellet to the body and to the head, range, how
 // much of the damage is lost over the range (falloff 0.6: 40 % left at the end), the least time between shots
@@ -41,4 +42,25 @@ export function rayToSegment(o, d, len, a, b) {
   t = Math.max(0, Math.min(len, (B * s - D) / A));
   const px = o[0] + d[0] * t, py = o[1] + d[1] * t, pz = o[2] + d[2] * t, qx = a[0] + ux * s, qy = a[1] + uy * s, qz = a[2] + uz * s;
   return { dist: Math.hypot(px - qx, py - qy, pz - qz), t };
+}
+// the hitboxes of a person (the server judges by them and the page predicts by the same code, src/game/mp.js):
+// a head sphere, a torso capsule and two leg capsules, all in metres. The pose p = { x, y, z, eye, yaw } carries the
+// eye height: crouching (eye 1.1 instead of 1.7) compresses the torso and the legs, the head keeps its size. The legs
+// stand apart along the person's own x axis, so a ray between them misses. zone: 1 head, 0 torso, 2 legs; a leg hit
+// takes HIT.legMul of the body damage. The head wins over the torso where the two overlap (the neck).
+export const HIT = { headR: 0.18, headDrop: 0.1, neck: 0.26, hip: 0.5, torsoR: 0.25, legR: 0.11, legOff: 0.13, legMul: 0.75, grace: 0.05 };
+// the nearest hit of the ray (o + t·d, 0 ≤ t ≤ len, |d| = 1) on the pose p: { t, zone } or null
+export function rayHit(o, d, len, p) {
+  const e = p.eye || 1.7, f = p.y - e, hx = p.x, hy = p.y - HIT.headDrop, hz = p.z;
+  const head = rayToSegment(o, d, len, [hx, hy, hz], [hx, hy, hz]);
+  if (head.dist <= HIT.headR) return { t: head.t, zone: 1 };
+  const hipY = f + HIT.hip * e;
+  const torso = rayToSegment(o, d, len, [hx, p.y - HIT.neck, hz], [hx, hipY, hz]);
+  let best = torso.dist <= HIT.torsoR ? { t: torso.t, zone: 0 } : null;
+  const cx = Math.cos(p.yaw || 0) * HIT.legOff, cz = -Math.sin(p.yaw || 0) * HIT.legOff;
+  for (const s of [1, -1]) {
+    const leg = rayToSegment(o, d, len, [hx + s * cx, hipY, hz + s * cz], [hx + s * cx, f + 0.05, hz + s * cz]);
+    if (leg.dist <= HIT.legR && (!best || leg.t < best.t)) best = { t: leg.t, zone: 2 };
+  }
+  return best;
 }
