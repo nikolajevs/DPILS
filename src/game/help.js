@@ -7,7 +7,7 @@ import { $ } from '../core/env.js';
 const strip = $('mpHints'), box = $('mpHelp'), body = $('mpHelpBody'); let timer = 0;
 const k = a => keyName(SET.keys[a]);
 function stripText() {
-  return [`${k('forward')} ${k('left')} ${k('back')} ${k('right')} — идти`, `${k('run')} — бег`, `${k('jump')} — прыжок`, `${k('crouch')} — присесть`, 'ЛКМ — огонь', 'ПКМ — прицел снайперской', `${k('reload')} — перезарядка`,
+  return [`${k('forward')} ${k('left')} ${k('back')} ${k('right')} — идти`, `${k('run')} — бег`, `${k('jump')} — прыжок`, `${k('crouch')} — присесть`, 'ЛКМ — огонь', 'ПКМ — прицел (оптика / коллиматор)', `${k('reload')} — перезарядка`,
     `${k('grenade')} — граната (зажми ЛКМ — сила)`, `${k('inv')} — инвентарь`, `${k('med')} — аптечка`, `${k('w1')} ${k('w2')} ${k('w3')} ${k('w4')} ${k('w5')} — оружие`, `${k('voice')} — рация`, `${k('chat')} ${k('teamChat')} — чат`, `${k('board')} — счёт`, 'O — настройки', 'F1 — все клавиши'];
 }
 function renderStrip() { strip.textContent = ''; for (const t of stripText()) { const s = document.createElement('span'); s.textContent = t; strip.append(s); } }
@@ -21,7 +21,7 @@ function buildHelp() {
   body.textContent = '';
   const row = (name, key) => { const r = document.createElement('div'), a = document.createElement('span'), b = document.createElement('kbd'); r.className = 'help-row'; a.textContent = name; b.textContent = key; r.append(a, b); body.append(r); };
   for (const [a, label] of ACTIONS) row(label, k(a));
-  row('Огонь', 'ЛКМ'); row('Прицел (снайперская)', 'ПКМ'); row('Граната: прицел мышью, сила броска', k('grenade') + ' → зажать ЛКМ'); row('Граната: бросок / отмена', 'отпустить ЛКМ / ПКМ'); row('Сменить оружие', 'колесо'); row('Чат (Shift — команде)', 'Enter'); row('Настройки', 'O'); row('Карта города', 'M'); row('Эта подсказка', 'F1'); row('Отпустить мышь', 'Esc');
+  row('Огонь', 'ЛКМ'); row('Прицел: встроенный / коллиматор / оптика', 'ПКМ'); row('Прицелы: подобрать и установить на оружие', k('inv')); row('Граната: прицел мышью, сила броска', k('grenade') + ' → зажать ЛКМ'); row('Граната: бросок / отмена', 'отпустить ЛКМ / ПКМ'); row('Сменить оружие', 'колесо'); row('Чат (Shift — команде)', 'Enter'); row('Настройки', 'O'); row('Карта города', 'M'); row('Эта подсказка', 'F1'); row('Отпустить мышь', 'Esc');
   row('После смерти: другой игрок', '← → · Q E · ЛКМ'); row('Возродиться', 'Пробел');
 }
 function toggleHelp(on = box.hidden) { if (on) { if (document.pointerLockElement) document.exitPointerLock(); buildHelp(); } box.hidden = !on; }

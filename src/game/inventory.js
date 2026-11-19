@@ -16,13 +16,15 @@ const KINDS = {
   ammo: { name: 'Патроны', color: 0x9aa85a, hint: 'запас патронов ко всему оружию' },
   nade: { name: 'Граната', color: 0x6d8a44, hint: 'ещё одна граната' },
   med: { name: 'Аптечка', color: 0xf2f2f2, hint: 'лечит 50 HP' },
+  sight: { name: 'Коллиматор', color: 0xff5040, hint: 'быстрый прицел с красной точкой — на любое оружие' },
+  optic: { name: 'Оптика 8x', color: 0x7fb2ff, hint: 'дальний зум с сеткой — на любое оружие' },
 };
 const items = new Map();   // id → { kind, group, baseY, active }
-let cb = { useMed: () => {}, switchWeapon: () => {}, beep: () => {} };
+let cb = { useMed: () => {}, switchWeapon: () => {}, attach: () => {}, beep: () => {} };
 const bindInv = f => { cb = f; };
 
 /* ---------- the items on the map ---------- */
-const GEO = { box: new THREE.BoxGeometry(1, 1, 1), sph: new THREE.SphereGeometry(0.12, 10, 8), ring: new THREE.CylinderGeometry(0.45, 0.45, 0.02, 20) };
+const GEO = { box: new THREE.BoxGeometry(1, 1, 1), sph: new THREE.SphereGeometry(0.12, 10, 8), ring: new THREE.CylinderGeometry(0.45, 0.45, 0.02, 20), tube: new THREE.CylinderGeometry(0.045, 0.045, 0.34, 14) };
 const mat = c => worldSpace(new THREE.MeshLambertMaterial({ color: c }));
 function makeMesh(kind) {
   const g = new THREE.Group();
@@ -41,7 +43,15 @@ function fillBody(body, kind) {
   const box = (c, sx, sy, sz, x, y, z) => { const o = new THREE.Mesh(GEO.box, mat(c)); o.scale.set(sx, sy, sz); o.position.set(x, y, z); body.add(o); };
   if (kind === 'ammo') { box(0x4a5d23, 0.36, 0.22, 0.26, 0, 0.13, 0); box(0x3a4a1a, 0.38, 0.05, 0.28, 0, 0.265, 0); box(0xd8c34a, 0.37, 0.06, 0.05, 0, 0.15, 0.135); }
   else if (kind === 'nade') { const s = new THREE.Mesh(GEO.sph, mat(0x3d5a2a)); s.position.y = 0.16; body.add(s); box(0x777c80, 0.06, 0.08, 0.06, 0, 0.31, 0); }
-  else { box(0xf2f2f2, 0.32, 0.2, 0.26, 0, 0.12, 0); box(0xd8392f, 0.2, 0.055, 0.02, 0, 0.14, 0.135); box(0xd8392f, 0.055, 0.16, 0.02, 0, 0.14, 0.135); }
+  else if (kind === 'med') { box(0xf2f2f2, 0.32, 0.2, 0.26, 0, 0.12, 0); box(0xd8392f, 0.2, 0.055, 0.02, 0, 0.14, 0.135); box(0xd8392f, 0.055, 0.16, 0.02, 0, 0.14, 0.135); }
+  else if (kind === 'sight') {   // an open red dot: the base, two cheeks and a hood over a tinted window
+    box(0x23262a, 0.09, 0.05, 0.12, 0, 0.03, 0); box(0x23262a, 0.02, 0.09, 0.1, -0.045, 0.1, 0); box(0x23262a, 0.02, 0.09, 0.1, 0.045, 0.1, 0); box(0x23262a, 0.11, 0.02, 0.1, 0, 0.15, 0);
+    const lens = new THREE.Mesh(GEO.box, worldSpace(new THREE.MeshBasicMaterial({ color: 0x7fd4ff, transparent: true, opacity: 0.35 })));
+    lens.scale.set(0.08, 0.08, 0.005); lens.position.set(0, 0.1, 0.02); body.add(lens);
+  } else {   // the long scope: a tube on two rings
+    const tube = new THREE.Mesh(GEO.tube, mat(0x1d2023)); tube.rotation.x = Math.PI / 2; tube.position.y = 0.09; body.add(tube);
+    box(0x1d2023, 0.05, 0.06, 0.06, 0, 0.03, -0.07); box(0x1d2023, 0.05, 0.06, 0.06, 0, 0.03, 0.07);
+  }
 }
 /* материалы фолбэка свои у каждого предмета, материалы и геометрия модели — общие на все клоны */
 function dropBody(body) {
@@ -92,7 +102,9 @@ const NADE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy
 const MED_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M12 10v6M9 13h6M9 6V4h6v2"/></svg>';
 const NADE_INFO = 'до 100 урона · радиус 8 м · задержка 2,5 с';   // keep server/combat.mjs NADE in step
 const AMMO_GIVE = [30, 8, 5, 12, 50];   // keep server/combat.mjs INV ammo.give in step
-const gunTag = w => (w.pellets > 1 ? w.pellets + ' дробин за выстрел' : w.scope ? 'оптический прицел' : w.auto ? 'автоматический огонь' : 'одиночный огонь');
+const SIGHT_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18h14v2H5zM6 8h2v10H6zM16 8h2v10h-2zM6 6h12v2H6z"/><circle cx="12" cy="12" r="1.6"/></svg>';
+const OPTIC_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="9" width="18" height="5" rx="2.5"/><rect x="6" y="14" width="3" height="5"/><rect x="15" y="14" width="3" height="5"/><rect x="10" y="6" width="4" height="3"/></svg>';
+const gunTag = w => (w.pellets > 1 ? w.pellets + ' дробин за выстрел' : w.scope ? 'встроенная оптика' : w.auto ? 'автоматический огонь' : 'одиночный огонь');
 const fmt1 = x => (Math.round(x * 10) / 10).toString().replace('.', ',');
 const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const kbd = key => mk('kbd', '', key);
@@ -114,7 +126,8 @@ function build() {
   const maxRate = Math.max(...data.weapons.map(w => 60000 / w.gapMs));
   const maxRange = Math.max(...data.weapons.map(w => w.range));
   data.weapons.forEach((w, i) => {
-    const c = mk('button', 'inv-gun'); c.type = 'button';
+    const c = mk('div', 'inv-gun'); c.setAttribute('role', 'button'); c.tabIndex = 0;   // a div, not a button: the sight buttons live inside
+    c.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cb.switchWeapon(i); } };
     const top = mk('span', 'inv-top'); top.append(kbd(w.key), mk('b', 'inv-hand', 'в руках'));
     const sil = mk('span', 'inv-sil'); sil.innerHTML = SLOT_SVG[i];
     const ammo = mk('span', 'inv-ammo');
@@ -136,10 +149,14 @@ function build() {
     stat('темп', Math.round(60000 / w.gapMs) + '/мин', (60000 / w.gapMs) / maxRate);
     stat('дальность', w.range + ' м', w.range / maxRange);
     const foot = mk('small', 'inv-foot', 'магазин ' + w.magSize + ' · перезарядка ' + fmt1(w.reloadMs / 1000) + ' с');
-    c.append(top, sil, mk('b', 'inv-name', w.name), mk('small', 'inv-tag', gunTag(w)), ammo, mag, rl, rlText, stats, foot);
+    const att = mk('span', 'inv-att');   // the picked-up sight on this weapon: mount / take off (the pocket pays)
+    const attB = kind => { const b = mk('button', 'inv-att-b'); b.type = 'button'; b.textContent = kind === 'sight' ? 'Коллиматор' : 'Оптика 8×'; b.onclick = e => { e.stopPropagation(); cb.attach(i, w.attach === kind ? null : kind); }; return b; };
+    const attS = attB('sight'), attO = attB('optic');
+    att.append(mk('small', 'inv-att-l', 'прицел:'), attS, attO);
+    c.append(top, sil, mk('b', 'inv-name', w.name), mk('small', 'inv-tag', gunTag(w)), ammo, mag, rl, rlText, stats, att, foot);
     c.onclick = () => cb.switchWeapon(i);
     guns.append(c);
-    R.guns.push({ c, ammo, magN, resN, pips, fill, rlFill, rlText });
+    R.guns.push({ c, ammo, magN, resN, pips, fill, rlFill, rlText, attS, attO });
   });
   wsec.append(guns);
   // the items and the condition of the player
@@ -166,7 +183,15 @@ function build() {
   const mnote = mk('small', 'inv-dim', 'лечит 50 HP');
   med.card.append(use, mnote);
   R.med = { ...med, use, note: mnote };
-  items.append(nade.card, med.card);
+  const sight = itemCard(SIGHT_SVG, 'Коллиматоры'); sight.pips.append(mk('i'));
+  const sNote = mk('small', 'inv-dim', '');
+  sight.card.append(mk('small', '', 'ПКМ — быстрый прицел с красной точкой, разброс уже'), sNote);
+  R.sight = { ...sight, note: sNote };
+  const optic = itemCard(OPTIC_SVG, 'Оптика 8×'); optic.pips.append(mk('i'));
+  const oNote = mk('small', 'inv-dim', '');
+  optic.card.append(mk('small', '', 'ПКМ — сильный зум с сеткой, руки прячутся'), oNote);
+  R.optic = { ...optic, note: oNote };
+  items.append(nade.card, med.card, sight.card, optic.card);
   isec.append(items);
   const ssec = mk('section', 'inv-sec'); ssec.append(mk('h3', '', 'Состояние'));
   const state = mk('div', 'inv-item inv-state');
@@ -184,7 +209,7 @@ function build() {
   ssec.append(state);
   low.append(isec, ssec);
   const note = mk('small', 'inv-note');
-  note.textContent = 'Предметы на карте подбираются автоматически — просто пройдите мимо. Ящик патронов даёт +' + AMMO_GIVE.join(' / +') + ' к запасу каждого ствола и возвращается через 25 с, граната — через 30 с, аптечка — через 35 с. Бой продолжается, пока панель открыта.';
+  note.textContent = 'Предметы на карте подбираются автоматически — просто пройдите мимо. Ящик патронов даёт +' + AMMO_GIVE.join(' / +') + ' к запасу каждого ствола и возвращается через 25 с, граната — через 30 с, аптечка — через 35 с, коллиматор — через 45 с, оптика — через 60 с. Прицел из кармана ставится на любое оружие кнопками на его карточке и переживает смерть. Бой продолжается, пока панель открыта.';
   body.append(wsec, low, note);
   refs = R;
 }
@@ -204,7 +229,22 @@ function paint() {
     if (g.fill) g.fill.style.width = (w.mag / w.magSize * 100).toFixed(1) + '%';
     else g.pips.forEach((p, k) => p.classList.toggle('full', k < w.mag));
     g.c.classList.toggle('reloading', data.reloadW === i);
+    const loose = data.sights || { sight: 0, optic: 0 };
+    for (const [b, k] of [[g.attS, 'sight'], [g.attO, 'optic']]) {
+      const on = w.attach === k;
+      b.classList.toggle('on', on);
+      b.disabled = !on && loose[k] <= 0;
+      b.title = on ? 'Снять прицел — вернётся в карман' : loose[k] > 0 ? 'Установить на это оружие' : 'Нет в кармане — подберите на карте';
+    }
   });
+  const loose = data.sights || { sight: 0, optic: 0 };
+  for (const [r, k] of [[R.sight, 'sight'], [R.optic, 'optic']]) {
+    r.cnt.textContent = '×' + (loose[k] || 0);
+    r.card.dataset.empty = loose[k] > 0 ? 0 : 1;
+    [...r.pips.children].forEach((p, j) => p.classList.toggle('full', j < loose[k]));
+    const on = data.weapons.filter(w => w.attach === k).map(w => w.name);
+    r.note.textContent = on.length ? 'стоит на: ' + on.join(', ') : loose[k] > 0 ? 'в кармане — выберите оружие выше' : 'нет — ищите на карте';
+  }
   R.nade.cnt.textContent = '×' + data.nades + ' / ' + data.nadeMax;
   R.nade.card.dataset.empty = data.nades > 0 ? 0 : 1;
   [...R.nade.pips.children].forEach((p, k) => p.classList.toggle('full', k < data.nades));

@@ -27,8 +27,10 @@ export const ITEMS = {
   ammo: { name: 'Патроны', respawnMs: 25000, give: [30, 8, 5, 12, 50] },   // reserve added per weapon
   nade: { name: 'Граната', respawnMs: 30000 },
   med: { name: 'Аптечка', respawnMs: 35000, heal: 50 },
+  sight: { name: 'Коллиматор', respawnMs: 45000 },   // the red dot: fast aim, tighter spread, on any weapon
+  optic: { name: 'Оптика 8x', respawnMs: 60000 },   // the long scope: strong zoom with its overlay, on any weapon
 };
-export const INV = { nadeMax: 3, medMax: 2, reserveCap: 2, itemCount: 12, pickR: 1.7, medGapMs: 800 };   // reserveCap: reserve up to RESERVE × this
+export const INV = { nadeMax: 3, medMax: 2, reserveCap: 2, itemCount: 18, pickR: 1.7, medGapMs: 800, sightMax: 1, opticMax: 1 };   // reserveCap: reserve up to RESERVE × this; sightMax/opticMax: loose + mounted of each kind
 // closest distance between the ray (o + t·d, 0 ≤ t ≤ len, |d| = 1) and the segment a–b; returns { dist, t }
 export function rayToSegment(o, d, len, a, b) {
   const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], wx = o[0] - a[0], wy = o[1] - a[1], wz = o[2] - a[2];
