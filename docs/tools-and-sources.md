@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Chatbox | chatbox/soldier-replace | Убрать пешеходов и мужчину/женщину; новый солдат со Sketchfab | src/game/avatar.js, src/game/mp.js, src/world/pedestrians.js, src/game/loop.js, src/main.js, index.html, server/game.mjs, models/ |
 
 ## Автономный цикл улучшений
 

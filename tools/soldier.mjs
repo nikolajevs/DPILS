@@ -1,36 +1,46 @@
 #!/usr/bin/env node
-/* Build models/Soldier.glb — a realistic special-forces operator replacing the cartoon Quaternius soldier.
+/* Build models/Soldier.glb — the ready soldier of the game (the only player character).
 
-   Body: "FSB Operator" by SpatialNeglect (Sketchfab, CC-BY-4.0), a Mixamo-rigged operator. Its built-in
-   rifle / magazines / pouches / patches are removed (the game attaches its own weapons to the hands). The
-   skinned body is merged per material, decimated, textures compressed to WebP, geometry meshopt-compressed.
+   Body: "S.W.A.T. Operator" by SpatialNeglect (Sketchfab, CC-BY-4.0, uid 9e82fabf26194896b5ad4a364d864eab),
+   a Mixamo-rigged special-forces operator: helmet with night-vision goggles, face mask, tactical uniform,
+   gloves and boots. The display rifle (non-skinned nodes at the origin), the chest magazines and pouches
+   are removed — the game attaches its own weapons to the hands. The skinned body is merged per material,
+   decimated, textures compressed to WebP, geometry meshopt-compressed.
 
    Animations: Mixamo clips uploaded to Sketchfab by fauze (CC-BY-4.0), retargeted onto the operator's rig.
    Both are Mixamo skeletons, so local bone rotations transfer directly; only the Hips needs a root-frame
    correction and a scaled / re-anchored / de-drifted position track. The avatar holds its weapon with two-bone
-   IK (src/game/avatar.js) and freezes the arms in the Idle clip's first frame, so locomotion mainly drives legs.
+   IK (src/game/avatar.js) and freezes the arms in the Carry clip's first frame, so locomotion mainly drives legs.
      Idle <- Rifle Idle · Walk <- Pistol Walk · Run <- Pistol Run · Jump <- Jumping · Death <- Falling Back Death.
    Bones are renamed to the names avatar.js already uses (ShoulderL / UpperArmL / LowerArmL / FistL / Head / …).
 
+   Sources (Sketchfab token in sketchfab.token at the repo root, gitignored):
+     node tools/sf-dl.mjs 9e82fabf26194896b5ad4a364d864eab <SB>/swat.zip gltf   (then unpack to <SB>/swat/)
+     node tools/sf-dl.mjs d9ed346ee92c4606baca727b0ad6ed7b <SB>/clips/rifle-idle.glb
+     node tools/sf-dl.mjs 94486ec326714092aec96746e3315c3c <SB>/clips/pistol-walk.glb
+     node tools/sf-dl.mjs c2985913ff7a4988b34374af1ee13d28 <SB>/clips/pistol-run.glb
+     node tools/sf-dl.mjs 9d8127cec9f04c3db3287cab301b4529 <SB>/clips/jumping.glb
+     node tools/sf-dl.mjs 61732876c5ad4d548c433252be7f2d25 <SB>/clips/death-falling.glb
+
    Run: npm i --no-save @gltf-transform/core@4 @gltf-transform/extensions@4 @gltf-transform/functions@4 sharp meshoptimizer
-        node tools/soldier.mjs             (writes models/Soldier.glb)
+        node tools/soldier.mjs             (writes models/Soldier.glb of this checkout)
         COMPRESS=0 node tools/soldier.mjs  (uncompressed intermediate for testing)
-        OUT=<path> node tools/soldier.mjs  (override output)
-   Sources: downloaded with the Sketchfab token into the sandbox (see tools/sf-dl.mjs / sf-clips.mjs). */
+        SB=<dir> OUT=<path> node tools/soldier.mjs  (override sources / output) */
 import { NodeIO, Node } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { meshopt, prune, dedup } from '@gltf-transform/functions';
 import { MeshoptDecoder, MeshoptEncoder, MeshoptSimplifier } from 'meshoptimizer';
 import * as THREE from 'three';
 import sharp from 'sharp';
+import { fileURLToPath } from 'node:url';
 
 const COMPRESS = process.env.COMPRESS !== '0';
-const SB = 'C:/Users/igors/AppData/Local/Temp/chatbox-sandbox/5c6207d3-2dda-479a-b800-b7c1672641f9/';
+const SB = process.env.SB || 'C:/Users/igors/AppData/Local/Temp/chatbox-sandbox/edf6b850-2043-474a-ba0e-70b619aa0027/';
 const SRC = {
-  body: SB + 'fsb.glb',
+  body: SB + 'swat/x/scene.gltf',
   clips: { Idle: SB + 'clips/rifle-idle.glb', Walk: SB + 'clips/pistol-walk.glb', Run: SB + 'clips/pistol-run.glb', Jump: SB + 'clips/jumping.glb', Death: SB + 'clips/death-falling.glb' },
 };
-const OUT = process.env.OUT || 'C:/Users/igors/Desktop/DPILS/models/Soldier.glb';
+const OUT = process.env.OUT || fileURLToPath(new URL('../models/Soldier.glb', import.meta.url));
 const TARGET_TRIS = 40000;
 
 await Promise.all([MeshoptDecoder.ready, MeshoptEncoder.ready, MeshoptSimplifier.ready]);
@@ -84,10 +94,16 @@ function restHeight(d) {
 // ---- load body, strip gear, rename bones ----
 const doc = await io.read(SRC.body), root = doc.getRoot();
 const skin = root.listSkins()[0], joints = skin.listJoints();
-const KILL = /^(Gun|Magazine|Stock|Plane|pouch)/i;
+// the display rifle and the patch planes are not skinned (they lie at the origin, not on the body);
+// the chest magazines (material lambert1.003) and pouches are skinned but carried by the game's own items
+const KILL_MATS = new Set(['lambert1.003', 'pouch', 'patch']);
 const disposed = new Set();
 const disposeTree = n => { if (disposed.has(n)) return; disposed.add(n); for (const c of [...n.listChildren()]) disposeTree(c); const m = n.getMesh(); n.dispose(); if (m && !disposed.has(m)) { disposed.add(m); m.dispose(); } };
-for (const n of [...root.listNodes()]) if (KILL.test(n.getName())) disposeTree(n);
+for (const n of [...root.listNodes()]) {
+  const m = n.getMesh(); if (!m) continue;
+  const gear = !n.getSkin() || m.listPrimitives().some(p => KILL_MATS.has(p.getMaterial()?.getName()));
+  if (gear) disposeTree(n);
+}
 for (const a of root.listAnimations()) a.dispose();
 for (const j of joints) j.setName(renamed(j.getName()));
 const bone = nm => root.listNodes().find(n => n.getName() === nm);
