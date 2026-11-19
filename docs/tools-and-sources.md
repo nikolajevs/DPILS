@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/pine-sway | Медленнее качание и дрожь кроны деревьев | src/world/trees.js |
-| Claude | claude/keen-ritchie-0q5gyk | Хват дробовика, СВД, ПМ и пулемёта (кроме АК) | src/game/viewmodel.js, src/game/avatar.js |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
 
