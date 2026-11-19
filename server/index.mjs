@@ -41,7 +41,8 @@ function serveFile(req, res) {
 }
 
 /* accounts: /auth/register and /auth/login take {name, pass} and answer {ok, name, key}; /auth/me?key= checks a key.
-   The page lives on another address (GitHub Pages), so the answers carry the CORS headers; OPTIONS is the preflight.
+   The page may live on another address (legacy GitHub Pages), so the answers carry the CORS headers; OPTIONS is the preflight.
+   Production (dvinsk.lat) serves the page from this same process (STATIC=dist).
    A simple limit per address: 30 attempts in 10 minutes, so a password cannot be guessed fast. */
 const hits = new Map();
 function rateOk(ip) {
