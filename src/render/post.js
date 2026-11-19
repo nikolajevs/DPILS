@@ -54,6 +54,7 @@ void main() { gl_FragColor = vec4((texture2D(tSrc, vUv + uPx * vec2(-1.0, -1.0))
 const FINAL_FRAG = `${DEPTH_GLSL}
 uniform sampler2D tScene; uniform sampler2D tAO; uniform sampler2D tB1; uniform sampler2D tB2; uniform sampler2D tB3;
 uniform vec2 uAoPx; uniform float uExposure; uniform float uBloom; uniform float uAo; uniform float uSeed;
+uniform vec2 uSunUv; uniform float uRayI; uniform vec3 uRayC;
 varying vec2 vUv;
 vec3 fit(vec3 v) { vec3 a = v * (v + 0.0245786) - 0.000090537; vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081; return a / b; }
 vec3 aces(vec3 c) {
@@ -75,6 +76,15 @@ void main() {
     col *= mix(1.0, a, uAo * (1.0 - smoothstep(1500.0, 3000.0, z)));
   }
   if (uBloom > 0.0) col += (texture2D(tB1, vUv).rgb * 0.45 + texture2D(tB2, vUv).rgb * 0.33 + texture2D(tB3, vUv).rgb * 0.22) * uBloom;
+  if (uRayI > 0.001) {   // volumetric sun rays: march the depth from the pixel towards the sun on screen, sky texels glow
+    vec2 dv = (uSunUv - vUv) * (0.85 / 40.0); vec2 uv = vUv; float illum = 1.0, acc = 0.0;
+    for (int i = 0; i < 40; i++) { uv += dv;
+      float sky = step(0.999999, textureLod(tDepth, uv, 0.0).x);
+      acc += sky * illum; illum *= 0.965; }
+    acc *= 0.03;
+    float fall = 1.0 - smoothstep(0.35, 1.15, length(uSunUv - 0.5));
+    col += uRayC * (acc * uRayI * fall);
+  }
   col = aces(col);
   col = mix(vec3(dot(col, vec3(0.2126, 0.7152, 0.0722))), col, 1.06);
   vec2 q = vUv - 0.5; col *= 1.0 - 0.32 * dot(q, q);
@@ -95,7 +105,7 @@ if (POST) {
   matAO = fsMat(AO_FRAG, { tDepth: t(), uProj: { value: PROJ }, uPx: v2(), uAoRes: { value: 1 } });
   matBright = fsMat(BRIGHT_FRAG, { tSrc: t(), uPx: v2(), uThresh: { value: 2 }, uExposure: { value: 1 } });
   matDown = fsMat(DOWN_FRAG, { tSrc: t(), uPx: v2() });
-  matFinal = fsMat(FINAL_FRAG, { tDepth: t(), uProj: { value: PROJ }, tScene: t(), tAO: t(), tB1: t(), tB2: t(), tB3: t(), uAoPx: v2(), uExposure: { value: 1 }, uBloom: { value: 0 }, uAo: { value: 0 }, uSeed: { value: 0 } });
+  matFinal = fsMat(FINAL_FRAG, { tDepth: t(), uProj: { value: PROJ }, tScene: t(), tAO: t(), tB1: t(), tB2: t(), tB3: t(), uAoPx: v2(), uExposure: { value: 1 }, uBloom: { value: 0 }, uAo: { value: 0 }, uSeed: { value: 0 }, uSunUv: v2(), uRayI: { value: 0 }, uRayC: { value: new THREE.Vector3(1, 0.7, 0.4) } });
 }
 function ppTargets(w, h, msaa) {
   w = Math.max(1, Math.round(w * PP.scale)); h = Math.max(1, Math.round(h * PP.scale));
@@ -124,6 +134,12 @@ function renderFrame() {
   const u = matFinal.uniforms;
   u.tScene.value = PP.rt.texture; u.tDepth.value = PP.rt.depthTexture; u.tAO.value = PP.ao.texture; u.tB1.value = PP.bl[1].texture; u.tB2.value = PP.bl[2].texture; u.tB3.value = PP.bl[3].texture;
   u.uAoPx.value.set(1 / PP.ao.width, 1 / PP.ao.height); u.uExposure.value = T.exp; u.uBloom.value = q.bloom ? T.bloom : 0; u.uAo.value = q.ao ? 0.85 : 0; u.uSeed.value = reduceMotion ? 0 : (clock * 60 % 64);
+  // the sun (the moon at night) on screen: rays only while it is in front of the camera, near the frame
+  SUNV.copy(camera.position).addScaledVector(LIGHTDIR, 3000).project(camera);
+  const fwd = LIGHTDIR.dot(camera.getWorldDirection(RAYF));
+  u.uSunUv.value.set(SUNV.x * 0.5 + 0.5, SUNV.y * 0.5 + 0.5);
+  u.uRayI.value = q.bloom && fwd > 0.05 ? (T.rays || 0) * Math.min(1, (fwd - 0.05) / 0.2) : 0;
+  u.uRayC.value.set(sun.color.r, sun.color.g, sun.color.b).multiplyScalar(T.sunI * 0.3);   // Color has r/g/b, not x/y/z: copy() would give NaN
   fsPass(matFinal, null);
 }
 /* Compiles the shaders of everything in the scene before the first frame, an object at a time with a frame between
@@ -150,6 +166,7 @@ async function warmUp(report, nextFrame) {
   if (POST) { target(); renderer.setRenderTarget(null);
     for (const [m, t] of [[matAO, PP.ao], [matBright, PP.bl[0]], [matDown, PP.bl[1]], [matFinal, null]]) { fsQuad.material = m; renderer.setRenderTarget(t); renderer.compile(fsScene, fsCam); renderer.setRenderTarget(null); await nextFrame(); } }
 }
+const SUNV = new THREE.Vector3(), RAYF = new THREE.Vector3();
 let shadowHalf = 0;
 const LX = new THREE.Vector3(), LY = new THREE.Vector3(), UPV = new THREE.Vector3(0, 1, 0), TGT = new THREE.Vector3();
 function updateSun() {
