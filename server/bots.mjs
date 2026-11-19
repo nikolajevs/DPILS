@@ -3,7 +3,7 @@
    speed of its level, waits its reaction time, and fires in bursts with the error of its level; the server then judges
    its shots as it judges everybody's. It walks to waypoints round the arena, goes round houses and keeps out of the water,
    strafes in a fight, falls back when hurt, throws a grenade now and then and comes back after the death by itself. */
-import { HIT, bulletDrop } from './combat.mjs';
+import { FALL, HIT, bulletDrop } from './combat.mjs';
 const NAMES = ['Андрис', 'Янис', 'Артур', 'Лиена', 'Виктор', 'Ольга', 'Эдгар', 'Дайна', 'Максим', 'Илзе', 'Роман', 'Кристап', 'Анна', 'Игорь', 'Мартиньш', 'Светлана'];
 // sigma: the aim error in radians — tuned for the small hitboxes (a torso half a metre wide, a head 0.36 m), so the
 // error is about half of what it was against the old metre-wide capsule; head: the share of shots aimed at the head
@@ -117,7 +117,18 @@ export function createBrain(g) {
     }
     // turn towards where we look, at the speed of the level
     let dy = aimYaw - p.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); const step = L.turn * dt; p.yaw += Math.max(-step, Math.min(step, dy)); p.pitch += (aimPitch - p.pitch) * Math.min(1, dt * 6);
-    p.y = world.ground(p.x, p.z) + 1.7; p.eye = 1.7; p.hist.push([now, p.x, p.y, p.z, p.eye, p.yaw]); while (p.hist.length > 2 && now - p.hist[0][0] > 1000) p.hist.shift();
+    // the ground under the feet: a slope is walked as before, but an edge (or a blast's kick up) is a real fall with
+    // gravity, and a landing from above the safe height hurts (g.fall — the same rule as for the players)
+    const gNow = world.ground(p.x, p.z); let feet = p.y - 1.7, landed = 0;
+    if (b.vy || feet - gNow > 0.5 + 12 * dt) {
+      b.fallTop = Math.max(b.fallTop || feet, feet);
+      b.vy = (b.vy || 0) - FALL.g * dt; feet += b.vy * dt;
+      if (feet <= gNow) { landed = Math.max(0, b.fallTop - gNow); feet = gNow; b.vy = 0; b.fallTop = 0; }
+    } else { feet = gNow; b.vy = 0; b.fallTop = 0; }
+    p.y = feet + 1.7; p.eye = 1.7;
+    p.fallTop = Math.max(p.fallTop ?? p.y, p.y);
+    if (landed > FALL.safe) g.fall(p, landed);
+    p.hist.push([now, p.x, p.y, p.z, p.eye, p.yaw]); while (p.hist.length > 2 && now - p.hist[0][0] > 1000) p.hist.shift();
     if (!(q && b.target) || now < b.react || Math.abs(dy) > 0.25) return;
     fight(p, q, dist, now, L);
   }
@@ -140,6 +151,6 @@ export function createBrain(g) {
     b.nextShot = now + W.gapMs * (W.auto === false ? 1.3 : 1.1) + (w === 2 ? 400 : 0);
     if (--b.burstLeft <= 0) { b.burstLeft = Math.round(rnd(L.burst[0], L.burst[1])); b.pauseUntil = now + L.pause * 1000 * rnd(0.6, 1.4); }
   }
-  const make = (level, p) => { p.bot = { level: LEVELS[level] ? level : 'normal', target: 0, react: 0, look: rnd(0, 0.25), nextShot: 0, pauseUntil: 0, burstLeft: 3, path: null, pi: 0, wpAt: 0, strafe: Math.random() < 0.5 ? 1 : -1, strafeT: 1, stuckT: 1.5, sx: 0, sz: 0, moving: false, retreatUntil: 0, respawnExtra: rnd(0, 2000), kx: 0, kz: 0 }; };
+  const make = (level, p) => { p.bot = { level: LEVELS[level] ? level : 'normal', target: 0, react: 0, look: rnd(0, 0.25), nextShot: 0, pauseUntil: 0, burstLeft: 3, path: null, pi: 0, wpAt: 0, strafe: Math.random() < 0.5 ? 1 : -1, strafeT: 1, stuckT: 1.5, sx: 0, sz: 0, moving: false, retreatUntil: 0, respawnExtra: rnd(0, 2000), kx: 0, kz: 0, vy: 0, fallTop: 0 }; };
   return { think, make, route };
 }

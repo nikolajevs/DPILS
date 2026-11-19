@@ -55,7 +55,7 @@ function makeRagdoll(inner, find, opts) {
   const fall = opts.fall || {};
   let fx = fall.x || 0, fz = fall.z || 0;
   if (!fx && !fz) { const a = Math.random() * 6.283; fx = Math.sin(a); fz = Math.cos(a); }
-  const pow = fall.nade ? 4.5 + Math.random() * 2.5 : 2 + Math.random() * 1.4 + (fall.head ? 1.2 : 0);
+  const pow = fall.soft ? 0.25 + Math.random() * 0.35 : fall.nade ? 4.5 + Math.random() * 2.5 : 2 + Math.random() * 1.4 + (fall.head ? 1.2 : 0);   // soft: a fall from height crumples in place
   const up = fall.nade ? 2.2 + Math.random() * 2 : fall.head ? 0.6 : 0.15;
   const vel = opts.vel || { x: 0, y: 0, z: 0 }, vl = Math.hypot(vel.x, vel.y, vel.z), vk = vl > 9 ? 9 / vl : 1;
   const P = [], O = [];

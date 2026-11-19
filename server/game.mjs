@@ -8,7 +8,7 @@
    (WEAPONS.vel) and the damage lands when the bullet arrives, not at the click. The hit is still judged against the target
    as the shooter saw it at the click (the position rewound by the shooter's lag, frozen for the flight), so “shoot where
    you see” holds while the bullet takes its time to get there. */
-import { HIT, INV, ITEMS, NADE, RELOAD_MS, RESERVE, RULES as R, WEAPONS, W_NADE, bulletAt, bulletDir, rayHit } from './combat.mjs';
+import { FALL, HIT, INV, ITEMS, NADE, RELOAD_MS, RESERVE, RULES as R, WEAPONS, W_FALL, W_NADE, bulletAt, bulletDir, rayHit } from './combat.mjs';
 import { LEVELS, botName, createBrain } from './bots.mjs';
 
 const TEAMS = ['Красные', 'Синие'], HX = 5200, HY = 4200;   // bounds a bit wider than the city
@@ -73,7 +73,7 @@ export function createGame(opts) {
   function areaPoint() { for (let k = 0; k < 30; k++) { const a = Math.random() * 6.283, r = Math.sqrt(Math.random()) * (area.r - 20), x = area.cx + Math.cos(a) * r, z = area.cz + Math.sin(a) * r; if (world.walkable(x, z)) return [x, z, Math.random() * 6.283]; } return [area.cx, area.cz, 0]; }
   function spawn(p, x, z, yaw) {
     if (arena) [x, z, yaw] = basePoint(p); else if (p.bot) [x, z, yaw] = areaPoint();
-    p.x = num(x, HX); p.z = num(z, HY); p.y = p.bot ? world.ground(p.x, p.z) + 1.7 : 1.7; p.yaw = num(yaw, 10); p.pitch = 0; p.hp = R.hp; p.alive = true; p.protectUntil = now() + R.protectMs; p.t = now(); p.free = true; p.hist.length = 0; p.nades = NADE.count; p.eye = 1.7;
+    p.x = num(x, HX); p.z = num(z, HY); p.y = p.bot ? world.ground(p.x, p.z) + 1.7 : 1.7; p.yaw = num(yaw, 10); p.pitch = 0; p.hp = R.hp; p.alive = true; p.protectUntil = now() + R.protectMs; p.t = now(); p.free = true; p.hist.length = 0; p.nades = NADE.count; p.eye = 1.7; p.fallTop = p.y; if (p.bot) { p.bot.vy = 0; p.bot.fallTop = 0; }
     p.mag = WEAPONS.map(w => w.mag); p.reserve = RESERVE.slice(); p.meds = 0; p.reloadDone = 0; p.lastMed = 0;
     send(p, { t: 'spawn', x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, nades: p.nades, mag: p.mag, reserve: p.reserve, meds: p.meds, sights: p.sights, attach: p.attach }); all({ t: 'alive', id: p.id });   // the sights stay with the player through a death
   }
@@ -81,12 +81,23 @@ export function createGame(opts) {
   // the hurt messages, and the kill
   function hurt(p, v, dmg, zone, w, from) {
     if (!v.alive || dmg <= 0) return; const t0 = now(), head = zone === 1;
-    v.hp -= dmg; if (p !== v) { const d = dmg + Math.min(0, v.hp); p.st.dmg += d; if (p.prof) p.prof.add('dmg', d); } send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: from[0] - v.x, dz: from[2] - v.z }); if (p !== v) send(p, { t: 'hit', id: v.id, head, zone, kill: v.hp <= 0, dmg: Math.min(dmg, dmg + Math.min(0, v.hp)) });
+    v.hp -= dmg; if (p !== v) { const d = dmg + Math.min(0, v.hp); p.st.dmg += d; if (p.prof) p.prof.add('dmg', d); } send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: from[0] - v.x, dz: from[2] - v.z, fall: w === W_FALL ? 1 : undefined }); if (p !== v) send(p, { t: 'hit', id: v.id, head, zone, kill: v.hp <= 0, dmg: Math.min(dmg, dmg + Math.min(0, v.hp)) });
     if (v.hp > 0) return;
     v.alive = false; v.deaths++; v.diedAt = t0; v.streak = 0; if (v.prof) v.prof.add('deaths');
     if (p !== v) { p.kills++; if (!FFA) teamScore[p.team]++; if (head) p.st.heads++; if (p.prof) { p.prof.add('kills'); if (head) p.prof.add('heads'); p.streak = (p.streak || 0) + 1; p.prof.max('best', p.streak); } }
     all({ t: 'kill', killer: p.id, victim: v.id, kn: p.name, vn: v.name, kt: p.team, vt: v.team, head, w, dx: +(from[0] - v.x).toFixed(2), dz: +(from[2] - v.z).toFixed(2) }); sendBoard();   // dx/dz: where the blow came from — the body falls away from it (ragdoll.js)
     if (p !== v && (FFA ? p.kills : teamScore[p.team]) >= WIN) endRound(p.team, p);
+  }
+  // a fall from above the safe height hurts (FALL): the client reports the height it landed from — it knows the true
+  // ground (the fortress ramparts, the bridges), the server's raw lidar does not. The report is capped by the drop the
+  // server saw itself in the state stream (fallTop, the highest point since the last landing), so a number out of thin
+  // air cannot kill; the bots fall in think() and report here the same way
+  function fall(p, h) {
+    if (!p.alive) return;
+    const seen = Math.max(0, (p.fallTop ?? p.y) - p.y + 1);   // +1 m: the eye lowers on a crouch
+    p.fallTop = p.y;
+    const hh = Math.min(FALL.maxH, Math.max(0, h), seen);
+    if (hh > FALL.safe) hurt(p, p, Math.round((hh - FALL.safe) * FALL.k), 0, W_FALL, [p.x, p.y, p.z]);
   }
   function explode(n) {
     nades.delete(n.id); all({ t: 'boom', id: n.id, x: n.p[0], y: n.p[1], z: n.p[2] });
@@ -106,7 +117,7 @@ export function createGame(opts) {
       if (d < 0.5) { const a = Math.random() * 6.283, l = Math.hypot(1, 0.8); ux = Math.cos(a) / l; uz = Math.sin(a) / l; uy = 0.8 / l; }
       else { ux = dx / d; uy = dy / d; uz = dz / d; }
       const s = NADE.push * k * self, vx = ux * s, vz = uz * s, vy = Math.max(0, uy) * s + NADE.pushUp * k * self;
-      if (v.bot) { v.bot.kx += vx; v.bot.kz += vz; }
+      if (v.bot) { v.bot.kx += vx; v.bot.kz += vz; v.bot.vy = (v.bot.vy || 0) + vy; }
       else send(v, { t: 'push', vx: +vx.toFixed(2), vy: +vy.toFixed(2), vz: +vz.toFixed(2) });
     }
   }
@@ -224,7 +235,7 @@ export function createGame(opts) {
   }
   // ---- bots
   const enemyBase = p => (arena ? (FFA ? arena.bases.flat()[Math.floor(Math.random() * arena.bases.flat().length)] : arena.bases[p.team === 1 ? 0 : 1][Math.floor(Math.random() * arena.bases[p.team === 1 ? 0 : 1].length)]) : null);
-  const brain = createBrain({ players, now, world, area, FFA, WEAPONS, R, shoot, throwNade, spawn, roundOver: () => roundOver, enemyBase });
+  const brain = createBrain({ players, now, world, area, FFA, WEAPONS, R, shoot, throwNade, spawn, fall, roundOver: () => roundOver, enemyBase });
   let botN = 0;
   function addBot(level) {
     if (players.size >= MAX) return null;
@@ -259,12 +270,14 @@ export function createGame(opts) {
           const far = Math.hypot(x - p.x, z - p.z), first = p.free && far < 80; p.free = false;   // right after a spawn the client may nudge itself off a wall or out of the water
           if (!first && far > R.runSpeed * dt * 1.6 + 3) send(p, { t: 'correct', x: p.x, y: p.y, z: p.z });   // too fast: put back
           else { p.x = x; p.z = z; p.y = y; }
+          p.fallTop = Math.max(p.fallTop ?? p.y, p.y);   // the highest point since the last landing: the fall report is capped by it
           p.yaw = num(m.yaw, 100); p.pitch = num(m.pitch, 1.6); p.eye = Math.max(0.9, Math.min(1.8, num(m.h, 1.8) || 1.7)); p.wep = okWeapon(m.w) ? m.w : 0;
           p.hist.push([t0, p.x, p.y, p.z, p.eye, p.yaw]); while (p.hist.length > 2 && t0 - p.hist[0][0] > 1000) p.hist.shift();
         } else if (m.t === 'shoot' && p.alive) shoot(p, okWeapon(m.w) ? m.w : 0, m.rays, 120 + Math.min(300, p.rtt / 2));
         else if (m.t === 'throw') { const d = [num(m.dx, 1), num(m.dy, 1), num(m.dz, 1)], l = Math.hypot(...d); if (l >= 0.5) throwNade(p, d.map(x => x / l), m.sp == null ? NADE.speed : num(m.sp, NADE.maxSpeed)); }
         else if (m.t === 'reload' && p.alive) beginReload(p, okWeapon(m.w) ? m.w : p.wep, t0);
         else if (m.t === 'use' && m.kind === 'med') useMed(p, t0);
+        else if (m.t === 'fall' && p.alive) fall(p, num(m.h, FALL.maxH));   // the client landed from a height: the damage is the server's
         else if (m.t === 'attach') setSight(p, okWeapon(m.w) ? m.w : p.wep, m.kind === 'sight' || m.kind === 'optic' ? m.kind : null);
         else if (m.t === 'chat') {
           const text = String(m.text || '').replace(/[\u0000-\u001f\u007f​-‏‪-‮]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
@@ -336,11 +349,13 @@ export function createGame(opts) {
   function stepNades() { const t = now(); for (const n of [...nades.values()]) { world.stepNade(n, 1 / 30, NADE.g); if (t >= n.t) explode(n); } }
   timers.push(setInterval(stepNades, 1000 / 30));
   timers.push(setInterval(() => advanceBullets(now()), 1000 / 30));   // the bullets in the air fly on the same clock
-  timers.push(setInterval(() => { const t = now(), dt = Math.min(0.2, (t - last) / 1000); last = t; for (const p of [...players.values()]) if (p.bot) brain.think(p, dt); }, 50));
+  function stepBots(dt) { for (const p of [...players.values()]) if (p.bot) brain.think(p, dt); }
+  timers.push(setInterval(() => { const t = now(), dt = Math.min(0.2, (t - last) / 1000); last = t; stepBots(dt); }, 50));
   return {
     attach, addBot, removeBot, players, arena, mode: MODE,
     stepBullets: () => advanceBullets(now()),   // the tests drive the flight by their own clock
     stepNades,   // the tests drive the fuse by their own clock too
+    stepBots,   // and the bots' think by the test clock, for the fall test
     stop() { for (const t of timers) { clearInterval(t); clearTimeout(t); } timers.length = 0; },
     health() { return { ok: true, mode: MODE, name: NAME, players: humans().length, bots: players.size - humans().length, max: MAX, score: teamScore, win: WIN, teams: TEAMS, round: roundOver ? 'end' : 'play', arena: arena ? arena.name : null, leaderboard: !!lb }; },
   };
