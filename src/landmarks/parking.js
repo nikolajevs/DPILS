@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { STATE } from '../core/state.js';
 import { AREAS, COL, M_ASPH, M_DIRT, M_LAND, M_PAVE, ROAD, inBuilding } from '../world/data.js';
-import { carGeo, carMat, carsReady } from '../world/cars.js';
 import { carProbes } from '../world/car-hit.js';
 import { LAMPS } from '../world/streets.js';
 import { CARROAD } from '../transit/transit.js';
@@ -40,7 +39,6 @@ const STRIP = k => k >= 1 && k <= 3;   // along a street
 const SURF = [  // asphalt, paving, gravel or earth, grass pavers, concrete: [material, colour]
   () => [M_ASPH, '#5c5d5e'], () => [M_PAVE, '#8e877c'], () => [M_DIRT, '#867a62'], () => [M_LAND, '#66734f'], () => [M_ASPH, '#8b8a85']];
 const COLS = ['#e8e8e6', '#1d1f22', '#8d9196', '#5b6067', '#7a1f22', '#1f3f6e', '#c9c6bd', '#2f4a35', '#b8bcc0', '#3a3d42', '#e8e8e6', '#1d1f22', '#8d9196', '#9a2a1e', '#2a4f8f', '#6e5a3e'];
-const CCOLS = COLS.map(c => new THREE.Color(c));   // the paint tints the white body of the BMW models (src/world/cars.js)
 // how full a car park is through the day, by whose cars stand in it: [hour, share] on weekdays and at the weekend
 const OCC = [
   [[[0, .86], [6, .86], [9, .42], [16, .45], [19, .78], [22, .86], [24, .86]], [[0, .88], [8, .88], [11, .66], [17, .62], [20, .82], [24, .88]]],   // yard
@@ -52,7 +50,7 @@ const occAt = (prof, h, weekend) => { const c = OCC[prof][weekend ? 1 : 0]; for 
 const PARKING_LOTS = [];   // the drawn car parks: { r: outer ring, bb, isl: [x, z, ...] the trees on grass islands }, for tree-room.js
 const PSTAT = { lots: 0, stalls: 0, cars: 0, islands: 0, lamps: 0, mapped: 0, ofMapped: 0 };   // for checks: window.__city.parking
 const PCOL = new SegGrid(20);   // a segment along each stall (its index), as wide as a car
-let ST = null, TILES = [], lastKey = -1, lastVis = 0;
+let ST = null, TILES = [];
 
 /* ---- rectangles: [cx, cz, ux, uz, ha, hb] — centre, the long axis, half length along it and half width ---- */
 function rectHit(a, b) {
@@ -236,38 +234,18 @@ function lmParking(K) {
     const dx = R[2] * face, dz = R[3] * face; ST.x[k] = R[0]; ST.z[k] = R[1]; ST.y[k] = 0;   // the vertex shader lifts the car by the terrain under it; baking terrainH here would double it and leave the car floating ST.a[k] = Math.atan2(-dz, dx); ST.kind[k] = par ? (h1 < 0.7 ? 1 : 0) : h1 < 0.5 ? 0 : h1 < 0.82 ? 1 : 2; ST.col[k] = Math.floor(h2 * COLS.length); ST.u[k] = hash(s * 7919 + 3); ST.lot[k] = L.li;
     const hl = ST.kind[k] === 2 ? 1.55 : ST.kind[k] === 1 ? 1.15 : 1.4; PCOL.add(R[0] - R[2] * hl, R[1] - R[3] * hl, R[0] + R[2] * hl, R[1] + R[3] * hl, k, 0);
     const key = Math.floor(R[0] / 1000) * 100 + Math.floor(R[1] / 1000); let t = tiles.get(key); if (!t) tiles.set(key, t = { cx: (Math.floor(R[0] / 1000) + 0.5) * 1000, cz: (Math.floor(R[1] / 1000) + 0.5) * 1000, s: [[], [], []] }); t.s[ST.kind[k]].push(k); }
-  for (const t of tiles.values()) { t.m = null; TILES.push(t); }   // the BMW meshes are made by placeParkingCars once the files are in
+  for (const t of tiles.values()) { t.m = null; TILES.push(t); }   // the cars are removed (src/world/cars.js); the tiles stay for the day a light car returns
   PSTAT.car = (x, z) => { let best = null, bd = 60; for (let k = 0; k < ST.n; k++) { const d = Math.hypot(ST.x[k] - x, ST.z[k] - z); if (ST.occ[k] && d < bd) { bd = d; best = [ST.x[k], ST.z[k], ST.a[k]]; } } return best; };   // the nearest parked car (for checks)
   PSTAT.lots = LOTS.length; PSTAT.stalls = ST.n; PSTAT.mapped = LOTS.reduce((t, L) => t + (L.cap > 0 ? L.cap : 0), 0); PSTAT.ofMapped = LOTS.reduce((t, L) => t + (L.cap > 0 ? L.stalls.length : 0), 0);   // the capacities mapped, and how many stalls those car parks got
 }
 
-/* ---- the BMW meshes of the car parks: made once the models are decoded (src/world/cars.js), a step of its own ---- */
-async function placeParkingCars() {
-  const r = carsReady(); if (r) await r;
-  const geos = [0, 1, 2].map(carGeo);
-  for (const t of TILES) {
-    if (t.m) continue;
-    t.m = t.s.map((list, kind) => { if (!list.length || !geos[kind]) return null; const m = new THREE.InstancedMesh(geos[kind], carMat, list.length);
-      m.boundingSphere = new THREE.Sphere(new THREE.Vector3(t.cx, 0, t.cz), 800); m.castShadow = m.receiveShadow = true; m.count = 0; m.cols = CCOLS; scene.add(m); return m; });
-  }
-  lastKey = -1;   // let parkTick fill the matrices now that the meshes exist
-}
+/* ---- the cars of the car parks are removed (the owner's request, see src/world/cars.js): the stalls stand empty.
+   The BMW meshes were the largest part of the frame — 4000 triangles a car out to 1.5 km, 8–9 million a frame. ---- */
+async function placeParkingCars() {}   // kept: src/main.js still awaits the step
 
-/* ---- the time of day: which stalls are taken (every 10 minutes of the clock), and which tiles are near enough ---- */
-function parkTick(day, sec) {
-  if (!ST) return;
-  const key = day * 144 + Math.floor(sec / 600);
-  if (key !== lastKey) { lastKey = key;
-    const wd = ((day + 4) % 7 + 7) % 7, weekend = wd === 0 || wd === 6, h = (sec / 3600) % 24, share = ST.prof.map((p, li) => Math.min(0.97, occAt(p, h, weekend) * ST.f[li]));
-    let cars = 0; for (let k = 0; k < ST.n; k++) { const o = ST.u[k] < share[ST.lot[k]] ? 1 : 0; ST.occ[k] = o; cars += o; } PSTAT.cars = cars;
-    const M = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();
-    for (const t of TILES) { if (!t.m) continue; t.m.forEach((m, kind) => { if (!m) return; let c = 0;
-      for (const k of t.s[kind]) { if (!ST.occ[k]) continue; q.setFromAxisAngle(up, ST.a[k]); p.set(ST.x[k], ST.y[k], ST.z[k]); M.compose(p, q, one); m.setMatrixAt(c, M); m.setColorAt(c, m.cols[ST.col[k]]); c++; }
-      m.count = c; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }); }
-  }
-  const now = performance.now(); if (now - lastVis > 400) { lastVis = now; const cx = camera.position.x, cz = camera.position.z, far = 1500 + Math.max(0, camera.position.y) * 2;
-    for (const t of TILES) { if (!t.m) continue; const v = Math.hypot(t.cx - cx, t.cz - cz) < far; for (const m of t.m) if (m) m.visible = v; } }
-}
+/* ---- the time of day no longer fills the stalls: no car is drawn, none is occupied (ST.occ stays 0, so the walker
+   and the bullet pass through the empty car parks). The occupancy profiles stay below for the day a car returns. ---- */
+function parkTick(day, sec) {}
 // a walker against the parked cars: pushed out of each taken stall (0.45 m of the walker, 0.85 m of the car)
 function parkedPush(P) { if (!ST) return; PCOL.near(P.x, P.z, 1.3, (id, d, px, pz) => { if (!ST.occ[PCOL.s[id * 6 + 4]] || d >= 1.3 || d < 1e-5) return; const k = (1.3 - d) / d; P.x += (P.x - px) * k; P.z += (P.z - pz) * k; }); }
 function parkedAt(x, z) { if (!ST) return false; let hit = false; PCOL.near(x, z, 1.3, id => { if (ST.occ[PCOL.s[id * 6 + 4]]) hit = true; }); return hit; }

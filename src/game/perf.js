@@ -16,11 +16,14 @@ import { POST, renderer } from '../render/renderer.js';
    are left out.
 
    The quality mode is the player's choice (the "Графика" button cycles авто → высокая → … → минимум → авто, the
-   same choice is in the settings panel). In 'auto' the game graphics are lowered by themselves, one level at a time,
+   same choice is in the settings panel). In 'auto' the graphics are lowered by themselves, one level at a time,
    when the page stays under 28 frames a second for two checks in a row (4 s each) and the resolution cannot help any
    more; when four checks in a row hold 55 frames a second or more at the full resolution, the level goes back up.
-   The first seconds after the start and after each change are not counted: shaders compile then. A fixed level
-   switches all of this off and keeps the resolution whole. */
+   This works in the fight and on the city walk alike (a weak machine used to stay at the top level in the city: the
+   resolution alone cannot save a frame bound by vertices, and the walk ran at 15 fps). With the full map open the
+   city is not drawn (outside the fight), so those windows are left out. The first seconds after the start and after
+   each change are not counted: shaders compile then. A fixed level switches all of this off and keeps the resolution
+   whole. */
 // scale: the share of the resolution the scene is drawn at; dyn: whether it follows the frame rate (tools/shots.js
 // switches it off: its frames take minutes, and a check of the picture wants it whole)
 const PERF = { fps: 60, scale: 1, dyn: true, lowered: 0, notice: null };
@@ -28,20 +31,32 @@ let frames = 0, span = 0, slow = 0, fast = 0, quiet = 6, fpsFrames = 0, fpsSpan 
 function perfTick(rdt) {   // rdt: the real time of the frame, seconds
   fpsFrames++; fpsSpan += rdt; if (fpsSpan >= 1) { PERF.fps = Math.round(fpsFrames / fpsSpan); fpsFrames = 0; fpsSpan = 0; }
   dynTick(rdt); PERF.scale = PP.scale;
-  if (!STATE.mp || !qAuto) return;
+  if (!qAuto) return;
+  if (STATE.mapOpen) { frames = span = 0; slow = fast = 0; return; }   // the full map hides the city: its frames say nothing
   if (quiet > 0) { quiet -= rdt; frames = span = 0; slow = fast = 0; return; }
   frames++; span += rdt;
   if (span < 4) return;
   const fps = frames / span; frames = span = 0;
   if (fps < 28 && !canLower()) {   // the resolution cannot help any more: lower the level
     fast = 0;
-    if (++slow >= 2) { slow = 0; if (qi < QUALITY.length - 1) { setQuality(qi + 1); PERF.lowered++; quiet = 6; if (PERF.notice) PERF.notice('Графика снижена до «' + QUALITY[qi].name + '»: ' + Math.round(fps) + ' кадров в секунду'); } }
+    if (++slow >= 2) { slow = 0; if (qi < QUALITY.length - 1) { setQuality(qi + 1); PERF.lowered++; quiet = 6; note('Графика снижена до «' + QUALITY[qi].name + '»: ' + Math.round(fps) + ' кадров в секунду'); } }
     return;
   }
   slow = 0;
   if (fps >= 55 && qi > 0 && PP.scale >= 1 - 1e-3) {   // headroom at the full resolution: try the next level up
-    if (++fast >= 4) { fast = 0; setQuality(qi - 1); quiet = 6; if (PERF.notice) PERF.notice('Графика повышена до «' + QUALITY[qi].name + '»: ' + Math.round(fps) + ' кадров в секунду, есть запас'); }
+    if (++fast >= 4) { fast = 0; setQuality(qi - 1); quiet = 6; note('Графика повышена до «' + QUALITY[qi].name + '»: ' + Math.round(fps) + ' кадров в секунду, есть запас'); }
   } else fast = 0;
+}
+
+/* The notice of a change: in the fight it goes to the feed (mp.js sets PERF.notice), on the walk a small toast at the
+   bottom of the screen — the player sees why the picture changed. */
+let noteT = 0;
+function note(text) {
+  if (STATE.mp) { if (PERF.notice) PERF.notice(text); return; }
+  let d = document.getElementById('perfNote');
+  if (!d) { d = document.createElement('div'); d.id = 'perfNote'; document.body.appendChild(d); }
+  d.textContent = text; d.classList.add('shown');
+  clearTimeout(noteT); noteT = setTimeout(() => d.classList.remove('shown'), 6000);
 }
 
 /* ---------- dynamic resolution ---------- */

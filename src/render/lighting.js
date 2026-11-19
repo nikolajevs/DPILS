@@ -52,12 +52,14 @@ const QUALITY = [
   { name: 'низкая', shadow: 0, pr: 1, tree: 100, det: 360, far: 2400, msaa: 0, ao: 0, bloom: 0 },
   { name: 'минимум', shadow: 0, pr: 0.7, tree: 50, det: 200, far: 1500, msaa: 0, ao: 0, bloom: 0 }   // for weak machines: a smaller picture, near houses only
 ];
-let qi = WEAK_GPU || matchMedia('(pointer: coarse)').matches ? 1 : 0;
-try { const s = localStorage.getItem('dpils-quality2'); if (s != null) qi = Math.max(0, Math.min(QUALITY.length - 1, +s)); } catch (e) {}
-/* Quality mode: 'auto' — the page adapts by itself (dynamic resolution in the city and the game, the level goes down
-   and up in the fight, see game/perf.js); a fixed level is the player's choice and stays. Both are remembered. */
+/* Quality mode: 'auto' — the page adapts by itself (dynamic resolution and the level, in the city and the game alike,
+   see game/perf.js); a fixed level is the player's choice and stays. Both are remembered. */
 let qAuto = true;
 try { qAuto = localStorage.getItem('dpils-quality-mode') !== 'fixed'; } catch (e) {}
+const COARSE = matchMedia('(pointer: coarse)').matches;
+let qi = WEAK_GPU || COARSE ? 1 : 0;
+try { const s = localStorage.getItem('dpils-quality2'); if (s != null) qi = Math.max(0, Math.min(QUALITY.length - 1, +s)); } catch (e) {}
+if (qAuto && (WEAK_GPU || COARSE)) qi = Math.max(qi, 1);   // auto on a weak machine never starts at the top level, whatever was remembered
 const qWatch = [];
 const onQuality = f => { qWatch.push(f); };
 function qualityBtn() {

@@ -714,3 +714,7 @@ body.mp:not(:has(#view.locked)) .mp-sys { bottom: 64px; }   /* above the returne
   body.mp:not(:has(#view.locked)) .mp-sys { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .mp-feed div { animation: none; } .mp-slots, .mp-slots span { transition: none; } }
+
+/* The graphics notice of the city walk (src/game/perf.js): a small toast above the toolbar, fades in and out. */
+#perfNote { position: fixed; left: 50%; bottom: 86px; transform: translateX(-50%) translateY(6px); max-width: min(560px, 90vw); background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 7px 14px; font: 500 13px/1.35 var(--f-body); text-align: center; opacity: 0; pointer-events: none; transition: opacity .35s, transform .35s; z-index: 60; backdrop-filter: blur(6px); }
+#perfNote.shown { opacity: 1; transform: translateX(-50%) translateY(0); }

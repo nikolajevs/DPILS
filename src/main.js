@@ -20,8 +20,7 @@ import { P, setFly, teleport } from './game/player.js';
 import './ui/places.js';
 import { TX, buildTransit, setClock, updateBoard } from './transit/transit.js';
 import { LIDAR_STATS, buildTrees } from './world/trees.js';
-import { PSTAT, placeParkingCars } from './landmarks/parking.js';
-import { placeStaticCars } from './world/cars.js';
+import { PSTAT } from './landmarks/parking.js';
 import { SER_STAT } from './buildings/series.js';
 import { GUB_STAT } from './landmarks/gubisce.js';
 import { buildFortress } from './fortress/build.js';
@@ -78,7 +77,7 @@ import { $, C } from './core/env.js';
    laptop with both of its GPUs (RTX 3050 and Intel UHD: 25 and 35 s of building), the shares of the two averaged; the
    shaders are given more than a second visit takes, when the browser has them compiled already. Re-measure when a
    step changes much: a step heavier than its weight slows the bar down, a lighter one leaves it behind. */
-const W = { materials: 2100, ground: 2800, lines: 1600, houses: 3100, blocks: 300, landmarks: 4000, fortress: 2400, trees: 3500, flora: 500, cars: 400, transit: 3500, split: 1600, models: 1500, shaders: 2500, frame: 4000 };
+const W = { materials: 2100, ground: 2800, lines: 1600, houses: 3100, blocks: 300, landmarks: 4000, fortress: 2400, trees: 3500, flora: 500, transit: 3500, split: 1600, models: 1500, shaders: 2500, frame: 4000 };
 const WSUM = Object.values(W).reduce((a, b) => a + b, 0);
 let wDone = 0;
 const step = (text, w, reported) => {
@@ -108,7 +107,6 @@ const step = (text, w, reported) => {
     await rest(); const lamps = buildLamps(); setTime(timeI);
     await step('Сажаю деревья…', W.trees); const trees = await buildTrees();
     await step('Сажаю цветы в парках…', W.flora); await plantFlora();   // their files were asked for with the parks
-    await step('Ставлю машины на парковки…', W.cars); await placeParkingCars(); await placeStaticCars();   // the BMW models were asked for on import
     await step('Выпускаю трамваи и автобусы на линии…', W.transit); const tripsN = await buildTransit();
     await step('Делю землю и улицы на участки…', W.split); await splitBigMeshes(scene);   // the meshes over the whole city, cut into tiles that can be culled (src/render/chunks.js)
     if (TERR.on) {
