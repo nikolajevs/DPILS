@@ -42,7 +42,8 @@ window.addEventListener('keydown', e => {
   if (STATE.mp && e.code === SET.keys.voice) return;   // in the game V is push-to-talk, not Street View
   keys.add(e.code);
   if (e.repeat) return;
-  if (e.code === 'KeyF') setFly(!P.fly); else if (e.code === 'KeyT') { TX.si = (TX.si + 1) % SPEEDS.length; if (TX.si) TX.live = false; updateClockUI(); } else if (e.code === 'KeyM') { big.hidden ? openMap() : closeMap(); } else if (e.code === 'KeyP') togglePlaces();
+  if (e.code === 'KeyF') { if (!STATE.mp) setFly(!P.fly); }   // in the game F is the dead man's camera (mp.js); flight is off there anyway
+  else if (e.code === 'KeyT') { TX.si = (TX.si + 1) % SPEEDS.length; if (TX.si) TX.live = false; updateClockUI(); } else if (e.code === 'KeyM') { big.hidden ? openMap() : closeMap(); } else if (e.code === 'KeyP') togglePlaces();
   else if (e.code === 'KeyV') { updateHud(); if (document.pointerLockElement) document.exitPointerLock(); keys.clear(); bSV.click(); }
 });
 window.addEventListener('keyup', e => keys.delete(e.code));

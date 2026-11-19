@@ -1,11 +1,21 @@
 /* The physics of the shots and the grenades, for the server and for the training game in the page: the same rules over
    two functions the caller brings, which house stands at a point (with its height in .top) and how high the ground is. */
 export function makePhysics(buildingAt, ground) {
-  // how far from o along d (unit) a shot flies before a roof line stops it; len if it does not
+  // how far from o along d (unit) a shot flies before the ground, a hill slope or a roof line stops it; len if it does
+  // not. The coarse scan steps 1.5 m; once a step is blocked, the wall is bisected to ~2 cm, so a hit just in front of
+  // the wall counts and one just behind it does not (the grace is HIT.grace in combat.mjs).
   function freePath(o, d, len) {
+    const block = t => {
+      const x = o[0] + d[0] * t, y = o[1] + d[1] * t, z = o[2] + d[2] * t, gr = ground(x, z);
+      if (y < gr) return true;   // the ground itself, a hill slope included
+      const b = buildingAt(x, z);
+      return !!(b && y < gr + (b.top || 12) - 1);
+    };
     for (let t = 2; t < len; t += 1.5) {
-      const x = o[0] + d[0] * t, y = o[1] + d[1] * t, z = o[2] + d[2] * t, b = buildingAt(x, z);
-      if (b && y < ground(x, z) + (b.top || 12) - 1) return t;
+      if (!block(t)) continue;
+      let lo = Math.max(0, t - 1.5), hi = t;
+      for (let i = 0; i < 6; i++) { const m = (lo + hi) / 2; if (block(m)) hi = m; else lo = m; }
+      return hi;
     }
     return len;
   }

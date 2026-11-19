@@ -120,3 +120,16 @@ This work is based on "Soviet Weapons Ammo Crate Box Animated Low Poly" by lil_b
 Собираются [tools/items.mjs](../tools/items.mjs): у гранаты в сцене две копии (одна с вынутой чекой) — берётся собранная; у ящика удалена анимация открытия крышки; вершины запекаются в мировые координаты и сливаются по материалу, модель центрируется (дно в y=0) и нормируется в метры (ящик 0.55 м по длине, граната 0.2 м в высоту, аптечка 0.26 м); текстуры жмутся в WebP (1024 px), геометрия — `EXT_meshopt_compression`. Итог: ящик 0.40 МБ / 6.0 тыс. треугольников, граната 0.29 МБ / 5.0 тыс., аптечка 0.08 МБ / 1.6 тыс.
 
 Загружаются один раз в [src/game/props.js](../src/game/props.js) и клонируются на каждый предмет на карте ([src/game/inventory.js](../src/game/inventory.js)) и на летящую гранату ([src/game/nades.js](../src/game/nades.js)); пока модель едет, рисуется прежний фолбэк из боксов. Проверка без экрана — [tools/shot-items.mjs](../tools/shot-items.mjs).
+
+## Прицелы (`item_sight.glb`, `item_optic.glb`)
+
+Оба — **CC-BY-4.0** со Sketchfab, атрибуция обязательна:
+
+| Файл | Что | Откуда |
+|---|---|---|
+| `item_sight.glb` | коллиматорный прицел: открытый рефлектор с козырьком, прозрачная линза, маркировка AimDot | [FPS Red Dot Sight (Game Model)](https://sketchfab.com/3d-models/fps-red-dot-sight-game-model-0cf999d9363940c2b149dcd80c448554), автор [Michael Makivic](https://sketchfab.com/makivic) |
+| `item_optic.glb` | оптический прицел 8x: барабанчики поправок, кольца крепления с рычагами, откидные крышки линз | [Scope 8x](https://sketchfab.com/3d-models/scope-8x-cf8371cc54384ad19adf1cdec2f3cecb), автор [ErhanMatur](https://sketchfab.com/erhanmatur) |
+
+This work is based on "FPS Red Dot Sight (Game Model)" by Michael Makivic and "Scope 8x" by ErhanMatur (Sketchfab), licensed under [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/).
+
+Собираются [tools/sights.mjs](../tools/sights.mjs) тем же конвейером, что и предметы: вершины запекаются в мировые координаты с поворотом на игровую конвенцию (смотрит вдоль +z, верх +y, низ крепления в y=0, центр по x/z), сливаются по материалу (alphaMode линзы сохраняется), нормируются в метры (коллиматор 0.16 м в длину, оптика 0.36 м); текстуры WebP 1024 px, геометрия `EXT_meshopt_compression`. Итог: коллиматор 0.22 МБ / 2.2 тыс. треугольников, оптика 0.35 МБ / 21.4 тыс. Один и тот же файл служит и предметом на карте, и установленным на оружие прицелом (реальный размер).

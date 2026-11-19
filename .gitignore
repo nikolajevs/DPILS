@@ -3,3 +3,5 @@ node_modules/
 dist/
 server/data/
 sketchfab.token
+loop-logs/
+LOOP-STOP

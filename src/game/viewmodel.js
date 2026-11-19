@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { worldSpace } from '../render/world-space.js';
 import { makeFlash } from './muzzle.js';
 import { at, reach, relMatrix, setFrame, turnBy, turnOf } from './ik.js';
+import { prop, onProps } from './props.js';
 
 /* ---------- the AK-47 (models/fp_ak47.glb, CC BY 4.0, see models/README.md; built by tools/fp-ak.mjs) ----------
    One file, two uses. The arms of a soldier in gloves holding the rifle, rigged, with the clips idle, walk, run, fire,
@@ -18,6 +19,10 @@ import { at, reach, relMatrix, setFrame, turnBy, turnOf } from './ik.js';
    never goes into a wall you stand at, and the near plane of the city (0.09–0.3 m, src/game/loop.js) does not cut the hands. */
 const FILE = 'models/fp_ak47.glb';
 const EYE = new THREE.Vector3(0, 1.598, 0.022);
+// where a picked-up sight sits on each weapon, in the frame of its file (metres, lens +z, mount bottom y=0):
+// the AK in the coordinates of its own file (the arms' bone carries it), the others from their grip (HOLD).
+// The top of the receiver was measured off the models (tools/sights.mjs builds the sights to the same convention).
+const SIGHT_MOUNT = [[-0.13, 1.5, 0.24], [0, 0.088, 0.1], [0, 0.045, 0.05], [0, 0.086, -0.055], [0, 0.112, 0]];
 let loading = null, ak = null, settled = false;
 function loadAK() {
   if (!loading) loading = new Promise(res => import('three/addons/libs/meshopt_decoder.module.js').then(({ MeshoptDecoder }) => {   // the decoder of the packed geometry comes only with the game
@@ -103,7 +108,7 @@ function makeViewmodel(parent) {
     flash.group.scale.setScalar(1 / (muzzle.getWorldScale(new THREE.Vector3()).x || 1));
   }
   const FL = new Map([[muzzle, { q: flash.group.quaternion.clone(), s: flash.group.scale.x }]]);   // how the flash sits under each muzzle
-  const guns = []; let cur = 0;   // the other weapons: { box (the holder on the rifle's bone), muzzle, shift, dL }
+  const guns = []; let cur = 0, adsT = 0;   // the other weapons: { box (the holder on the rifle's bone), muzzle, shift, dL }
   function addWeapon(i, src) {
     const sp = HOLD[i]; if (!sp || !src || guns[i] || !ikOk) return false;
     const box = new THREE.Group(), inner = new THREE.Group(), model = src.clone(true), mz = new THREE.Object3D();
@@ -120,7 +125,36 @@ function makeViewmodel(parent) {
     guns.forEach((g, k) => { if (g) g.box.visible = k === i; });
     const mz = guns[i] ? guns[i].muzzle : muzzle, p = FL.get(mz);
     mz.add(flash.group); flash.group.position.set(0, 0, 0); flash.group.quaternion.copy(p.q); flash.group.scale.setScalar(p.s);
+    scopes.forEach((n, k) => { if (n) n.visible = k === i; });
   }
+  // the picked-up sights (props.js): one per weapon, on the receiver. The AK's rides the rifle's bone like the flash;
+  // the others ride their holder, from the grip of the file. attach(i, kind|null) swaps it; the models may come later.
+  const scopes = [null, null, null, null, null], attachK = [null, null, null, null, null];
+  function placeScope(i) {
+    if (scopes[i]) { scopes[i].removeFromParent(); scopes[i].traverse(o => { if (o.isMesh) o.material.dispose(); }); scopes[i] = null; }
+    const kind = attachK[i]; if (!kind) return;
+    const src = prop(kind); if (!src) return;
+    const n = src.clone(true); n.userData.sight = kind;
+    n.traverse(o => { if (o.isMesh) { o.frustumCulled = false; o.castShadow = false; o.receiveShadow = true; o.material = drawOver(worldSpace(o.material.clone())); } });
+    if (i === 0) {
+      if (!ak.root) return;
+      rig.updateMatrixWorld(true);
+      n.position.copy(ak.root.worldToLocal(rig.localToWorld(V3(SIGHT_MOUNT[0]))));
+      // the bone's own axes are turned against the rig: carry the rig's orientation into it, like the muzzle flash does
+      const qb = new THREE.Quaternion(), qr = new THREE.Quaternion();
+      ak.root.getWorldQuaternion(qb); rig.getWorldQuaternion(qr);
+      n.quaternion.copy(qb.invert().multiply(qr));
+      n.scale.setScalar(1 / (ak.root.getWorldScale(new THREE.Vector3()).x || 1));   // the bone lives in centimetres
+      ak.root.add(n);
+    } else {
+      const g = guns[i]; if (!g) return;
+      n.position.copy(V3(SIGHT_MOUNT[i])).sub(V3(HOLD[i].grip));
+      g.box.add(n);
+    }
+    scopes[i] = n; n.visible = cur === i;
+  }
+  function attach(i, kind) { i = Math.max(0, Math.min(4, i | 0)); attachK[i] = kind || null; placeScope(i); }
+  onProps(() => { for (let i = 0; i < 5; i++) if (attachK[i]) placeScope(i); });
   // after the clip: the right wrist out with the pistol, the left onto the handguard of the weapon in hand while the
   // clip has it on the rifle's (not while it fetches a magazine); each hand keeps the turn the clip gave it
   const G = new THREE.Matrix4(), G3 = new THREE.Matrix3(), T = new THREE.Vector3(), D = new THREE.Vector3(), P1 = new THREE.Vector3(), P2 = new THREE.Vector3(), Qh = new THREE.Quaternion(), Qa = new THREE.Quaternion();
@@ -161,7 +195,16 @@ function makeViewmodel(parent) {
       swX += (Math.max(-0.05, Math.min(0.05, dy * 0.6)) - swX) * Math.min(1, dt * 10); swY += (Math.max(-0.04, Math.min(0.04, (s.pitch - lastPitch) * 0.6)) - swY) * Math.min(1, dt * 10);
     }
     swX *= Math.max(0, 1 - dt * 6); swY *= Math.max(0, 1 - dt * 6);
-    sway.rotation.set(-swY + (s.kick || 0) * 0.035, -swX, 0); sway.position.z = (s.kick || 0) * 0.03; lastYaw = s.yaw; lastPitch = s.pitch;   // and kicks back at a shot (kick 1 → 0, mp.js)
+    // aiming through a red dot: the sway and the kick die away, and the window of the sight comes to the centre of
+    // the camera (the holder slides against the bone's place of this frame); the optic hides the arms entirely (mp.js)
+    adsT += ((s.ads || 0) - adsT) * Math.min(1, dt * 12);
+    const calm = 1 - 0.85 * adsT;
+    sway.rotation.set((-swY + (s.kick || 0) * 0.035) * calm, -swX * calm, 0); sway.position.z = (s.kick || 0) * 0.03 * calm; lastYaw = s.yaw; lastPitch = s.pitch;   // and kicks back at a shot (kick 1 → 0, mp.js)
+    const sc = scopes[cur];
+    if (sc && adsT > 0.001 && attachK[cur] === 'sight') {
+      T.set(-0.004, 0.072, 0.06); sc.localToWorld(T); holder.worldToLocal(T);   // the lens centre measured in item_sight.glb
+      holder.position.set(-T.x * adsT, -T.y * adsT, 0);
+    } else holder.position.set(0, 0, 0);
   }
   return {
     group: holder, update, act,
@@ -169,9 +212,9 @@ function makeViewmodel(parent) {
     get glow() { return glow; },   // the brightness of the flash now, for its light (mp.js)
     equip() { equipT = 0; },
     muzzle(v) { return (guns[cur] ? guns[cur].muzzle : muzzle).getWorldPosition(v); },
-    addWeapon, setWeapon,
+    addWeapon, setWeapon, attach,
     has: i => i === 0 || !!guns[i],   // the arms hold this weapon (its model has come)
   };
 }
 
-export { HOLD, akReady, akSettled, drawOver, loadAK, makeViewmodel, muzzleOf };
+export { HOLD, SIGHT_MOUNT, akReady, akSettled, drawOver, loadAK, makeViewmodel, muzzleOf };
