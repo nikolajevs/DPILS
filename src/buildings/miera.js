@@ -14,7 +14,7 @@ import { hb, pick, sh } from '../core/util.js';
    across the north-east end (u 60.1…73.3, v −19.4…−2.5), and between them the two bridges 5.8 m wide with the passages
    under them. The bridges are drawn here: the upper four storeys one window wide, the ground storey a wall with the
    opening, a ceiling and walls inside the passage, a lamp, and the bollards of the pedestrian one. The wings are the
-   brick block of series.js (k5), the entrances on the side of the service road (north-west), balconies towards the yard. */
+   grey pebble-finish panel walls with cream brick stair towers over the doors (Mapillary 2020), the entrances on the side of the service road (north-west), balconies towards the yard. */
 const UX = 0.684, UZ = -0.7295, VX = -UZ, VZ = UX, OX = 905, OZ = -247;
 const W = (u, v) => [OX + UX * u + VX * v, OZ + UZ * u + VZ * v];
 const FL = 5, FH = 2.8, YB = 1.0, H = YB + FL * FH, PASS_H = 3.1;
@@ -34,11 +34,20 @@ function rect(u0, u1, v0, v1, alongV) {   // a rectangle of the frame as the o o
 }
 
 function mieraBuild(T, id, seed) {
-  const G = T.m, D = T.d, tint = hb('#d6cbb5'), pc = sh(tint, 0.9), PLINTH = hb('#9a968f'), CONC = hb('#a9a69f'), DARK = hb('#2c3134');
-  const base = { tint, other: 'B', doors: true, wing: false };
+  const G = T.m, D = T.d, tint = hb('#d4ccbb'), pc = sh(tint, 0.9), PLINTH = hb('#9a968f'), CONC = hb('#a9a69f'), DARK = hb('#2c3134');
+  const base = { tint, other: 'B', doors: true, wing: false, mode: 2 };   // grey panels with the pebble finish (Mapillary 2020)
+  const CREAM = hb('#dcd2b8'), WIN = hb('#2b353d');
   // the wings: entrances on the north-west side (−v), the balconies towards the yard
-  for (const [u0, u1, v0, v1] of WINGS) serWing(T, rect(u0, u1, v0, v1), FL, 'k5', id, seed, { ...base, ent: -1 });
-  serWing(T, rect(...CROSS, true), FL, 'k5', id, seed, { ...base, ent: 1, wing: true });
+  const wings = [...WINGS.map(r => [rect(...r), -1, false]), [rect(...CROSS, true), 1, true]];
+  for (const [o, ent, one] of wings) {
+    serWing(T, o, FL, 'k5', id, seed, { ...base, ent, wing: one });
+    // the stairs: a tower of cream silicate brick over the door, rising past the roof, with the narrow stair windows
+    const nSec = one ? 1 : Math.max(2, Math.round(2 * o.a / SER.k5.W)), secW = 2 * o.a / nSec, nx = -o.uz * ent, nz = o.ux * ent;
+    for (let k = 0; k < nSec; k++) { const t = -o.a + (k + 0.5) * secW, cx = o.cx + o.ux * t + nx * o.b, cz = o.cz + o.uz * t + nz * o.b;
+      box(D.plain, cx + nx * 0.22, cz + nz * 0.22, o.ux, o.uz, 1.45, 0.22, 2.62, H + 0.35, CREAM);
+      for (const sd of [-1, 1]) box(D.plain, cx + o.ux * sd * 1.25 + nx * 0.2, cz + o.uz * sd * 1.25 + nz * 0.2, o.ux, o.uz, 0.2, 0.2, YB, 2.62, CREAM);
+      for (let f = 1; f < FL; f++) box(D.plain, cx + nx * 0.45, cz + nz * 0.45, o.ux, o.uz, 0.3, 0.02, YB + f * FH + 0.6, YB + f * FH + 1.6, WIN); }
+  }
   serFiller(T, rect(...STUB, true), FL, tint, id, seed);
   // the bridges
   const holes = [];
@@ -48,7 +57,7 @@ function mieraBuild(T, id, seed) {
       const vf = sv < 0 ? v0 : v1, nx = VX * sv, nz = VZ * sv, A = W(u0, vf), B = W(u1, vf), C0 = W(c - hw, vf), C1 = W(c + hw, vf);
       const q = (a, b, y0, y1, col) => polyA(G.plain, [[a[0], y0, a[1]], [b[0], y0, b[1]], [b[0], y1, b[1]], [a[0], y1, a[1]]], col, nx, 0, nz);
       q(A, C0, 0, wallH, sh(tint, 0.93)); q(C1, B, 0, wallH, sh(tint, 0.93)); q(C0, C1, PASS_H, wallH, sh(tint, 0.9));   // the piers and the lintel
-      serQuad(G.ser, A[0], A[1], B[0], B[1], wallH, H, nx, nz, tint, -0.04, -0.04 + (u1 - u0) / 12, 1, FL, SER.k5.cells.E, seed % 32, 0);
+      serQuad(G.ser, A[0], A[1], B[0], B[1], wallH, H, nx, nz, tint, -0.04, -0.04 + (u1 - u0) / 12, 1, FL, SER.k5.cells.E, seed % 32, 64);
       // a concrete frame round the opening
       for (const [a, b] of [[C0, C0], [C1, C1]]) box(D.plain, a[0] + nx * 0.04, a[1] + nz * 0.04, UX, UZ, 0.07, 0.04, 0, PASS_H, CONC);
       box(D.plain, W(c, vf)[0] + nx * 0.04, W(c, vf)[1] + nz * 0.04, UX, UZ, hw + 0.07, 0.04, PASS_H, PASS_H + 0.14, CONC);
