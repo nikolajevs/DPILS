@@ -40,7 +40,7 @@ function shotSound(ctx, out, w, vol = 1, d = 0, pan = 0) {
 function crackSound(ctx, out, vol = 1, pan = 0) {
   return snd(ctx, out, 'crack-' + (1 + Math.floor(Math.random() * 2)), { vol, pan, rate: 0.9 + Math.random() * 0.25 });
 }
-// a hit: kind 'body' | 'head' | 'wall' | 'ground'; mat tells what the bullet met — 'wood', 'stone', 'concrete',
+// a hit: kind 'body' | 'head' | 'wall' | 'ground' | 'metal' (a car); mat tells what the bullet met — 'wood', 'stone', 'concrete',
 // 'metal' for a wall, 'grass' or 'road' for the ground: the recorded thud gets a layer of the debris of that material
 function hitSound(ctx, out, kind, vol = 1, d = 0, pan = 0, mat = '') {
   let played = false;
@@ -50,6 +50,12 @@ function hitSound(ctx, out, kind, vol = 1, d = 0, pan = 0, mat = '') {
     played = snd(ctx, out, 'hit-ground', { vol, pan, lp: lpFor(d), delay: d / 340, rate: 0.9 + Math.random() * 0.2 });
     if (mat === 'grass') snd(ctx, out, pick(FAM['debris-soft']), { vol: vol * 0.5, pan, lp: 1200, delay: d / 340 + 0.01, rate: 0.9 + Math.random() * 0.2 });
     else if (mat === 'road') snd(ctx, out, pick(FAM['debris-concrete']), { vol: vol * 0.35, pan, lp: lpFor(d), delay: d / 340 + 0.01, rate: 0.95 + Math.random() * 0.15 });
+  } else if (kind === 'metal') {   // a bullet into a car: the ring of sheet metal, two pitches, now and then a whine off the body
+    const dl = d / 340;
+    played = snd(ctx, out, pick(FAM['debris-metal']), { vol: vol * 1.2, pan, lp: lpFor(d), delay: dl, rate: 0.85 + Math.random() * 0.4 });
+    snd(ctx, out, pick(FAM['debris-metal']), { vol: vol * 0.7, pan, lp: lpFor(d), delay: dl + 0.035, rate: 1.2 + Math.random() * 0.5 });
+    snd(ctx, out, 'hit-wall-' + (1 + Math.floor(Math.random() * 3)), { vol: vol * 0.35, pan, lp: Math.min(900, lpFor(d)), delay: dl, rate: 0.8 });
+    if (Math.random() < 0.45) snd(ctx, out, 'ricochet', { vol: vol * 0.6, pan, lp: lpFor(d), delay: dl + 0.03, rate: 0.85 + Math.random() * 0.3 });
   } else {
     played = snd(ctx, out, 'hit-wall-' + (1 + Math.floor(Math.random() * 3)), { vol, pan, lp: lpFor(d), delay: d / 340, rate: 0.9 + Math.random() * 0.2 });
     const fam = FAM['debris-' + (mat || 'concrete')] || FAM['debris-concrete'];

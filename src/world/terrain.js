@@ -4,7 +4,7 @@ import { due, pause, rest } from '../core/pause.js';
 import { fortGround } from '../fortress/ground-height.js';
 import { FORT, fss } from '../fortress/index.js';
 import { spwCap, spwGround } from '../landmarks/speedway.js';
-import { VB, vbGround, vbLocal } from './bridge-vienibas.js';
+import { VB, vbGround, vbLocal, vbP } from './bridge-vienibas.js';
 import { cutCarve, cutY } from './cutting.js';
 import { upPatch, upUnder } from './underpass.js';
 import { U, renderer, scene, terrUniforms } from '../render/renderer.js';
@@ -228,7 +228,13 @@ function bridgeY(x, z, dx = 0, dz = 0, prev = null) {
 // the other: vbLift is how far that line is above the ground at a point on the bridge, vbComp shifts its geometry
 // (the piers below the water line and the feet of the embankments stay on the ground)
 function vbLine(s) { const B = [VB.A[0] + VB.T[0] * VB.L, VB.A[1] + VB.T[1] * VB.L], h0 = terrainH(VB.A[0], VB.A[1]), h1 = terrainH(B[0], B[1]); return h0 + (h1 - h0) * Math.max(0, Math.min(1, s / VB.L)); }
-function vbLift(x, z) { if (!TERR.on) return 0; const [s, d] = vbLocal(x, z); if (s < -2 || s > VB.L + 2 || Math.abs(d) > VB.HW + 1) return 0; return vbLine(s) - terrainH(x, z); }
+// Before the Grīva end the street keeps to the ground (it falls 17 % to the deck): the lift grows over the last 4 m only
+// from nothing to the little that the ground lacks to the deck across the width, so a walker or a bus does not jump
+function vbLift(x, z) {
+  if (!TERR.on) return 0; const [s, d] = vbLocal(x, z); if (s < -4 || s > VB.L + 2 || Math.abs(d) > VB.HW + 1) return 0;
+  if (s < 0) { const q = vbP(0, d, 0), t = 1 + s / 4; return (vbLine(0) - terrainH(q[0], q[2])) * t * t * (3 - 2 * t); }
+  return vbLine(s) - terrainH(x, z);
+}
 function vbComp(x, y, z) { if (y <= WL + 0.5) return 0; const [s, d] = vbLocal(x, z); if (y <= 0.05 && Math.abs(d) > VB.HW + 0.01) return 0; return vbLine(s) - terrainH(x, z); }
 // the height a walker stands at above the level city
 const walkLift = (x, z, prev = null) => fortGround(x, z) + (upUnder(x, z, 0, 0, prev) ? 0 : vbGround(x, z) + vbLift(x, z)) + terrainH(x, z) + bridgeY(x, z, 0, 0, prev) + spwGround(x, z);   // under the end of Vienības tilts: on Daugavas iela

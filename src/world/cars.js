@@ -84,6 +84,24 @@ const carsReady = () => ready;
 // police model with white paint so its blue band and light bar keep their colour
 function addStaticCar(x, z, a, kind, col, police, y) { staticCars.push({ x, z, a, kind, col, police, y }); }
 
+/* ---------- the standing cars are solid: a walker is pushed out of them, a bullet stops in them ----------
+   Each car is a capsule along its axis (nose +x, so the axis runs (cos a, -sin a)), 0.95 m wide of it, 1.5 m tall. */
+const HL = [1.4, 1.15, 1.55];   // half-length of the axis by body kind (the same as the car parks use)
+function carAxis(c) { const hl = c.police ? 1.4 : HL[c.kind] ?? 1.4; return [c.x - Math.cos(c.a) * hl, c.z + Math.sin(c.a) * hl, c.x + Math.cos(c.a) * hl, c.z - Math.sin(c.a) * hl]; }
+function axisPoint(c, x, z) {   // the nearest point of the car's axis to (x, z) and the distance to it
+  const [ax, az, bx, bz] = carAxis(c), ex = bx - ax, ez = bz - az, L2 = ex * ex + ez * ez, s = Math.max(0, Math.min(1, ((x - ax) * ex + (z - az) * ez) / L2)), px = ax + ex * s, pz = az + ez * s;
+  return [px, pz, Math.hypot(x - px, z - pz)];
+}
+const nearCars = (x, z, f) => { for (const c of staticCars) if (Math.abs(c.x - x) < 6 && Math.abs(c.z - z) < 6) f(c); };
+function staticCarAt(x, y, z, g) {   // g: the terrain height at (x, z), given by the caller (this module must not import the terrain: the fortress imports this one)
+  let r = null;
+  nearCars(x, z, c => { if (r) return; const base = g + (c.y || 0); if (y < base || y > base + 1.5) return; const [px, pz, d] = axisPoint(c, x, z); if (d < 0.95) r = { px, pz, top: base + 1.5 }; });
+  return r;
+}
+function staticCarPush(P) {   // 0.45 m of the walker, 0.95 m of the car
+  nearCars(P.x, P.z, c => { const [px, pz, d] = axisPoint(c, P.x, P.z), R = 1.4; if (d >= R || d < 1e-5) return; const k = (R - d) / d; P.x += (P.x - px) * k; P.z += (P.z - pz) * k; });
+}
+
 async function placeStaticCars() {
   if (ready) await ready;
   if (!geos || !staticCars.length) return;
@@ -111,4 +129,4 @@ async function placeStaticCars() {
 }
 
 initCars();
-export { addStaticCar, carGeo, carMat, carsReady, initCars, placeStaticCars, policeGeometry };
+export { addStaticCar, carGeo, carMat, carsReady, initCars, placeStaticCars, policeGeometry, staticCarAt, staticCarPush };

@@ -1,7 +1,9 @@
 import { STATE } from '../core/state.js';
 import { COL, inBuilding, inWater, onRoad } from '../world/data.js';
 import { terrainH, walkLift } from '../world/terrain.js';
+import { upLow } from '../world/underpass.js';
 import { parkedAt, parkedPush } from '../landmarks/parking.js';
+import { staticCarPush } from '../world/cars.js';
 import { SET } from './settings.js';
 import { $, HX, HY } from '../core/env.js';
 
@@ -24,10 +26,11 @@ function teleport(x, z, yaw) {
   if (yaw != null) { P.yaw = yaw; P.pitch = P.fly ? -0.45 : 0; }
   STATE.hudTimer = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
 }
-function collide() {
-  for (let it = 0; it < 2; it++) { COL.near(P.x, P.z, 0.45, (id, d, px, pz) => {
+function collide(feet) {   // feet: the height the walker stands at; under the deck of Vienības tilts only the walls under it count, on it only the walls of the deck
+  for (let it = 0; it < 2; it++) { const low = upLow(P.x, P.z, feet); COL.near(P.x, P.z, 0.45, (id, d, px, pz) => {
+    const tg = COL.s[id * 6 + 5]; if (tg === 1 && low || tg === 2 && !low) return;
     const Rr = 0.45 + COL.s[id * 6 + 4]; if (d >= Rr || d < 1e-5) return; const k = (Rr - d) / d; P.x += (P.x - px) * k; P.z += (P.z - pz) * k;
-  }); parkedPush(P); }   // and the cars parked at this time of day
+  }); parkedPush(P); staticCarPush(P); }   // and the cars parked at this time of day and the standing ones
 }
 function step(dt) {
   let f = 0, s = 0;
@@ -45,9 +48,10 @@ function step(dt) {
     P.y = Math.max(terrainH(P.x, P.z) + 2, Math.min(1500, P.y));
   } else if (l > 0.01) {
     const sp = P.crouch ? JUMP.crouchSpeed : run ? 11 : 6; let dx = (-sy * f + cy * s) * sp * dt, dz = (-cy * f - sy * s) * sp * dt;   // 6 m/s by default: a brisk jog, the run clip plays at its own rate; Shift is the sprint
+    const feet = P.y - P.eye - P.up;   // where the feet stood at the last frame
     const n = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.3)); dx /= n; dz /= n;
     for (let i = 0; i < n; i++) {
-      const ox = P.x, oz = P.z; P.x += dx; P.z += dz; collide();
+      const ox = P.x, oz = P.z; P.x += dx; P.z += dz; collide(feet);
       if (inWater(P.x, P.z) && !onRoad(P.x, P.z, 1.2) && !(inWater(ox, oz) && !onRoad(ox, oz, 1.2))) { P.x = ox; P.z = oz; break; }
     }
     P.walked += sp * dt * l;
