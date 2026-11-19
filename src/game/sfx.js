@@ -84,4 +84,14 @@ function boomSound(ctx, out, vol = 1, d = 0, pan = 0, surf = 'ground') {
   }
   return true;
 }
-export { boomSound, crackSound, hitSound, loadSounds, shotSound, stepSound };
+// a grenade touching down: the clink of its body on what it met — a dull tick and a thud on the earth, a sharper ring on
+// a roof or a wall. vol carries the impact speed and the distance; the sound arrives at the speed of sound (d / 340).
+function nadeBounce(ctx, out, kind = 'ground', vol = 1, d = 0, pan = 0) {
+  const delay = d / 340, lp = lpFor(d);
+  const metal = kind !== 'ground';
+  let played = snd(ctx, out, pick(FAM[metal ? 'debris-metal' : 'debris-concrete']), { vol: vol * (metal ? 1 : 0.7), pan, lp, delay, rate: (metal ? 1.1 : 0.85) + Math.random() * 0.3 });
+  snd(ctx, out, pick(FAM[metal ? 'debris-stone' : 'debris-soft']), { vol: vol * 0.5, pan, lp: Math.min(lp, metal ? 4000 : 1200), delay: delay + 0.012, rate: 0.8 + Math.random() * 0.2 });
+  if (metal && Math.random() < 0.5) snd(ctx, out, pick(FAM['debris-metal']), { vol: vol * 0.4, pan, lp, delay: delay + 0.05, rate: 1.4 + Math.random() * 0.4 });
+  return played;
+}
+export { boomSound, crackSound, hitSound, loadSounds, nadeBounce, shotSound, stepSound };

@@ -6,6 +6,7 @@ import { worldSpace } from '../render/world-space.js';
 import { reduceMotion } from '../core/env.js';
 import { fbm } from './muzzle.js';
 import { prop, onProps } from './props.js';
+import { makePhysics } from '../../server/physics.mjs';
 
 /* ---------- grenades ----------
    The server flies every grenade and says where and when it goes off (server/game.mjs, damage and all). Each page
@@ -17,17 +18,12 @@ const NADE = { g: 18 };
 const NADE_THROW = { min: 6, max: 24, loft: 0.17, chargeMs: 1100 };
 const list = new Map();
 const GEO = new THREE.SphereGeometry(0.1, 10, 8), MAT = worldSpace(new THREE.MeshLambertMaterial({ color: 0x3d5a2a }));
-function stepNade(n, dt) {
-  const [px, py, pz] = n.p; n.v[1] -= NADE.g * dt;
-  let x = px + n.v[0] * dt, y = py + n.v[1] * dt, z = pz + n.v[2] * dt;
-  const b = buildingAt(x, z), gr = terrainH(x, z);
-  if (b) {
-    const top = gr + (b.top || 12);
-    if (py >= top - 0.05) { if (y < top + 0.1) { y = top + 0.1; if (n.v[1] < 0) n.v[1] *= -0.35; n.v[0] *= 0.8; n.v[2] *= 0.8; } }
-    else if (!buildingAt(px, z)) { x = px; n.v[0] *= -0.4; } else if (!buildingAt(x, pz)) { z = pz; n.v[2] *= -0.4; } else { x = px; z = pz; n.v[0] *= -0.4; n.v[2] *= -0.4; }
-  } else if (y < gr + 0.12) { y = gr + 0.12; if (n.v[1] < 0) n.v[1] *= -0.4; n.v[0] *= 0.7; n.v[2] *= 0.7; if (Math.abs(n.v[1]) < 0.8) n.v[1] = 0; }
-  n.p = [x, y, z];
-}
+// the flight is the server's own step (server/physics.mjs), so the copy, the aim arc and the server never drift apart;
+// it also reports each touch (n.bounce) for the clink, and rolls a settled grenade downhill on a slope
+const stepNade = (() => { const s = makePhysics(buildingAt, terrainH).stepNade; return (n, dt) => s(n, dt, NADE.g); })();
+let bounceCb = null;
+const onNadeBounce = cb => { bounceCb = cb; };   // mp.js plays the clink of a touch it can hear
+const liveNades = () => [...list.values()].map(n => ({ p: n.p, age: n.age, by: n.by }));   // for the danger indicator
 /* модель гранаты посажена дном в ноль (так она стоит на карте); в полёте центруем её вокруг точки сервера. На карте она
    вдвое крупнее настоящей, чтобы её было видно; в полёте — почти настоящего размера, как в руке (viewmodel.js) */
 const FLY_S = 0.55, FLY_LOW = 0.06;   // the scale in flight; how far the drawn middle sits under the server's point (it keeps 12 cm over the ground)
@@ -122,7 +118,7 @@ function addNade(m, from = null) {
   const mesh = model || new THREE.Mesh(GEO, MAT); if (!model) mesh.scale.setScalar(FLY_S); mesh.position.set(m.p[0], m.p[1], m.p[2]);
   mesh.quaternion.setFromAxisAngle(V.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize(), rnd(0, 6.283)); scene.add(mesh);
   const trail = trails.find(t => !t.used) || null; if (trail) trail.used = true;
-  list.set(m.id, { mesh, model: !!model, p: m.p.slice(), v: m.v.slice(), age: 0, w: rnd(10, 15), trail, hist: [], ta: 0, off: from ? [from.x - m.p[0], from.y - m.p[1], from.z - m.p[2]] : null });
+  list.set(m.id, { mesh, model: !!model, p: m.p.slice(), v: m.v.slice(), age: 0, w: rnd(10, 15), trail, hist: [], ta: 0, fz: 0, by: m.by, off: from ? [from.x - m.p[0], from.y - m.p[1], from.z - m.p[2]] : null });
   popSpoon(from ? [from.x, from.y, from.z] : m.p, m.v);
 }
 onProps(() => {
@@ -373,6 +369,12 @@ function tickNades(dt) {
       n.mesh.quaternion.premultiply(QT.setFromAxisAngle(TA.set(n.v[2] / vh, 0, -n.v[0] / vh), w * dt));
     }
     drawTrail(n, dt);
+    if (n.bounce && bounceCb) bounceCb(n.p, n.bounce);
+    if (n.age < 2.5 && (n.fz -= dt) <= 0) {   // the fuse: a wisp of smoke and now and then a spark, so it reads at night too
+      n.fz = 0.07;
+      emit(SMOKE, { x: n.p[0], y: n.p[1] + 0.05, z: n.p[2], vx: rnd(-0.2, 0.2), vy: rnd(0.3, 0.7), vz: rnd(-0.2, 0.2), drag: 2, rise: 0.4, wind: 1, life: rnd(0.4, 0.7), s0: 0.05, s1: rnd(0.18, 0.3), roll: rnd(0, 6.28), c0: [0.8, 0.8, 0.78], c1: [0.7, 0.7, 0.68], op: 0.3, fin: 0.05, fout: 0.3, frame: (Math.random() * 3) | 0 });
+      if (Math.random() < 0.3) emit(FIRE, { x: n.p[0], y: n.p[1] + 0.05, z: n.p[2], vx: rnd(-1, 1), vy: rnd(0.5, 2), vz: rnd(-1, 1), grav: -9.8, life: rnd(0.05, 0.12), s0: 0.03, s1: 0.05, c0: [4, 2.6, 1], c1: [2, 0.8, 0.2], fout: 0.2, frame: 2 });
+    }
     if (n.age > 4) { scene.remove(n.mesh); freeTrail(n.trail); list.delete(id); }   // the server's blast message got lost
   }
   tickSpoons(dt);
@@ -561,4 +563,4 @@ function nadeSamples() {
   return [flyNade() || new THREE.Mesh(GEO, MAT), cloudSample(SMOKE), cloudSample(FIRE), new THREE.Mesh(scorchGeo, scorchMat()), ...aim, new THREE.Mesh(trails[0].geo, trailMat), new THREE.Mesh(spoonLong, spoonMat)];
 }
 
-export { nadeSamples, addNade, boomNade, blastGlow, camShake, clearBlasts, clearNades, tickNades, NADE_THROW, showNadePreview, hideNadePreview };
+export { nadeSamples, addNade, boomNade, blastGlow, camShake, clearBlasts, clearNades, tickNades, onNadeBounce, liveNades, NADE_THROW, showNadePreview, hideNadePreview };

@@ -223,6 +223,35 @@ console.log('server rules (createGame, controlled clock):');
   ok(makePhysics(() => null, () => 0).freePath([0, 1.7, 0], [0, 0, -1], 160) === 160, 'freePath: an open field stays open');
 }
 
+/* ---------- 2b. the grenade step (stepNade): bounces, slopes, rolling, the touch events ---------- */
+console.log('grenade physics (stepNade):');
+{
+  const run = (phys, n, steps) => { let ev = null; for (let i = 0; i < steps; i++) { phys.stepNade(n, 1 / 30, 18); if (n.bounce && !ev) ev = n.bounce; } return ev; };
+  // flat: it bounces, reports the touch, and settles on the ground as before
+  const F = makePhysics(() => null, () => 0);
+  const f = { p: [0, 3, 0], v: [2, 0, 0] };
+  const fe = run(F, f, 240);
+  ok(fe && fe.kind === 'ground', 'flat: the touch reports a ground bounce', JSON.stringify(fe));
+  ok(f.v[1] === 0 && Math.abs(f.v[0]) < 0.05 && near(f.p[1], 0.12, 0.01), 'flat: it settles on the ground', JSON.stringify(f.p));
+  // a slope: the bounce reflects about the normal and the settled grenade rolls downhill
+  const S = makePhysics(() => null, (x) => 0.5 * x);
+  const s = { p: [2, 3, 2], v: [0, 0, 0] };
+  const se = run(S, s, 90);
+  ok(se && se.kind === 'ground', 'slope: the touch reports a ground bounce', JSON.stringify(se));
+  ok(s.p[0] < 2 && s.v[0] <= 0.001, 'slope: it bounces and rolls downhill (-x)', JSON.stringify(s.p));
+  // a wall turns the way back and reports a wall touch
+  const W = makePhysics((x, z) => (x > 1 && x < 3 && z > -1 && z < 1) ? { top: 12 } : null, () => 0);
+  const w = { p: [0, 1, 0], v: [10, 0, 0] };
+  const we = run(W, w, 30);
+  ok(we && we.kind === 'wall', 'wall: the touch reports a wall', JSON.stringify(we));
+  ok(w.v[0] < 0, 'wall: the way is turned back');
+  // a roof reports a roof touch
+  const R = makePhysics((x, z) => (Math.abs(x) < 2 && Math.abs(z) < 2) ? { top: 12 } : null, () => 0);
+  const r = { p: [0, 13, 0], v: [0, -5, 0] };
+  const re = run(R, r, 30);
+  ok(re && re.kind === 'roof', 'roof: the touch reports a roof', JSON.stringify(re));
+}
+
 /* ---------- 3. a real bot fight ---------- */
 console.log('bot fight (8 hard bots, 12 s of real time):');
 {
