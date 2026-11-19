@@ -17,6 +17,7 @@ import { terrainH } from './terrain.js';   // a cycle: used at run time only
    (src/landmarks/railway-bridge.js). */
 const RP = { ok: false };
 const HALF = 4.0, SLOPE = 1.5, GRADE = 0.07, KNEE = 12, FLAT = 12, RMAX = 100, CLEAR = 4.5, BEAM = 1.3;
+const WALL = 0.5;   // s of the retaining wall under the start of the beam, towards the embankment
 const BEAM_S = 12;   // the length of the concrete beam (EDGE in src/landmarks/railway-bridge.js)
 
 function rbPatch() {
@@ -47,7 +48,9 @@ function rbPatch() {
     const x = x0 + i, z = z0 + j, [dist, px, pz] = near(x, z), r = Math.hypot(px - cx, pz - cz), H = terrainH(x, z), Hc = terrainH(px, pz);
     const rl = Math.min(Hc, Rb + GRADE * knee(r - FLAT));   // the level of the road at the nearest point
     const e = Math.max(0, dist - HALF), t = Math.min(H, rl + e / SLOPE);
-    d[j * nx + i] = Math.min(0, t - H);
+    // the ground at the end of the bridge keeps its height (the deck line reads it, lmRailBridge and bridgeOf): the cut stops
+    // at a wall under the start of the beam
+    d[j * nx + i] = rbLocal(x, z)[0] < WALL ? 0 : Math.min(0, t - H);
   }
   RP.ok = true; RP.level = Rb; RP.cross = [cx, cz, sc];
   return { x0, z0, s: 1, nx, nz, d };
