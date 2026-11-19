@@ -116,8 +116,8 @@ function treeGeo(type) {
   let capY = 5;
   if (type === 0) {
     // Scots pine: a clean bare bole, grey-brown below and orange above (a forest pine self-prunes its
-    // lower branches flush, no stubs stick out), and an open crown of separate needle pads on spreading
-    // limbs — sky between the layers, not one solid ball.
+    // lower branches flush, no stubs stick out), and an open crown of separate needle pads — sky between
+    // the layers, not one solid ball. The limbs are hidden under needle strands, no bare sticks show.
     const bark = y => { const t = Math.min(1, Math.max(0, (y - 2.5) / 8.5)), e = t * t * (3 - 2 * t); return [93 + 83 * e, 74 + 37 * e, 58 + 8 * e]; };   // grey-brown below, orange above, gradual
     limb(0, 0, 0, 0.06, 4.2, 0.03, 0.28, 0.22, bark, 7); limb(0.06, 4.2, 0.03, 0.12, 7.6, 0.07, 0.22, 0.15, bark, 7);
     limb(0.12, 7.6, 0.07, 0.18, 12.2, 0.12, 0.15, 0.05, bark, 7);
@@ -132,7 +132,10 @@ function treeGeo(type) {
     for (let i = 0; i < 6; i++) {
       const a = i * 2.39996 + hash(i * 17 + 2) * 0.7, y = 8.6 + i * 0.62, R = 2.5 - i * 0.28 + hash(i * 13 + 4) * 0.45, rise = 0.45 + hash(i * 7 + 6) * 0.4;
       const tx = Math.cos(a) * R, tz = Math.sin(a) * R, ty = y + rise;
-      limb(0.14, y, 0.08, tx, ty, tz, 0.07, 0.025, '#8d5a3a', 5);
+      for (const t of [0.3, 0.55, 0.8]) {   // the limb as a strand of needles, not a bare orange stick
+        const jx = (hash(seq * 3 + 7) - 0.5) * 0.14, jz = (hash(seq * 5 + 9) - 0.5) * 0.14;
+        card(0.14 + (tx - 0.14) * t + jx, y + (ty - y) * t + 0.08, 0.08 + (tz - 0.08) * t + jz, 0.55 + 0.2 * t, Math.cos(a) * 0.3, 0.9, Math.sin(a) * 0.3, 0.6 + 0.2 * t, 2);
+      }
       pad(tx, ty + 0.25, tz, 1.1 + (5 - i) * 0.11, 15, 0.85, i / 5);
     }
     pad(0.15, 12.5, 0.1, 0.85, 9, 0.75, 1); pad(0.1, 13.1, 0.05, 0.55, 6, 0.65, 1);
