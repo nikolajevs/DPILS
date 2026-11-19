@@ -504,7 +504,7 @@ console.log('fall damage (fall):');
   const g = createGame({ world: flatWorld(() => null, cliff), arena: { cx: 0, cz: 0, r: 60, bases: [base(0, -25, 4), base(0, 25, 4)] }, now: () => clock, name: 'fallbot' });
   const bot = g.addBot('easy');
   bot.x = -2; bot.z = 0; bot.y = 11.7; bot.fallTop = 11.7;
-  bot.bot.path = [[5, 0]]; bot.bot.pi = 0; bot.bot.wpAt = clock;   // straight towards the edge and over it
+  bot.bot.path = [[30, 0]]; bot.bot.pi = 0; bot.bot.wpAt = clock;   // far past the edge: the goal is not reached mid-fall (a reached goal picks a random new one)
   for (let i = 0; i < 60; i++) { clock += 50; g.stepBots(0.05); }
   ok(bot.alive && bot.hp === 44, 'the bot walked off the 10 m edge, fell and took 56', String(bot.hp));
   ok(Math.abs(bot.y - 1.7) < 0.01, 'the bot stands on the ground below the edge', String(bot.y));
