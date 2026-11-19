@@ -144,7 +144,7 @@ function lmVienibas(K) {
       for (const h of [0.42, 1.4]) lmBar(G, P(a, d, y(a) + h), P(b, d, y(b) + h), h > 1 ? 0.09 : 0.05, RAILC);
       lmBar(G, P(a, d, y(a) + 0.3), P(a, d, y(a) + 1.45), 0.08, RAILC);
       for (let s = a + 0.16; s < b - 0.05; s += 0.16) lmBar(G, P(s, d, y(s) + 0.42), P(s, d, y(s) + 1.4), 0.025, RAILC);
-      COL.add(...(([x0, , z0]) => [x0, z0])(P(a, d, 0)), ...(([x1, , z1]) => [x1, z1])(P(b, d, 0)), 0, 0); }
+      COL.add(...(([x0, , z0]) => [x0, z0])(P(a, d, 0)), ...(([x1, , z1]) => [x1, z1])(P(b, d, 0)), 0, 1); }   // tag 1: a wall of the deck, no obstacle for one walking under it
     lmBar(G, P(L, d, 0.3), P(L, d, 1.45), 0.08, RAILC);
     const dg = sg * 5.45; deckBox(G, 2, L - 2, dg - 0.04, dg + 0.04, 0.5, 0.82, hb('#a2a7aa')); for (let s = 2; s < L - 1; s += 4) lmBar(G, P(s, dg + sg * 0.1, y(s) + 0.18), P(s, dg + sg * 0.1, y(s) + 0.8), 0.1, hb('#8e9396')); }
   // ---- lamp posts: a single arm with a cobra head over the road, an openwork lyre on the pole
