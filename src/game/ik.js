@@ -6,9 +6,11 @@ import * as THREE from 'three';
    A bone is turned about its own joint by a turn given in that frame; reach bends a chain shoulder–elbow–wrist so that
    the wrist lands on a target, the elbow in the plane of the shoulder, the target and a pole (by default the elbow
    where the clip had it, so the arm keeps its bend). The bones passed may have twist bones between them (the arms of
-   viewmodel.js do): only the first two are turned. */
-const IM = new THREE.Matrix4(), MA = new THREE.Matrix4(), MB = new THREE.Matrix4(), QA = new THREE.Quaternion(), QB = new THREE.Quaternion(), QC = new THREE.Quaternion();
-const VA = new THREE.Vector3(), VB = new THREE.Vector3(), VC = new THREE.Vector3(), VD = new THREE.Vector3(), VE = new THREE.Vector3(), VF = new THREE.Vector3(), VS = new THREE.Vector3(), VT = new THREE.Vector3(), VP = new THREE.Vector3();
+   viewmodel.js do): only the first two are turned. A target beyond the arm's length may draw the shoulder after it, up
+   to give metres (a shooter brings the left shoulder forward to reach far out along a long gun); the caller puts the
+   shoulder back before the next frame's clip. */
+const IM = new THREE.Matrix4(), MA = new THREE.Matrix4(), MB = new THREE.Matrix4(), QA = new THREE.Quaternion(), QB = new THREE.Quaternion(), QC = new THREE.Quaternion(), M3 = new THREE.Matrix3();
+const VA = new THREE.Vector3(), VB = new THREE.Vector3(), VC = new THREE.Vector3(), VD = new THREE.Vector3(), VE = new THREE.Vector3(), VF = new THREE.Vector3(), VS = new THREE.Vector3(), VT = new THREE.Vector3(), VP = new THREE.Vector3(), VG = new THREE.Vector3();
 const F = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()], FX = new THREE.Vector3(), FY = new THREE.Vector3(), FZ = new THREE.Vector3();
 function setFrame(ref) { ref.updateMatrixWorld(true); IM.copy(ref.matrixWorld).invert(); }
 const at = (o, v) => v.setFromMatrixPosition(o.matrixWorld).applyMatrix4(IM);
@@ -18,9 +20,14 @@ function turnBy(o, q) {   // turn the bone o by q (in the frame) about its own j
   turnOf(o, QB); turnOf(o.parent, QC); QB.premultiply(q);
   o.quaternion.copy(QC.invert().multiply(QB)); o.updateMatrixWorld(true);
 }
-function reach(arm, T, pole) {
+function moveBy(o, d) {   // move the bone o by d (in the frame), its turn kept
+  relMatrix(o.parent, MA).invert(); o.position.add(VG.copy(d).applyMatrix3(M3.setFromMatrix4(MA))); o.updateMatrixWorld(true);
+}
+function reach(arm, T, pole, give = 0) {
   const [a, b, c] = arm, A = at(a, VA), B = at(b, VB), C = at(c, VC), l1 = A.distanceTo(B), l2 = B.distanceTo(C);
   VD.subVectors(T, A); let d = VD.length(); if (d < 1e-5 || l1 < 1e-5 || l2 < 1e-5) return; VD.divideScalar(d);
+  const over = Math.min(give, d - (l1 + l2) * 0.995);   // out of reach: the shoulder comes after the hand
+  if (over > 0) { moveBy(a, VS.copy(VD).multiplyScalar(over)); at(a, A); at(b, B); at(c, C); d -= over; }
   d = Math.min(Math.max(d, Math.abs(l1 - l2) + 1e-4), (l1 + l2) * 0.999);
   const ca = Math.min(1, Math.max(-1, (l1 * l1 + d * d - l2 * l2) / (2 * l1 * d))), sa = Math.sqrt(1 - ca * ca);
   if (pole) VE.copy(pole); else VE.subVectors(B, A);   // no pole: the elbow stays on the side where the clip bent it
