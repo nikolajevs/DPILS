@@ -14,6 +14,7 @@ import { LEVELS, botName, createBrain } from './bots.mjs';
 const TEAMS = ['Красные', 'Синие'], HX = 5200, HY = 4200;   // bounds a bit wider than the city
 const num = (v, lim) => (typeof v === 'number' && isFinite(v) ? Math.max(-lim, Math.min(lim, v)) : 0);
 const okWeapon = w => Number.isInteger(w) && w >= 0 && w < WEAPONS.length;
+export const MUZZLE = 0.6;   // the barrel stands this far along the ray from the eye; a wall nearer rests the muzzle on it (keep src/game/mp.js in step)
 
 export function createGame(opts) {
   const world = opts.world, FFA = opts.mode === 'ffa', MODE = FFA ? 'ffa' : 'team', WIN = opts.win || (FFA ? 20 : 30), NAME = opts.name || 'Даугавпилс', MAX = opts.maxPlayers || R.maxPlayers;
@@ -159,8 +160,10 @@ export function createGame(opts) {
     }
   }
   // a shot of p with weapon wi: rays [[dx, dy, dz], ...] (the page no longer claims a hit — the bullet judges for itself);
-  // lagMs: how far back the targets are looked at along the flight (0 for a bot). The 'shot' message carries the wall
-  // distance and a bullet id per ray so the page can fly its tracer and cut it at the body when 'bhit' comes.
+  // lagMs: how far back the targets are looked at along the flight (0 for a bot). The ray leaves the barrel, MUZZLE along
+  // the view, not the eye: a wall nearer than that rests the muzzle on it and the shot dies at the face. The 'shot'
+  // message carries the eye, the wall distance from the barrel and a bullet id per ray so the page can fly its tracer
+  // from the muzzle and cut it at the body when 'bhit' comes.
   function shoot(p, wi, rays, lagMs) {
     const W = WEAPONS[wi], t0 = now(); if (!Array.isArray(rays) || !rays.length || !p.alive) return;
     if (t0 - p.lastShot < W.gapMs) return;
@@ -168,22 +171,23 @@ export function createGame(opts) {
     if (p.mag[wi] <= 0) { if (p.bot) beginReload(p, wi, t0); return; }   // a bot reloads by itself; a player asks with 'reload'
     p.mag[wi]--; p.lastShot = t0;
     advanceBullets(t0);   // land the bullets already in the air before loosing new ones
-    const o = [p.x, p.y, p.z], out = [];
+    const eye = [p.x, p.y, p.z], out = [];
     // every living enemy as the shooter saw them at the click (lag-compensated), frozen for the whole flight: the page
     // aims at the same past, and a claim that drifted (lag, a crouch) must not cost a hit that was really there
     const foes = roundOver ? [] : [...players.values()].filter(v => v !== p && v.alive && (FFA || v.team !== p.team) && t0 > v.protectUntil);
-    const shot = { by: p.id, w: wi, o, hit: false, hits: new Map(), pending: 0, poses: foes.map(v => ({ v, pose: poseAt(v, t0 - lagMs) })) };
+    const shot = { by: p.id, w: wi, o: eye, hit: false, hits: new Map(), pending: 0, poses: foes.map(v => ({ v, pose: poseAt(v, t0 - lagMs) })) };
     for (const ray of rays.slice(0, W.pellets)) {   // a rifle shot is one ray, a shotgun shot is up to eight pellets
       if (!Array.isArray(ray)) continue;
       const d = [num(ray[0], 1), num(ray[1], 1), num(ray[2], 1)], l = Math.hypot(...d); if (l < 0.5) continue; d.forEach((x, i) => d[i] = x / l);
-      const wall = world.freePath(o, d, W.range), bid = nextBid++;
+      const wallEye = world.freePath(eye, d, W.range), mz = Math.min(MUZZLE, wallEye);   // pressed to a wall: the barrel rests on it, the flight is zero
+      const o = [eye[0] + d[0] * mz, eye[1] + d[1] * mz, eye[2] + d[2] * mz], wall = wallEye - mz, bid = nextBid++;
       bullets.set(bid, { bid, by: p.id, w: wi, o, d, speed: W.vel || 560, last: t0, dist: 0, max: wall, shot });
       shot.pending++;
       out.push([+d[0].toFixed(4), +d[1].toFixed(4), +d[2].toFixed(4), +wall.toFixed(1), bid]);
     }
     if (!out.length) return;
     p.st.shots++; if (p.prof) p.prof.add('shots');
-    all({ t: 'shot', id: p.id, w: wi, o, rays: out });
+    all({ t: 'shot', id: p.id, w: wi, o: eye, rays: out });
   }
   function throwNade(p, u, sp = NADE.speed) {
     const t0 = now(); if (!p.alive || p.nades <= 0 || t0 - p.lastNade < NADE.cooldownMs || roundOver) return;

@@ -46,6 +46,7 @@ const WEAPONS = [
 ];
 // what the weapons of the table do not say themselves: the kick of one shot, how loud, how far it is heard, the size of the gun in your hands
 const FEEL = { kick: 0.0035, vol: 0.35, hear: 220, vm: 0.55 };
+const MUZZLE = 0.6;   // the barrel this far along the ray from the eye (keep server/game.mjs in step): the tracer leaves the gun, not the face
 // the damage of one pellet to the body and to the head (keep server/combat.mjs in step); the inventory panel shows it
 const DMG = [
   { dmg: 22, head: 40 },
@@ -75,8 +76,10 @@ const remotes = new Map();   // id → { name, group, buf: [{ t, x, y, z, yaw, p
 const DEFAULT_SERVER = '';   // e.g. 'wss://dpils-game.example.com'; empty: ?server=…, the saved address, or localhost
 
 /* ---------- geometry ---------- */
-// how far the shot flies before the ground or a roof line stops it; the coarse 1.5 m scan is bisected to ~3 mm
-// (the same refinement impacts.js uses for the mark), so the tracer stops at the wall, not up to 1.5 m inside it
+// how far the shot flies before the ground or a roof line stops it; the scan starts at 0.3 m (a wall the shooter leans
+// on stops the shot too) and is bisected to ~3 mm (the same refinement impacts.js uses for the mark), so the tracer
+// stops at the wall, not up to 1.5 m inside it. The barrel stands MUZZLE along the ray: fire/otherShot start the tracer
+// there, and a wall nearer than the barrel rests the muzzle on it (a zero-length flight, the mark at the face).
 function freePath(o, d, len, cars = false) {   // cars: parked and standing cars stop it too (shots only; sight lines look over them)
   const wall = wallPath(o, d, len);
   return cars ? carPath(o, d, wall) : wall;
@@ -87,13 +90,19 @@ function wallPath(o, d, len) {
     if (y < g) return true;
     const b = buildingAt(x, z); return !!(b && y < g + (b.top || 12));
   };
-  for (let t = 1.5; t < len; t += 1.5) {
-    if (!block(t)) continue;
-    let lo = Math.max(0.2, t - 1.5), hi = t;
+  if (block(0)) return 0;
+  for (let t = 0.3, step = 0.5; t < len; t += step) {
+    if (!block(t)) { if (t >= 3) step = 1.5; continue; }
+    let lo = Math.max(0, t - step), hi = t;
     for (let i = 0; i < 9; i++) { const m = (lo + hi) / 2; if (block(m)) hi = m; else lo = m; }
     return hi;
   }
   return len;
+}
+// the tracer's origin: MUZZLE along the ray from the eye, or the wall face when the barrel rests on it
+function muzzleAt(eye, d, wallEye) {
+  const mz = Math.min(MUZZLE, wallEye);
+  return { o: [eye[0] + d[0] * mz, eye[1] + d[1] * mz, eye[2] + d[2] * mz], mz };
 }
 const aim = (yaw = P.yaw, pitch = P.pitch) => { const cp = Math.cos(pitch); return [-Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp]; };
 // how wide the shots scatter now: a little always, more when walking or running, more after each shot of a burst
@@ -329,13 +338,16 @@ function otherShot(m) {
   }
   let heard = 0, crack = false;
   for (const r of m.rays) {
-    const len = carPath(m.o, r, r[3]);   // the server does not know the cars: its bullet stops in one here too
-    const kind = len < wf.range - 0.5 ? 'surface' : 'air';   // a body hit arrives as 'bhit' and cuts the tracer there
-    const cb = kind === 'surface' && heard < 2 ? (heard++, () => wallHit(m.o, r, len)) : null;   // of a shotgun's pellets, two are heard
-    bindTracer(r[4], tracerShot(m.o, r, len, m.w, kind, 0xffb060, cb));
+    // the server's length starts at the barrel; a zero length means the muzzle rested on a wall nearer than MUZZLE
+    const mz = r[3] > 0 ? MUZZLE : Math.min(MUZZLE, wallPath(m.o, r, MUZZLE + 0.5));
+    const o = [m.o[0] + r[0] * mz, m.o[1] + r[1] * mz, m.o[2] + r[2] * mz];
+    const len = carPath(o, r, r[3]);   // the server does not know the cars: its bullet stops in one here too
+    const kind = mz + len < wf.range - 0.5 ? 'surface' : 'air';   // a body hit arrives as 'bhit' and cuts the tracer there
+    const cb = kind === 'surface' && heard < 2 ? (heard++, () => wallHit(o, r, len)) : null;   // of a shotgun's pellets, two are heard
+    bindTracer(r[4], tracerShot(o, r, len, m.w, kind, 0xffb060, cb));
     if (crack || MP.dead) continue;
     const t = (P.x - m.o[0]) * r[0] + (P.y - m.o[1]) * r[1] + (P.z - m.o[2]) * r[2];   // the point of the bullet's path nearest to your head
-    if (t < 6 || t > len + 1) continue;
+    if (t < 6 || t > mz + len + 1) continue;
     const cx = m.o[0] + r[0] * t, cy = m.o[1] + r[1] * t, cz = m.o[2] + r[2] * t, near = Math.hypot(cx - P.x, cy - P.y, cz - P.z);
     if (near < 2.5) { crack = true; try { crackSound(ac(), actx.master, 0.25 + 0.5 * (1 - near / 2.5), spot(cx, cy, cz).pan); } catch (e) {} }
   }
@@ -356,12 +368,13 @@ function fire(now) {
   if (MP.reloadAt) return;
   if (MP.ammo[MP.weapon] <= 0) { reload(now); return; }
   statEvent('shot', {}, !!MP.local); MP.lastShot = now; MP.ammo[MP.weapon]--; MP.kick = 1;
-  const o = [P.x, P.y, P.z], rays = [], mine = [], yaw0 = P.yaw, pitch0 = P.pitch;   // the rays fly where the crosshair stood: the recoil kicks the view only after they are computed — kicking first lifted every sniper shot 0.03 rad (1.7°) over the target, a clean miss past ~40 m
+  const eye = [P.x, P.y, P.z], rays = [], mine = [], yaw0 = P.yaw, pitch0 = P.pitch;   // the rays fly where the crosshair stood: the recoil kicks the view only after they are computed — kicking first lifted every sniper shot 0.03 rad (1.7°) over the target, a clean miss past ~40 m
   for (let i = 0; i < w.pellets; i++) {
     const sp = spreadNow(), ang = Math.random() * 6.283, rad = sp * Math.sqrt(Math.random());
-    const d = aim(yaw0 + Math.cos(ang) * rad, pitch0 + Math.sin(ang) * rad), clear = freePath(o, d, w.range, true);
+    const d = aim(yaw0 + Math.cos(ang) * rad, pitch0 + Math.sin(ang) * rad);
+    const wallEye = wallPath(eye, d, w.range), { o, mz } = muzzleAt(eye, d, wallEye), clear = carPath(o, d, wallEye - mz);
     rays.push([+d[0].toFixed(4), +d[1].toFixed(4), +d[2].toFixed(4)]);   // the server judges the hit itself, when the bullet arrives
-    const kind = clear < w.range - 0.5 ? 'surface' : 'air';   // a body, if the bullet finds one, comes back as 'bhit'
+    const kind = mz + clear < w.range - 0.5 ? 'surface' : 'air';   // a body, if the bullet finds one, comes back as 'bhit'
     mine.push(tracerShot(o, d, clear, MP.weapon, kind, 0xffe9a0, kind === 'surface' && i < 2 ? () => wallHit(o, d, clear) : null));   // the mark and the hit sound appear when the bullet arrives (of a shotgun's pellets, two are heard)
   }
   ownTracers = mine;
