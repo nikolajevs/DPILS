@@ -12,7 +12,7 @@ import { FLASH_SIZE, makeFlash } from './muzzle.js';
 import { SET, keyName, onChange } from './settings.js';
 import { firstGames } from './help.js';
 import { rememberServer } from '../ui/servers.js';
-import { addNade, boomNade, clearNades, nadeSamples, tickNades, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
+import { addNade, blastGlow, boomNade, clearBlasts, clearNades, nadeSamples, tickNades, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
 import { KINDS, SLOT_SVG, bindInv, setItems, itemBack, itemTook, tickItems, renderInv, invTick, closeInv, toggleInv } from './inventory.js';
 import { terrainH } from '../world/terrain.js';
 import { camera, canvas, renderer, scene } from '../render/renderer.js';
@@ -274,10 +274,26 @@ const near = { x: 0, y: 0, z: 0, t: 9, pow: 0 };   // the last flash of another 
 const MV = new THREE.Vector3();
 let actx = null;
 function ac() {   // the audio context of the game sounds, with one volume knob (the settings)
-  if (!actx) { actx = new (window.AudioContext || window.webkitAudioContext)(); actx.master = actx.createGain(); actx.master.gain.value = SET.vol; const lim = actx.createDynamicsCompressor(); lim.threshold.value = -6; lim.ratio.value = 12; lim.attack.value = 0.002; lim.release.value = 0.2; actx.master.connect(lim); lim.connect(actx.destination); }   // a limiter: a burst of shots does not clip
+  if (!actx) {
+    actx = new (window.AudioContext || window.webkitAudioContext)(); actx.master = actx.createGain(); actx.master.gain.value = SET.vol;
+    const lim = actx.createDynamicsCompressor(); lim.threshold.value = -6; lim.ratio.value = 12; lim.attack.value = 0.002; lim.release.value = 0.2;   // a limiter: a burst of shots does not clip
+    actx.dull = actx.createBiquadFilter(); actx.dull.type = 'lowpass'; actx.dull.frequency.value = 20000; actx.dull.Q.value = 0.7;   // open; a blast close by shuts it for a few seconds (deafen)
+    actx.master.connect(actx.dull); actx.dull.connect(lim); lim.connect(actx.destination); actx.lim = lim;
+  }
   if (actx.state === 'suspended') actx.resume(); return actx;
 }
 onChange(() => { if (actx) actx.master.gain.value = SET.vol; if (voice) voice.setVolume(SET.voiceVol); });
+// a blast close by (k: 1 at the heart, 0 at the edge): after its bang the world goes dull and the ears ring, the closer the longer
+function deafen(k, delay) {
+  try {
+    ac(); const now = actx.currentTime, t0 = now + delay + 0.07, f = actx.dull.frequency;
+    f.cancelScheduledValues(now); f.setValueAtTime(f.value, now);
+    f.setTargetAtTime(250 + 2200 * (1 - k), t0, 0.015); f.setTargetAtTime(20000, t0 + 0.4 + 1.4 * k, 0.5 + 1.1 * k);
+    const o = actx.createOscillator(), g = actx.createGain(); o.frequency.value = 3300 + Math.random() * 1000;
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(0.045 * k * SET.vol, t0 + 0.08); g.gain.setTargetAtTime(0, t0 + 0.3, 0.45 + 0.9 * k);
+    o.connect(g); g.connect(actx.lim); o.start(t0); o.stop(t0 + 7);   // the ring is past the dull ears: it is in them
+  } catch (e) {}
+}
 function bang(vol, low) {
   try {
     ac();
@@ -513,7 +529,7 @@ function respawn() {
 function onMsg(m) {
   switch (m.t) {
     case 'hello': MP.ffa = m.mode === 'ffa'; document.body.classList.toggle('ffa', MP.ffa); if (MP.ffa) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } if (!MP.local) rememberServer(MP.url, m.server); voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team, e.look); document.body.dataset.team = m.team;
-      MP.arena = m.arena || null; clearFx(); setItems(m.items);
+      MP.arena = m.arena || null; clearFx(); clearBlasts(); setItems(m.items);
       for (const [id, a] of Object.entries(m.attach || {})) { const r = remotes.get(+id); if (r && Array.isArray(a)) { r.attach = a; if (r.av) a.forEach((k, w) => r.av.setAttach(w, k)); } } if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
       if (MP.local) feed('Тренировка с ботами: ' + MP.board.filter(e => e.bot).length + ', уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || '') + '»', 'sys'); break;
     case 'spawn': {
@@ -552,8 +568,12 @@ function onMsg(m) {
     case 'attach': if (m.id === MP.id) { MP.attach = m.attach.slice(); syncVm(); updatePanel(); } else { const r = remotes.get(m.id); if (r) { r.attach = m.attach; if (r.av) m.attach.forEach((k, w) => r.av.setAttach(w, k)); } } break;
     case 'heal': { const got = m.hp - MP.hp; MP.hp = m.hp; MP.meds = m.meds; feed('Аптечка: +' + got + ' HP', 'sys'); tone(440, 660, 0.16, 0.25, 'sine'); updatePanel(); break; }
     case 'boom': {
-      boomNade(m); const dd = Math.hypot(m.x - P.x, m.z - P.z), hear = 300; if (dd < hear) { const v = 1 - dd / hear; let real = false; try { real = boomSound(ac(), actx.master, 1.1 * v, dd, spot(m.x, P.y, m.z).pan); } catch (e) {} if (!real) { bang(1.1 * v, true); tone(80, 35, 0.6, 0.5 * v, 'sine'); } }
-      if (dd < 14 && !MP.dead) { el('mpFlash').hidden = false; el('mpFlash').style.opacity = String(0.8 * (1 - dd / 14)); setTimeout(() => { el('mpFlash').hidden = true; }, 220); }
+      const surf = boomNade(m), dd = Math.hypot(m.x - P.x, m.z - P.z), hear = 300; if (dd < hear) { const v = 1 - dd / hear; let real = false; try { real = boomSound(ac(), actx.master, 1.1 * v, dd, spot(m.x, P.y, m.z).pan, surf); } catch (e) {} if (!real) { bang(1.1 * v, true); tone(80, 35, 0.6, 0.5 * v, 'sine'); } }
+      if (dd < 14 && !MP.dead) {   // the white of the flash: full when you look at it, a little from the side or behind
+        const look = dd < 1 ? 1 : Math.max(0, -(Math.sin(P.yaw) * (m.x - P.x) + Math.cos(P.yaw) * (m.z - P.z)) / dd);
+        el('mpFlash').hidden = false; el('mpFlash').style.opacity = String(0.8 * (1 - dd / 14) * (0.3 + 0.7 * look)); setTimeout(() => { el('mpFlash').hidden = true; }, 220);
+      }
+      if (dd < 11 && !MP.dead) deafen(1 - dd / 11, dd / 340);
       break;
     }
     case 'say': addLine(m, MP.id); if (m.id !== MP.id) tone(900, 700, 0.05, 0.08, 'sine'); break;
@@ -740,11 +760,15 @@ function mpTick(dt) {
   if (hitT && now - hitT > 140) { hitT = 0; el('mpHit').hidden = true; }
   if (hurtT && now - hurtT > 600) { hurtT = 0; el('mpHurt').hidden = true; }
 }
-const V = new THREE.Vector3();
-// the light of the flashes: at the muzzle in your hands while your flash shines, else at the shot of someone near
+const V = new THREE.Vector3(), BLAST_AT = new THREE.Vector3(), BLAST_COL = new THREE.Color();
+// the light of the flashes: at the muzzle in your hands while your flash shines, else at the shot of someone near; a grenade's
+// blast outshines both for a few tenths of a second (white, then the orange flicker of its fire) and reaches farther
 function flashLit(dt) {
   const own = Math.max(fpFlash ? fpFlash.tick(dt) : 0, vm ? vm.glow : 0);
   near.t += dt; const other = near.pow * Math.max(0, 1 - near.t / 0.06) ** 2;
+  const boom = blastGlow(BLAST_AT, BLAST_COL);
+  if (boom > 4.5 * Math.max(own, other)) { flashLight.position.copy(BLAST_AT); flashLight.color.copy(BLAST_COL); flashLight.distance = 45; flashLight.intensity = boom; return; }
+  flashLight.color.setHex(0xffb868); flashLight.distance = 22;
   gun.updateWorldMatrix(true, false);
   if (own >= other) { if (own > 0) { if (vm && vm.has(MP.weapon)) vm.muzzle(MV); else fpFlash.group.getWorldPosition(MV); const L = gun.worldToLocal(flashLight.position.copy(MV)); L.z -= 0.8; gun.localToWorld(L); } }   // a little ahead of the muzzle (along the gun): it lights the street and tints the hands, it does not burn them white
   else flashLight.position.set(near.x, near.y, near.z);
