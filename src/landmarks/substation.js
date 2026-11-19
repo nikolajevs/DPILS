@@ -234,6 +234,7 @@ function lmSubstation(K) {
   // the parameter of the local point (u,v) on a busbar run, clamped to the run
   const busT = (taps, u, v) => Math.max(0, Math.min(1, ((u - taps.u0) * taps.dx + (v - taps.v0) * taps.dv) / taps.L2));
   // lattice line tower; arms run across the line at angle ang, returns the attachment points
+  // (and the peak of the earth-wire spike as pts.top)
   const tower = (x, z, h, arms, col, ang = 0) => {
     const ca = Math.cos(ang), sa = Math.sin(ang), top = h - 1.2, pts = [];
     box2(x, z, 0, 1.4, 0, col);
@@ -251,6 +252,7 @@ function lmSubstation(K) {
         lmBar(G, [ax, ay - 1.2, az], [ax, ay, az], 0.12, PORC); pts.push([ax, ay - 1.2, az]); }
     }
     lmBar(G, [x, top, z], [x, h + 0.8, z], 0.1, col);
+    pts.top = [x, h + 0.8, z];
     return pts;
   };
   // a sagging wire between two points; short jumpers hang almost straight, spans sag like a real catenary
@@ -278,7 +280,7 @@ function lmSubstation(K) {
     for (let i = 0; i < list.length; i++) {
       const [x, z] = list[i], h = typeof heights === 'function' ? heights(i) : heights;
       const nxt = list[i + 1] || list[i - 1], ang = Math.atan2(nxt[1] - z, nxt[0] - x) + Math.PI / 2;
-      const pts = tower(x, z, h, arms, col, ang), top = [x, h + 0.8, z];
+      const pts = tower(x, z, h, arms, col, ang), top = pts.top;
       if (!first) { first = pts; firstTop = top; }
       if (prev) { for (const k of ph) wire(prev[k], pts[k], 0.12, bundle); wire(prevTop, top, 0.07); }
       prev = pts; prevTop = top;
@@ -468,7 +470,7 @@ function lmSubstation(K) {
   const c291 = chain([[763.05, -1284.7], [658.1, -1442.4], [591.7, -1667.4], [523.2, -1899.3], [429.5, -2216.7]], 29.7, C110, STEEL, 0, L3);
   for (const [t, c, ph] of [[t13, cA, [0, 1, 2, 3, 4, 5]], [t63, cB, [0, 1, 2, 3, 4, 5]], [t136, c136, [0, 1, 2, 3, 4, 5]], [t133, c133, L3], [t290, c290, L3], [t291, c291, L3]]) {
     for (const k of ph) wire(t[k], c.first[k], 0.12);
-    wire([t[0], 30.5, t[2]], c.firstTop, 0.06);
+    wire(t.top, c.firstTop, 0.06);   // t is the list of attachment points, its peak rides along as t.top
   }
 
   /* ---- 330 kV lines towards Līksna (ways 141554665 ref 313, 172286301 ref 314) ---- */
