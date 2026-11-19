@@ -43,7 +43,8 @@ export function createGame(opts) {
     if (FFA) return id; const a = count(0), b = count(1); if (a !== b) return a < b ? 0 : 1; return want === 0 || want === 1 ? want : Math.random() < 0.5 ? 0 : 1;
   }
   const newPlayer = () => ({ id: nextId++, conn: null, bot: null, name: '', look: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, st: { shots: 0, hitShots: 0, dmg: 0, heads: 0 }, wep: 0, lastShot: 0, lastNade: 0, nades: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(),
-    mag: WEAPONS.map(w => w.mag), reserve: RESERVE.slice(), meds: 0, reloadDone: 0, reloadW: 0, lastMed: 0 });
+    mag: WEAPONS.map(w => w.mag), reserve: RESERVE.slice(), meds: 0, reloadDone: 0, reloadW: 0, lastMed: 0,
+    sights: { sight: 0, optic: 0 }, attach: WEAPONS.map(() => null) });   // loose sights in the pocket and the one mounted on each weapon
   // where the player stood at time t (the shooter saw the target 120 ms in the past plus half the round trip);
   // the eye height and the heading are rewound with the position, so a crouch or a turn back then counts as it looked
   function poseAt(p, t) {
@@ -70,7 +71,7 @@ export function createGame(opts) {
     if (arena) [x, z, yaw] = basePoint(p); else if (p.bot) [x, z, yaw] = areaPoint();
     p.x = num(x, HX); p.z = num(z, HY); p.y = p.bot ? world.ground(p.x, p.z) + 1.7 : 1.7; p.yaw = num(yaw, 10); p.pitch = 0; p.hp = R.hp; p.alive = true; p.protectUntil = now() + R.protectMs; p.t = now(); p.free = true; p.hist.length = 0; p.nades = NADE.count; p.eye = 1.7;
     p.mag = WEAPONS.map(w => w.mag); p.reserve = RESERVE.slice(); p.meds = 0; p.reloadDone = 0; p.lastMed = 0;
-    send(p, { t: 'spawn', x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, nades: p.nades, mag: p.mag, reserve: p.reserve, meds: p.meds }); all({ t: 'alive', id: p.id });
+    send(p, { t: 'spawn', x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, nades: p.nades, mag: p.mag, reserve: p.reserve, meds: p.meds, sights: p.sights, attach: p.attach }); all({ t: 'alive', id: p.id });   // the sights stay with the player through a death
   }
   // damage dmg from attacker p to v (weapon w; zone 1 head, 0 torso, 2 legs; from = where it came from): the hit and
   // the hurt messages, and the kill
@@ -95,7 +96,16 @@ export function createGame(opts) {
     }
   }
   // ---- the inventory: the server keeps the magazines and the reserve; a reload takes time and fills from the reserve ----
-  const invMsg = p => send(p, { t: 'inv', mag: p.mag, reserve: p.reserve, nades: p.nades, meds: p.meds });
+  const invMsg = p => send(p, { t: 'inv', mag: p.mag, reserve: p.reserve, nades: p.nades, meds: p.meds, sights: p.sights, attach: p.attach });
+  // mounting a picked-up sight on a weapon (kind null takes it off): the pocket pays, the old one comes back loose
+  function setSight(p, wi, kind) {
+    if (!p.alive || kind === p.attach[wi]) return;
+    if (kind && p.sights[kind] <= 0) return;
+    if (kind) p.sights[kind]--;
+    if (p.attach[wi]) p.sights[p.attach[wi]]++;
+    p.attach[wi] = kind;
+    invMsg(p); all({ t: 'attach', id: p.id, attach: p.attach });
+  }
   function beginReload(p, wi, t0) {
     if (!p.alive || p.reloadDone > t0 || p.mag[wi] >= WEAPONS[wi].mag || p.reserve[wi] <= 0) return false;
     p.reloadDone = t0 + RELOAD_MS[wi]; p.reloadW = wi; return true;
@@ -177,7 +187,7 @@ export function createGame(opts) {
           if (players.size >= MAX && !removeBot()) { send(p, { t: 'full' }); conn.close(); return; }
           if (lb && validKey(m.key) && ![...players.values()].some(q => q.key === m.key)) { p.key = m.key; const r = lb.identify(m.key, nameBase(m.name), n => !taken(n)); p.name = r.name; p.prof = r.prof; } else p.name = cleanName(m.name);
           p.team = pickTeam(m.team, p.id); p.look = cleanLook(m.look); p.joined = true; players.set(p.id, p);
-          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })) });
+          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])) });
           spawn(p, m.x, m.z, m.yaw); sendBoard(); all({ t: 'chat', text: p.name + (FFA ? ' в игре' : ' в игре, ' + TEAMS[p.team]) });
           return;
         }
@@ -195,6 +205,7 @@ export function createGame(opts) {
         else if (m.t === 'throw') { const d = [num(m.dx, 1), num(m.dy, 1), num(m.dz, 1)], l = Math.hypot(...d); if (l >= 0.5) throwNade(p, d.map(x => x / l), m.sp == null ? NADE.speed : num(m.sp, NADE.maxSpeed)); }
         else if (m.t === 'reload' && p.alive) beginReload(p, okWeapon(m.w) ? m.w : p.wep, t0);
         else if (m.t === 'use' && m.kind === 'med') useMed(p, t0);
+        else if (m.t === 'attach') setSight(p, okWeapon(m.w) ? m.w : p.wep, m.kind === 'sight' || m.kind === 'optic' ? m.kind : null);
         else if (m.t === 'chat') {
           const text = String(m.text || '').replace(/[\u0000-\u001f\u007f​-‏‪-‮]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
           if (!text || t0 - p.lastChat < 700) return; p.lastChat = t0;
@@ -214,7 +225,7 @@ export function createGame(opts) {
     };
     return handle;
   }
-  // ---- the items on the map: ammo, grenades and med kits; picked up by walking over, back after a while ----
+  // ---- the items on the map: ammo, grenades, med kits and the two sights; picked up by walking over, back after a while ----
   const items = new Map(); let nextItem = 1;
   function itemSpots() {
     const spots = [], N = INV.itemCount;
@@ -226,7 +237,7 @@ export function createGame(opts) {
     return spots;
   }
   const itemMsg = it => ({ t: 'item', id: it.id, kind: it.kind, x: it.x, z: it.z });
-  itemSpots().forEach(([x, z], i) => { const it = { id: nextItem++, kind: ['ammo', 'nade', 'med', 'ammo'][i % 4], x, z, active: true, respawnAt: 0 }; items.set(it.id, it); });
+  itemSpots().forEach(([x, z], i) => { const it = { id: nextItem++, kind: ['ammo', 'nade', 'med', 'ammo', 'sight', 'optic'][i % 6], x, z, active: true, respawnAt: 0 }; items.set(it.id, it); });
   function tickItems(t) {
     for (const it of items.values()) {
       if (!it.active) { if (t >= it.respawnAt) { it.active = true; all(itemMsg(it)); } continue; }
@@ -236,10 +247,12 @@ export function createGame(opts) {
         if (it.kind === 'ammo') { for (let i = 0; i < WEAPONS.length; i++) { const add = Math.min(ITEMS.ammo.give[i], RESERVE[i] * INV.reserveCap - p.reserve[i]); if (add > 0) { p.reserve[i] += add; got = true; } } }
         else if (it.kind === 'nade') { if (p.nades < INV.nadeMax) { p.nades++; got = true; } }
         else if (it.kind === 'med') { if (p.meds < INV.medMax) { p.meds++; got = true; } }
+        else if (it.kind === 'sight' || it.kind === 'optic') { if (p.sights[it.kind] + p.attach.filter(a => a === it.kind).length < INV[it.kind + 'Max']) { p.sights[it.kind]++; got = true; } }
         if (!got) continue;   // the pockets are full: the item stays for someone else
         it.active = false; it.respawnAt = t + ITEMS[it.kind].respawnMs;
         all({ t: 'took', id: it.id, kind: it.kind, to: p.id });
         if (p.conn) invMsg(p);
+        if (p.bot) for (const k of ['sight', 'optic']) if (p.sights[k] > 0) setSight(p, p.wep, k);   // a bot mounts what it picked, on the weapon in hand
         break;
       }
     }
