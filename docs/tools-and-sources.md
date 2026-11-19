@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/nade-polish | Граната: физика склонов, звук отскоков, индикатор опасности, искра запала | server/physics.mjs, src/game/nades.js, src/game/sfx.js, src/game/mp.js, index.html, src/style.css, tools/combat-test.mjs |
 
 ## Автономный цикл улучшений
 
