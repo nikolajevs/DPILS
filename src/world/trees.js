@@ -115,15 +115,12 @@ function treeGeo(type) {
   };
   let capY = 5;
   if (type === 0) {
-    // Scots pine: a bare bole, grey-brown below and orange above, a few self-pruned dead stubs, and an
-    // open crown of separate needle pads on spreading limbs — sky between the layers, not one solid ball.
+    // Scots pine: a clean bare bole, grey-brown below and orange above (a forest pine self-prunes its
+    // lower branches flush, no stubs stick out), and an open crown of separate needle pads on spreading
+    // limbs — sky between the layers, not one solid ball.
     const bark = y => { const t = Math.min(1, Math.max(0, (y - 2.5) / 8.5)), e = t * t * (3 - 2 * t); return [93 + 83 * e, 74 + 37 * e, 58 + 8 * e]; };   // grey-brown below, orange above, gradual
     limb(0, 0, 0, 0.06, 4.2, 0.03, 0.28, 0.22, bark, 7); limb(0.06, 4.2, 0.03, 0.12, 7.6, 0.07, 0.22, 0.15, bark, 7);
     limb(0.12, 7.6, 0.07, 0.18, 12.2, 0.12, 0.15, 0.05, bark, 7);
-    for (let k = 0; k < 5; k++) {
-      const y = 2.4 + k * 1.15 + hash(k * 11) * 0.5, a = hash(k * 29 + 3) * 6.283, L = 0.35 + hash(k * 7 + 1) * 0.4;
-      limb(Math.cos(a) * 0.16, y, Math.sin(a) * 0.16, Math.cos(a) * (0.16 + L), y - L * 0.35, Math.sin(a) * (0.16 + L), 0.05, 0.018, '#6b5a4a', 4);
-    }
     const pad = (cx, cy, cz, pr, n, sz, top) => {
       for (let i = 0; i < n; i++) {
         const t = (i + 0.5) / n, phi = Math.acos(1 - 2 * t), th = i * 2.39996 + cx * 7, rr = 0.35 + 0.65 * Math.sqrt(hash(seq * 13 + 5));
