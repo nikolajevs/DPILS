@@ -33,7 +33,7 @@ sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.04;
 const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.15 * Math.PI); scene.add(hemi);
 const LIGHTDIR = new THREE.Vector3(-0.55, 0.62, 0.56).normalize();   // towards the sun (or the moon)
 // uniforms shared by many materials
-const U = { night: { value: 0 }, lit: { value: 0 }, time: { value: 0 }, sunDir: { value: LIGHTDIR }, fogGlow: { value: new THREE.Color(0, 0, 0) }, sunCol: { value: new THREE.Color(1, 1, 1) } };
+const U = { night: { value: 0 }, lit: { value: 0 }, time: { value: 0 }, sunDir: { value: LIGHTDIR }, fogGlow: { value: new THREE.Color(0, 0, 0) }, sunCol: { value: new THREE.Color(1, 1, 1) }, impFar: { value: 2600 } };   // impFar: where the far-tree impostors fade out and their tiles stop drawing (src/render/post.js updateLod)
 
 /* Aerial perspective instead of the stock linear fog: haze that thins with height, takes the colour of the sky at the
    horizon and glows towards the sun; near the far plane it closes completely so the edge of the world never shows. */
