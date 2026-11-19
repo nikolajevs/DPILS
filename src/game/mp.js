@@ -111,7 +111,8 @@ const aim = (yaw = P.yaw, pitch = P.pitch) => { const cp = Math.cos(pitch); retu
 const MOVE = () => [SET.keys.forward, SET.keys.back, SET.keys.left, SET.keys.right];
 function spreadNow() {
   const at = MP.attach[MP.weapon], aimed = MP.zoom > 0.9;
-  const moving = MOVE().some(k => keys.has(k)), run = keys.has(SET.keys.run) || keys.has('ShiftRight');
+  const v = Math.hypot(P.vx, P.vz);   // the real speed: the brake slide still counts as moving (the inertia, player.js MOVE)
+  const moving = MOVE().some(k => keys.has(k)) || v > 0.5, run = keys.has(SET.keys.run) || keys.has('ShiftRight') || v > 7;
   const hip = () => W().cone
     ? W().cone * (P.crouch ? 0.8 : 1) * (at === 'sight' && aimed ? 0.75 : 1) + (moving ? 0.01 : 0) + (P.up > 0.02 ? 0.03 : 0)   // the shotgun's pellets spread in a wide cone
     : ((W().base ?? 0.002) + (moving ? (run ? 0.022 : 0.008) : 0) + MP.burst) * (P.crouch ? 0.5 : 1) * (at === 'sight' && aimed ? 0.35 : 1) + (P.up > 0.02 ? 0.03 : 0);   // crouching steadies the aim, a jump spoils it; the red dot tightens it more
@@ -594,7 +595,7 @@ function onMsg(m) {
       if (MP.local) feed('Тренировка с ботами: ' + MP.board.filter(e => e.bot).length + ', уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || '') + '»', 'sys'); break;
     case 'spawn': {
       nadeCancel(); punchReset();
-      const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.kx = P.kz = 0; P.fallTop = 0; P.landH = 0; P.land = 0; P.crouch = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
+      const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.vx = P.vz = 0; P.kx = P.kz = 0; P.fallTop = 0; P.landH = 0; P.land = 0; P.crouch = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
       MP.weapon = 0; MP.scope = false; models.forEach((mm, k) => { mm.visible = k === 0; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; MP.sights = m.sights ? { ...m.sights } : { sight: 0, optic: 0 }; MP.attach = Array.isArray(m.attach) ? m.attach.slice() : [null, null, null, null, null]; syncVm(); clearNades(); gun.visible = true; if (vm) { vm.setWeapon(0); vm.equip(); } el('mpDead').hidden = true; slotsT = performance.now() + 2600; updatePanel();   // the belt greets the spawn, then hides
       MP.ws.send(JSON.stringify({ t: 'state', x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch }));   // the server has the point as asked: tell it where the player really stands

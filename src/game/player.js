@@ -10,11 +10,16 @@ import { $, HX, HY } from '../core/env.js';
 
 /* ---------- player ---------- */
 // eye: height of the eyes over the feet (1.7 standing, 1.1 crouched); up: the jump, metres over the ground; vy: its speed;
+// vx/vz: the walk's own velocity — it ramps up and brakes (MOVE), so the strafe is not "on rails";
 // kx/kz: the blast knockback (the server's 'push'), a horizontal velocity that decays as it slides;
 // fallTop: the apex of the current flight (absolute feet height); landH: the height just landed from (mp.js reports it
 // to the server, which owns the damage); land: the camera dip of a hard landing, decaying
-const P = { x: -1487, y: 1.7, z: 1263, yaw: 0.6, pitch: 0, fly: false, walked: 0, eye: 1.7, up: 0, vy: 0, crouch: false, kx: 0, kz: 0, fallTop: 0, landH: 0, land: 0 };
+const P = { x: -1487, y: 1.7, z: 1263, yaw: 0.6, pitch: 0, fly: false, walked: 0, eye: 1.7, up: 0, vy: 0, crouch: false, vx: 0, vz: 0, kx: 0, kz: 0, fallTop: 0, landH: 0, land: 0 };
 const JUMP = { v: 6.4, g: 21, eyeStand: 1.7, eyeCrouch: 1.1, crouchSpeed: 1.8 };
+// the weight of the walk, m/s²: accel — the ramp-up to the keyed speed (6 m/s in ~0.15 s, the sprint 11 in ~0.28 s),
+// decel — the brake when the keys are released (a ~0.3 m slide from the jog, ~1.1 m from the sprint),
+// air — the little authority over the jump: the momentum carries, no friction aloft
+const MOVE = { accel: 40, decel: 55, air: 10 };
 const FALL = { safe: 3 };   // keep in step with server/combat.mjs: a landing from above 3 m is reported to the server (it deals the damage)
 const keys = new Set(); const touch = { mx: 0, mz: 0 };
 STATE.started = false; STATE.night = false; STATE.locked = false; STATE.introT = 0;
@@ -27,7 +32,7 @@ function freeSpot(x, z) {
 function teleport(x, z, yaw) {
   if (STATE.mp) return;   // in the game you only appear where the server puts you
   x = Math.max(-HX + 5, Math.min(HX - 5, x)); z = Math.max(-HY + 5, Math.min(HY - 5, z));
-  if (P.fly) { P.x = x; P.z = z; P.y = Math.max(P.y, terrainH(x, z) + 30); } else { [P.x, P.z] = freeSpot(x, z); P.eye = 1.7; P.up = 0; P.vy = 0; P.kx = P.kz = 0; P.fallTop = 0; P.landH = 0; P.land = 0; P.y = 1.7 + walkLift(P.x, P.z); }
+  if (P.fly) { P.x = x; P.z = z; P.y = Math.max(P.y, terrainH(x, z) + 30); } else { [P.x, P.z] = freeSpot(x, z); P.eye = 1.7; P.up = 0; P.vy = 0; P.vx = P.vz = 0; P.kx = P.kz = 0; P.fallTop = 0; P.landH = 0; P.land = 0; P.y = 1.7 + walkLift(P.x, P.z); }
   if (yaw != null) { P.yaw = yaw; P.pitch = P.fly ? -0.45 : 0; }
   STATE.hudTimer = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
 }
@@ -51,15 +56,24 @@ function step(dt) {
     P.x += (-sy * cp * f + cy * s) * sp * dt; P.z += (-cy * cp * f - sy * s) * sp * dt; P.y += Math.sin(P.pitch) * f * sp * dt;
     if (keys.has('KeyE') || keys.has('Space')) P.y += sp * 0.6 * dt; if (keys.has('KeyQ')) P.y -= sp * 0.6 * dt;
     P.y = Math.max(terrainH(P.x, P.z) + 2, Math.min(1500, P.y));
-  } else if (l > 0.01) {
-    const sp = P.crouch ? JUMP.crouchSpeed : run ? 11 : 6; let dx = (-sy * f + cy * s) * sp * dt, dz = (-cy * f - sy * s) * sp * dt;   // 6 m/s by default: a brisk jog, the run clip plays at its own rate; Shift is the sprint
-    const feet = P.y - P.eye - P.up;   // where the feet stood at the last frame
-    const n = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.3)); dx /= n; dz /= n;
-    for (let i = 0; i < n; i++) {
-      const ox = P.x, oz = P.z; P.x += dx; P.z += dz; collide(feet);
-      if (inWater(P.x, P.z) && !onRoad(P.x, P.z, 1.2) && !(inWater(ox, oz) && !onRoad(ox, oz, 1.2))) { P.x = ox; P.z = oz; break; }
+  } else {
+    const sp = P.crouch ? JUMP.crouchSpeed : run ? 11 : 6;   // 6 m/s by default: a brisk jog, the run clip plays at its own rate; Shift is the sprint
+    const tx = (-sy * f + cy * s) * sp, tz = (-cy * f - sy * s) * sp;   // where the keys want to go, m/s
+    const air = P.up > 0.001 || P.vy > 0;
+    const rate = air ? (l > 0.01 ? MOVE.air : 0) : l > 0.01 ? MOVE.accel : MOVE.decel;
+    const dvx = tx - P.vx, dvz = tz - P.vz, dl = Math.hypot(dvx, dvz), cap = rate * dt;
+    if (dl <= cap) { P.vx = tx; P.vz = tz; } else { const k = cap / dl; P.vx += dvx * k; P.vz += dvz * k; }
+    if (!air && l <= 0.01 && Math.hypot(P.vx, P.vz) < 0.05) P.vx = P.vz = 0;
+    let dx = P.vx * dt, dz = P.vz * dt;
+    if (dx || dz) {
+      const feet = P.y - P.eye - P.up;   // where the feet stood at the last frame
+      const n = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.3)); dx /= n; dz /= n;
+      for (let i = 0; i < n; i++) {
+        const ox = P.x, oz = P.z; P.x += dx; P.z += dz; collide(feet);
+        if (inWater(P.x, P.z) && !onRoad(P.x, P.z, 1.2) && !(inWater(ox, oz) && !onRoad(ox, oz, 1.2))) { P.x = ox; P.z = oz; P.vx = P.vz = 0; break; }
+      }
     }
-    P.walked += sp * dt * l;
+    P.walked += Math.hypot(P.vx, P.vz) * dt;
   }
   if (!P.fly && (P.kx || P.kz)) {   // the blast knockback: a decaying slide with the same collisions as the walk, even when standing still
     let dx = P.kx * dt, dz = P.kz * dt;
@@ -94,8 +108,8 @@ function step(dt) {
 function setFly(on) {
   if (STATE.mp && on) return;
   P.fly = on; $('bFly').setAttribute('aria-pressed', on);
-  if (on) { P.y = Math.max(P.y, terrainH(P.x, P.z) + 70); P.pitch = Math.min(P.pitch, -0.35); } else { [P.x, P.z] = freeSpot(P.x, P.z); P.eye = 1.7; P.up = 0; P.vy = 0; P.kx = P.kz = 0; P.fallTop = 0; P.landH = 0; P.land = 0; P.y = 1.7 + terrainH(P.x, P.z); P.pitch = 0; }
+  if (on) { P.y = Math.max(P.y, terrainH(P.x, P.z) + 70); P.pitch = Math.min(P.pitch, -0.35); } else { [P.x, P.z] = freeSpot(P.x, P.z); P.eye = 1.7; P.up = 0; P.vy = 0; P.vx = P.vz = 0; P.kx = P.kz = 0; P.fallTop = 0; P.landH = 0; P.land = 0; P.y = 1.7 + terrainH(P.x, P.z); P.pitch = 0; }
   STATE.hudTimer = 0; STATE.lodTimer = 0;
 }
 
-export { FALL, JUMP, P, freeSpot, keys, setFly, step, teleport, touch };
+export { FALL, JUMP, MOVE, P, freeSpot, keys, setFly, step, teleport, touch };
