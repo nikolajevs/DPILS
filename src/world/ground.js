@@ -19,6 +19,11 @@ import { C, HX, HY, WL } from '../core/env.js';
    second one, just under the ground, writes it after them for everything else. Both leave out the water, which lies
    lower, and the fortress, which has its own ground and depth mask. */
 const DEEP = 0.5, DEEP_MARGIN = 0.1;
+/* The surface grid lies this far under the base ground. The base hugs the terrain (subTris 0.35 m, and the conforming
+   pass puts midpoints of shared sides exactly on it), while a street ribbon is a chord that sags up to its densify tol
+   (0.15 m) under the terrain: without a clearance the grid would sit above the ribbon and depth-test the street away
+   into the grass. groundDepth lowers it further (DIP) wherever a street or a paved ground sags more than this. */
+const TOP_CLEAR = 0.2;
 let DIP = null;   // per node of the height grid: how much deeper the deep grid goes (noteDips)
 let BASESUB = null;   // the subdivided base ground (flat/tris), reused to hug the top depth grid to the visible grass
 /* The ground layers lie within their tol of the ground (subTris: 0.35 m), so above a grid DEEP under it. A triangle
@@ -118,11 +123,11 @@ async function terrainDepth(dip) {
       keep.push(a, b, c);
     }
     top.ensure(F.length / 2);
-    for (let i = 0; i < F.length; i += 2) top.vert(F[i], (DEEP + 0.4) - offAt(F[i], F[i + 1]), F[i + 1], 0, 1, 0, C0);
+    for (let i = 0; i < F.length; i += 2) top.vert(F[i], (DEEP + 0.4) - offAt(F[i], F[i + 1]) - TOP_CLEAR, F[i + 1], 0, 1, 0, C0);
     for (let t = 0; t < keep.length; t += 3) top.triUp(keep[t], keep[t + 1], keep[t + 2]);
   } else {
     top.ensure(nx * nz);
-    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) top.vert(TERR.x0 + i * s, (DEEP + 0.4) - OFF[j * nx + i], TERR.z0 + j * s, 0, 1, 0, C0);
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) top.vert(TERR.x0 + i * s, (DEEP + 0.4) - OFF[j * nx + i] - TOP_CLEAR, TERR.z0 + j * s, 0, 1, 0, C0);
     for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
       const x = TERR.x0 + i * s, z = TERR.z0 + j * s;
       if (FORT.ok && Math.abs(x + s / 2 - FORT.cx) < FORT.R + 60 && Math.abs(z + s / 2 - FORT.cz) < FORT.R + 60) continue;
@@ -130,10 +135,10 @@ async function terrainDepth(dip) {
       const k = j * nx + i, tw = q[k] - q[k + 1] - q[k + nx] + q[k + nx + 1] > 0; cell(top, k, tw);
     }
   }
-  /* The surface grid lies ON the grass (base ground lowered only by dip, which groundDepth drops under crowned streets),
-     and is drawn AFTER the ground colour layers but BEFORE the streets: a street/path that runs below the raised ground
-     then depth-tests against the grass and is hidden, instead of painting its white lines over the slope; real roads above
-     the grass pass. Objects behind a crest fail it too. */
+  /* The surface grid lies TOP_CLEAR under the grass (base ground lowered by TOP_CLEAR and by dip, which groundDepth
+     drops under streets and paved grounds that sag more), and is drawn AFTER the ground colour layers but BEFORE the
+     streets: a street/path that runs below the raised ground then depth-tests against the grass and is hidden, instead
+     of painting its white lines over the slope; real roads above the grass pass. Objects behind a crest fail it too. */
   await rest(); const tm = top.mesh(new THREE.MeshBasicMaterial({ colorWrite: false })); if (tm) { tm.renderOrder = -37.8; tm.frustumCulled = false; scene.add(tm); }   // after ground colour (last -38), before streets (-37.5)
   /* over the fine patch (src/world/underpass.js) a 2 m grid, each node 0.5 m under the lowest ground around it, over
      the cells of the coarse grid it replaces; the water left out as there */
@@ -202,7 +207,8 @@ async function buildGround() {
 /* After the streets, sidewalks, rails and paved grounds (src/world/streets.js, src/landmarks/), the depth grids. Across
    a street its ribbon is straight while the ground may arch under it (up to 1.5 m on a crowned dam): the deep grid is
    lowered there too, so that it does not hide the street. A look at the midpoints of the sides and the middle of each
-   of their triangles, and where those come within 0.15 m of what would dip under the grid, the lattice of noteDips. */
+   of their triangles, and where those sag more than TOP_CLEAR - 0.15 under the terrain, the lattice of noteDips: DIP
+   then carries the surface grid (TOP_CLEAR under the base) below the ribbon with a 0.15 m margin. */
 async function groundDepth() {
   if (!TERR.on) return;
   const nx = TERR.nx, nz = TERR.nz, s = TERR.s, H = terrainH, n = 8, list = [];
@@ -219,9 +225,9 @@ async function groundDepth() {
       const x0 = Math.min(ax, bx, cx), x1 = Math.max(ax, bx, cx), z0 = Math.min(az, bz, cz), z1 = Math.max(az, bz, cz); if (inPatch(x0, z0, x1, z1)) continue;
       const ya = A[a + 1] + oy + H(ax, az), yb = A[b + 1] + oy + H(bx, bz), yc = A[c + 1] + oy + H(cx, cz);
       const gap = (u, v) => H(ax + (bx - ax) * u + (cx - ax) * v, az + (bz - az) * u + (cz - az) * v) - ya - (yb - ya) * u - (yc - ya) * v;
-      if (Math.max(gap(0.5, 0), gap(0.5, 0.5), gap(0, 0.5), gap(1 / 3, 1 / 3)) < DEEP - DEEP_MARGIN - 0.15) continue;
+      if (Math.max(gap(0.5, 0), gap(0.5, 0.5), gap(0, 0.5), gap(1 / 3, 1 / 3)) < TOP_CLEAR - 0.15) continue;
       let d = 0; for (let i = 0; i <= n; i++) for (let j = 0; i + j <= n; j++) d = Math.max(d, gap(i / n, j / n));
-      d += DEEP_MARGIN - DEEP; if (d <= 0) continue;
+      d += 0.15 - TOP_CLEAR; if (d <= 0) continue;
       for (let j = Math.max(0, Math.floor((z0 - TERR.z0) / s)), j1 = Math.min(nz - 1, Math.ceil((z1 - TERR.z0) / s)); j <= j1; j++)
         for (let i = Math.max(0, Math.floor((x0 - TERR.x0) / s)), i1 = Math.min(nx - 1, Math.ceil((x1 - TERR.x0) / s)); i <= i1; i++) if (DIP[j * nx + i] < d) DIP[j * nx + i] = d;
     }
