@@ -8,6 +8,9 @@ export const RULES = {
 // much of the damage is lost over the range (falloff 0.6: 40 % left at the end), the least time between shots, and vel —
 // the muzzle velocity in m/s: the bullet really flies (server/game.mjs steps it), so the hit lands when it arrives, not at
 // the click. The page draws its tracers at the same speeds (src/game/impacts.js reads vel from here).
+// The bullet falls while it flies: BULLET_G below, the same arc on the server, in the page's tracer and in the bots' aim.
+// Real gravity: a 7.62 (820 m/s) at 400 m is 0.49 s in the air and sinks ~1.17 m — long shots need holdover, and the
+// scope's lower marks are calibrated against exactly this arc (src/game/mp.js).
 export const WEAPONS = [
   { name: 'Автомат', mag: 30, gapMs: 85, pellets: 1, dmg: 22, head: 40, range: 160, falloff: 0, vel: 560 },
   { name: 'Дробовик', mag: 6, gapMs: 750, pellets: 8, dmg: 9, head: 16, range: 45, falloff: 0.6, vel: 380 },
@@ -37,6 +40,21 @@ export const ITEMS = {
   optic: { name: 'Оптика 8x', respawnMs: 60000 },   // the long scope: strong zoom with its overlay, on any weapon
 };
 export const INV = { nadeMax: 3, medMax: 2, reserveCap: 2, itemCount: 18, pickR: 1.7, medGapMs: 800, sightMax: 1, opticMax: 1 };   // reserveCap: reserve up to RESERVE × this; sightMax/opticMax: loose + mounted of each kind
+// ---- the ballistics of a flying bullet: gravity, no drag. The path is parameterised by the distance s along the
+// initial (unit) direction d: s metres take s/v seconds at the muzzle velocity v, so the bullet sinks ½·g·(s/v)² below
+// the straight line. The server steps the hit along this arc (game.mjs), the page draws its tracer and its impact marks
+// on the same one (impacts.js), and the bots aim above the target by the same drop (bots.mjs) — one formula, three places.
+export const BULLET_G = 9.81;
+export const bulletDrop = (s, v) => 0.5 * BULLET_G * (s / v) * (s / v);
+// the point of the arc s metres along d from o (out, when given, is filled and returned)
+export function bulletAt(o, d, s, v, out = [0, 0, 0]) {
+  out[0] = o[0] + d[0] * s; out[1] = o[1] + d[1] * s - bulletDrop(s, v); out[2] = o[2] + d[2] * s; return out;
+}
+// the unit tangent of the arc at s: the initial direction bent down by g·s/v² (the way the bullet is going there)
+export function bulletDir(d, s, v, out = [0, 0, 0]) {
+  const x = d[0], y = d[1] - BULLET_G * s / (v * v), z = d[2], l = Math.hypot(x, y, z);
+  out[0] = x / l; out[1] = y / l; out[2] = z / l; return out;
+}
 // closest distance between the ray (o + t·d, 0 ≤ t ≤ len, |d| = 1) and the segment a–b; returns { dist, t }
 export function rayToSegment(o, d, len, a, b) {
   const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], wx = o[0] - a[0], wy = o[1] - a[1], wz = o[2] - a[2];

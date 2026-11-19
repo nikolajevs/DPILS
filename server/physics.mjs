@@ -1,12 +1,15 @@
 /* The physics of the shots and the grenades, for the server and for the training game in the page: the same rules over
    two functions the caller brings, which house stands at a point (with its height in .top) and how high the ground is. */
+import { bulletDrop } from './combat.mjs';
 export function makePhysics(buildingAt, ground) {
   // how far from o along d (unit) a shot flies before the ground, a hill slope or a roof line stops it; len if it does
   // not. The coarse scan steps 1.5 m; once a step is blocked, the wall is bisected to ~2 cm, so a hit just in front of
   // the wall counts and one just behind it does not (the grace is HIT.grace in combat.mjs).
-  function freePath(o, d, len) {
+  // v (m/s), when given, bends the path down by the bullet's gravity (combat.mjs bulletDrop): the scan follows the same
+  // arc the bullet flies, so a long shot meets the ground sooner than the straight line would. Sight lines pass no v.
+  function freePath(o, d, len, v) {
     const block = t => {
-      const x = o[0] + d[0] * t, y = o[1] + d[1] * t, z = o[2] + d[2] * t, gr = ground(x, z);
+      const x = o[0] + d[0] * t, y = o[1] + d[1] * t - (v ? bulletDrop(t, v) : 0), z = o[2] + d[2] * t, gr = ground(x, z);
       if (y < gr) return true;   // the ground itself, a hill slope included
       const b = buildingAt(x, z);
       return !!(b && y < gr + (b.top || 12) - 1);
