@@ -20,6 +20,7 @@ import { C, HX, HY, WL } from '../core/env.js';
    lower, and the fortress, which has its own ground and depth mask. */
 const DEEP = 0.5, DEEP_MARGIN = 0.1;
 let DIP = null;   // per node of the height grid: how much deeper the deep grid goes (noteDips)
+let BASESUB = null;   // the subdivided base ground (flat/tris), reused to hug the top depth grid to the visible grass
 /* The ground layers lie within their tol of the ground (subTris: 0.35 m), so above a grid DEEP under it. A triangle
    that got as small as subTris cuts (12 m) can dip deeper under a sharp edge: the grid is lowered under it, on the nodes
    of the cells it touches, by what it dips deeper (dip: per node of the height grid, in metres). */
@@ -44,23 +45,29 @@ async function terrainDepth(dip) {
      0.5 m under the lowest of the neighbours of a node: on a slope metres down, so the streets and the land use behind a
      hummock, drawn after the ground in front of it, showed through its foot (18. novembra iela by the overpass). Beside
      the Latgales cutting it still does, and under the floor of the cutting: the road there runs under the ground. */
-  const g = new GB(false), nx = TERR.nx, nz = TERR.nz, s = TERR.s, q = TERR.q, C0 = [0, 0, 0]; g.ensure(nx * nz);
+  const g = new GB(false), nx = TERR.nx, nz = TERR.nz, s = TERR.s, q = TERR.q, C0 = [0, 0, 0];
+  /* Per-node depth offset under the ground: DEEP plus a margin so the grid stays under the land use (which lies within
+     0.35 m of the bilinear heights, as does the base ground it is cut from), plus what noteDips/groundDepth lowered (dip),
+     plus the extra lowering beside the Latgales cutting so the grid stays under the road that runs there below the ground. */
+  const OFF = new Float32Array(nx * nz);
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
     const x = TERR.x0 + i * s, z = TERR.z0 + j * s, k = j * nx + i;
-    let y = -DEEP - dip[k];
+    let off = DEEP + 0.4 + dip[k];
     if (cutTouches([x - s, z - s, x + s, z + s]) && cutInward(x, z)[2] < CUT.BLEND + 2 * s) {
       let m = 1e9; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = Math.min(nx - 1, Math.max(0, i + di)), jj = Math.min(nz - 1, Math.max(0, j + dj)); m = Math.min(m, q[jj * nx + ii]); }
-      y = Math.min(y, (Math.min(m, cutFloor(x, z) * 10) - q[k]) * 0.1 - 0.5);
+      off = Math.max(off, -((Math.min(m, cutFloor(x, z) * 10) - q[k]) * 0.1 - 0.5));
     }
-    g.vert(x, y, z, 0, 1, 0, C0);
+    OFF[k] = off;
   }
+  const offAt = (x, z) => { const fx = Math.min(nx - 1.001, Math.max(0, (x - TERR.x0) / s)), fz = Math.min(nz - 1.001, Math.max(0, (z - TERR.z0) / s));
+    const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j, k = j * nx + i;
+    return OFF[k] * (1 - u) * (1 - v) + OFF[k + 1] * u * (1 - v) + OFF[k + nx] * (1 - u) * v + OFF[k + nx + 1] * u * v; };
   /* The deep grid still lets what stands just behind a crest show through it (most of all looking up a slope, and a
      player on a hilltop through the hill). Once the ground layers are drawn a second grid writes depth closer under
      them, TOP_GAP under the ground, cut like the deep one. Only what is drawn after the ground meets it, never the ground
      itself. It leaves out what the deep grid leaves out, and the road of the Latgales cutting, which runs under the grid
      (cutY). */
-  await rest(); const TOP_GAP = 0.25, top = new GB(false); top.ensure(nx * nz);
-  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) top.vert(TERR.x0 + i * s, -TOP_GAP, TERR.z0 + j * s, 0, 1, 0, C0);
+  await rest(); const top = new GB(false);
   const wet = (x, z) => { const W = WMASK, i = Math.floor((x - W.X0) / W.S), j = Math.floor((z - W.Z0) / W.S); return i >= 0 && j >= 0 && i < W.NX && j < W.NZ && W.m[j * W.NX + i] !== 0; };
   /* the cells water touches: the water lies lower, and their grid would hide it. Only those: a cell any part of the 4 m
      margin of the water raster touched was left out, up to 25 m from the water, and through their ground the river
@@ -70,16 +77,64 @@ async function terrainDepth(dip) {
       for (let i = Math.max(0, Math.floor((x0 - W.X0) / W.S)), i1 = Math.min(W.NX - 1, Math.floor((x1 - W.X0) / W.S)); i <= i1; i++) if (W.o[j * W.NX + i]) return true;
     return false; };
   await rest(); const cell = (b, k, tw) => { if (tw) { b.triUp(k, k + 1, k + nx); b.triUp(k + 1, k + nx + 1, k + nx); } else { b.triUp(k, k + 1, k + nx + 1); b.triUp(k, k + nx + 1, k + nx); } };
-  for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
-    const x = TERR.x0 + i * s, z = TERR.z0 + j * s;
-    if (FORT.ok && Math.abs(x + s / 2 - FORT.cx) < FORT.R + 60 && Math.abs(z + s / 2 - FORT.cz) < FORT.R + 60) continue;
-    if (touchesWater(x, z, x + s, z + s)) continue;
-    if (inPatch(x, z, x + s, z + s)) continue;   // the fine patch has a depth grid of its own, below
-    const k = j * nx + i, tw = q[k] - q[k + 1] - q[k + nx] + q[k + nx + 1] > 0; cell(g, k, tw);
-    if (cutTouches([x, z, x + s, z + s]) && cutInward(x + s / 2, z + s / 2)[2] < CUT.BLEND + s) continue;
-    cell(top, k, tw);
+  /* The deep grid hugs the ground too (it is the base ground lowered offAt), so a crest hides the streets and land use
+     behind it: they are drawn after this grid and depth-test against it. The coarse 20 m grid sat metres under the ground
+     on embankment slopes (the twist of a cell), letting them show through. Water, fortress and the fine patch are left out. */
+  if (BASESUB) {
+    const F = BASESUB.flat, T = BASESUB.tris, keep = [];
+    for (let t = 0; t < T.length; t += 3) {
+      const a = T[t], b = T[t + 1], c = T[t + 2];
+      const cx = (F[2 * a] + F[2 * b] + F[2 * c]) / 3, cz = (F[2 * a + 1] + F[2 * b + 1] + F[2 * c + 1]) / 3;
+      if (FORT.ok && Math.abs(cx - FORT.cx) < FORT.R + 60 && Math.abs(cz - FORT.cz) < FORT.R + 60) continue;
+      if (touchesWater(cx, cz, cx, cz) || inPatch(cx, cz, cx, cz)) continue;
+      keep.push(a, b, c);
+    }
+    g.ensure(F.length / 2);
+    for (let i = 0; i < F.length; i += 2) g.vert(F[i], -offAt(F[i], F[i + 1]), F[i + 1], 0, 1, 0, C0);
+    for (let t = 0; t < keep.length; t += 3) g.triUp(keep[t], keep[t + 1], keep[t + 2]);
+  } else {
+    g.ensure(nx * nz);
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) g.vert(TERR.x0 + i * s, -OFF[j * nx + i], TERR.z0 + j * s, 0, 1, 0, C0);
+    for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
+      const x = TERR.x0 + i * s, z = TERR.z0 + j * s;
+      if (FORT.ok && Math.abs(x + s / 2 - FORT.cx) < FORT.R + 60 && Math.abs(z + s / 2 - FORT.cz) < FORT.R + 60) continue;
+      if (touchesWater(x, z, x + s, z + s) || inPatch(x, z, x + s, z + s)) continue;
+      const k = j * nx + i, tw = q[k] - q[k + 1] - q[k + nx] + q[k + nx + 1] > 0; cell(g, k, tw);
+    }
   }
-  await rest(); const tm = top.mesh(new THREE.MeshBasicMaterial({ colorWrite: false })); if (tm) { tm.renderOrder = -29; tm.frustumCulled = false; scene.add(tm); }   // after every ground layer (the last at -30)
+  /* The top grid hugs the visible grass: it is the base ground (subTris, within 0.35 m of the bilinear heights) lowered
+     TOP_GAP, so it lies exactly that far under the drawn ground everywhere and never clips what stands on it, while a
+     crest now hides what is behind it. The coarse 20 m grid sat metres under the ground on embankment slopes (the twist
+     of a cell), letting trees and rails beyond the crest show through. Water, fortress, the fine patch and the Latgales
+     cutting are left out, as before. */
+  if (BASESUB) {
+    const F = BASESUB.flat, T = BASESUB.tris, keep = [];
+    for (let t = 0; t < T.length; t += 3) {
+      const a = T[t], b = T[t + 1], c = T[t + 2];
+      const cx = (F[2 * a] + F[2 * b] + F[2 * c]) / 3, cz = (F[2 * a + 1] + F[2 * b + 1] + F[2 * c + 1]) / 3;
+      if (FORT.ok && Math.abs(cx - FORT.cx) < FORT.R + 60 && Math.abs(cz - FORT.cz) < FORT.R + 60) continue;
+      if (touchesWater(cx, cz, cx, cz) || inPatch(cx, cz, cx, cz)) continue;
+      if (cutTouches([cx, cz, cx, cz]) && cutInward(cx, cz)[2] < CUT.BLEND + s) continue;
+      keep.push(a, b, c);
+    }
+    top.ensure(F.length / 2);
+    for (let i = 0; i < F.length; i += 2) top.vert(F[i], (DEEP + 0.4) - offAt(F[i], F[i + 1]), F[i + 1], 0, 1, 0, C0);
+    for (let t = 0; t < keep.length; t += 3) top.triUp(keep[t], keep[t + 1], keep[t + 2]);
+  } else {
+    top.ensure(nx * nz);
+    for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) top.vert(TERR.x0 + i * s, (DEEP + 0.4) - OFF[j * nx + i], TERR.z0 + j * s, 0, 1, 0, C0);
+    for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
+      const x = TERR.x0 + i * s, z = TERR.z0 + j * s;
+      if (FORT.ok && Math.abs(x + s / 2 - FORT.cx) < FORT.R + 60 && Math.abs(z + s / 2 - FORT.cz) < FORT.R + 60) continue;
+      if (touchesWater(x, z, x + s, z + s) || inPatch(x, z, x + s, z + s)) continue;
+      const k = j * nx + i, tw = q[k] - q[k + 1] - q[k + nx] + q[k + nx + 1] > 0; cell(top, k, tw);
+    }
+  }
+  /* The surface grid lies ON the grass (base ground lowered only by dip, which groundDepth drops under crowned streets),
+     and is drawn AFTER the ground colour layers but BEFORE the streets: a street/path that runs below the raised ground
+     then depth-tests against the grass and is hidden, instead of painting its white lines over the slope; real roads above
+     the grass pass. Objects behind a crest fail it too. */
+  await rest(); const tm = top.mesh(new THREE.MeshBasicMaterial({ colorWrite: false })); if (tm) { tm.renderOrder = -37.8; tm.frustumCulled = false; scene.add(tm); }   // after ground colour (last -38), before streets (-37.5)
   /* over the fine patch (src/world/underpass.js) a 2 m grid, each node 0.5 m under the lowest ground around it, over
      the cells of the coarse grid it replaces; the water left out as there */
   for (const PATCH of PATCHES) {
@@ -107,7 +162,7 @@ async function buildGround() {
   base.ensure(bs.flat.length / 2); for (let i = 0; i < bs.flat.length; i += 2) base.vert(bs.flat[i], 0, bs.flat[i + 1], 0, 1, 0, bc);
   for (let t = 0; t < bs.tris.length; t += 3) base.triUp(bs.tris[t], bs.tris[t + 1], bs.tris[t + 2]);
   const gm0 = base.mesh(matBase); gm0.renderOrder = -50; gm0.frustumCulled = false; gm0.receiveShadow = true; scene.add(gm0);
-  if (TERR.on) { DIP = new Float32Array(TERR.nx * TERR.nz); await noteDips(bs.flat, bs.tris, DIP); }
+  if (TERR.on) { BASESUB = bs; DIP = new Float32Array(TERR.nx * TERR.nz); await noteDips(bs.flat, bs.tris, DIP); }
   for (const a of C.a) { const rings = a.slice(1).map(dec); const o = { cls: a[0], rings, bb: bbox(rings[0]) }; AREAS.push(o); if (o.cls === 0) WATER.push(o); }
   AREAS.sort((p, q) => AREA_ORDER.indexOf(p.cls) - AREA_ORDER.indexOf(q.cls));
   await prepShore();   // the distance from the banks that waterDeep and the water read, in parts (src/world/water.js)
