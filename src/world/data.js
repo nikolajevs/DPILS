@@ -15,7 +15,7 @@ const ROAD = new SegGrid(40), COL = new SegGrid(20), BGRID = new Map(), STREAM =
 const TRAMLINES = [];
 function inBuilding(x, z) {
   const l = BGRID.get((Math.floor(x / 60) + 2000) * 4096 + Math.floor(z / 60) + 2000); if (!l) return false;
-  for (const id of l) { const b = BLD[id], bb = b.bb; if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pip(x, z, b.ring)) return true; }
+  for (const id of l) { const b = BLD[id], bb = b.bb; if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pip(x, z, b.ring) && !(b.holes && b.holes.some(h => pip(x, z, h)))) return true; }   // holes: the passages through a house
   return false;
 }
 function buildingAt(x, z) {   // the building whose footprint holds the point (for the line of fire), or null
