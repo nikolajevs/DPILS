@@ -23,8 +23,7 @@ const MODEL = {
   // a gun whose file lies tilted: where its bore and its left side point in the file. The Makarov came off its display
   // stand rolled by 35° and its barrel 30° down and aside (tools/fp-weapons.mjs did not level it): it is turned once on
   // loading, about its grip, so that every clone has the muzzle along +z and the top along +y (axes of its faces)
-  // parts: pieces moved after the turn, in metres of the level gun (the magazine of the display model hangs 4 cm out of the grip)
-  gunAxes: [null, null, null, { bore: [0.289, -0.408, 0.866], left: [0.8165, 0.5774, 0], parts: { Object_10: [0, 0.041, 0.006] } }, null],
+  gunAxes: [null, null, null, { bore: [0.289, -0.408, 0.866], left: [0.8165, 0.5774, 0] }, null],
   tint: ['helmet'], camo: ['uniform'],   // tint: painted in the colour of the team; camo: the jacket and the trousers get a camouflage pattern in its tones
   clips: { idle: 'Idle', walk: 'Walk', run: 'Run', jump: 'Jump', death: 'Death', hold: 'Carry' },   // hold: the pose of the arms with a rifle
   arms: ['ShoulderL', 'UpperArmL', 'LowerArmL', 'FistL', 'ShoulderR', 'UpperArmR', 'LowerArmR', 'FistR'], hand: 'FistR', head: 'Head',
@@ -59,12 +58,7 @@ function level(src, ax) {
   const X = new THREE.Vector3(...ax.left).normalize(), Z = new THREE.Vector3(...ax.bore), turn = new THREE.Group(), outer = new THREE.Group();
   Z.addScaledVector(X, -Z.dot(X)).normalize();
   turn.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, new THREE.Vector3().crossVectors(Z, X), Z).invert());
-  turn.add(src); outer.add(turn); outer.updateMatrixWorld(true);
-  for (const [name, d] of Object.entries(ax.parts || {})) {
-    const o = src.getObjectByName(name); if (!o) continue;
-    o.position.copy(o.parent.worldToLocal(o.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(...d))));
-  }
-  return outer;
+  turn.add(src); outer.add(turn); return outer;
 }
 
 // the fallback rifle of boxes, the muzzle along +z, the grip at the origin, in metres

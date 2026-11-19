@@ -22,7 +22,8 @@ const EYE = new THREE.Vector3(0, 1.598, 0.022);
 // where a picked-up sight sits on each weapon, in the frame of its file (metres, lens +z, mount bottom y=0):
 // the AK in the coordinates of its own file (the arms' bone carries it), the others from their grip (HOLD).
 // The top of the receiver was measured off the models (tools/sights.mjs builds the sights to the same convention).
-const SIGHT_MOUNT = [[-0.13, 1.5, 0.24], [0, 0.088, 0.1], [0, 0.045, 0.05], [0, 0.086, -0.055], [0, 0.112, 0]];
+// The pistol's is on the top of its slide once avatar.js has levelled it.
+const SIGHT_MOUNT = [[-0.13, 1.5, 0.24], [0, 0.088, 0.1], [0, 0.045, 0.05], [0.01, 0.063, -0.055], [0, 0.112, 0]];
 let loading = null, ak = null, settled = false;
 function loadAK() {
   if (!loading) loading = new Promise(res => import('three/addons/libs/meshopt_decoder.module.js').then(({ MeshoptDecoder }) => {   // the decoder of the packed geometry comes only with the game
