@@ -3,7 +3,7 @@ import { STATE } from '../core/state.js';
 import { rest } from '../core/pause.js';
 import { seriesAtlas, seriesMaterial } from '../buildings/series.js';
 import { facadeMaterial, groundMaterial, roofMaterial, std } from '../render/materials.js';
-import { detailTex, facadeAtlas, roofAtlas } from '../render/textures.js';
+import { brickPhotos, detailTex, facadeAtlas, roofAtlas } from '../render/textures.js';
 import { hook } from '../render/renderer.js';
 import { SegGrid } from '../core/geometry.js';
 import { lin, pip } from '../core/util.js';
@@ -59,7 +59,7 @@ function onRoad(x, z, margin) { let ok = false; ROAD.near(x, z, 14, (id, d) => {
 
 let matFac, matRoof, matPlain, matGold, matBank, M_LAND, M_PAVE, M_DIRT, M_BALLAST, M_ASPH, M_MARK;   // the water's material: src/world/water.js
 async function makeMaterials() {
-  [STATE.facTex, STATE.facMask] = facadeAtlas(); await rest(); STATE.roofTex = roofAtlas(); await rest();
+  [STATE.facTex, STATE.facMask] = facadeAtlas(await brickPhotos()); await rest(); STATE.roofTex = roofAtlas(); await rest();
   const dGrass = detailTex(0), dAsph = detailTex(1), dPave = detailTex(2), dGravel = detailTex(3); await rest();
   matFac = facadeMaterial(); matRoof = roofMaterial(); [STATE.serTex, STATE.serMask] = seriesAtlas(); await rest(); STATE.matSer = seriesMaterial();
   matPlain = std({ vertexColors: true, roughness: 0.85, metalness: 0 }, 'plain');

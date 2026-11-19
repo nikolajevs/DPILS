@@ -26,7 +26,10 @@ function toTex(cv, srgb, repeat) {
 
 /* Facade atlas: 8 rows (style) × 4 columns (variant); each cell is one bay × one floor.
    Colour atlas is near-neutral; the mask says what the building tint applies to (R), where glass is (G). */
-function facadeAtlas() {
+// The brick photographs (ambientCG CC0, grey: the building tint colours them), loaded before the atlas is drawn; null if a file is missing
+const loadImg = url => new Promise(res => new THREE.ImageLoader().load(url, res, undefined, () => res(null)));
+async function brickPhotos() { const [red, white] = await Promise.all([loadImg('textures/brick_red.webp'), loadImg('textures/brick_white.webp')]); return red && white ? { red, white } : null; }
+function facadeAtlas(photos) {
   const S = 256, cv = mkCanvas(S * 4, S * 8), mk = mkCanvas(S * 4, S * 8), g = cv.getContext('2d'), m = mk.getContext('2d');
   const WALL = '#ff0000', TRIM = '#000000', GLASS = '#00ff00', HALF = '#5a0000';
   let ox = 0, oy = 0;
@@ -53,7 +56,8 @@ function facadeAtlas() {
     else if (o.lay === 'grid') { for (let k = 1; k < 3; k++) bar(x + f + iw * k / 3, y + f, bw, ih); bar(x + f, y + f + ih * 0.3, iw, bw); }
     if (o.sill) { rect(x - 7, y + h, w + 14, 6, o.sill, TRIM); shade(x - 7, y + h + 6, w + 14, 5, 0.28); }
   }
-  function bricks(x0, y0, w, h, bw, bh, base, mortar, vary, mortarMask) {
+  function bricks(x0, y0, w, h, bw, bh, base, mortar, vary, mortarMask, photo) {
+    if (photo) { rect(x0, y0, w, h, mortar, WALL); g.save(); g.beginPath(); g.rect(ox + x0, oy + y0, w, h); g.clip(); g.drawImage(photo, ox + x0, oy + y0, S, S); g.restore(); return; }   // a photographed course, wall tint all over
     rect(x0, y0, w, h, mortar, mortarMask);
     for (let r = 0, y = y0; y < y0 + h; r++, y += bh) for (let x = x0 - (r % 2 ? bw / 2 : 0); x < x0 + w; x += bw) {
       const v = 1 + (R() - 0.5) * vary; const xx = Math.max(x0, x + 1), ww = Math.min(x0 + w, x + bw - 1) - xx; if (ww <= 0) continue;
@@ -84,7 +88,7 @@ function facadeAtlas() {
   });
   // row 1 — red brick (Daugavpils fortress and old town)
   for (let c = 0; c < 4; c++) cell(c, 1, () => {
-    bricks(0, 0, S, S, 16, 6, '#e6dad2', '#d9d3cb', 0.22, HALF);
+    bricks(0, 0, S, S, 16, 6, '#e6dad2', '#d9d3cb', 0.22, HALF, photos && photos.red);
     if (c === 3) { shop('#2f2c28'); return; }
     rect(0, S - 10, S, 10, '#cfc6bc', HALF); shade(0, S - 10, S, 2, 0.3);
     if (c === 1) { for (let x = 0; x < S; x += 16) { rect(x + 2, 6, 10, 10, '#cfc5bd', WALL); shade(x + 2, 16, 10, 2, 0.35); } rect(0, 0, 14, S, '#ddd1c8', WALL); rect(S - 14, 0, 14, S, '#ddd1c8', WALL); shade(14, 0, 3, S, 0.2); }
@@ -96,7 +100,7 @@ function facadeAtlas() {
   });
   // row 2 — silicate (white) brick, Soviet 1960–80s
   for (let c = 0; c < 4; c++) cell(c, 2, () => {
-    bricks(0, 0, S, S, 16, 6, '#f0eee8', '#d6d3cc', 0.1, WALL);
+    bricks(0, 0, S, S, 16, 6, '#f0eee8', '#d6d3cc', 0.1, WALL, photos && photos.white);
     rect(0, S - 6, S, 6, '#c9c6bf', WALL);
     if (c === 3) { rect(92, 70, 72, S - 70, '#5c4a3c', TRIM); light(98, 76, 60, 2, 0.2); rect(84, 52, 88, 14, '#9a978f', TRIM); shade(84, 66, 88, 4, 0.4); glass(104, 24, 48, 22); return; }
     if (c === 1) { rect(40, 36, 58, 214, '#ece9e2', TRIM); glass(48, 44, 42, 80); rect(48, 130, 42, 112, '#e2ded5', TRIM); shade(48, 130, 42, 3, 0.2); win(110, 66, 100, 134, { frame: '#ece9e2', ft: 7, lay: 'cross', sill: '#b9b6ae' }); return; }
@@ -216,4 +220,4 @@ function waterNormalTex() {
 }
 function glowTex() { const cv = mkCanvas(128, 128), g = cv.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.4, 'rgba(255,255,255,0.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); return toTex(cv, false, false); }
 
-export { R, detailTex, facadeAtlas, fbm, glowTex, mkCanvas, roofAtlas, toTex, valueNoise, waterNormalTex };
+export { R, brickPhotos, detailTex, facadeAtlas, fbm, glowTex, mkCanvas, roofAtlas, toTex, valueNoise, waterNormalTex };
