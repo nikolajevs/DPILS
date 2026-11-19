@@ -5,7 +5,7 @@ import { dirname } from 'node:path';
 // The city data stay plain scripts that set window.CITY, window.TRANSIT, window.FORTRESS, window.TERRAIN, window.SCHOOLS, window.PARKS, window.LIDAR and window.LIDAR_TREES (written
 // by the tools in tools/; src/boot.js downloads them with a progress bar); they are copied next to the bundle as they
 // are, with the old address of the page and the textures the page loads at run time.
-const STATIC = ['citydata.js', 'transit.js', 'fortress.js', 'terrain.js', 'schools.js', 'parks.js', 'lidar.js', 'lidar-trees.js', 'trains.js', 'intercity.js', 'parking.js', 'yards.js', 'servers.json', 'models', 'sounds', 'daugavpils.html', 'textures/water_normal.webp', 'textures/ground_grass.webp', 'textures/ground_dirt.webp', 'textures/detail_grass.webp', 'textures/detail_asph.webp', 'textures/detail_pave.webp', 'textures/detail_gravel.webp', 'textures/brick_red.webp', 'textures/brick_white.webp', 'textures/bark_birch.webp'];
+const STATIC = ['citydata.js', 'transit.js', 'fortress.js', 'terrain.js', 'schools.js', 'parks.js', 'lidar.js', 'lidar-trees.js', 'trains.js', 'intercity.js', 'parking.js', 'yards.js', 'servers.json', 'models', 'sounds', 'daugavpils.html', 'textures/water_normal.webp', 'textures/ground_grass.webp', 'textures/ground_dirt.webp', 'textures/detail_grass.webp', 'textures/detail_asph.webp', 'textures/detail_pave.webp', 'textures/detail_gravel.webp', 'textures/brick_red.webp', 'textures/brick_white.webp', 'textures/bark_birch.webp', 'textures/bark_pine.webp', 'textures/bark_spruce.webp'];
 
 // Incremental copy: the static city data and models weigh ~25 MB, and most builds change only src/. A file is
 // copied only when the destination is missing, differs in size, or the source was modified after the last copy
