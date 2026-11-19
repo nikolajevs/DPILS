@@ -194,6 +194,27 @@ console.log('server rules (createGame, controlled clock):');
   g.stop();
 }
 {
+  // the flight time: nothing lands at the click; the bhit and the damage come when the bullet arrives (56 m at 560 m/s = 100 ms)
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'flight' });
+  const A = seat(g, conn()), B = seat(g, conn());
+  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -56, yaw: 0 });
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(B, { t: 'state', x: 0, y: 1.7, z: -56, yaw: 0, pitch: 0 });
+  const L = Math.hypot(0.6, 56), d = [0, -0.6 / L, -56 / L];   // aim at the chest, not the head
+  msg(A, { t: 'shoot', w: 0, rays: [d] });
+  ok(A.all('hit').length === 0 && B.all('hurt').length === 0 && A.all('bhit').length === 0, 'at the click nothing has landed yet');
+  clock += 50; g.stepBullets();   // halfway: 28 m of the 56
+  ok(A.all('hit').length === 0 && A.all('bhit').length === 0, 'halfway (50 ms) the bullet is still in the air');
+  clock += 60; g.stepBullets();   // past the 100 ms of flight
+  const h = A.last('hit'), b = A.last('bhit');
+  ok(h && h.dmg === WEAPONS[0].dmg && B.handle.player.hp === 100 - WEAPONS[0].dmg, 'the damage lands when the bullet arrives', JSON.stringify(h));
+  ok(b && near(b.d, 56, 0.5) && b.v === B.handle.player.id, 'bhit reports the body at ~56 m', JSON.stringify(b));
+  g.stop();
+}
+{
   // the refined freePath on its own
   const house = (x, z) => (Math.abs(x) < 3 && z > -13 && z < -7) ? { top: 12 } : null;
   const hill = (x, z) => z < -10 ? (-z - 10) * 0.5 : 0;

@@ -128,7 +128,7 @@ export function createGame(opts) {
       if (!shooter) { bullets.delete(b.bid); b.shot.pending--; touched.add(b.shot); continue; }   // the shooter left: the bullet dies with him
       const W = WEAPONS[b.w];
       let t = b.last, dist = b.dist, gone = false;
-      while (t < to && !gone) {
+      while (t < to - 1e-4 && !gone) {   // the 1e-4 ms slack eats the float residual of the last substep, so it is not mistaken for the wall
         const nt = Math.min(to, t + 1000 / 60), seg = b.speed * (nt - t) / 1000, reach = Math.min(seg, b.max - dist);
         if (reach <= 1e-6) { gone = true; break; }
         const o = [b.o[0] + b.d[0] * dist, b.o[1] + b.d[1] * dist, b.o[2] + b.d[2] * dist];
