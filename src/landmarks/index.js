@@ -13,6 +13,7 @@ import { lmParks, parksNight } from './parks.js';
 import { TX, rigaNow } from '../transit/transit.js';
 import { lmGrounds, lmSquare } from './unity-square.js';
 import { lmAirBridge } from './air-bridge.js';
+import { lmRailBridge } from './railway-bridge.js';
 import { lmJunction } from './junction.js';
 import { lmSC } from './heat-plant.js';
 import { lmKP } from './culture-palace.js';
@@ -92,7 +93,7 @@ async function buildLandmarks() {
   K.walls = [K.ash, K.ren, new LMB(), new LMB(), new LMB(), new LMB(), new LMB(), new LMB()];
   // one landmark at a time, with a pause between them when the slice is used up (src/core/pause.js)
   for (const f of [lmUnityHouse, lmLatgola, lmSquare, lmGrounds, lmDUMain, lmDUParades, lmDULab, lmRenesanse, lmRigas, lmVesma, lmTVTower, lmStation, lmStationYard, lmAutoosta, lmSpeedway, lmKP, lmSC]) { await rest(); f(K); }
-  for (const f of [lmFuel, lmOverpass, lmTramWires, lmAirBridge, lmJunction, lmSchools, lmChurchHill, lmShops]) { await rest(); f(K, litPatch); }
+  for (const f of [lmFuel, lmOverpass, lmTramWires, lmAirBridge, lmRailBridge, lmJunction, lmSchools, lmChurchHill, lmShops]) { await rest(); f(K, litPatch); }
   await rest(); STATE.GBC = TERR.on ? vbComp : null; lmVienibas(K); STATE.GBC = null;
   for (const f of [lmParking, lmYards, lmGubisce, lmSubstation, lmHospital, lmParks, lmUnderpass]) { await rest(); await f(K); }
   await rest();
