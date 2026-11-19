@@ -39,9 +39,9 @@ This work is based on the models above, each by its author, licensed under [CC-B
 
 ## Солдат
 
-Реалистичный оператор спецназа, заменивший мультяшного солдата Quaternius. Тело и анимации — **CC BY 4.0** (Sketchfab), атрибуции ниже. Сборка — [tools/soldier.mjs](../tools/soldier.mjs): штатное оружие оператора вырезано, текстуры сжаты в WebP ≤1024 px, клипы ретаргетятся на скелет Mixamo (тело и ноги — дельтой от rest-позы, руки клипа Carry — по абсолютной мировой ориентации источника), файл пакуется meshopt. Итог: 2,7 МБ, 35 тыс. треугольников, 8 материалов, рост 1,77 м.
+Реалистичный оператор спецназа — единственный персонаж игры (прежние мужчина и женщина Quaternius и пешеходы удалены). Тело и анимации — **CC BY 4.0** (Sketchfab), атрибуции ниже. Сборка — [tools/soldier.mjs](../tools/soldier.mjs): штатное оружие оператора (витринный M4 с патчами), магазины и подсумки вырезаны, текстуры сжаты в WebP ≤1024 px, клипы ретаргетятся на скелет Mixamo (тело и ноги — дельтой от rest-позы, руки клипа Carry — по абсолютной мировой ориентации источника), файл пакуется meshopt. Итог: 2,4 МБ, 35 тыс. треугольников, 8 материалов, рост 1,8 м.
 
-**Тело** — «FSB Operator», автор SpatialNeglect, [CC BY 4.0](https://sketchfab.com/3d-models/fsb-operator-43a561e941704eefb1ab0614be4f0049).
+**Тело** — «S.W.A.T. Operator», автор SpatialNeglect, [CC BY 4.0](https://sketchfab.com/models/9e82fabf26194896b5ad4a364d864eab): каска с ПНВ, маска, тактическая форма, перчатки и ботинки. Скачивание источников — [tools/sf-dl.mjs](../tools/sf-dl.mjs) (токен аккаунта в `sketchfab.token`, команды в шапке `soldier.mjs`).
 
 **Анимации** — Mixamo-клипы автора fauze (CC BY 4.0):
 
@@ -56,19 +56,6 @@ This work is based on the models above, each by its author, licensed under [CC-B
 Используется в [src/game/avatar.js](../src/game/avatar.js): материал `helmet` красится в цвет команды или игрока, `uniform` получает камуфляж в его тонах. Чтобы взять другого персонажа, достаточно заменить файл и поправить блок `MODEL` (имена клипов, костей и материалов) в `avatar.js`.
 
 Старые стволы Quaternius (`Pistol.glb`, `Rifle.glb`, `Shotgun.glb`, `Sniper.glb` — CC0, наборы Zombie Apocalypse Kit и Toon Shooter Game Kit) заменены моделями `fp_*` выше и больше не загружаются; файлы оставлены в репозитории как запасные.
-
-## Люди (`humans/`)
-
-Тоже **CC0 1.0**, Quaternius — [Universal Animation Library](https://quaternius.com/packs/universalanimationlibrary.html) и причёски из его наборов; текст лицензии — `humans/LICENSE.txt`.
-
-| Файл | Что |
-|---|---|
-| `male.glb`, `female.glb` | мужчина (1.81 м) и женщина (1.77 м) в метрах, общий скелет (24 кости) |
-| `anims.glb` | 20 анимаций: Idle_Loop, Walk_Loop, Jog_Fwd_Loop, Pistol_Idle_Loop, Death01 и др. (Jump нет — в прыжке стоит idle) |
-| `hair_*.glb` | шесть причёсок и борода, привязываются к тому же скелету по именам костей |
-| `male_light.webp`, `female_light.webp` | облегчённые превью (не загружаются страницей) |
-
-Выбор персонажа в панели игры («Персонаж», «Причёска», «Цвет волос», «Борода») хранится в `localStorage['dpils.mp']` и передаётся серверу строкой `look` (`m.1.2.1` = мужчина, причёска 1, цвет 2, борода). Команда обозначается кепкой и нарукавной повязкой, не перекраской кожи. Пешеходы города ([src/world/pedestrians.js](../src/world/pedestrians.js)) — те же модели без оружия и знаков команды.
 
 ## Цветы (`ez-tree/`)
 
