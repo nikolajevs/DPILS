@@ -379,6 +379,18 @@ function maximaXX(K, S, r, H, front, gbc) {
       for (const s of [0.9, L2 - 0.9]) lmBar(G, F2.at(s, 0.1, -0.12), F2.at(s, H - 0.5, -0.12), 0.1, hb('#9ca1a5'));
     }
   }
+  // the name again on a steel frame over the roof edge above the entrance (seen over the roofs in the photographs)
+  { const t = CT.xxName, w = 5.4, hh = w * t.h / t.w, sn = Math.max(w / 2 + 1, Math.min(L - w / 2 - 1, sc)), yb = H + 0.5;
+    for (const q of [sn - w * 0.35, sn + w * 0.35]) lmBar(G, Fw.at(q, H - 0.3, 0.5), Fw.at(q, yb + hh * 0.5, 0.5), 0.1, hb('#4a4f53'));
+    lmBoxW(G, Fw, sn - w / 2 - 0.1, sn + w / 2 + 0.1, yb - 0.08, yb + hh + 0.08, 0.3, 0.55, hb('#4a3b36'));
+    flat(Fw, sn - w / 2, sn + w / 2, yb, yb + hh, 0.28, t); }
+  // the secondary entrance (OSM entrance=secondary) at the south end: glazed doors in the nearest wall under a small blue canopy
+  { const q = [-1187.1, 897.4]; let bi = -1, bd = 1e9;
+    for (let i = 0; i < n; i++) { const j = (i + 1) % n, ax = r[2 * i], az = r[2 * i + 1], bx = r[2 * j], bz = r[2 * j + 1], l = Math.hypot(bx - ax, bz - az); if (l < 3) continue;
+      const t = Math.max(0, Math.min(1, ((q[0] - ax) * (bx - ax) + (q[1] - az) * (bz - az)) / (l * l))), d = Math.hypot(q[0] - ax - (bx - ax) * t, q[1] - az - (bz - az) * t); if (d < bd) { bd = d; bi = i; } }
+    if (bi >= 0 && bd < 8 && bi !== fi) { const F2 = edgeF(r, bi), s0 = Math.max(1.6, Math.min(F2.L - 1.6, along(r, bi, q)));
+      lmBoxW(G, F2, s0 - 1.6, s0 + 1.6, 0, 3.0, -0.12, 0, hb('#2d3135')); flat(F2, s0 - 1.4, s0 + 1.4, 0.1, 2.9, -0.14, CT.door);
+      lmBoxW(G, F2, s0 - 2.0, s0 + 2.0, 3.1, 3.4, -1.8, 0, hb('#233a73')); const [x, z] = freeAt(F2, s0 + 2.4, -1.2); box(G, x, z, F2.tx, F2.tz, 0.3, 0.3, 0, 0.9, hb('#3a3d40')); STATE.GBC = gbc; } }
   // the roof: units on a grid at least 2–4 m inside the walls, of four kinds, and rows of skylights
   const yR = H - 0.45, [cx, cz] = inner(r); let inn = null;
   for (const d of [4, 3, 2]) { const q = offsetRing(r, -d); if (insetOk(r, q)) { inn = q; break; } }
