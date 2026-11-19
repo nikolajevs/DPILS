@@ -7,7 +7,7 @@ import { spwCap, spwGround } from '../landmarks/speedway.js';
 import { VB, vbGround, vbLocal, vbP } from './bridge-vienibas.js';
 import { cutCarve, cutY } from './cutting.js';
 import { upPatch, upUnder } from './underpass.js';
-import { rbPatch } from './underpass-rail.js';
+import { rbPatches } from './underpass-rail.js';
 import { U, renderer, scene, terrUniforms } from '../render/renderer.js';
 import { SegGrid } from '../core/geometry.js';
 import { dec } from '../core/util.js';
@@ -21,10 +21,11 @@ import { C, WL } from '../core/env.js';
    walls down to the ground on the lower side; bridges keep a straight deck from bank to bank. Heights are relative to
    Vienības laukums. */
 const TERR = { on: false, x0: 0, z0: 0, s: 25, nx: 2, nz: 2, ref: 0, q: null };
+const NPATCH = 3;   // fine patches of the terrain the shaders read (PATCHES, below)
 U.tTerr = { value: null }; U.uTerrA = { value: new THREE.Vector4(0, 0, 0.04, 0) }; U.uTerrB = { value: new THREE.Vector4(2, 2, 0, 0) };
-for (let k = 0; k < 2; k++) { U['tPatch' + k] = { value: null }; U['uPatchA' + k] = { value: new THREE.Vector4(0, 0, 1, 0) }; U['uPatchB' + k] = { value: new THREE.Vector4(2, 2, 0, 0) }; }   // two fine patches (PATCHES, below)
+for (let k = 0; k < NPATCH; k++) { U['tPatch' + k] = { value: null }; U['uPatchA' + k] = { value: new THREE.Vector4(0, 0, 1, 0) }; U['uPatchB' + k] = { value: new THREE.Vector4(2, 2, 0, 0) }; }   // the fine patches (PATCHES, below)
 THREE.ShaderChunk.common += `
-uniform sampler2D tTerr; uniform vec4 uTerrA; uniform vec4 uTerrB; uniform sampler2D tPatch0; uniform vec4 uPatchA0; uniform vec4 uPatchB0; uniform sampler2D tPatch1; uniform vec4 uPatchA1; uniform vec4 uPatchB1;
+uniform sampler2D tTerr; uniform vec4 uTerrA; uniform vec4 uTerrB;${Array.from({ length: NPATCH }, (_, k) => ` uniform sampler2D tPatch${k}; uniform vec4 uPatchA${k}; uniform vec4 uPatchB${k};`).join('')}
 float terrTexel(vec2 i) { vec4 t = texture2D(tTerr, (i + 0.5) / uTerrB.xy); return (t.r * 65280.0 + t.g * 255.0) * 0.1; }
 float patchTexel(sampler2D tp, vec4 B, vec2 i) { vec4 t = texture2D(tp, (i + 0.5) / B.xy); return (t.r * 65280.0 + t.g * 255.0) * 0.001 - 32.768; }
 float patchOff(sampler2D tp, vec4 A, vec4 B, vec2 p) {
@@ -37,7 +38,7 @@ float terrainH(vec2 p) {
   if (uTerrA.w < 0.5) return 0.0;
   vec2 g = clamp((p - uTerrA.xy) * uTerrA.z, vec2(0.0), uTerrB.xy - 1.001), i = floor(g), f = g - i;
   float h = mix(mix(terrTexel(i), terrTexel(i + vec2(1.0, 0.0)), f.x), mix(terrTexel(i + vec2(0.0, 1.0)), terrTexel(i + vec2(1.0)), f.x), f.y) - uTerrB.z;
-  return h + patchOff(tPatch0, uPatchA0, uPatchB0, p) + patchOff(tPatch1, uPatchA1, uPatchB1, p);
+  return h${Array.from({ length: NPATCH }, (_, k) => ` + patchOff(tPatch${k}, uPatchA${k}, uPatchB${k}, p)`).join('')};
 }`;
 THREE.ShaderChunk.project_vertex = `vec4 mvPosition = vec4( transformed, 1.0 );
 #ifdef USE_BATCHING
@@ -77,10 +78,11 @@ function gridH(x, z) {   // the height grid alone, without the fine patch
   return ((a + (b - a) * fx) * (1 - fz) + (c + (d - c) * fx) * fz) * 0.1 - TERR.ref;
 }
 /* Fine patches over the grid: offsets in metres on a 1 m grid over a small box, added to the heights, for places the
-   20 m grid cannot draw (Daugavas iela under the end of Vienības tilts, src/world/underpass.js; the service road under
-   the first span of the railway bridge, src/world/underpass-rail.js). At most two (the shader reads two textures); they
-   must not overlap. Inside a box the ground layers and lines are cut finer so that they follow it (densify, subTris),
-   and the depth grid under the ground is drawn at 2 m (src/world/ground.js). Kept to the millimetre, as the shaders read it. */
+   20 m grid cannot draw: Daugavas iela under the end of Vienības tilts (src/world/underpass.js); Lielā iela under the
+   south-west end of the railway bridge and the embankment at its north-east end (src/world/underpass-rail.js). At most
+   NPATCH (the shader reads one texture each); they must not overlap. Inside a box the ground layers and lines are cut
+   finer so that they follow it (densify, subTris), and the depth grid under the ground is drawn at 2 m
+   (src/world/ground.js). Kept to the millimetre, as the shaders read it. */
 const PATCHES = [];
 function patchOne(P, x, z) {
   const gx = (x - P.x0) / P.s, gz = (z - P.z0) / P.s; if (gx < 0 || gz < 0 || gx >= P.nx - 1.001 || gz >= P.nz - 1.001) return 0;
@@ -90,7 +92,7 @@ function patchOne(P, x, z) {
 function patchAt(x, z) { let h = 0; for (const P of PATCHES) h += patchOne(P, x, z); return h; }
 const inPatch = (x0, z0, x1, z1) => { for (const P of PATCHES) if (x1 >= P.bb[0] && x0 <= P.bb[2] && z1 >= P.bb[1] && z0 <= P.bb[3]) return true; return false; };
 function setPatch(p) {
-  const k0 = PATCHES.length; if (k0 >= 2) throw new Error('setPatch: two patches at most');
+  const k0 = PATCHES.length; if (k0 >= NPATCH) throw new Error('setPatch: ' + NPATCH + ' patches at most');
   const n = p.nx * p.nz, data = new Uint8Array(n * 4), d = new Float32Array(n);
   for (let k = 0; k < n; k++) { const v = Math.max(0, Math.min(65535, Math.round((p.d[k] + 32.768) * 1000))); d[k] = v / 1000 - 32.768; data[4 * k] = v >> 8; data[4 * k + 1] = v & 255; data[4 * k + 3] = 255; }
   const tex = new THREE.DataTexture(data, p.nx, p.nz, THREE.RGBAFormat, THREE.UnsignedByteType); tex.minFilter = tex.magFilter = THREE.NearestFilter; tex.generateMipmaps = false; tex.needsUpdate = true;
@@ -201,7 +203,7 @@ async function terrainInit() {
   const tex = new THREE.DataTexture(data, T.nx, T.nz, THREE.RGBAFormat, THREE.UnsignedByteType); tex.minFilter = tex.magFilter = THREE.NearestFilter; tex.generateMipmaps = false; tex.needsUpdate = true;
   U.tTerr.value = tex; U.uTerrA.value.set(T.x0, T.z0, 1 / T.step, 1); U.uTerrB.value.set(T.nx, T.nz, TERR.ref, 0);
   await rest(); const p = upPatch(); if (p) setPatch(p);   // Daugavas iela under the end of Vienības tilts (src/world/underpass.js)
-  const p2 = rbPatch(); if (p2) setPatch(p2);   // the service road under the railway bridge (src/world/underpass-rail.js)
+  for (const q of rbPatches()) setPatch(q);   // the railway bridge: Lielā iela under its south-west end, the embankment at its north-east end (src/world/underpass-rail.js)
 }
 // a shift applied to the y of every vertex written into a GB while it is set (buildings standing level, bridge decks)
 STATE.GBC = null;
@@ -256,7 +258,7 @@ function waterLevel(x, z) { let m = terrainH(x, z); for (const r of [20, 50]) fo
 function lineGap(ax, az, bx, bz, ha, hb, tol) {
   const dx = bx - ax, dz = bz - az, dh = hb - ha;
   if (inPatch(Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz))) {
-    const n = 2 * Math.max(1, Math.ceil(Math.hypot(dx, dz) / PATCHES[0].s)); let e = Math.abs(terrainH(ax + dx / 2, az + dz / 2) - ha - dh / 2);
+    const n = 2 * Math.max(1, Math.ceil(Math.hypot(dx, dz) / Math.min(...PATCHES.map(P => P.s)))); let e = Math.abs(terrainH(ax + dx / 2, az + dz / 2) - ha - dh / 2);
     for (let k = 1; k < n && e <= tol; k++) { const t = k / n; e = Math.max(e, Math.abs(terrainH(ax + dx * t, az + dz * t) - ha - dh * t)); }
     return e;
   }

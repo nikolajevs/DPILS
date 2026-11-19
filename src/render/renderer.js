@@ -57,6 +57,6 @@ function hook(m, key, patch) {
   return m;
 }
 
-function terrUniforms(s) { s.uniforms.tTerr = U.tTerr; s.uniforms.uTerrA = U.uTerrA; s.uniforms.uTerrB = U.uTerrB; for (let k = 0; k < 2; k++) { s.uniforms['tPatch' + k] = U['tPatch' + k]; s.uniforms['uPatchA' + k] = U['uPatchA' + k]; s.uniforms['uPatchB' + k] = U['uPatchB' + k]; } }
+function terrUniforms(s) { s.uniforms.tTerr = U.tTerr; s.uniforms.uTerrA = U.uTerrA; s.uniforms.uTerrB = U.uTerrB; for (const k in U) if (/^(tPatch|uPatch)/.test(k)) s.uniforms[k] = U[k]; }   // with the fine patches of the terrain (src/world/terrain.js)
 
 export { ANISO, GPU, LIGHTDIR, MAXTEX, POST, U, WEAK_GPU, camera, canvas, hemi, hook, renderer, scene, sun, terrUniforms };
