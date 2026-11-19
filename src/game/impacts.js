@@ -104,7 +104,8 @@ function dmgFloat(x, y, z, text, cls) {
 }
 
 /* ---------- where exactly the bullet met the surface, and which way the surface faces ----------
-   freePath steps 1.5 m, so its answer is up to that much inside the wall: bisect the last step down to ~3 mm.
+   freePath's coarse step is up to 1.5 m, so its answer can sit inside the wall: bisect the last step down to ~3 mm.
+   A point-blank mark (len near 0, the muzzle resting on the face) bisects from 0 and lands on the face itself.
    The point rides the bullet's falling arc (bulletAt at the weapon's velocity), the same one the server flew. */
 function refine(o, d, len, v) {
   const block = t => {
@@ -112,7 +113,7 @@ function refine(o, d, len, v) {
     if (y < g) return 1;
     const b = buildingAt(x, z); return b && y < g + (b.top || 12) ? 2 : carAt(x, y, z) ? 3 : 0;
   };
-  let lo = Math.max(0.2, len - 1.6), hi = len;
+  let lo = Math.max(0, len - 1.6), hi = len;
   if (!block(hi)) hi = len; else for (let i = 0; i < 9; i++) { const mid = (lo + hi) / 2; if (block(mid)) hi = mid; else lo = mid; }
   const [x, y, z] = bulletAt(o, d, hi, v), g = terrainH(x, z), b = buildingAt(x, z);
   d = bulletDir(d, hi, v);   // the way the bullet was going when it met the surface: the roof and the wall face read it
