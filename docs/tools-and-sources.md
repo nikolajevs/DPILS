@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/street-wear | Уличный износ: накат, заплатки, люки, потёки, трава у бордюров | src/world/streetwear.js, src/world/streets.js |
 
 ## Автономный цикл улучшений
 
