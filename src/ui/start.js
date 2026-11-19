@@ -41,6 +41,14 @@ $('chTrain').onclick = () => showStep('train'); $('chOnline').onclick = () => sh
 const timeSel = $('startTime');
 timeSel.onchange = () => { setTime(+timeSel.value); try { localStorage.setItem('dpils-time', timeSel.value); } catch (e) {} };
 $('chTrain').disabled = $('chOnline').disabled = false;   // the code is here: the settings can be chosen while the city is still being built
+/* The browser hint: Firefox's WebGL draws the city markedly slower than Chromium's on the same GPU (measured 20–28
+   vs 60–80 fps on an RTX 3050), and auto quality already starts Firefox lower (src/render/lighting.js). Tell the
+   visitor once, on the start card; the cross hides it for good (dpils-browser-hint). */
+if (/firefox/i.test(navigator.userAgent)) {
+  let dismissed = false; try { dismissed = localStorage.getItem('dpils-browser-hint') === 'off'; } catch (e) {}
+  if (!dismissed) $('browserHint').hidden = false;
+  $('browserHintX').onclick = () => { $('browserHint').hidden = true; try { localStorage.setItem('dpils-browser-hint', 'off'); } catch (e) {} };
+}
 window.addEventListener('keydown', e => { if (e.code === 'Escape' && !$('start').hidden && card.dataset.step !== 'home' && form.contains(document.activeElement)) { e.preventDefault(); showStep('home'); } });
 // the "?" button: the card again, on its first step, with the keys unfolded
 $('bHelp').onclick = () => {
