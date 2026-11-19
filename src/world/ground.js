@@ -5,7 +5,7 @@ import { SMALL_WATER, prepShore, waterDeep, waterMat } from './water.js';
 import { AREA_HEX, AREA_ORDER } from './palette.js';
 import { groundMaterial } from '../render/materials.js';
 import { detailTex } from '../render/textures.js';
-import { PATCH, TERR, densify, inPatch, subTrisPaused, terrainH, waterLevel } from './terrain.js';
+import { PATCHES, TERR, densify, inPatch, subTrisPaused, terrainH, waterLevel } from './terrain.js';
 import { CUT, cutFloor, cutInward, cutTouches } from './cutting.js';
 import { scene } from '../render/renderer.js';
 import { due, pause, rest } from '../core/pause.js';
@@ -82,7 +82,7 @@ async function terrainDepth(dip) {
   await rest(); const tm = top.mesh(new THREE.MeshBasicMaterial({ colorWrite: false })); if (tm) { tm.renderOrder = -29; tm.frustumCulled = false; scene.add(tm); }   // after every ground layer (the last at -30)
   /* over the fine patch (src/world/underpass.js) a 2 m grid, each node 0.5 m under the lowest ground around it, over
      the cells of the coarse grid it replaces; the water left out as there */
-  if (PATCH.on) {
+  for (const PATCH of PATCHES) {
     const S = 2, X0 = TERR.x0 + Math.floor((PATCH.bb[0] - TERR.x0) / s) * s, Z0 = TERR.z0 + Math.floor((PATCH.bb[1] - TERR.z0) / s) * s;
     const X1 = TERR.x0 + Math.ceil((PATCH.bb[2] - TERR.x0) / s) * s, Z1 = TERR.z0 + Math.ceil((PATCH.bb[3] - TERR.z0) / s) * s, NX = Math.round((X1 - X0) / S) + 1, NZ = Math.round((Z1 - Z0) / S) + 1, v0 = g.v;
     g.ensure(NX * NZ);

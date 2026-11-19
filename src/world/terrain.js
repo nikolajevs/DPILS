@@ -7,6 +7,7 @@ import { spwCap, spwGround } from '../landmarks/speedway.js';
 import { VB, vbGround, vbLocal, vbP } from './bridge-vienibas.js';
 import { cutCarve, cutY } from './cutting.js';
 import { upPatch, upUnder } from './underpass.js';
+import { rbPatch } from './underpass-rail.js';
 import { U, renderer, scene, terrUniforms } from '../render/renderer.js';
 import { SegGrid } from '../core/geometry.js';
 import { dec } from '../core/util.js';
@@ -21,19 +22,22 @@ import { C, WL } from '../core/env.js';
    Vienības laukums. */
 const TERR = { on: false, x0: 0, z0: 0, s: 25, nx: 2, nz: 2, ref: 0, q: null };
 U.tTerr = { value: null }; U.uTerrA = { value: new THREE.Vector4(0, 0, 0.04, 0) }; U.uTerrB = { value: new THREE.Vector4(2, 2, 0, 0) };
-U.tPatch = { value: null }; U.uPatchA = { value: new THREE.Vector4(0, 0, 1, 0) }; U.uPatchB = { value: new THREE.Vector4(2, 2, 0, 0) };
+for (let k = 0; k < 2; k++) { U['tPatch' + k] = { value: null }; U['uPatchA' + k] = { value: new THREE.Vector4(0, 0, 1, 0) }; U['uPatchB' + k] = { value: new THREE.Vector4(2, 2, 0, 0) }; }   // two fine patches (PATCHES, below)
 THREE.ShaderChunk.common += `
-uniform sampler2D tTerr; uniform vec4 uTerrA; uniform vec4 uTerrB; uniform sampler2D tPatch; uniform vec4 uPatchA; uniform vec4 uPatchB;
+uniform sampler2D tTerr; uniform vec4 uTerrA; uniform vec4 uTerrB; uniform sampler2D tPatch0; uniform vec4 uPatchA0; uniform vec4 uPatchB0; uniform sampler2D tPatch1; uniform vec4 uPatchA1; uniform vec4 uPatchB1;
 float terrTexel(vec2 i) { vec4 t = texture2D(tTerr, (i + 0.5) / uTerrB.xy); return (t.r * 65280.0 + t.g * 255.0) * 0.1; }
-float patchTexel(vec2 i) { vec4 t = texture2D(tPatch, (i + 0.5) / uPatchB.xy); return (t.r * 65280.0 + t.g * 255.0) * 0.001 - 32.768; }
+float patchTexel(sampler2D tp, vec4 B, vec2 i) { vec4 t = texture2D(tp, (i + 0.5) / B.xy); return (t.r * 65280.0 + t.g * 255.0) * 0.001 - 32.768; }
+float patchOff(sampler2D tp, vec4 A, vec4 B, vec2 p) {
+  if (A.w < 0.5) return 0.0;
+  vec2 e = (p - A.xy) * A.z; if (e.x < 0.0 || e.y < 0.0 || e.x >= B.x - 1.001 || e.y >= B.y - 1.001) return 0.0;
+  vec2 j = floor(e), k = e - j;
+  return mix(mix(patchTexel(tp, B, j), patchTexel(tp, B, j + vec2(1.0, 0.0)), k.x), mix(patchTexel(tp, B, j + vec2(0.0, 1.0)), patchTexel(tp, B, j + vec2(1.0)), k.x), k.y);
+}
 float terrainH(vec2 p) {
   if (uTerrA.w < 0.5) return 0.0;
   vec2 g = clamp((p - uTerrA.xy) * uTerrA.z, vec2(0.0), uTerrB.xy - 1.001), i = floor(g), f = g - i;
   float h = mix(mix(terrTexel(i), terrTexel(i + vec2(1.0, 0.0)), f.x), mix(terrTexel(i + vec2(0.0, 1.0)), terrTexel(i + vec2(1.0)), f.x), f.y) - uTerrB.z;
-  if (uPatchA.w > 0.5) { vec2 e = (p - uPatchA.xy) * uPatchA.z;
-    if (e.x >= 0.0 && e.y >= 0.0 && e.x < uPatchB.x - 1.001 && e.y < uPatchB.y - 1.001) { vec2 j = floor(e), k = e - j;
-      h += mix(mix(patchTexel(j), patchTexel(j + vec2(1.0, 0.0)), k.x), mix(patchTexel(j + vec2(0.0, 1.0)), patchTexel(j + vec2(1.0)), k.x), k.y); } }
-  return h;
+  return h + patchOff(tPatch0, uPatchA0, uPatchB0, p) + patchOff(tPatch1, uPatchA1, uPatchB1, p);
 }`;
 THREE.ShaderChunk.project_vertex = `vec4 mvPosition = vec4( transformed, 1.0 );
 #ifdef USE_BATCHING
@@ -64,7 +68,7 @@ THREE.Material.prototype.onBeforeCompile = function (s) { terrUniforms(s); if (/
 // the same bilinear height as the shaders, from the same decimetres
 function terrainH(x, z) {
   if (!TERR.on) return 0;
-  return PATCH.on ? gridH(x, z) + patchAt(x, z) : gridH(x, z);
+  return PATCHES.length ? gridH(x, z) + patchAt(x, z) : gridH(x, z);
 }
 function gridH(x, z) {   // the height grid alone, without the fine patch
   const nx = TERR.nx, q = TERR.q; let gx = (x - TERR.x0) / TERR.s, gz = (z - TERR.z0) / TERR.s;
@@ -72,23 +76,26 @@ function gridH(x, z) {   // the height grid alone, without the fine patch
   const i = Math.floor(gx), j = Math.floor(gz), fx = gx - i, fz = gz - j, k = j * nx + i, a = q[k], b = q[k + 1], c = q[k + nx], d = q[k + nx + 1];
   return ((a + (b - a) * fx) * (1 - fz) + (c + (d - c) * fx) * fz) * 0.1 - TERR.ref;
 }
-/* A fine patch over the grid: offsets in metres on a 1 m grid over a small box, added to the heights, for places the
-   20 m grid cannot draw (Daugavas iela under the end of Vienības tilts, src/world/underpass.js). Inside its box the
-   ground layers and lines are cut finer so that they follow it (densify, subTris), and the depth grid under the ground
-   is drawn at 2 m (src/world/ground.js). Kept to the millimetre, as the shaders read it. */
-const PATCH = { on: false, x0: 0, z0: 0, s: 1, nx: 2, nz: 2, d: null, bb: [0, 0, 0, 0] };
-function patchAt(x, z) {
-  const P = PATCH, gx = (x - P.x0) / P.s, gz = (z - P.z0) / P.s; if (gx < 0 || gz < 0 || gx >= P.nx - 1.001 || gz >= P.nz - 1.001) return 0;
+/* Fine patches over the grid: offsets in metres on a 1 m grid over a small box, added to the heights, for places the
+   20 m grid cannot draw (Daugavas iela under the end of Vienības tilts, src/world/underpass.js; the service road under
+   the first span of the railway bridge, src/world/underpass-rail.js). At most two (the shader reads two textures); they
+   must not overlap. Inside a box the ground layers and lines are cut finer so that they follow it (densify, subTris),
+   and the depth grid under the ground is drawn at 2 m (src/world/ground.js). Kept to the millimetre, as the shaders read it. */
+const PATCHES = [];
+function patchOne(P, x, z) {
+  const gx = (x - P.x0) / P.s, gz = (z - P.z0) / P.s; if (gx < 0 || gz < 0 || gx >= P.nx - 1.001 || gz >= P.nz - 1.001) return 0;
   const i = Math.floor(gx), j = Math.floor(gz), fx = gx - i, fz = gz - j, k = j * P.nx + i, d = P.d;
   return (d[k] * (1 - fx) + d[k + 1] * fx) * (1 - fz) + (d[k + P.nx] * (1 - fx) + d[k + P.nx + 1] * fx) * fz;
 }
-const inPatch = (x0, z0, x1, z1) => PATCH.on && x1 >= PATCH.bb[0] && x0 <= PATCH.bb[2] && z1 >= PATCH.bb[1] && z0 <= PATCH.bb[3];
+function patchAt(x, z) { let h = 0; for (const P of PATCHES) h += patchOne(P, x, z); return h; }
+const inPatch = (x0, z0, x1, z1) => { for (const P of PATCHES) if (x1 >= P.bb[0] && x0 <= P.bb[2] && z1 >= P.bb[1] && z0 <= P.bb[3]) return true; return false; };
 function setPatch(p) {
+  const k0 = PATCHES.length; if (k0 >= 2) throw new Error('setPatch: two patches at most');
   const n = p.nx * p.nz, data = new Uint8Array(n * 4), d = new Float32Array(n);
   for (let k = 0; k < n; k++) { const v = Math.max(0, Math.min(65535, Math.round((p.d[k] + 32.768) * 1000))); d[k] = v / 1000 - 32.768; data[4 * k] = v >> 8; data[4 * k + 1] = v & 255; data[4 * k + 3] = 255; }
   const tex = new THREE.DataTexture(data, p.nx, p.nz, THREE.RGBAFormat, THREE.UnsignedByteType); tex.minFilter = tex.magFilter = THREE.NearestFilter; tex.generateMipmaps = false; tex.needsUpdate = true;
-  Object.assign(PATCH, { on: true, x0: p.x0, z0: p.z0, s: p.s, nx: p.nx, nz: p.nz, d, bb: [p.x0, p.z0, p.x0 + (p.nx - 1) * p.s, p.z0 + (p.nz - 1) * p.s] });
-  U.tPatch.value = tex; U.uPatchA.value.set(p.x0, p.z0, 1 / p.s, 1); U.uPatchB.value.set(p.nx, p.nz, 0, 0);
+  PATCHES.push({ x0: p.x0, z0: p.z0, s: p.s, nx: p.nx, nz: p.nz, d, bb: [p.x0, p.z0, p.x0 + (p.nx - 1) * p.s, p.z0 + (p.nz - 1) * p.s] });
+  U['tPatch' + k0].value = tex; U['uPatchA' + k0].value.set(p.x0, p.z0, 1 / p.s, 1); U['uPatchB' + k0].value.set(p.nx, p.nz, 0, 0);
 }
 /* Railways run at an even grade. On a 20 m grid the terrain model puts a node now on the bed, now on the slope of an
    embankment or the top of a cutting, so along a line its heights jump by metres. Each line (bridges left out) gets
@@ -194,6 +201,7 @@ async function terrainInit() {
   const tex = new THREE.DataTexture(data, T.nx, T.nz, THREE.RGBAFormat, THREE.UnsignedByteType); tex.minFilter = tex.magFilter = THREE.NearestFilter; tex.generateMipmaps = false; tex.needsUpdate = true;
   U.tTerr.value = tex; U.uTerrA.value.set(T.x0, T.z0, 1 / T.step, 1); U.uTerrB.value.set(T.nx, T.nz, TERR.ref, 0);
   await rest(); const p = upPatch(); if (p) setPatch(p);   // Daugavas iela under the end of Vienības tilts (src/world/underpass.js)
+  const p2 = rbPatch(); if (p2) setPatch(p2);   // the service road under the railway bridge (src/world/underpass-rail.js)
 }
 // a shift applied to the y of every vertex written into a GB while it is set (buildings standing level, bridge decks)
 STATE.GBC = null;
@@ -248,7 +256,7 @@ function waterLevel(x, z) { let m = terrainH(x, z); for (const r of [20, 50]) fo
 function lineGap(ax, az, bx, bz, ha, hb, tol) {
   const dx = bx - ax, dz = bz - az, dh = hb - ha;
   if (inPatch(Math.min(ax, bx), Math.min(az, bz), Math.max(ax, bx), Math.max(az, bz))) {
-    const n = 2 * Math.max(1, Math.ceil(Math.hypot(dx, dz) / PATCH.s)); let e = Math.abs(terrainH(ax + dx / 2, az + dz / 2) - ha - dh / 2);
+    const n = 2 * Math.max(1, Math.ceil(Math.hypot(dx, dz) / PATCHES[0].s)); let e = Math.abs(terrainH(ax + dx / 2, az + dz / 2) - ha - dh / 2);
     for (let k = 1; k < n && e <= tol; k++) { const t = k / n; e = Math.max(e, Math.abs(terrainH(ax + dx * t, az + dz * t) - ha - dh * t)); }
     return e;
   }
@@ -308,8 +316,8 @@ function* subTrisSteps(flat, tris, tol) {
     }
     return false;
   };
-  const coarse = (i, j) => q[j * nx + i] * 0.1 - ref, onH = (i, j) => terrainH(X0 + i * S, Z0 + j * S), onPatch = (i, j) => terrainH(PATCH.x0 + i * PATCH.s, PATCH.z0 + j * PATCH.s);
-  const off = (a, b, c, fine) => sideOff(a, b) || sideOff(b, c) || sideOff(c, a) || nodesOff(a, b, c, X0, Z0, S, nx, nz, fine ? onH : coarse) || fine && nodesOff(a, b, c, PATCH.x0, PATCH.z0, PATCH.s, PATCH.nx, PATCH.nz, onPatch);
+  const coarse = (i, j) => q[j * nx + i] * 0.1 - ref, onH = (i, j) => terrainH(X0 + i * S, Z0 + j * S), onPatch = P => (i, j) => terrainH(P.x0 + i * P.s, P.z0 + j * P.s);
+  const off = (a, b, c, fine) => sideOff(a, b) || sideOff(b, c) || sideOff(c, a) || nodesOff(a, b, c, X0, Z0, S, nx, nz, fine ? onH : coarse) || fine && PATCHES.some(P => nodesOff(a, b, c, P.x0, P.z0, P.s, P.nx, P.nz, onPatch(P)));
   const st = []; for (let t = 0; t < tris.length; t += 3) st.push(tris[t], tris[t + 1], tris[t + 2], 0);
   let k = 0;
   while (st.length) {
@@ -378,4 +386,4 @@ sky.renderOrder = -100; sky.frustumCulled = false; scene.add(sky);
 const envScene = new THREE.Scene(); const envSky = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), skyMaterial()); envScene.add(envSky);
 const pmrem = new THREE.PMREMGenerator(renderer); STATE.envRT = null;
 
-export { BRIDGES, BRSEG, PATCH, TERR, bridgeDeck, bridgeOf, bridgeY, densify, envScene, envSky, inPatch, pmrem, sky, subTris, subTrisPaused, terrainH, terrainInit, vbComp, vbLift, walkLift, waterLevel };
+export { BRIDGES, BRSEG, PATCHES, TERR, bridgeDeck, bridgeOf, bridgeY, densify, envScene, envSky, inPatch, pmrem, sky, subTris, subTrisPaused, terrainH, terrainInit, vbComp, vbLift, walkLift, waterLevel };
