@@ -215,6 +215,17 @@ function dropRemote(id) { const r = remotes.get(id); if (!r) return; scene.remov
 function nameOf(id) { const b = MP.board.find(e => e.id === id); return b ? b.name : '?'; }
 const isMate = r => !MP.ffa && r.team === MP.team;   // in the free-for-all nobody is a teammate
 function teamOf(id) { const b = MP.board.find(e => e.id === id); return b ? b.team : 0; }
+// the body of a killed remote: its last snapshot, the speed it had, and the throw of the killing blow —
+// away from where the shot came (m.dx/dz of the server's kill), with a random spread so no two falls match
+function corpseOf(r, m) {
+  const b = r.buf, c = { ...b[b.length - 1] }, p = b[b.length - 2] || c, dt = Math.max(0.03, (c.t - p.t) / 1000);
+  c.vel = { x: (c.x - p.x) / dt, y: (c.y - p.y) / dt, z: (c.z - p.z) / dt };
+  let dx = -(m.dx || 0), dz = -(m.dz || 0);
+  if (Math.hypot(dx, dz) < 0.01) { const a = Math.random() * 6.283; dx = Math.sin(a); dz = Math.cos(a); }   // no direction known: any way
+  const a = Math.atan2(dx, dz) + (Math.random() - 0.5) * 1.1;
+  c.fall = { x: Math.sin(a), z: Math.cos(a), head: !!m.head, nade: m.w === 9, roll: (Math.random() - 0.5) * 0.5 };
+  return c;
+}
 function pose(r, t) {
   const b = r.buf; if (!b.length) return null;
   while (b.length > 2 && b[1].t <= t) b.shift();
@@ -634,7 +645,7 @@ function onMsg(m) {
       P.vy = Math.min(P.vy + m.vy, 16);
       break;
     }
-    case 'kill': { feed(m.kn + '  ➜  ' + m.vn + (m.w === 9 ? '  (граната)' : m.head ? '  (в голову)' : ''), m.killer === MP.id ? 'mine' : m.victim === MP.id ? 'dead' : ''); if (m.killer === MP.id) { MP.kills++; if (m.victim !== MP.id) statEvent('kill', m, !!MP.local); } if (m.victim === MP.id) { MP.deaths++; statEvent('death', {}, !!MP.local); if (!MP.dead) die(m.kn, m.killer); } else { const rv = remotes.get(m.victim); if (rv && rv.buf.length) { rv.fallT = performance.now(); rv.corpse = { ...rv.buf[rv.buf.length - 1] }; } } updatePanel(); break; }
+    case 'kill': { feed(m.kn + '  ➜  ' + m.vn + (m.w === 9 ? '  (граната)' : m.head ? '  (в голову)' : ''), m.killer === MP.id ? 'mine' : m.victim === MP.id ? 'dead' : ''); if (m.killer === MP.id) { MP.kills++; if (m.victim !== MP.id) statEvent('kill', m, !!MP.local); } if (m.victim === MP.id) { MP.deaths++; statEvent('death', {}, !!MP.local); if (!MP.dead) die(m.kn, m.killer); } else { const rv = remotes.get(m.victim); if (rv && rv.buf.length) { rv.fallT = performance.now(); rv.corpse = corpseOf(rv, m); } } updatePanel(); break; }
     case 'alive': { const r = remotes.get(m.id); if (r) { r.buf.length = 0; r.fallT = 0; } break; }
     case 'board': MP.board = m.board; MP.score = m.score; for (const e of m.board) { const r = addRemote(e.id, e.name, e.team, e.char); if (r) { r.name = e.name; r.tag.textContent = e.name; const char = parseChar(e.char); if (char !== r.char) { r.char = char; rebuildAvatar(r); } } if (e.id === MP.id) { MP.kills = e.kills; MP.deaths = e.deaths; } } for (const id of [...remotes.keys()]) if (!m.board.some(e => e.id === id)) dropRemote(id); drawBoard(); updatePanel(); if (voice) voice.setPeers(m.board.filter(e => e.id !== MP.id && !e.bot).map(e => e.id)); break;
     case 'left': dropRemote(m.id); break;
@@ -847,10 +858,12 @@ function mpTick(dt) {
   else if ((MP.sendT -= dt) <= 0 && MP.ws.readyState === 1) { MP.sendT = 0.05; MP.ws.send(JSON.stringify({ t: 'state', x: +P.x.toFixed(2), y: +P.y.toFixed(2), z: +P.z.toFixed(2), yaw: +P.yaw.toFixed(3), pitch: +P.pitch.toFixed(3), h: +P.eye.toFixed(2), w: MP.weapon })); }
   for (const r of remotes.values()) {
     const g = r.group;
-    if (r.fallT) {   // a killed player topples backwards and lies for three seconds
-      const age = now - r.fallT; if (age > 3000) { r.fallT = 0; g.visible = false; g.rotation.x = 0; r.buf.length = 0; continue; }
-      if (r.av) { const c = r.corpse; g.visible = true; g.scale.y = 1; g.rotation.set(0, c.yaw, 0); g.position.set(c.x, c.y - (c.h || 1.7), c.z); r.av.update(dt, { speed: 0, air: false, dead: true }); continue; }
-      const c = r.corpse; g.visible = true; g.scale.y = 1; g.position.set(c.x, c.y - (c.h || 1.7) + 0.18 * Math.min(1, age / 350), c.z); g.rotation.y = c.yaw; g.rotation.x = 1.5 * Math.min(1, age / 350) * (2 - Math.min(1, age / 350)); continue;
+    if (r.fallT) {   // the killed fall by physics (ragdoll.js) and lie for three seconds
+      const age = now - r.fallT; if (age > 3000) { r.fallT = 0; g.visible = false; g.rotation.order = 'XYZ'; g.rotation.set(0, 0, 0); r.buf.length = 0; continue; }
+      if (r.av) { const c = r.corpse; g.visible = true; g.scale.y = 1; g.rotation.set(0, c.yaw, 0); g.position.set(c.x, c.y - (c.h || 1.7), c.z); r.av.update(dt, { speed: 0, air: false, dead: true, fall: c.fall, vel: c.vel }); continue; }
+      const c = r.corpse, k = Math.min(1, age / 350); g.visible = true; g.scale.y = 1;   // the simple figure topples towards the blow, not always backwards
+      g.position.set(c.x, c.y - (c.h || 1.7) + 0.18 * k, c.z);
+      g.rotation.order = 'YXZ'; g.rotation.y = c.fall ? Math.atan2(c.fall.x, c.fall.z) : c.yaw + Math.PI; g.rotation.x = 1.5 * k * (2 - k); g.rotation.z = (c.fall ? c.fall.roll : 0) * k; continue;
     }
     const p = pose(r, t); if (!p) { g.visible = false; continue; }
     remoteSteps(r, p, now);
