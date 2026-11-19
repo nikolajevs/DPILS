@@ -84,7 +84,7 @@ const SMOKE_TEX = paint(2, (i, x, y, out) => {
   if (i === 3) { const R = 0.5 + 0.4 * fbm(ca * 1.7 + 5, sa * 1.7 + 3, 77); out[0] = 0.5 + 0.5 * fbm(x * 5 + 1, y * 5 + 2, 91); out[1] = clamp((R - r) * 12); return; }
   const s = i * 37 + 11, R = 0.58 + 0.34 * fbm(ca * 1.5 + s, sa * 1.5 - s, s), lump = fbm(x * 2.3 + s * 3, y * 2.3 - s, s + 5), fine = fbm(x * 6.5 + s, y * 6.5 + s * 2, s + 9);
   const e = clamp((R * (0.82 + 0.36 * fine) - r) / 0.5);
-  out[0] = 0.66 + 0.34 * (lump * 0.6 + fine * 0.4); out[1] = e * e * (3 - 2 * e) * (0.4 + 0.6 * lump);
+  out[0] = 0.72 + 0.28 * (lump * 0.6 + fine * 0.4); out[1] = e * e * (3 - 2 * e) * (0.55 + 0.45 * lump);
 });
 // the fire: two billows of flame, white-hot where they are dense, a soft glow, and a streak with its head at +x
 const FIRE_TEX = paint(2, (i, x, y, out) => {
@@ -141,10 +141,10 @@ function emit(sys, o) { const p = sys.free.pop() || sys.list.shift(); Object.ass
 const lin = hex => { const c = new THREE.Color(hex); return [c.r, c.g, c.b]; };
 // the colours of what a blast throws up, by what it went off on: the dust, the clods, the soot of the first cloud
 const SURF = {
-  ground: { dust: lin(0x7c6c58), dirt: lin(0x3b2e22), soot: lin(0x302a24) },
-  road: { dust: lin(0x8c8a85), dirt: lin(0x3e3d3b), soot: lin(0x2c2a28) },
-  roof: { dust: lin(0x8e8a84), dirt: lin(0x4a4744), soot: lin(0x2c2a28) },
-  air: { dust: lin(0x8a8782), dirt: lin(0x3a3835), soot: lin(0x2a2826) }
+  ground: { dust: lin(0xa39580), dirt: lin(0x3b2e22), soot: lin(0x302a24) },
+  road: { dust: lin(0xb0aea8), dirt: lin(0x4a4946), soot: lin(0x2c2a28) },
+  roof: { dust: lin(0xb0aca6), dirt: lin(0x4a4744), soot: lin(0x2c2a28) },
+  air: { dust: lin(0xa8a5a0), dirt: lin(0x3a3835), soot: lin(0x2a2826) }
 };
 const WIND = [0.9, 0.35];   // m/s: the smoke drifts east-south-east
 // a random direction; from a burst on a surface none goes into it: up is the least it rises (0 — along the surface)
@@ -174,17 +174,17 @@ function blast(x, y, z) {
   }
   // the cloud: dark smoke and dust shot up and out, glowing from the fire inside for a moment, then rising, drifting and greying
   for (let i = 0; i < 28; i++) {
-    const [dx, dy, dz] = dir(air, 0.35), sp = rnd(3, 12);
-    emit(SMOKE, { x: x + dx * 0.3, y: cy + 0.25 + dy * 0.3, z: z + dz * 0.3, vx: dx * sp, vy: dy * sp, vz: dz * sp, drag: 2.5, rise: rnd(0.4, 1), wind: 1, life: rnd(6, 10), s0: rnd(0.8, 1.2), s1: rnd(3.6, 5.8), grow: 3, roll: rnd(0, 6.28), spin: rnd(-0.5, 0.5), c0: S.soot, c1: S.dust, op: rnd(0.85, 1), fin: 0.03, fout: 0.4, heat: rnd(0.5, 1), heatT: rnd(0.15, 0.35), floor, frame: i % 3 });
+    const [dx, dy, dz] = dir(air, 0.35), sp = rnd(3, 10);
+    emit(SMOKE, { x: x + dx * 0.3, y: cy + 0.25 + dy * 0.3, z: z + dz * 0.3, vx: dx * sp, vy: dy * sp, vz: dz * sp, drag: 2.6, rise: rnd(0.12, 0.45), wind: 1, life: rnd(6, 10), s0: rnd(0.8, 1.2), s1: rnd(3.6, 5.8), grow: 3, roll: rnd(0, 6.28), spin: rnd(-0.5, 0.5), c0: S.soot, c1: S.dust, op: rnd(0.85, 1), fin: 0.03, fout: 0.4, heat: rnd(0.5, 1), heatT: rnd(0.15, 0.35), floor, frame: i % 3 });
   }
   glow.x = x; glow.y = cy + 0.8; glow.z = z; glow.t = 0;
   const d = camera.position.distanceTo(V.set(x, cy, z)), a = clamp(1 - d / 32) ** 1.6;   // the jolt, when the shock reaches the camera
   if (a > 0.01 && a >= shake.a * Math.exp(-Math.max(0, shake.t) * 5)) { shake.a = a; shake.t = -d / 340; for (let i = 0; i < 6; i++) shake.ph[i] = rnd(0, 6.283); }
   if (air) return;
   // the skirt: the shock throws dust out along the surface in a ring that slows, rolls and settles
-  for (let i = 0, n = 18; i < n; i++) {
+  for (let i = 0, n = 22; i < n; i++) {
     const an = (i + rnd(-0.3, 0.3)) / n * 6.283, ca = Math.cos(an), sa = Math.sin(an), sp = rnd(8, 15);
-    emit(SMOKE, { x: x + ca * 0.5, y: floor + 0.4, z: z + sa * 0.5, vx: ca * sp, vy: rnd(0.3, 1.5), vz: sa * sp, drag: 3.2, rise: rnd(0.1, 0.35), wind: 1, life: rnd(3.5, 5.5), s0: 0.6, s1: rnd(2.6, 3.8), grow: 3, roll: rnd(0, 6.28), spin: rnd(-0.6, 0.6), c0: S.dust, c1: S.dust, op: 0.7, fin: 0.03, fout: 0.3, floor, frame: i % 3 });
+    emit(SMOKE, { x: x + ca * 0.5, y: floor + 0.4, z: z + sa * 0.5, vx: ca * sp, vy: rnd(0.3, 1.5), vz: sa * sp, drag: 3.2, rise: rnd(0.1, 0.35), wind: 1, life: rnd(3.5, 5.5), s0: 0.8, s1: rnd(3.2, 4.6), grow: 3, roll: rnd(0, 6.28), spin: rnd(-0.6, 0.6), c0: S.dust, c1: S.dust, op: 0.7, fin: 0.03, fout: 0.3, floor, frame: i % 3 });
   }
   // a low haze of dust that hangs on longest
   for (let i = 0; i < 4; i++) {
@@ -193,7 +193,7 @@ function blast(x, y, z) {
   }
   // clods flung up (the bigger ones trail dust), falling back and lying a moment
   for (let i = 0; i < 28; i++) {
-    const an = rnd(0, 6.283), el = rnd(0.35, 1.45), sp = rnd(5, 15), ce = Math.cos(el), s = rnd(0.06, 0.17);
+    const an = rnd(0, 6.283), el = rnd(0.35, 1.45), sp = rnd(5, 12), ce = Math.cos(el), s = rnd(0.06, 0.17);
     emit(SMOKE, { x, y: floor + 0.1, z, vx: Math.cos(an) * ce * sp, vy: Math.sin(el) * sp, vz: Math.sin(an) * ce * sp, grav: -9.8, drag: 0.25, life: rnd(1.4, 2.4), s0: s, s1: s, roll: rnd(0, 6.28), spin: rnd(-12, 12), c0: S.dirt, c1: S.dirt, fout: 0.85, frame: 3, clod: true, roof: onRoof ? top : 0, trail: i < 12 ? 0.06 : 0, dust: S.dust });
   }
   scorch(x, floor, z, onRoof);
@@ -252,7 +252,7 @@ function drawCloud(sys, sort) {
     const p = L[i], k = p.t / p.life;
     let a = p.op * (p.fin ? Math.min(1, p.t / p.fin) : 1);
     if (k > p.fout) { const f = (k - p.fout) / (1 - p.fout); a *= 1 - f * f * (3 - 2 * f); }
-    const m = Math.sqrt(k), c0 = p.c0, c1 = p.c1;
+    const m = k ** 0.35, c0 = p.c0, c1 = p.c1;
     col[i * 3] = c0[0] + (c1[0] - c0[0]) * m; col[i * 3 + 1] = c0[1] + (c1[1] - c0[1]) * m; col[i * 3 + 2] = c0[2] + (c1[2] - c0[2]) * m;
     const h = p.heat * Math.max(0, 1 - p.t / p.heatT) ** 2;
     ap[i * 4] = a; ap[i * 4 + 1] = h; ap[i * 4 + 2] = (p.frame & 1) * 0.5; ap[i * 4 + 3] = 0.5 - (p.frame >> 1) * 0.5;
