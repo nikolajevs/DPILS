@@ -26,6 +26,10 @@ export const WEAPONS = [
 // throw of the bots and of a message without a speed.
 // the number put in a kill message for a grenade (the weapons are 0 … WEAPONS.length − 1)
 export const W_NADE = 9;
+export const W_FALL = 10;   // the kill feed: a fall, not a weapon
+// a fall hurts above the safe height: k hp per metre over safe (10 m costs 56, above 15 m kills); g is the player's jump
+// gravity (JUMP in src/game/player.js) so the bots fall at the same rate; maxH caps the client's landing report
+export const FALL = { safe: 3, k: 8, g: 21, maxH: 80 };
 // push: the knockback — the blast throws the living with a velocity (m/s) that fades from `push` at the centre to 0 at
 // the radius, like the damage, plus a `pushUp` kick up so even a blast at chest height lifts one off the ground. The
 // server sends it to the player ('push'), the client adds it to the jump and a decaying slide; a bot slides on the server.

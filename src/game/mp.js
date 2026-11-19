@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { STATE } from '../core/state.js';
-import { P, freeSpot, keys } from './player.js';
+import { FALL, P, freeSpot, keys } from './player.js';
 import { PLACES } from '../ui/places.js';
 import { buildingAt, onRoad } from '../world/data.js';
 import { PERF } from './perf.js';
@@ -111,7 +111,8 @@ const aim = (yaw = P.yaw, pitch = P.pitch) => { const cp = Math.cos(pitch); retu
 const MOVE = () => [SET.keys.forward, SET.keys.back, SET.keys.left, SET.keys.right];
 function spreadNow() {
   const at = MP.attach[MP.weapon], aimed = MP.zoom > 0.9;
-  const moving = MOVE().some(k => keys.has(k)), run = keys.has(SET.keys.run) || keys.has('ShiftRight');
+  const v = Math.hypot(P.vx, P.vz);   // the real speed: the brake slide still counts as moving (the inertia, player.js MOVE)
+  const moving = MOVE().some(k => keys.has(k)) || v > 0.5, run = keys.has(SET.keys.run) || keys.has('ShiftRight') || v > 7;
   const hip = () => W().cone
     ? W().cone * (P.crouch ? 0.8 : 1) * (at === 'sight' && aimed ? 0.75 : 1) + (moving ? 0.01 : 0) + (P.up > 0.02 ? 0.03 : 0)   // the shotgun's pellets spread in a wide cone
     : ((W().base ?? 0.002) + (moving ? (run ? 0.022 : 0.008) : 0) + MP.burst) * (P.crouch ? 0.5 : 1) * (at === 'sight' && aimed ? 0.35 : 1) + (P.up > 0.02 ? 0.03 : 0);   // crouching steadies the aim, a jump spoils it; the red dot tightens it more
@@ -594,7 +595,7 @@ function onMsg(m) {
       if (MP.local) feed('Тренировка с ботами: ' + MP.board.filter(e => e.bot).length + ', уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || '') + '»', 'sys'); break;
     case 'spawn': {
       nadeCancel(); punchReset();
-      const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.kx = P.kz = 0; P.crouch = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
+      const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.vx = P.vz = 0; P.kx = P.kz = 0; P.fallTop = 0; P.landH = 0; P.land = 0; P.crouch = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
       MP.weapon = 0; MP.scope = false; models.forEach((mm, k) => { mm.visible = k === 0; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; MP.sights = m.sights ? { ...m.sights } : { sight: 0, optic: 0 }; MP.attach = Array.isArray(m.attach) ? m.attach.slice() : [null, null, null, null, null]; syncVm(); clearNades(); gun.visible = true; if (vm) { vm.setWeapon(0); vm.equip(); } el('mpDead').hidden = true; slotsT = performance.now() + 2600; updatePanel();   // the belt greets the spawn, then hides
       MP.ws.send(JSON.stringify({ t: 'state', x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch }));   // the server has the point as asked: tell it where the player really stands
@@ -623,15 +624,21 @@ function onMsg(m) {
     case 'hit': statEvent('hit', m, !!MP.local); hitT = performance.now(); if (m.kill) { tone(880, 880, 0.12, 0.25, 'triangle'); tone(1320, 1320, 0.25, 0.25, 'triangle', 0.1); } else tone(m.head ? 2600 : 1700, m.head ? 2200 : 1400, 0.07, 0.2, 'square'); { const r = remotes.get(m.id), g = r && r.group.visible ? r.group.position : null; if (g) { const s = spot(g.x, g.y + 1.2, g.z); try { hitSound(ac(), actx.master, m.head ? 'head' : 'body', 0.75 * 6 / (6 + s.d), s.d, s.pan); } catch (e) {} if (m.dmg > 0) dmgFloat(g.x, g.y + 1.9, g.z, String(m.dmg), m.head ? 'head' : m.kill ? 'kill' : ''); } } { const hm = el('mpHit'); hm.className = m.head ? 'head' : m.kill ? 'kill' : ''; hm.hidden = false; hm.style.animation = 'none'; void hm.offsetWidth; hm.style.animation = ''; hitDur = m.kill ? 260 : 180; } break;   // every hit pops the marker afresh, even in a long burst
     case 'hurt': {
       const dmg = Math.max(0, MP.hp - m.hp);
-      statEvent('taken', { dmg }, !!MP.local); MP.hp = m.hp; hurtT = performance.now(); { let real = false; try { real = hitSound(ac(), actx.master, 'body', 1); } catch (e) {} if (!real) tone(160, 60, 0.18, 0.4, 'sawtooth'); } el('mpHurt').hidden = false; updatePanel();
-      const a = Math.atan2(-m.dx, -m.dz) - P.yaw; el('mpHurtDir').style.transform = 'rotate(' + (-a) + 'rad)';   // the side the shot came from
-      const s = Math.min(1.5, 0.3 + dmg / 35), rel = Math.atan2(Math.sin(a), Math.cos(a));   // the aim punch: up and away from the shooter's side, scaled by the damage
-      punch.p = Math.min(0.085, punch.p + 0.026 * s + Math.random() * 0.006);
-      punch.y = Math.max(-0.045, Math.min(0.045, punch.y - Math.sign(rel || Math.random() - 0.5) * 0.011 * s + (Math.random() - 0.5) * 0.008));
-      punch.r = Math.max(-0.025, Math.min(0.025, punch.r + (Math.random() - 0.5) * 0.02 * s));
-      MP.kick = Math.max(MP.kick, 0.45 + 0.25 * s); hurtBloom = Math.min(26, hurtBloom + 7 * s);
+      statEvent('taken', { dmg }, !!MP.local); MP.hp = m.hp; hurtT = performance.now();
+      if (m.fall) { tone(70, 32, 0.3, 0.5, 'sine'); el('mpHurtDir').hidden = true; }   // a fall: no side to point at and no aim punch, the thud of the landing already sounded
+      else {
+        let real = false; try { real = hitSound(ac(), actx.master, 'body', 1); } catch (e) {} if (!real) tone(160, 60, 0.18, 0.4, 'sawtooth');
+        el('mpHurtDir').hidden = false;
+        const a = Math.atan2(-m.dx, -m.dz) - P.yaw; el('mpHurtDir').style.transform = 'rotate(' + (-a) + 'rad)';   // the side the shot came from
+        const s = Math.min(1.5, 0.3 + dmg / 35), rel = Math.atan2(Math.sin(a), Math.cos(a));   // the aim punch: up and away from the shooter's side, scaled by the damage
+        punch.p = Math.min(0.085, punch.p + 0.026 * s + Math.random() * 0.006);
+        punch.y = Math.max(-0.045, Math.min(0.045, punch.y - Math.sign(rel || Math.random() - 0.5) * 0.011 * s + (Math.random() - 0.5) * 0.008));
+        punch.r = Math.max(-0.025, Math.min(0.025, punch.r + (Math.random() - 0.5) * 0.02 * s));
+        MP.kick = Math.max(MP.kick, 0.45 + 0.25 * s); hurtBloom = Math.min(26, hurtBloom + 7 * s);
+      }
       hurtAmp = Math.min(1, 0.5 + dmg / 70); el('mpHurt').style.opacity = String(hurtAmp);
-      if (m.hp <= 0) die(nameOf(m.by), m.by);
+      el('mpHurt').hidden = false; updatePanel();
+      if (m.hp <= 0) die(m.fall ? '' : nameOf(m.by), m.by);
       break;
     }
     case 'push': {   // the blast throws: the server sends the velocity, the jump carries it up and the slide aside (player.js)
@@ -641,7 +648,7 @@ function onMsg(m) {
       P.vy = Math.min(P.vy + m.vy, 16);
       break;
     }
-    case 'kill': { feed(m.kn + '  ➜  ' + m.vn + (m.w === 9 ? '  (граната)' : m.head ? '  (в голову)' : ''), m.killer === MP.id ? 'mine' : m.victim === MP.id ? 'dead' : ''); if (m.killer === MP.id) { MP.kills++; if (m.victim !== MP.id) statEvent('kill', m, !!MP.local); } if (m.victim === MP.id) { MP.deaths++; statEvent('death', {}, !!MP.local); if (!MP.dead) die(m.kn, m.killer); } else { const rv = remotes.get(m.victim); if (rv && rv.buf.length) { rv.fallT = performance.now(); rv.corpse = { ...rv.buf[rv.buf.length - 1] }; } } updatePanel(); break; }
+    case 'kill': { feed(m.kn + '  ➜  ' + m.vn + (m.w === 9 ? '  (граната)' : m.w === 10 ? '  (падение)' : m.head ? '  (в голову)' : ''), m.killer === MP.id ? 'mine' : m.victim === MP.id ? 'dead' : ''); if (m.killer === MP.id) { MP.kills++; if (m.victim !== MP.id) statEvent('kill', m, !!MP.local); } if (m.victim === MP.id) { MP.deaths++; statEvent('death', {}, !!MP.local); if (!MP.dead) die(m.w === 10 ? '' : m.kn, m.killer); } else { const rv = remotes.get(m.victim); if (rv && rv.buf.length) { rv.fallT = performance.now(); rv.corpse = { ...rv.buf[rv.buf.length - 1] }; } } updatePanel(); break; }
     case 'alive': { const r = remotes.get(m.id); if (r) { r.buf.length = 0; r.fallT = 0; } break; }
     case 'board': MP.board = m.board; MP.score = m.score; for (const e of m.board) { const r = addRemote(e.id, e.name, e.team, e.char); if (r) { r.name = e.name; r.tag.textContent = e.name; const char = parseChar(e.char); if (char !== r.char) { r.char = char; rebuildAvatar(r); } } if (e.id === MP.id) { MP.kills = e.kills; MP.deaths = e.deaths; } } for (const id of [...remotes.keys()]) if (!m.board.some(e => e.id === id)) dropRemote(id); drawBoard(); updatePanel(); if (voice) voice.setPeers(m.board.filter(e => e.id !== MP.id && !e.bot).map(e => e.id)); break;
     case 'left': dropRemote(m.id); break;
@@ -854,6 +861,7 @@ function mpTick(dt) {
     if (scoped && !dot) scopeBdc(fov);
     gun.visible = !MP.dead && !nv && (mode === 'sight' || MP.zoom < 0.5); }   // the grenade in hand (and the throw) replaces the gun; the long zoom hides the arms, the red dot keeps them
   ownSteps(dt); tickNades(dt); nadeWarnTick(); tickItems(dt, now); spectate(now); nadeAimTick(now); nadeHandTick(nv);
+  if (P.landH > 0) { const h = P.landH; P.landH = 0; if (h > FALL.safe && !MP.dead && MP.ws.readyState === 1) MP.ws.send(JSON.stringify({ t: 'fall', h: +h.toFixed(2) })); }   // a hard landing: the height goes to the server, which owns the damage
   if (MP.reloadAt && now - MP.reloadAt >= WEAPONS[MP.reloadW].reloadMs) {   // the local picture of the reload; the server's 'inv' message is the truth. It finishes on the weapon that started it, even if another is in hand now
     const rw = MP.reloadW; MP.reloadAt = 0; const k = Math.min(WEAPONS[rw].mag - MP.ammo[rw], MP.reserve[rw]);
     MP.ammo[rw] += k; MP.reserve[rw] -= k; updatePanel();
@@ -940,10 +948,10 @@ function footstep(vol, pan, bright, low) {
 // your own steps (one per two metres walking, three running; crouching is silent) and the thud of a landing
 let ownX = 0, ownZ = 0, ownStride = 0, wasUp = 0;
 function ownSteps(dt) {
-  if (MP.dead) { ownX = P.x; ownZ = P.z; return; }
+  if (MP.dead) { ownX = P.x; ownZ = P.z; wasUp = 0; return; }
   const moved = Math.hypot(P.x - ownX, P.z - ownZ); ownX = P.x; ownZ = P.z;
   if (P.up > 0.02) { wasUp = Math.max(wasUp, P.up); return; }
-  if (wasUp > 0.05) { footstep(0.16, 0, onRoad(P.x, P.z, 1.5), true); wasUp = 0; }
+  if (wasUp > 0.05) { footstep(0.16 + Math.min(0.45, wasUp * 0.035), 0, onRoad(P.x, P.z, 1.5), true); wasUp = 0; }   // the thud grows with the height fallen
   if (moved > 2 || P.crouch) return;
   const run = keys.has(SET.keys.run) || keys.has('ShiftRight'); ownStride += moved;
   if (ownStride >= (run ? 3 : 2.1)) { ownStride = 0; footstep(run ? 0.1 : 0.05, 0, onRoad(P.x, P.z, 1.5)); }
