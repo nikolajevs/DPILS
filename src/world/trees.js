@@ -129,7 +129,11 @@ function treeGeo(type) {
   g.userData = { H: H + 0.2, R: Rm + 0.1, capY };
   return g;
 }
-const LEAF_GLSL = `vec4 leafTex(vec3 c) { float cell = max(c.z - 1.0, 0.0); return texture2D(uLeaf, (vec2(mod(cell, 2.0), floor(cell * 0.5)) + clamp(vec2(c.x, 1.0 - c.y), 0.02, 0.98)) * 0.5); }\n`;
+/* c.z is the atlas cell + 1, the same at every corner of a card, yet interpolated it comes out a hair above or below
+   the whole number (3.0 as 2.9999998), and mod/floor of 2 − ε pointed the pine needles at a cell off the atlas: a pine
+   card, or half of one, vanished and came back with the slightest move of the wind or the camera, and the pine crowns
+   flickered (in the shadow map too). Rounded, the cell is exact. */
+const LEAF_GLSL = `vec4 leafTex(vec3 c) { float cell = max(floor(c.z - 0.5), 0.0); return texture2D(uLeaf, (vec2(mod(cell, 2.0), floor(cell * 0.5)) + clamp(vec2(c.x, 1.0 - c.y), 0.02, 0.98)) * 0.5); }\n`;
 // replaces <project_vertex>: wind sway (slow: a period of 7-14 s for the trunk, 7 s for the leaf cards), then the card corner is pushed out in view space
 const TREE_VERT = `
   vec4 mvPosition = vec4(transformed, 1.0);
