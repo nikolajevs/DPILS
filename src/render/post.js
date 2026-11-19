@@ -139,7 +139,7 @@ function renderFrame() {
   const fwd = LIGHTDIR.dot(camera.getWorldDirection(RAYF));
   u.uSunUv.value.set(SUNV.x * 0.5 + 0.5, SUNV.y * 0.5 + 0.5);
   u.uRayI.value = q.bloom && fwd > 0.05 ? (T.rays || 0) * Math.min(1, (fwd - 0.05) / 0.2) : 0;
-  u.uRayC.value.copy(sun.color).multiplyScalar(T.sunI * 0.3);
+  u.uRayC.value.set(sun.color.r, sun.color.g, sun.color.b).multiplyScalar(T.sunI * 0.3);   // Color has r/g/b, not x/y/z: copy() would give NaN
   fsPass(matFinal, null);
 }
 /* Compiles the shaders of everything in the scene before the first frame, an object at a time with a frame between

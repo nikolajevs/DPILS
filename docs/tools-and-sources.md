@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/atmo-light | Объёмные лучи солнца в постобработке | src/render/post.js, src/render/lighting.js |
 
 ## Автономный цикл улучшений
 
