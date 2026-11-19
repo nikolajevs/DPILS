@@ -84,12 +84,13 @@ function treeGeo(type) {
   const solid = (geo, col, m, bark) => {   // bark: [u repeats, v repeats] to lay the bark photograph on it (carried in aCard.xyz of a solid, whose w is 0)
     const g = geo.index ? geo.toNonIndexed() : geo; g.applyMatrix4(m);
     const p = g.attributes.position.array, nn = g.attributes.normal.array, uv = g.attributes.uv.array, cf = typeof col === 'function' ? col : null, c = cf ? null : hb(col);
-    for (let i = 0, j = 0; i < p.length; i += 3, j += 2) { P.push(p[i], p[i + 1], p[i + 2]); N.push(nn[i], nn[i + 1], nn[i + 2]); const cc = cf ? cf(p[i + 1]) : c, f = 0.82 + 0.18 * hash(Math.round(p[i + 1] * 3) * 31 + type); Cc.push(cc[0] / 255 * f, cc[1] / 255 * f, cc[2] / 255 * f); K.push(bark ? uv[j] * bark[0] : 0, bark ? uv[j + 1] * bark[1] : 0, bark ? 1 : 0, 0); H = Math.max(H, p[i + 1]); }
+    const sp = type === 2 ? 1 : type === 0 ? 2 : 3;   // which bark photograph: 1 birch, 2 pine, 3 spruce (rounded in the shader)
+    for (let i = 0, j = 0; i < p.length; i += 3, j += 2) { P.push(p[i], p[i + 1], p[i + 2]); N.push(nn[i], nn[i + 1], nn[i + 2]); const cc = cf ? cf(p[i + 1]) : c, f = 0.82 + 0.18 * hash(Math.round(p[i + 1] * 3) * 31 + type); Cc.push(cc[0] / 255 * f, cc[1] / 255 * f, cc[2] / 255 * f); K.push(bark ? uv[j] * bark[0] : 0, bark ? uv[j + 1] * bark[1] : 0, bark ? sp : 0, 0); H = Math.max(H, p[i + 1]); }
   };
   const UP = new THREE.Vector3(0, 1, 0), ONE = new THREE.Vector3(1, 1, 1);
   const limb = (ax, ay, az, bx, by, bz, r0, r1, col, seg = 6, arc) => {
     const d = new THREE.Vector3(bx - ax, by - ay, bz - az), L = d.length(), g = new THREE.CylinderGeometry(r1, r0, L, seg, 1, true, arc ? arc[0] : 0, arc ? arc[1] : Math.PI * 2);
-    const bark = type === 2 ? [Math.max(1, Math.round(Math.PI * (r0 + r1) * (arc ? arc[1] / 6.283 : 1) / BARK_TILE)), L / BARK_TILE] : null;   // birch: whole repeats round the trunk so the seam matches
+    const bark = type === 1 ? null : [Math.max(1, Math.round(Math.PI * (r0 + r1) * (arc ? arc[1] / 6.283 : 1) / BARK_TILE)), L / BARK_TILE];   // whole repeats round the trunk so the seam matches; the broadleaf has no bark photograph
     solid(g, col, new THREE.Matrix4().compose(new THREE.Vector3((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2), new THREE.Quaternion().setFromUnitVectors(UP, d.normalize()), ONE), bark);
   };
   const card = (x, y, z, size, nx, ny, nz, shade, cellIdx) => {
@@ -210,25 +211,32 @@ const TREE_VERT = `
   }
   gl_Position = projectionMatrix * mvPosition;`;
 let matTree, matTreeDepth, matTreeFar;
-// the birch bark: a colour texture (white with black lenticels, made by tools/gen-birch-bark.py, textures/bark_birch.webp); a white pixel stands in until it has come
-function barkTex() {
+// the bark photographs, tileable and neutral: birch white with black lenticels (tools/gen-birch-bark.py),
+// pine plates and spruce scales in grey (tools/gen-bark.py) so the trunk's vertex colour tints them.
+// A white pixel stands in until the file has come.
+function barkTex(file) {
   const c = mkCanvas(1, 1), g = c.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, 1, 1);
   const t = new THREE.Texture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true;
-  new THREE.TextureLoader().load('textures/bark_birch.webp', img => { t.image = img.image; t.needsUpdate = true; }, undefined, () => {});
+  new THREE.TextureLoader().load(file, img => { t.image = img.image; t.needsUpdate = true; }, undefined, () => {});
   return t;
 }
 function treeMaterials(leaf) {
   matTree = std({ vertexColors: true, roughness: 0.78, metalness: 0 }, 'tree', s => {
-    s.uniforms.uBark = { value: barkTex() }; s.uniforms.uLeaf = { value: leaf }; s.uniforms.uTime = U.time; s.uniforms.uSunW = U.sunDir; s.uniforms.uSunC = U.sunCol;
+    s.uniforms.uBark = { value: barkTex('textures/bark_birch.webp') }; s.uniforms.uBarkPine = { value: barkTex('textures/bark_pine.webp') }; s.uniforms.uBarkSpruce = { value: barkTex('textures/bark_spruce.webp') };
+    s.uniforms.uLeaf = { value: leaf }; s.uniforms.uTime = U.time; s.uniforms.uSunW = U.sunDir; s.uniforms.uSunC = U.sunCol;
     s.vertexShader = 'attribute vec4 aCard; uniform float uTime; varying vec3 vCard; varying vec3 vBark;\n' + s.vertexShader.replace('#include <project_vertex>', TREE_VERT.replace('/*NORMAL*/', 'vNormal = normalize(vNormal + vec3(tO, 0.0) * (0.55 / max(length(tC), 1e-3)));'));
-    s.fragmentShader = 'uniform sampler2D uLeaf; uniform sampler2D uBark; uniform vec3 uSunW; uniform vec3 uSunC; varying vec3 vCard; varying vec3 vBark;\n' + LEAF_GLSL + s.fragmentShader.replace('#include <map_fragment>', `
+    s.fragmentShader = 'uniform sampler2D uLeaf; uniform sampler2D uBark; uniform sampler2D uBarkPine; uniform sampler2D uBarkSpruce; uniform vec3 uSunW; uniform vec3 uSunC; varying vec3 vCard; varying vec3 vBark;\n' + LEAF_GLSL + s.fragmentShader.replace('#include <map_fragment>', `
         vec4 lt = leafTex(vCard); float isLeaf = step(0.5, vCard.z);
         if (isLeaf > 0.5) {
           float cut = mix(0.45, 0.2, smoothstep(30.0, 220.0, length(vViewPosition)));
           diffuseColor.rgb *= pow(lt.rgb, vec3(2.2));
           diffuseColor.a = clamp((lt.a - cut) / max(fwidth(lt.a), 1e-3) + 0.5, 0.0, 1.0);
           if (diffuseColor.a < 0.05) discard;
-        } else if (vBark.z > 0.5) diffuseColor.rgb *= min(texture2D(uBark, vBark.xy).rgb * 1.25, vec3(1.0));   // the birch bark colour (white, black lenticels) over the vertex colour
+        } else if (vBark.z > 0.5) {
+          float sp = floor(vBark.z + 0.5);   // rounded: interpolated, the species code must not land on a neighbour (as the leaf cell once did)
+          vec3 bk = sp < 1.5 ? texture2D(uBark, vBark.xy).rgb : sp < 2.5 ? texture2D(uBarkPine, vBark.xy).rgb : texture2D(uBarkSpruce, vBark.xy).rgb;
+          diffuseColor.rgb *= min(bk * 1.25, vec3(1.0));   // the bark photograph over the vertex colour: plates and fissures, the tint stays the trunk's
+        }
         `).replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         if (isLeaf > 0.5) {   // sunlight shining through the leaves when looking towards the sun
           float tr = pow(max(dot(-normalize(vViewPosition), (viewMatrix * vec4(uSunW, 0.0)).xyz), 0.0), 3.0);
