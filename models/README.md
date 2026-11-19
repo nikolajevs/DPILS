@@ -80,6 +80,8 @@ This work is based on the models above, each by its author, licensed under [CC-B
 
 Инстансятся по газонам парков в [src/landmarks/flora.js](../src/landmarks/flora.js), минуя дорожки, клумбы и площадки. Текстуры земли `textures/ground_grass.webp` и `textures/ground_dirt.webp` — оттуда же (MIT).
 
+Детальные карты земли `textures/detail_grass|asph|pave|gravel.webp` — серые 512 px, из фотографий [ambientCG](https://ambientcg.com) (**CC0**: Grass001, Asphalt012, PavingStones070, Gravel021). Яркость умножается на цвет вершин в `groundMaterial` (серый 128 = «без изменений»), подгружаются из `detailTex` ([src/render/textures.js](../src/render/textures.js)); пока файл не пришёл, стоит процедурный шум.
+
 ## Машины (`bmw_*.glb`)
 
 Готовые модели **BMW** вместо прежних процедурных коробок. Все четыре — **CC BY 4.0**, атрибуции обязательны:
