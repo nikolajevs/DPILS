@@ -58,7 +58,8 @@ const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: fa
 // the pockets (keep server/combat.mjs in step: RESERVE and INV): the server owns them, the page only shows and predicts
 const RESERVE = [90, 24, 15, 36, 200], NADE_MAX = 3, MED_MAX = 2;
 // the aimed grenade throw: G takes the grenade in hand, the mouse aims it, the left button held down charges the power
-const NAIM = { on: false, charging: false, t0: 0, power: 0, full: false };
+const NAIM = { on: false, charging: false, t0: 0, power: 0, full: false, at: 0 };
+const NTHROW = { at: 0, pw: 0, gone: false };   // the throw just made: the arm follows through, then the weapon comes back up; gone: its grenade is in the air
 try { MP.specFP = localStorage.getItem('dpils.specfp') !== '0'; } catch (e) {}   // the dead man's camera: from the eyes by default, the choice is remembered
 bindInv({ useMed, switchWeapon, attach: (w, kind) => { if (MP.dead || !MP.ws || MP.ws.readyState !== 1) return; MP.ws.send(JSON.stringify({ t: 'attach', w, kind })); tone(kind ? 520 : 300, kind ? 780 : 200, 0.08, 0.2, 'triangle'); }, beep: kind => { if (kind === 'pick') tone(660, 990, 0.09, 0.22, 'triangle'); else if (kind === 'med') tone(440, 660, 0.16, 0.25, 'sine'); else tone(180, 120, 0.12, 0.2, 'square'); } });
 // the mounted sights of every weapon onto the arms in hand (and back, when a weapon is swapped or a sight taken off)
@@ -149,7 +150,7 @@ function loadModels(onPart) {
     if (k) upgradeAK(); if (a) upgradeViewmodels();
     samples = new THREE.Group(); samples.visible = false;
     for (const look of SAMPLE_LOOKS) { const av = makeAvatar(HUE[0], look); if (av) samples.add(av.root); }
-    for (const o of [...fxSamples(), ...nadeSamples(), prop('ammo'), prop('med'), prop('sight'), prop('optic')]) if (o) samples.add(o);
+    for (const o of [...fxSamples(), ...nadeSamples(), vm && vm.nadeSample(), prop('ammo'), prop('med'), prop('sight'), prop('optic')]) if (o) samples.add(o);
   }).catch(e => console.error(e)).finally(() => { modelsDone = true; });
   return modelsP;
 }
@@ -249,16 +250,18 @@ const hands = models.map((m, i) => {
   const R = makeArm([0.16, -0.30, 0.10]), L = makeArm([-0.20, -0.30, 0.12]);   // right elbow to the bottom-right, left to the bottom-left
   hg.add(R, L); hg.userData.R = R; hg.userData.L = L; placeHands(hg, HAND_BOX[i]); m.add(hg); return hg;
 });
-// the grenade in hand while the throw is aimed: a fist like the weapons hold, the sleeve off the bottom of the frame.
-// It lives on the camera (the gun hides while it is out); nadeAimTick pulls it back as the throw charges
-const nadeHand = new THREE.Group();
+// the grenade in hand while the gloved arms of viewmodel.js are not there (their file has not come): a fist like the
+// fallback weapons hold, the sleeve off the bottom of the frame, on the camera; nadeHandTick moves it like the arms
+const nadeHand = new THREE.Group(), nadeBall = new THREE.Group();
 (function () {
   const mb = worldSpace(new THREE.MeshLambertMaterial({ color: 0x3d5a2a })), ml = worldSpace(new THREE.MeshLambertMaterial({ color: 0x8a8f94 }));
-  nadeHand.add(new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 10), mb));
-  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.035, 8), ml); cap.position.y = 0.08; nadeHand.add(cap);
-  const lever = new THREE.Mesh(GEO.box, ml); lever.scale.set(0.014, 0.06, 0.028); lever.position.set(0.05, 0.05, 0); lever.rotation.z = -0.25; nadeHand.add(lever);
-  const fist = makeArm([0.16, -0.30, 0.10]); fist.position.set(0.01, -0.085, 0.02); nadeHand.add(fist);
-  nadeHand.position.set(0.2, -0.18, -0.45); nadeHand.visible = false; camera.add(nadeHand);
+  nadeBall.add(new THREE.Mesh(new THREE.SphereGeometry(0.034, 12, 10), mb));
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.018, 8), ml); cap.position.y = 0.038; nadeBall.add(cap);
+  const lever = new THREE.Mesh(GEO.box, ml); lever.scale.set(0.007, 0.03, 0.014); lever.position.set(0.025, 0.025, 0); lever.rotation.z = -0.25; nadeBall.add(lever);
+  nadeBall.position.set(-0.03, 0.02, -0.02); nadeHand.add(nadeBall);
+  const fist = makeArm([0.16, -0.30, 0.10]); fist.scale.setScalar(0.8); fist.position.set(0.01, -0.03, 0.02); nadeHand.add(fist);
+  nadeHand.visible = false; camera.add(nadeHand);
+  onProps(() => { const m = prop('nade'); if (!m) return; nadeBall.clear(); m.scale.setScalar(0.5); m.position.y = -0.033; nadeBall.add(m); });
 })();
 // the flash of your own gun (muzzle.js): the AK of the arms has its own at its muzzle (viewmodel.js); this one serves
 // the other guns, at the muzzle tip of the ready model (upgradeViewmodels keeps its place). Made on the first shot
@@ -393,7 +396,7 @@ function fire(now) {
 }
 let slotsT = 0;   // the weapon belt stays visible until this moment: a switch (keys, wheel, inventory) or a spawn shows it, then it fades away
 function switchWeapon(i) {
-  nadeCancel();
+  nadeCancel(); NTHROW.at = 0;   // a new weapon cuts the follow-through of a throw short
   if (MP.dead || i === MP.weapon || i < 0 || i >= WEAPONS.length) return;
   MP.weapon = i; MP.firing = false; MP.scope = false; crossGap = CROSS[i].ring ? 20 : CROSS[i].gap; models.forEach((m, k) => { m.visible = k === i; }); if (vm) { vm.setWeapon(i); vm.equip(); } tone(300, 200, 0.06, 0.15, 'square'); slotsT = performance.now() + 1600; updatePanel();   // the reload keeps running: the server locks every weapon until it ends (server/game.mjs shoot)
 }
@@ -454,12 +457,14 @@ function showSummary(m) {
   tick(); endTimer = setInterval(tick, 300);
 }
 // ---------- grenades and the dead man's view ----------
-// G takes the grenade in hand: the mouse aims, the dashed arc shows where it will land, the left button held down
-// charges the throw (the bar under the crosshair), the release throws; the right button or G again puts it away
-function nadeCancel() {
+// G takes the grenade in hand (the arms bring it up and pull the pin): the mouse aims, the arc and the disc of the blast
+// show where it will go, the left button held down winds the throw up and charges it (the arcs round the crosshair),
+// the release throws; the right button or G again puts it away and the weapon comes back up
+function nadeCancel(thrown) {
   if (!NAIM.on) return;
   NAIM.on = false; NAIM.charging = false; NAIM.power = 0; NAIM.full = false;
-  nadeHand.visible = false; hideNadePreview(); el('nadeUi').hidden = true;
+  hideNadePreview(); el('nadeUi').hidden = true;
+  if (!thrown && vm && !MP.dead) vm.equip();
 }
 function nadePrep() {
   const now = performance.now();
@@ -467,10 +472,11 @@ function nadePrep() {
   if (NAIM.on) { nadeCancel(); return; }
   if (MP.nades <= 0) { feed('Гранат нет — ищите их на карте', 'sys'); tone(180, 120, 0.12, 0.2, 'square'); return; }
   if (now - MP.lastNade < 900) return;
-  NAIM.on = true; NAIM.charging = false; NAIM.power = 0; NAIM.full = false;
+  NAIM.on = true; NAIM.charging = false; NAIM.power = 0; NAIM.full = false; NAIM.at = now; NTHROW.at = 0;
   MP.scope = false; MP.firing = false; closeInv();
-  nadeHand.visible = true; el('nadeUi').hidden = false; el('nadeFill').style.width = '0%'; el('nadeUi').dataset.full = '0';
+  el('nadeUi').hidden = false; el('nadeUi').dataset.full = '0'; nadeGauge(0);
   tone(340, 430, 0.07, 0.15, 'triangle');
+  setTimeout(() => { if (NAIM.on && now === NAIM.at) tone(1250, 900, 0.035, 0.08, 'square'); }, 360);   // the click of the pin coming out
 }
 function throwNade(power) {
   const now = performance.now();
@@ -478,10 +484,27 @@ function throwNade(power) {
   MP.nades--; MP.lastNade = now;
   const d = aim(), sp = NADE_THROW.min + (NADE_THROW.max - NADE_THROW.min) * Math.max(0, Math.min(1, power));
   MP.ws.send(JSON.stringify({ t: 'throw', dx: +d[0].toFixed(4), dy: +d[1].toFixed(4), dz: +d[2].toFixed(4), sp: +sp.toFixed(2) }));
-  tone(260, 140, 0.12, 0.2, 'triangle'); MP.kick = 0.6;
-  nadeCancel(); updatePanel();
+  tone(260, 140, 0.12, 0.2, 'triangle');
+  NTHROW.at = now; NTHROW.pw = Math.max(0, Math.min(1, power)); NTHROW.gone = false;
+  nadeCancel(true); updatePanel();
 }
-// every frame while the grenade is in hand: the charge grows, the arc follows the aim and the power, the hand pulls back
+// what the arms do with the grenade now: { t: seconds in hand, pw: the charge, rel: seconds since the release (−1 before),
+// pwRel: the charge it went with, gone: the grenade is already in the air }, or null when they hold the weapon; the end of the follow-through brings the weapon back
+function nadeView(now) {
+  if (MP.nadePose) return MP.nadePose;   // a pose held still, for the headless checks (tools/shot-items.mjs)
+  if (NAIM.on) return { t: (now - NAIM.at) / 1000, pw: NAIM.charging ? NAIM.power : 0, rel: -1, pwRel: 0 };
+  if (NTHROW.at) {
+    const r = (now - NTHROW.at) / 1000;
+    if (r < 0.42 && !MP.dead) return { t: 9, pw: 0, rel: r, pwRel: NTHROW.pw, gone: NTHROW.gone };
+    NTHROW.at = 0; if (vm && !MP.dead) vm.equip();
+  }
+  return null;
+}
+// the power arcs round the crosshair
+const nadeArcs = [...document.querySelectorAll('#nadeUi .ng-fill')];
+function nadeGauge(pw) { const o = (59.34 * (1 - pw)).toFixed(2); for (const a of nadeArcs) a.style.strokeDashoffset = o; }
+const NADE_FROM = new THREE.Vector3();
+// every frame while the grenade is in hand: the charge grows, the arc follows the aim and the power
 function nadeAimTick(now) {
   if (!NAIM.on) return;
   if (!STATE.locked || MP.dead) { nadeCancel(); return; }
@@ -489,11 +512,23 @@ function nadeAimTick(now) {
     NAIM.power = Math.min(1, (now - NAIM.t0) / NADE_THROW.chargeMs);
     if (NAIM.power >= 1 && !NAIM.full) { NAIM.full = true; tone(900, 900, 0.05, 0.1, 'square'); }
   }
-  const pw = NAIM.charging ? NAIM.power : 0, d = aim(), sp = NADE_THROW.min + (NADE_THROW.max - NADE_THROW.min) * pw;
-  showNadePreview([P.x + d[0] * 0.6, P.y - 0.2 + d[1] * 0.6, P.z + d[2] * 0.6], [d[0] * sp, d[1] * sp + NADE_THROW.loft * sp, d[2] * sp]);
-  el('nadeFill').style.width = Math.round(pw * 100) + '%'; el('nadeUi').dataset.full = NAIM.full ? '1' : '0';
-  nadeHand.position.set(0.2 + 0.1 * pw, -0.18 + 0.16 * pw + Math.sin(now / 320) * 0.004, -0.45 - 0.08 * pw);   // the wind-up: the hand rises back over the shoulder, away from the eye
-  nadeHand.rotation.x = -0.7 * pw;
+  const pw = MP.nadePose ? MP.nadePose.pw : NAIM.charging ? NAIM.power : 0, d = aim(), sp = NADE_THROW.min + (NADE_THROW.max - NADE_THROW.min) * pw;
+  // the arc is drawn out of the grenade in hand (it sweeps into the true flight within a couple of metres)
+  if (vm && vm.canNade) vm.nadeAt(NADE_FROM); else nadeBall.getWorldPosition(NADE_FROM);
+  const r = showNadePreview([P.x + d[0] * 0.6, P.y - 0.2 + d[1] * 0.6, P.z + d[2] * 0.6], [d[0] * sp, d[1] * sp + NADE_THROW.loft * sp, d[2] * sp], pw, NADE_FROM);
+  nadeGauge(pw); el('nadeUi').dataset.full = NAIM.full ? '1' : '0';
+  const m = String(Math.round(r.dist)); if (el('nadeDist').textContent !== m) el('nadeDist').textContent = m;
+}
+// the stand-in fist (no gloved arms): the same moves, roughly — up from below, back over the shoulder, the whip and down
+function nadeHandTick(nv) {
+  nadeHand.visible = !!nv && !(vm && vm.canNade);
+  if (!nadeHand.visible) return;
+  const e = k => k * k * (3 - 2 * k), cl = k => Math.max(0, Math.min(1, k));
+  let x, y, z, rx;
+  if (nv.rel < 0) { const up = 1 - (1 - cl(nv.t / 0.3)) ** 3, b = e(nv.pw); x = 0.17 + 0.05 * b; y = -0.55 + (0.42 + 0.17 * b) * up; z = -0.36 + 0.16 * b; rx = -0.9 * b; }
+  else if (nv.rel < 0.09) { const k = (nv.rel / 0.09) ** 3, b = e(nv.pwRel); x = 0.17 + 0.05 * b - 0.12 * k; y = -0.13 + 0.17 * b - (0.17 * b - 0.1) * k; z = -0.36 + 0.16 * b - (0.16 * b + 0.1) * k; rx = -0.9 * b + (0.9 * b + 0.5) * k; }
+  else { const k = 1 - (1 - cl((nv.rel - 0.09) / 0.3)) ** 3; x = 0.05 - 0.15 * k; y = -0.03 - 0.4 * k; z = -0.46 + 0.1 * k; rx = 0.5 + 0.5 * k; }
+  nadeHand.position.set(x, y, z); nadeHand.rotation.x = rx; nadeBall.visible = nv.rel < 0.08 && !nv.gone;
 }
 const specAble = r => !r.fallT && r.buf.length > 0;   // alive with a fresh snapshot: the first-person view hides the body, so group.visible is not the test
 const specList = () => [...remotes.entries()].filter(([, r]) => specAble(r)).sort((a, b) => isMate(b[1]) - isMate(a[1])).map(e => e[0]);
@@ -567,7 +602,7 @@ function onMsg(m) {
     case 'alive': { const r = remotes.get(m.id); if (r) { r.buf.length = 0; r.fallT = 0; } break; }
     case 'board': MP.board = m.board; MP.score = m.score; for (const e of m.board) { const r = addRemote(e.id, e.name, e.team, e.look); if (r) { r.name = e.name; r.tag.textContent = e.name; const look = parseLook(e.look) ? e.look : ''; if (look !== r.look) { r.look = look; rebuildAvatar(r); } } if (e.id === MP.id) { MP.kills = e.kills; MP.deaths = e.deaths; } } for (const id of [...remotes.keys()]) if (!m.board.some(e => e.id === id)) dropRemote(id); drawBoard(); updatePanel(); if (voice) voice.setPeers(m.board.filter(e => e.id !== MP.id && !e.bot).map(e => e.id)); break;
     case 'left': dropRemote(m.id); break;
-    case 'nade': addNade(m); if (m.by !== MP.id) { const dd = Math.hypot(m.p[0] - P.x, m.p[2] - P.z); if (dd < 40) tone(500, 300, 0.08, 0.1 * (1 - dd / 40), 'triangle'); } break;
+    case 'nade': { const own = m.by === MP.id && !!NTHROW.at; addNade(m, own ? (vm && vm.canNade ? vm.nadeAt(MV) : nadeBall.getWorldPosition(MV)) : null); if (own) NTHROW.gone = true; } if (m.by !== MP.id) { const rt = remotes.get(m.by); if (rt) rt.throwAt = performance.now(); const dd = Math.hypot(m.p[0] - P.x, m.p[2] - P.z); if (dd < 40) tone(500, 300, 0.08, 0.1 * (1 - dd / 40), 'triangle'); } break;
     case 'item': itemBack(m); break;
     case 'took': itemTook(m.id); if (m.to === MP.id) { feed('+ ' + KINDS[m.kind].name, 'sys'); tone(660, 990, 0.09, 0.22, 'triangle'); } break;
     case 'inv': MP.ammo = m.mag.slice(); MP.reserve = m.reserve.slice(); MP.nades = m.nades; MP.meds = m.meds; if (m.sights) MP.sights = { ...m.sights }; if (Array.isArray(m.attach)) { MP.attach = m.attach.slice(); syncVm(); } updatePanel(); break;
@@ -724,6 +759,7 @@ function mpTick(dt) {
   el('mpReloadFill').style.width = (MP.reloadAt ? Math.min(1, (now - MP.reloadAt) / WEAPONS[MP.reloadW].reloadMs) * 100 : 0).toFixed(1) + '%';   // the reload bar under the rounds, every frame (the crosshair ring keeps its own)
   invTick(now);   // the reload bar of the inventory panel, if it is open
   el('mpSlots').classList.toggle('show', now < slotsT);   // the belt of weapons: shown by a switch or the wheel, hidden once the choice settles
+  const nv = nadeView(now);   // the arms with the grenade, or null
   // the scope: the picture closes in (the field of view 66° → 20°) and the gun goes out of sight
   { const at = MP.attach[MP.weapon], mode = at || (W().scope ? 'optic' : null);   // the mounted sight, or the sniper's own scope
     const want = MP.scope && mode && !MP.dead && !MP.reloadAt ? 1 : 0;
@@ -733,8 +769,8 @@ function mpTick(dt) {
     const scoped = MP.zoom > 0.6, dot = scoped && mode === 'sight';
     if (el('mpDot').hidden === dot) el('mpDot').hidden = !dot;   // the red dot of the collimator; the crosshair hides itself in crossTick
     if (el('mpScope').hidden === (scoped && !dot)) el('mpScope').hidden = !(scoped && !dot);
-    gun.visible = !MP.dead && !NAIM.on && (mode === 'sight' || MP.zoom < 0.5); }   // the grenade in hand replaces the gun; the long zoom hides the arms, the red dot keeps them
-  ownSteps(dt); tickNades(dt); tickItems(dt, now); spectate(now); nadeAimTick(now);
+    gun.visible = !MP.dead && !nv && (mode === 'sight' || MP.zoom < 0.5); }   // the grenade in hand (and the throw) replaces the gun; the long zoom hides the arms, the red dot keeps them
+  ownSteps(dt); tickNades(dt); tickItems(dt, now); spectate(now); nadeAimTick(now); nadeHandTick(nv);
   if (MP.reloadAt && now - MP.reloadAt >= WEAPONS[MP.reloadW].reloadMs) {   // the local picture of the reload; the server's 'inv' message is the truth. It finishes on the weapon that started it, even if another is in hand now
     const rw = MP.reloadW; MP.reloadAt = 0; const k = Math.min(WEAPONS[rw].mag - MP.ammo[rw], MP.reserve[rw]);
     MP.ammo[rw] += k; MP.reserve[rw] -= k; updatePanel();
@@ -752,7 +788,7 @@ function mpTick(dt) {
       const c = r.corpse; g.visible = true; g.scale.y = 1; g.position.set(c.x, c.y - (c.h || 1.7) + 0.18 * Math.min(1, age / 350), c.z); g.rotation.y = c.yaw; g.rotation.x = 1.5 * Math.min(1, age / 350) * (2 - Math.min(1, age / 350)); continue;
     }
     const p = pose(r, t); if (!p) { g.visible = false; continue; }
-    remoteSteps(r, p, now); if (r.av) { if (r.gunW !== p.w) { r.gunW = p.w; r.av.setGun(p.w); } r.av.update(dt, { speed: r.speed || 0, air: !!r.air, dead: false, shotAt: r.shotAt || 0 }); } g.visible = true; g.position.set(p.x, p.y - p.h, p.z); g.scale.y = p.h / 1.7; g.rotation.y = p.yaw; g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
+    remoteSteps(r, p, now); if (r.av) { if (r.gunW !== p.w) { r.gunW = p.w; r.av.setGun(p.w); } r.av.update(dt, { speed: r.speed || 0, air: !!r.air, dead: false, shotAt: r.shotAt || 0, throwAt: r.throwAt || 0 }); } g.visible = true; g.position.set(p.x, p.y - p.h, p.z); g.scale.y = p.h / 1.7; g.rotation.y = p.yaw; g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
     if (MP.dead && MP.specFP && r.id === MP.spec) g.visible = false;   // the first-person spectate: the watched body must not cover the eye
   }
   tickFx(dt);
@@ -760,7 +796,7 @@ function mpTick(dt) {
   if (MP.reloadAt) gun.rotation.x = -0.5 * Math.sin(Math.min(1, (now - MP.reloadAt) / WEAPONS[MP.reloadW].reloadMs) * Math.PI);
   if (vm) {   // the arms with the weapon in hand: your speed over the ground chooses the clip of the steps; the reload follows its progress
     vmSpeed += (Math.hypot(P.x - vmX, P.z - vmZ) / Math.max(dt, 1e-3) - vmSpeed) * Math.min(1, dt * 8); vmX = P.x; vmZ = P.z; if (vmSpeed > 40) vmSpeed = 0;
-    vm.update(dt, { show: gun.visible && vm.has(MP.weapon), speed: vmSpeed, reload: MP.reloadAt && MP.reloadW === MP.weapon ? (now - MP.reloadAt) / WEAPONS[MP.weapon].reloadMs : -1, yaw: P.yaw, pitch: P.pitch, kick: MP.kick, ads: MP.attach[MP.weapon] === 'sight' ? MP.zoom : 0 });
+    vm.update(dt, { show: gun.visible && vm.has(MP.weapon), nade: nv, speed: vmSpeed, reload: MP.reloadAt && MP.reloadW === MP.weapon ? (now - MP.reloadAt) / WEAPONS[MP.weapon].reloadMs : -1, yaw: P.yaw, pitch: P.pitch, kick: MP.kick, ads: MP.attach[MP.weapon] === 'sight' ? MP.zoom : 0 });
   }
   flashLit(dt);
   if (hitT && now - hitT > 140) { hitT = 0; el('mpHit').hidden = true; }
