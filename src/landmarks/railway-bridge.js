@@ -21,7 +21,7 @@ import { hb, sh } from '../core/util.js';
    - River piers of ashlar with pointed cutwaters, a dressed cap; the north-east abutment, U-shaped, at the head of the
      embankment with a second booth behind it. */
 const DEEP = -102;
-const STONE = hb('#bcb4a3'), CAP = hb('#cfc9bb'), STEEL = hb('#b6bcbf'), DARK = hb('#4b5054'), PLANK = hb('#7b746a'), RAIL = hb('#b9bec1');
+const STONE = hb('#aaa395'), CAP = hb('#bdb7a9'), STEEL = hb('#b6bcbf'), DARK = hb('#4b5054'), PLANK = hb('#7b746a'), RAIL = hb('#b9bec1');
 
 function lmRailBridge(K) {
   const G = K.plain, W = K.walls[0], { A, T, N, BEAR, PANELS, TH, TW } = RB;
@@ -60,10 +60,11 @@ function lmRailBridge(K) {
   // the abutment: its face towards the road, the wing along the road on the north-west, the end on the south-east;
   // above the cap a parapet on both sides of the girders up to the embankment
   ashFace(AS.s, AS.d0, AS.s, AS.d1, 1, 0, -2.3); box(AS.s - 0.5, AS.s + 0.15, AS.d0 - 0.15, AS.d1 + 0.15, -2.3, -2.0, CAP);
-  ashFace(AS.wing, AS.d0, AS.s, AS.d0, 0, -1, 0.1); box(AS.wing - 0.15, AS.s + 0.15, AS.d0 - 0.15, AS.d0 + 0.6, 0.1, 0.35, CAP);
-  ashFace(AS.wing, AS.d0 + 0.6, AS.wing, AS.d0, -1, 0, 0.1);
-  for (const [d0, d1] of [[AS.d0, -3.3], [3.3, AS.d1]]) { ashFace(AS.s - 0.1, d0, AS.s - 0.1, d1, 1, 0, 0.1); box(AS.s - 0.7, AS.s + 0.05, d0, d1, 0.1, 0.35, CAP); }
-  ashFace(AS.s - 0.1, -3.3, AS.s - 0.7, -3.3, 0, 1, 0.1); ashFace(AS.s - 0.7, 3.3, AS.s - 0.1, 3.3, 0, -1, 0.1);
+  const TOP = -0.3;   // the tops of the walls along the embankment, their caps flush with it
+  ashFace(AS.wing, AS.d0, AS.s, AS.d0, 0, -1, TOP); box(AS.wing - 0.15, AS.s + 0.15, AS.d0 - 0.15, AS.d0 + 0.6, TOP, TOP + 0.25, CAP);
+  ashFace(AS.wing, AS.d0 + 0.6, AS.wing, AS.d0, -1, 0, TOP);
+  for (const [d0, d1] of [[AS.d0, -3.3], [3.3, AS.d1]]) { ashFace(AS.s - 0.1, d0, AS.s - 0.1, d1, 1, 0, TOP); box(AS.s - 0.7, AS.s + 0.05, d0, d1, TOP, TOP + 0.25, CAP); }
+  ashFace(AS.s - 0.1, -3.3, AS.s - 0.7, -3.3, 0, 1, TOP); ashFace(AS.s - 0.7, 3.3, AS.s - 0.1, 3.3, 0, -1, TOP);
   ashFace(-1.5, AS.d1, AS.s, AS.d1, 0, 1, -2.3);
   box(AS.s - 0.9, AS.s - 0.1, -3.3, 3.3, -2.0, -1.85, sh(STONE, 0.8));   // the bed of the girders
   // the pier by the road: the girders on its south-west half, the first truss on the other
@@ -111,9 +112,9 @@ function lmRailBridge(K) {
   /* ---- the north-east abutment: the face to the river with the seat of the truss, a back wall, the wings ---- */
   const AN = RB.ABUT_NE;
   ashFace(AN.s, AN.d1w, AN.s, AN.d0, -1, 0, -2.3); box(AN.s - 0.15, AN.back, AN.d0 - 0.15, AN.d1w + 0.15, -2.3, -2.0, CAP);
-  ashFace(AN.back - 0.8, AN.d1w, AN.back - 0.8, AN.d0, -1, 0, 0.1); box(AN.back - 0.95, AN.back, AN.d0 - 0.15, AN.d1w + 0.15, 0.1, 0.35, CAP);
-  ashFace(AN.s, AN.d0, AN.wingL, AN.d0, 0, -1, 0.1); box(AN.s, AN.wingL, AN.d0 - 0.15, AN.d0 + 0.6, 0.1, 0.35, CAP); ashFace(AN.wingL, AN.d0, AN.wingL, AN.d0 + 0.6, 1, 0, 0.1);
-  ashFace(AN.wingR, AN.d1w, AN.s, AN.d1w, 0, 1, 0.1); box(AN.s, AN.wingR, AN.d1w - 0.6, AN.d1w + 0.15, 0.1, 0.35, CAP); ashFace(AN.wingR, AN.d1w - 0.6, AN.wingR, AN.d1w, 1, 0, 0.1);
+  ashFace(AN.back - 0.8, AN.d1w, AN.back - 0.8, AN.d0, -1, 0, TOP); box(AN.back - 0.95, AN.back, AN.d0 - 0.15, AN.d1w + 0.15, TOP, TOP + 0.25, CAP);
+  ashFace(AN.s, AN.d0, AN.wingL, AN.d0, 0, -1, TOP); box(AN.s, AN.wingL, AN.d0 - 0.15, AN.d0 + 0.6, TOP, TOP + 0.25, CAP); ashFace(AN.wingL, AN.d0, AN.wingL, AN.d0 + 0.6, 1, 0, TOP);
+  ashFace(AN.wingR, AN.d1w, AN.s, AN.d1w, 0, 1, TOP); box(AN.s, AN.wingR, AN.d1w - 0.6, AN.d1w + 0.15, TOP, TOP + 0.25, CAP); ashFace(AN.wingR, AN.d1w - 0.6, AN.wingR, AN.d1w, 1, 0, TOP);
   for (const sg of [-1, 1]) shoe(BEAR[3], sg * TW);
 
   /* ---- the trusses ---- */

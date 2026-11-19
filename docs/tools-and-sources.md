@@ -10,7 +10,6 @@
 |---|---|---|---|
 | Claude | claude/pine-sway | Медленнее качание и дрожь кроны деревьев | src/world/trees.js |
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Claude | claude/blissful-volta-qsvceh | Ж/д мост: проезд под ним, оба конца, фермы по лидару | src/landmarks/railway-bridge.js, src/world/bridge-railway.js, src/world/underpass-rail.js, src/world/terrain.js, src/world/street-tags.js |
 
 ## Автономный цикл улучшений
 
@@ -176,6 +175,6 @@ https://data.gov.lv/dati/api/3/action/package_search?q=…
 
 ## Механизмы движка, появившиеся недавно
 
-- **Мелкая поправка рельефа** (`PATCHES` в [src/world/terrain.js](../src/world/terrain.js)). Это сетка 1 м поверх сетки 20 м в небольшой рамке; её добавляют к высотам и шейдеры, и JS. Для мест, которые сетка 20 м не передаёт. Областей не больше двух (`setPatch`), они не должны пересекаться. Примеры — [src/world/underpass.js](../src/world/underpass.js) и [src/world/underpass-rail.js](../src/world/underpass-rail.js), разделы README «Daugavas iela под мостом Единства» и «Рельеф».
+- **Мелкая поправка рельефа** (`PATCHES` в [src/world/terrain.js](../src/world/terrain.js)). Это сетка 1 м поверх сетки 20 м в небольшой рамке; её добавляют к высотам и шейдеры, и JS. Для мест, которые сетка 20 м не передаёт. Областей не больше трёх (`NPATCH`, `setPatch`), они не должны пересекаться; шаг может быть и 0,5 м. Примеры — [src/world/underpass.js](../src/world/underpass.js) и [src/world/underpass-rail.js](../src/world/underpass-rail.js), разделы README «Daugavas iela под мостом Единства» и «Рельеф».
 - **Улицы на дамбах** (`terrainDams`) — ровный гребень дамбы под улицей.
 - **Теги OSM по отдельным путям** ([src/world/street-tags.js](../src/world/street-tags.js)): полосы, загородные участки, односторонние съезды в одну полосу.

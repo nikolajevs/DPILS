@@ -5,11 +5,12 @@ import { pip } from '../core/util.js';
    1858–62, three trusses; rebuilt 1949). OSM way 22376541: a 282 m bridge from (-2768, 484) to (-2548, 308).
    Frame: s from the south-west end along the axis, d across it (positive to the right of the way, towards the south-east).
 
-   Measured (LGIA lidar tile 2443-52-12, 2017; OSM ways 9012384xx–9012385xx traced by one mapper; Mapillary 2016–2025):
+   Measured (LGIA lidar tile 2443-52-12, 2017; OSM ways 9012384xx–9012385xx traced by one mapper; Mapillary 2016–2025);
+   lengths along the axis in metres of the city (LKS-92 distances here are 0.15 % longer):
    - the bridge is level: the rails at 100.4–100.5 m above sea level at both ends, the embankments 100.3 m;
    - three through trusses of 12.5 m from the rails to the top of the top chord, the planes of the trusses 6.2 m apart;
-     bearings at s = 15.0 (the pier by Lielā iela), 92.7, 182.0 (the river piers) and 280.6 (the north-east abutment):
-     spans of 77.7, 89.3 and 98.6 m in panels of about 11 m (7, 8, 9). In each panel the two diagonals cross at
+     bearings at s = 15.0 (the pier by Lielā iela), 92.6, 181.7 (the river piers) and 280.2 (the north-east abutment):
+     spans of 77.6, 89.1 and 98.5 m in panels of about 11 m (7, 8, 9). In each panel the two diagonals cross at
      mid-height, so with the verticals they draw the rhombi seen on photographs; parallel chords, portals at the ends;
    - at the south-west end a steel girder span of 14 m over Lielā iela: the road 6.7 m under the rails, 4.8 m clear under
      the girders (the sign on the beam, OSM maxheight=4.8); the girders rest on an abutment of large rough blocks at s = 0
@@ -25,12 +26,12 @@ const RB = (() => {
   const A = [-2768, 484], B = [-2548, 308], L = Math.hypot(B[0] - A[0], B[1] - A[1]), T = [(B[0] - A[0]) / L, (B[1] - A[1]) / L];
   return {
     A, B, L, T, N: [-T[1], T[0]],
-    BEAR: [15.0, 92.7, 182.0, 280.6], PANELS: [7, 8, 9], TH: 12.5, TW: 3.1,   // bearings, panels per span, truss height, half the distance between the trusses
+    BEAR: [15.0, 92.6, 181.7, 280.2], PANELS: [7, 8, 9], TH: 12.5, TW: 3.1,   // bearings, panels per span, truss height, half the distance between the trusses
     GIRDER: [0.2, 14.2], DROP: 6.7, CLEAR: 4.8,                              // the girder span; the road under it below the rails, the clearance
     ABUT_SW: { s: 1.0, keep: 0.05, d0: -10.4, d1: 3.9, wing: -5.6 },   // the face 1 m before the OSM line: the 1 m patch keeps the embankment behind s = 0.05 and so shows little earth before it
     PIER_SW: { s0: 13.3, s1: 17.4, d0: -12.5, d1: 3.9 },
     PIERS: [{ s: 92.95, hs: 2.15, d0: -13.1, d1: 5.8 }, { s: 182.5, hs: 2.1, d0: -12.3, d1: 6.6 }],
-    ABUT_NE: { s: 279.6, back: 282,   // the face to the river with the seat of the truss; the back wall from back − 0.8 to back
+    ABUT_NE: { s: 279.2, back: 281.6,   // the face to the river with the seat of the truss; the back wall from back − 0.8 to back (the end of the rails, s = L, just behind it)
       d0: -10.6, d1: 2.2, wingL: 293.6, wingR: 292.6, d1w: 3.3 },
     BOOTHS: [{ s: -2.5, d: -7.15, ls: 2.2, ld: 2.1 }, { s: 297.25, d: -11.0, ls: 2.7, ld: 5.8 }],
     H: null   // the height of the rails over the reference: lmRailBridge and the patches (src/world/underpass-rail.js) read it

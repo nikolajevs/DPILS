@@ -447,7 +447,7 @@ async function buildLines() {
       else if (cls <= 3) { ribbon(walk, dp, hw + 1.4, 1.3, PAVE, 0, je); ribbon(walk, dp, -hw - 1.4, 1.3, PAVE, 0, je); mark(li, dp, hw + 0.08, 0.12, CURB, 'k'); mark(li, dp, -hw - 0.08, 0.12, CURB, 'k'); }
       if (cls === 8) { const [A, B] = railBed(li, dp, hw); ribbonV(groups[def[2]], dp, A, B, lineCol[cls], je); }
       else if (cls !== 9) ribbon(groups[def[2]], dp, 0, hw, lineCol[cls], 0, je);
-      if (cls <= 2) mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9]);
+      if (cls <= 2 && !(tags && tags.noCentre)) mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9]);   // no centre line where OSM says lane_markings=no
       if (cls === 0) { mark(li, dp, hw - 0.45, 0.07, WHITE, 'e'); mark(li, dp, -hw + 0.45, 0.07, WHITE, 'e'); }
     }
     if (cls <= 4) { l.zone = hwC; for (let i = 0; i < n - 1; i++) addZone(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], li, hwC); }
