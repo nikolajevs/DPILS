@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import { STATE } from '../core/state.js';
 import { AREAS, COL, M_ASPH, M_DIRT, M_LAND, M_PAVE, ROAD, inBuilding } from '../world/data.js';
 import { carGeo, carMat, carsReady } from '../world/cars.js';
+import { carProbes } from '../world/car-hit.js';
 import { LAMPS } from '../world/streets.js';
 import { CARROAD } from '../transit/transit.js';
-import { TERR, subTris } from '../world/terrain.js';
+import { TERR, subTris, terrainH } from '../world/terrain.js';
 import { camera, scene } from '../render/renderer.js';
 import { GB, SegGrid, box, lathe, polyA } from '../core/geometry.js';
 import { area2, bbox, edgeN, hash, hb, obb, pip, reversed, sh, triangulate } from '../core/util.js';
@@ -270,6 +271,12 @@ function parkTick(day, sec) {
 // a walker against the parked cars: pushed out of each taken stall (0.45 m of the walker, 0.85 m of the car)
 function parkedPush(P) { if (!ST) return; PCOL.near(P.x, P.z, 1.3, (id, d, px, pz) => { if (!ST.occ[PCOL.s[id * 6 + 4]] || d >= 1.3 || d < 1e-5) return; const k = (1.3 - d) / d; P.x += (P.x - px) * k; P.z += (P.z - pz) * k; }); }
 function parkedAt(x, z) { if (!ST) return false; let hit = false; PCOL.near(x, z, 1.3, id => { if (ST.occ[PCOL.s[id * 6 + 4]]) hit = true; }); return hit; }
+// a point (x, y, z) inside a taken stall's car (a capsule 0.95 m around its axis, 1.5 m tall): the nearest point of the axis, or null
+function parkedCarAt(x, y, z) {
+  if (!ST || y - terrainH(x, z) > 1.5) return null;
+  let r = null; PCOL.near(x, z, 1, (id, d, px, pz) => { if (d < 0.95 && ST.occ[PCOL.s[id * 6 + 4]]) r = { px, pz, top: terrainH(x, z) + 1.5 }; }); return r;
+}
+carProbes.push(parkedCarAt);
 // is (x, z) in a drawn car park (for the trees scattered over the woods)
 let LGRID = null;
 function inParking(x, z) {
@@ -278,4 +285,4 @@ function inParking(x, z) {
   return false;
 }
 
-export { PARKING_LOTS, PSTAT, inParking, lmParking, parkTick, parkedAt, parkedPush, placeParkingCars };
+export { PARKING_LOTS, PSTAT, inParking, lmParking, parkTick, parkedAt, parkedCarAt, parkedPush, placeParkingCars };

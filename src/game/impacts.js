@@ -3,6 +3,7 @@ import { buildingAt } from '../world/data.js';
 import { terrainH } from '../world/terrain.js';
 import { camera, scene } from '../render/renderer.js';
 import { worldSpace } from '../render/world-space.js';
+import { carAt } from '../world/car-hit.js';
 
 /* ---------- realistic shots: flying tracers, bullet marks, dust, sparks, shells ----------
    The game (mp.js) knows where every bullet stops: a wall, the ground or a body. This module draws the consequences.
@@ -105,11 +106,17 @@ function refine(o, d, len) {
   const block = t => {
     const x = o[0] + d[0] * t, y = o[1] + d[1] * t, z = o[2] + d[2] * t, g = terrainH(x, z);
     if (y < g) return 1;
-    const b = buildingAt(x, z); return b && y < g + (b.top || 12) ? 2 : 0;
+    const b = buildingAt(x, z); return b && y < g + (b.top || 12) ? 2 : carAt(x, y, z) ? 3 : 0;
   };
   let lo = Math.max(0.2, len - 1.6), hi = len;
   if (!block(hi)) hi = len; else for (let i = 0; i < 9; i++) { const mid = (lo + hi) / 2; if (block(mid)) hi = mid; else lo = mid; }
   const x = o[0] + d[0] * hi, y = o[1] + d[1] * hi, z = o[2] + d[2] * hi, g = terrainH(x, z), b = buildingAt(x, z);
+  const car = carAt(x, y, z);
+  if (car && !b) {   // a car: from above the roof, else the side facing away from the axis
+    if (y > car.top - 0.25) return { x, y, z, n: [0, 1, 0], kind: 'car' };
+    const nx = x - car.px, nz = z - car.pz, L = Math.hypot(nx, nz) || 1;
+    return { x, y, z, n: [nx / L, 0, nz / L], kind: 'car' };
+  }
   if (!b || y < g + 0.08) {   // the ground: its normal is the slope of the terrain
     const e = 0.6, hx = (terrainH(x + e, z) - terrainH(x - e, z)) / (2 * e), hz = (terrainH(x, z + e) - terrainH(x, z - e)) / (2 * e), L = Math.hypot(hx, 1, hz);
     return { x, y: Math.max(y, g), z, n: [-hx / L, 1 / L, -hz / L], kind: 'ground' };
@@ -128,11 +135,12 @@ function refine(o, d, len) {
 const HOLE_SIZE = [0.1, 0.055, 0.14, 0.08, 0.1];   // by weapon: the sniper leaves a bigger mark, a pellet a small one
 function surfaceImpact(o, d, len, w) {
   const s = refine(o, d, len), ground = s.kind === 'ground';
-  addDecal(s.x, s.y, s.z, s.n, HOLE_SIZE[w] ?? 0.1, ground ? 0x9a8f7a : 0xc9c5bc);
+  const car = s.kind === 'car';
+  addDecal(s.x, s.y, s.z, s.n, HOLE_SIZE[w] ?? 0.1, ground ? 0x9a8f7a : car ? 0x6a6a70 : 0xc9c5bc);
   const n = s.n;
-  for (let i = 0, k = w === 1 ? 3 : 6; i < k; i++)   // dust thrown off the surface
+  for (let i = 0, k = car ? 0 : w === 1 ? 3 : 6; i < k; i++)   // dust thrown off the surface
     puff(s.x + n[0] * 0.05, s.y + n[1] * 0.05, s.z + n[2] * 0.05, n[0] * rnd(0.6, 2) + rnd(-0.7, 0.7), n[1] * rnd(0.6, 2) + rnd(0.1, 0.9), n[2] * rnd(0.6, 2) + rnd(-0.7, 0.7), rnd(0.3, 0.6), 0.06, rnd(0.25, 0.4), ground ? 0x9a8a70 : 0xa8a29a, 0.5, -1.2);
-  if (!ground) for (let i = 0; i < 5; i++)   // sparks off stone and concrete
+  if (!ground) for (let i = 0, k = car ? 9 : 5; i < k; i++)   // sparks off stone and concrete
     puff(s.x + n[0] * 0.04, s.y + n[1] * 0.04, s.z + n[2] * 0.04, n[0] * rnd(1.5, 4) + rnd(-2, 2), n[1] * rnd(1.5, 4) + rnd(-0.5, 2), n[2] * rnd(1.5, 4) + rnd(-2, 2), rnd(0.12, 0.28), 0.035, 0.008, 0xffc873, 0.95, -9);
   puff(s.x + n[0] * 0.1, s.y + n[1] * 0.1 + 0.03, s.z + n[2] * 0.1, n[0] * 0.3 + rnd(-0.15, 0.15), 0.45, n[2] * 0.3 + rnd(-0.15, 0.15), 0.8, 0.12, 0.55, 0x9a9a9a, 0.28, 0.2);   // a wisp of smoke
 }

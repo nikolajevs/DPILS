@@ -27,6 +27,7 @@ import { initLeaders } from './leaders.js';
 import { rest } from '../core/pause.js';
 import { $ } from '../core/env.js';
 import { boomSound, crackSound, hitSound, loadSounds, shotSound, stepSound } from './sfx.js';
+import { carAt, carPath } from '../world/car-hit.js';
 import { fxSamples, tracerShot, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke } from './impacts.js';
 
 /* ---------- online shooter: deathmatch on the city map ----------
@@ -75,7 +76,11 @@ const DEFAULT_SERVER = '';   // e.g. 'wss://dpils-game.example.com'; empty: ?ser
 /* ---------- geometry ---------- */
 // how far the shot flies before the ground or a roof line stops it; the coarse 1.5 m scan is bisected to ~3 mm
 // (the same refinement impacts.js uses for the mark), so the tracer stops at the wall, not up to 1.5 m inside it
-function freePath(o, d, len) {
+function freePath(o, d, len, cars = false) {   // cars: parked and standing cars stop it too (shots only; sight lines look over them)
+  const wall = wallPath(o, d, len);
+  return cars ? carPath(o, d, wall) : wall;
+}
+function wallPath(o, d, len) {
   const block = t => {
     const x = o[0] + d[0] * t, y = o[1] + d[1] * t, z = o[2] + d[2] * t, g = terrainH(x, z);
     if (y < g) return true;
@@ -314,7 +319,8 @@ const WALL_MAT = { 0: 'concrete', 1: 'stone', 2: 'stone', 3: 'concrete', 4: 'con
 function wallHit(o, d, len, hear = 45) {
   const x = o[0] + d[0] * len, y = o[1] + d[1] * len, z = o[2] + d[2] * len, s = spot(x, y, z);
   if (s.d > hear) return;
-  const ground = y - terrainH(x, z) < 0.5;
+  const car = !!carAt(x, y, z), ground = !car && y - terrainH(x, z) < 0.5;
+  if (car) { try { hitSound(ac(), actx.master, 'metal', 0.8 * 4 / (4 + s.d) * (1 - s.d / hear), s.d, s.pan); } catch (e) {} return; }
   const mat = ground ? (onRoad(x, z, 1.5) ? 'road' : 'grass') : (WALL_MAT[(buildingAt(x, z) || {}).kind] || 'concrete');
   try { hitSound(ac(), actx.master, ground ? 'ground' : 'wall', 0.7 * 4 / (4 + s.d) * (1 - s.d / hear), s.d, s.pan, mat); } catch (e) {}
 }
@@ -329,7 +335,7 @@ function otherShot(m) {
   }
   let hits = 0, crack = false;
   for (const r of m.rays) {
-    const len = r[3], who = r[4];
+    const who = r[4], len = who ? r[3] : carPath(m.o, r, r[3]);   // the server does not know the cars: its bullet stops in one here too
     const kind = who === MP.id ? 'air' : who ? 'body' : (len < wf.range - 0.5 ? 'surface' : 'air');   // into you: no mark, 'hurt' speaks
     let cb = null;
     if (who !== MP.id && hits < 2) {   // the hits of its bullets near you are heard when they arrive
@@ -363,7 +369,7 @@ function fire(now) {
   const o = [P.x, P.y, P.z], t = performance.now() - 120, rays = [], yaw0 = P.yaw, pitch0 = P.pitch;   // the rays fly where the crosshair stood: the recoil kicks the view only after they are computed — kicking first lifted every sniper shot 0.03 rad (1.7°) over the target, a clean miss past ~40 m
   for (let i = 0; i < w.pellets; i++) {
     const sp = spreadNow(), ang = Math.random() * 6.283, rad = sp * Math.sqrt(Math.random());
-    const d = aim(yaw0 + Math.cos(ang) * rad, pitch0 + Math.sin(ang) * rad), clear = freePath(o, d, w.range);
+    const d = aim(yaw0 + Math.cos(ang) * rad, pitch0 + Math.sin(ang) * rad), clear = freePath(o, d, w.range, true);
     let best = null;
     for (const [id, r] of remotes) {
       if (isMate(r)) continue;   // no friendly fire: shots pass through teammates
