@@ -87,6 +87,7 @@ function roofMaterial() {
   });
   m.extensions = { derivatives: true }; return m;
 }
+const RELIEF = 0.05;   // depth of the ground relief in metres at colour amount 1
 function groundMaterial(tex, scale, amt, key, extra = '') {   // extra: GLSL that may change diffuseColor at the world point vWxz
   return std({ vertexColors: true, roughness: 0.96, metalness: 0, depthWrite: false }, 'ground-' + key, s => {
     s.uniforms.uDetail = { value: tex };
@@ -96,7 +97,19 @@ function groundMaterial(tex, scale, amt, key, extra = '') {   // extra: GLSL tha
     s.fragmentShader = 'uniform sampler2D uDetail; varying vec2 vWxz;\n' + s.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
       float dt = texture2D(uDetail, vWxz * ${scale.toFixed(4)}).r * 2.0;
       float dt2 = texture2D(uDetail, vWxz * ${(scale * 0.137).toFixed(4)} + 0.37).r * 2.0;
-      diffuseColor.rgb *= mix(1.0, dt, ${amt.toFixed(3)}) * mix(1.0, dt2, ${(amt * 0.6).toFixed(3)});${extra}`);
+      diffuseColor.rgb *= mix(1.0, dt, ${amt.toFixed(3)}) * mix(1.0, dt2, ${(amt * 0.6).toFixed(3)});${extra}`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+      #if ${amt > 0 ? 1 : 0}
+      {   // bump from the detail photograph: its grey is the height (relief ${(RELIEF).toFixed(2)} m × colour amount). The slope comes from texture
+          // differences along the world axes (the ground is flat), not from screen derivatives, so it is smooth; it fades out with distance
+        float e = 1.5 / 512.0, k = ${(RELIEF * amt * 512 * scale / 3).toFixed(4)};
+        vec2 q = vWxz * ${scale.toFixed(4)};
+        float gx = texture2D(uDetail, q + vec2(e, 0.0)).r - texture2D(uDetail, q - vec2(e, 0.0)).r;
+        float gz = texture2D(uDetail, q + vec2(0.0, e)).r - texture2D(uDetail, q - vec2(0.0, e)).r;
+        vec3 slope = mat3(viewMatrix) * vec3(-gx, 0.0, -gz) * k * (1.0 - smoothstep(20.0, 90.0, length(vViewPosition)));
+        normal = normalize(normal + slope);
+      }
+      #endif`);
   });
 }
 

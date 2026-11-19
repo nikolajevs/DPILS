@@ -82,6 +82,8 @@ This work is based on the models above, each by its author, licensed under [CC-B
 
 Детальные карты земли `textures/detail_grass|asph|pave|gravel.webp` — серые 512 px, из фотографий [ambientCG](https://ambientcg.com) (**CC0**: Grass001, Asphalt012, PavingStones070, Gravel021). Яркость умножается на цвет вершин в `groundMaterial` (серый 128 = «без изменений»), подгружаются из `detailTex` ([src/render/textures.js](../src/render/textures.js)); пока файл не пришёл, стоит процедурный шум.
 
+Те же карты дают рельеф земли: `groundMaterial` берёт серое как высоту (0,05 м × доля цвета) и наклоняет нормаль по разности текстуры вдоль осей мира, так что при низком солнце видны швы брусчатки и зерно асфальта. Рельеф гаснет с расстоянием (20–90 м), чтобы дальняя земля не мерцала.
+
 ## Машины (`bmw_*.glb`)
 
 Готовые модели **BMW** вместо прежних процедурных коробок. Все четыре — **CC BY 4.0**, атрибуции обязательны:
