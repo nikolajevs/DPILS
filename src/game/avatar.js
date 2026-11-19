@@ -110,6 +110,21 @@ function hold(H, inner, holder, pitch) {
   if (hs.L) reach(H.L, VT.copy(hs.L.w).applyMatrix4(holder.matrix), POLE.L);
   if (H.fingers) { if (hs.R) turnHand(H.R[2], H.fingers.R, hs.R, holder); if (hs.L) turnHand(H.L[2], H.fingers.L, hs.L, holder); }
 }
+// the overhand throw of a grenade, from the moment the server got it (mp.js throwAt): the right hand leaves the grip,
+// flies up behind the head, whips forward over the shoulder, follows through low and comes back to the gun. Targets from
+// the right shoulder in the frame of the figure (metres, +z forward, +y up, the right −x); weighed in and out of the hold
+const THROW = { back: V3([-0.08, 0.3, -0.2]), fwd: V3([0.02, 0.24, 0.46]), low: V3([0.1, -0.22, 0.34]) }, THROW_POLE = V3([-1, 0.15, -0.35]).normalize();
+const TW = new THREE.Vector3(), TS = new THREE.Vector3(), TQ = new THREE.Vector3();
+function throwArm(H, inner, t) {
+  if (!H || !(t >= 0 && t < 0.72)) return;
+  setFrame(inner); at(H.R[2], TW); at(H.R[0], TS);
+  const e = k => k * k * (3 - 2 * k), cl = k => Math.max(0, Math.min(1, k));
+  if (t < 0.1) TQ.copy(TW).sub(TS).lerp(THROW.back, e(t / 0.1));
+  else if (t < 0.22) TQ.copy(THROW.back).lerp(THROW.fwd, (t - 0.1) / 0.12);
+  else if (t < 0.46) TQ.copy(THROW.fwd).lerp(THROW.low, e((t - 0.22) / 0.24));
+  else TQ.copy(THROW.low).lerp(TW.clone().sub(TS), e(cl((t - 0.46) / 0.26)));
+  reach(H.R, TQ.add(TS), THROW_POLE);
+}
 // at the moment of death the gun is tied to the right hand (rel), then carried by it
 function tieToHand(H, inner, holder) { setFrame(inner); return relMatrix(H.R[2], new THREE.Matrix4()).invert().multiply(holder.matrix); }
 function carry(H, inner, holder, rel) { setFrame(inner); relMatrix(H.R[2], MA).multiply(rel).decompose(holder.position, holder.quaternion, holder.scale); }
@@ -276,6 +291,7 @@ function makeHuman(hue, L, civilian) {
       if (bones.spine_03) bones.spine_03.quaternion.multiply(QP.setFromAxisAngle(XA, -armProxy.rotation.x * 0.5));
     }
     if (H && gun && gun.userData.both) { if (!s.dead) hold(H, inner, gun, headProxy.rotation.x); else if (tied) carry(H, inner, gun, tied); }
+    if (H && !s.dead && s.throwAt) throwArm(H, inner, (performance.now() - s.throwAt) / 1000);
     if (flash) { shot.dt = dt; shotFlash(flash, s, shot); }
   }
   let mount = null, gun = null, setGun = () => {}, setAttach = () => {};
@@ -297,7 +313,7 @@ function makeHuman(hue, L, civilian) {
   return { root: inner, update, mount, setGun, setAttach, mixer, get gun() { return gun; } };
 }
 
-// one player's model: update(dt, { speed, air, dead, shotAt }) every frame (shotAt: the time of the last shot, a new one flashes); look — the chosen person ('' = the soldier);
+// one player's model: update(dt, { speed, air, dead, shotAt, throwAt }) every frame (shotAt: the time of the last shot, a new one flashes; throwAt: of the last grenade thrown, the arm swings); look — the chosen person ('' = the soldier);
 // civilian: a person of the streets — the whole walk clip, no gun and no team gear
 function makeAvatar(hue, look, civilian) {
   const L = look ? parseLook(look) : null;
@@ -328,6 +344,7 @@ function makeAvatar(hue, look, civilian) {
     if (!s.dead) armBones.forEach((o, i) => o.quaternion.copy(armQ[i]));
     if (head) head.scale.setScalar(MODEL.headScale);
     if (H && gun.userData.both) { if (!s.dead) hold(H, inner, gun, headProxy.rotation.x); else if (tied) carry(H, inner, gun, tied); }
+    if (H && !s.dead && s.throwAt) throwArm(H, inner, (performance.now() - s.throwAt) / 1000);
     shot.dt = dt; shotFlash(flash, s, shot);
   }
   // a mount on the hand in metres: the skeleton of the file is in other units, so the mount is scaled back

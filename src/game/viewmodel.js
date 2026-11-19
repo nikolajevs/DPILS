@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { worldSpace } from '../render/world-space.js';
 import { makeFlash } from './muzzle.js';
 import { at, reach, relMatrix, setFrame, turnBy, turnOf } from './ik.js';
-import { prop, onProps } from './props.js';
+import { prop, onProps, splitNade } from './props.js';
 
 /* ---------- the AK-47 (models/fp_ak47.glb, CC BY 4.0, see models/README.md; built by tools/fp-ak.mjs) ----------
    One file, two uses. The arms of a soldier in gloves holding the rifle, rigged, with the clips idle, walk, run, fire,
@@ -83,7 +83,7 @@ function drawOver(m) {
   return m;
 }
 
-/* The view from the eyes. update(dt, s) every frame with s = { show, speed (m/s), reload (0…1, or −1), yaw, pitch, kick };
+/* The view from the eyes. update(dt, s) every frame with s = { show, nade (the grenade in hand, see nadePose, or null), speed (m/s), reload (0…1, or −1), yaw, pitch, kick };
    fire() at each shot, equip() when the rifle is taken. The clips are chosen by state: reload over equip over fire
    over the steps (idle, walk, run); each fades in and out, and the steps get what the others leave. The reload is
    driven by its progress, so the magazine goes in when the game's reload ends whatever its length. */
@@ -177,14 +177,116 @@ function makeViewmodel(parent) {
     const on = Math.min(1, Math.max(0, (0.2 - P1.distanceTo(P2)) / 0.12));
     if (on > 0) moveHand(ARM.L, D.copy(gw.dL).applyMatrix3(G3).multiplyScalar(on), GIVE);
   }
+  /* The grenade in hand (mp.js, G): the same arms, the weapon gone. The right hand holds an M67 at its true size where
+     the pistol grip was, its ring turned out to the left; the left hand comes in, hooks the ring and pulls the pin out,
+     and drops out of sight with it. The held left button winds the throw up: the grenade goes back over the right shoulder, the
+     left arm comes out ahead toward the target. The release whips it forward, the hand lets go and follows through down
+     and across, and the weapon comes back up (mp.js plays the equip clip). Poses are where the middle of the grenade
+     is, from the eye (metres in the frame of the arms: +x left, +y up, +z ahead); the wrist is put so that it lands
+     there (reach, ik.js), the hand turned from the clip by the tilt of the moment. */
+  const NADE_S = 0.5, NADE_C = 0.066;   // the in-hand M67 at its true size (the map prop is twice as big); the middle of its body above its base
+  const nadeBox = new THREE.Group(), nadeIn = new THREE.Group(), pinBox = new THREE.Group(), ringMark = new THREE.Object3D();
+  nadeIn.position.y = -NADE_C; nadeBox.add(nadeIn); nadeIn.add(pinBox); nadeBox.visible = false;
+  let nadeFill = 0;   // 0 nothing yet, 1 the stand-in ball, 2 the model
+  function fillNade() {
+    if (nadeFill === 2) return;
+    const parts = splitNade(), keep = o => o.traverse(c => { if (c.isMesh) { c.frustumCulled = false; c.castShadow = false; c.receiveShadow = true; c.material = drawOver(worldSpace(c.material.clone())); } });
+    if (!parts && nadeFill) return;
+    nadeIn.clear(); pinBox.clear(); nadeIn.add(pinBox);
+    if (parts) {
+      keep(parts.body); nadeIn.add(parts.body);
+      if (parts.pin) { keep(parts.pin); pinBox.add(parts.pin); const b = new THREE.Box3().setFromObject(parts.pin, true); b.getCenter(ringMark.position); ringMark.position.x = b.max.x - 0.012; pinBox.add(ringMark); }
+      nadeFill = 2;
+    } else {
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(0.066, 16, 12), drawOver(worldSpace(new THREE.MeshLambertMaterial({ color: 0x3d5a2a })))); ball.position.y = NADE_C; ball.frustumCulled = false; nadeIn.add(ball);
+      nadeFill = 1;
+    }
+  }
+  onProps(fillNade);
+  const NP = {   // the poses: the grenade (g…) and the left wrist (l…); the turn of the right hand from the clip's (tilt: fingers down +, roll: palm up +)
+    gDown: V3([-0.16, -0.40, 0.22]), gReady: V3([-0.125, -0.115, 0.33]), gBack: V3([-0.15, 0.045, 0.16]), gFwd: V3([-0.05, -0.04, 0.43]), gFollow: V3([0.09, -0.34, 0.30]),
+    lDown: V3([0.22, -0.44, 0.24]), lFwd: V3([0.17, -0.165, 0.40]),
+    tReady: -0.2, rReady: 0.8, tBack: -1.05, rBack: 0.25, tFwd: 0.5, tFollow: 1.1, rFollow: -0.3,
+  };
+  const cam0 = new THREE.Vector3(), nadeOff = new THREE.Vector3(), poleR = new THREE.Vector3(), poleL = V3([0.6, -1, -0.25]).normalize(), PR0 = V3([-0.6, -1, -0.15]).normalize(), PR1 = V3([-1, -0.35, -0.1]).normalize();
+  const NV = new THREE.Vector3(), gCur = new THREE.Vector3(), lCur = new THREE.Vector3(), gT = new THREE.Vector3(), lT = new THREE.Vector3(), lRel = new THREE.Vector3(), grabAt = new THREE.Vector3(), Qt = new THREE.Quaternion(), XA = new THREE.Vector3(1, 0, 0), ZA = new THREE.Vector3(0, 0, 1);
+  const gripL = ikOk ? ak.hands.L.w.clone().sub(ak.palm.L) : new THREE.Vector3();   // from the left palm to its wrist: the palm goes to the ring
+  let nadeOn = false, pulled = false, grab = false, lAtRel = new THREE.Vector3(), clk = 0;
+  if (ikOk) {   // the grenade in the right palm, from the rest pose of the file: its top along the knuckles (to the index), the ring out to the far side, where the left hand comes for it
+    setFrame(rig); rig.updateMatrix(); cam0.set(0, 0, 0).applyMatrix4(rig.matrix.clone().invert());   // the eye in the frame of the arms
+    const h = ak.hands.R, up = h.i.clone().sub(h.k).normalize(), fw = h.m.clone().sub(h.w).normalize(), n = new THREE.Vector3().crossVectors(up, fw).normalize();
+    const x = n.clone().addScaledVector(up, -n.dot(up)).normalize(), z = new THREE.Vector3().crossVectors(x, up), c = ak.palm.R.clone().addScaledVector(n, 0.03);
+    const M = new THREE.Matrix4().makeBasis(x, up, z).scale(new THREE.Vector3(NADE_S, NADE_S, NADE_S)).setPosition(c);
+    relMatrix(ARM.R[2], new THREE.Matrix4()).invert().multiply(M).decompose(nadeBox.position, nadeBox.quaternion, nadeBox.scale);
+    ARM.R[2].add(nadeBox);
+    turnOf(ARM.R[2], Qt); nadeOff.copy(c).sub(at(ARM.R[2], T)).applyQuaternion(Qt.invert());   // the middle of the grenade from the wrist, in the turn of the hand
+  }
+  const cl = k => k < 0 ? 0 : k > 1 ? 1 : k, ease = k => k * k * (3 - 2 * k), eOut = k => 1 - (1 - k) ** 3, eIn = k => k * k * k;
+  function nadeReset() {
+    pulled = false; nadeIn.add(pinBox); pinBox.position.set(0, 0, 0); pinBox.quaternion.identity(); pinBox.scale.set(1, 1, 1); pinBox.visible = true;
+    gCur.copy(NP.gDown).add(cam0); lCur.copy(NP.lDown).add(cam0);
+  }
+  // st = { t: seconds since the grenade was taken, pw: the charge now (0…1), rel: seconds since the release (−1 before), pwRel: the charge it went with, gone: the grenade is in the air }
+  function nadePose(dt, st, speed) {
+    clk += dt; setFrame(rig);
+    const back = pw => ease(pw), held = st.rel < 0;
+    let tilt, roll = 0;
+    // the right hand: up from below, held, wound back; then the whip forward and the follow-through
+    if (held) {
+      const d = eOut(cl(st.t / 0.32)), b = back(st.pw);
+      gT.copy(NP.gReady).lerp(NP.gBack, b); gT.lerp(NP.gDown, 1 - d);
+      gT.y += Math.sin(clk * 2.1) * 0.003 + Math.sin(clk * 8.5) * 0.007 * Math.min(1, speed / 5); gT.x += Math.sin(clk * 4.25) * 0.005 * Math.min(1, speed / 5);
+      tilt = NP.tReady + (NP.tBack - NP.tReady) * b + 0.3 * (1 - d); roll = (NP.rReady + (NP.rBack - NP.rReady) * b) * d;
+      poleR.copy(PR0).lerp(PR1, b).normalize();
+    } else {
+      const r = st.rel, b0 = back(st.pwRel), from = NV.copy(NP.gReady).lerp(NP.gBack, b0), t0 = NP.tReady + (NP.tBack - NP.tReady) * b0, r0 = NP.rReady + (NP.rBack - NP.rReady) * b0;
+      if (r < 0.09) { const k = eIn(cl(r / 0.09)); gT.copy(from).lerp(NP.gFwd, k); tilt = t0 + (NP.tFwd - t0) * k; roll = r0 * (1 - k); }
+      else { const k = eOut(cl((r - 0.09) / 0.3)); gT.copy(NP.gFwd).lerp(NP.gFollow, k); tilt = NP.tFwd + (NP.tFollow - NP.tFwd) * k; roll = NP.rFollow * k; }
+      poleR.copy(PR0);
+    }
+    gT.add(cam0); gCur.lerp(gT, held ? Math.min(1, dt * 26) : 1);
+    turnOf(ARM.R[2], Qh); Qt.setFromAxisAngle(XA, tilt).multiply(Qa.setFromAxisAngle(ZA, roll)); Qh.premultiply(Qt);
+    reach(ARM.R, T.copy(nadeOff).applyQuaternion(Qh).negate().add(gCur), poleR, 0.06);
+    turnOf(ARM.R[2], Qa); turnBy(ARM.R[2], Qa.invert().premultiply(Qh));
+    nadeBox.visible = held || (st.rel < 0.08 && !st.gone);   // it leaves the hand at the end of the whip, or when its flying copy comes
+    // the left hand: to the ring, the pin out, away and down; then out ahead while the throw winds up, back at the release
+    if (held) {
+      lT.copy(NP.lDown).lerp(NP.lFwd, eOut(cl(st.pw * 1.6))).add(cam0);
+      if (nadeFill === 2 && pinBox.children.length) {
+        const tl = st.t;
+        if (!pulled && tl > 0.12) {
+          at(ringMark, grabAt).add(gripL);
+          if (tl < 0.34) lT.copy(NP.lDown).add(cam0).lerp(grabAt, eOut(cl((tl - 0.12) / 0.22)));
+          else { pulled = true; grab = true; lRel.copy(grabAt); }
+        }
+        if (pulled && tl < 0.8) {
+          const k = (tl - 0.34) / 0.46, yank = NV.set(0.11, -0.015, -0.035).multiplyScalar(eOut(cl(k * 3.2)));
+          lT.lerp(T.copy(lRel).add(yank), 1 - ease(cl((k - 0.3) / 0.7)));
+        }
+        if (pulled && tl >= 0.8) pinBox.visible = false;
+      }
+      lAtRel.copy(lCur);
+      lCur.lerp(lT, Math.min(1, dt * 22));
+    } else {
+      if (pinBox.parent !== nadeIn) pinBox.visible = false;
+      lCur.copy(lAtRel).lerp(T.copy(NP.lDown).add(cam0), eOut(cl(st.rel / 0.25)));
+    }
+    turnOf(ARM.L[2], Qh); reach(ARM.L, lCur, poleL, 0.04); turnOf(ARM.L[2], Qa); turnBy(ARM.L[2], Qa.invert().premultiply(Qh));   // the left hand keeps the turn of the clip
+    if (grab) { grab = false; ARM.L[2].attach(pinBox); }   // the ring goes with the left hand from where it is now
+  }
   const w = { idle: 1, walk: 0, run: 0, fire: 0, reload: 0, equip: 0 };
   let fireT = 9, equipT = 9, lastYaw = null, lastPitch = 0, swX = 0, swY = 0, glow = 0;
   const dur = k => act[k] ? act[k].getClip().duration : 1;
   function update(dt, s) {
     glow = flash.tick(dt);
-    holder.visible = !!s.show; if (!s.show) { lastYaw = null; return; }
+    // the grenade in hand: the weapon hidden, the arms posed for it; out of it, the weapon back
+    const nd = s.nade && ikOk ? s.nade : null;
+    holder.visible = !!s.show || !!nd;
+    if (nd && !nadeOn) { nadeOn = true; fillNade(); nadeReset(); for (const m of akMeshes) m.visible = false; guns.forEach(g => { if (g) g.box.visible = false; }); scopes.forEach(n => { if (n) n.visible = false; }); }
+    else if (!nd && nadeOn) { nadeOn = false; nadeBox.visible = false; nadeIn.add(pinBox); pinBox.visible = false; setWeapon(cur); }
+    if (!holder.visible) { lastYaw = null; return; }
     fireT += dt; equipT += dt * 1.8;
-    const reloading = s.reload >= 0, equipping = !reloading && equipT < dur('equip'), firing = !reloading && !equipping && fireT < dur('fire');
+    const reloading = !nd && s.reload >= 0, equipping = !nd && !reloading && equipT < dur('equip'), firing = !nd && !reloading && !equipping && fireT < dur('fire');
     const loco = s.speed > 5 ? 'run' : s.speed > 0.6 ? 'walk' : 'idle';   // the same threshold as the body (avatar.js): the arms jog when the legs jog
     const want = { reload: reloading, equip: equipping, fire: firing };
     for (const k in want) w[k] += ((want[k] ? 1 : 0) - w[k]) * Math.min(1, dt * (want[k] ? 22 : 9));
@@ -200,7 +302,7 @@ function makeViewmodel(parent) {
     if (act.run) act.run.timeScale = Math.max(0.8, Math.min(1.3, s.speed / 9));
     if (shoulderL) ARM.L[0].position.copy(shoulderL);
     mixer.update(dt);
-    if (guns[cur]) grip(guns[cur]);
+    if (nd) nadePose(dt, nd, s.speed); else if (guns[cur]) grip(guns[cur]);
     // the rifle lags a little behind a turn of the view and settles back
     if (lastYaw !== null) {
       let dy = s.yaw - lastYaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
@@ -226,6 +328,10 @@ function makeViewmodel(parent) {
     muzzle(v) { return (guns[cur] ? guns[cur].muzzle : muzzle).getWorldPosition(v); },
     addWeapon, setWeapon, attach,
     has: i => i === 0 || !!guns[i],   // the arms hold this weapon (its model has come)
+    canNade: ikOk,   // the arms can hold the grenade (update with s.nade)
+    nadeAt(v) { return nadeBox.getWorldPosition(v); },   // where the grenade in hand is now (the arc of the aim starts there)
+    nadePoses: NP,   // the poses of the throw, for tuning them in a running page
+    nadeSample: () => nadeIn.clone(),   // the grenade in hand with its materials, for the warm-up of the shaders (mp.js loadModels)
   };
 }
 

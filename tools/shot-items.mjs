@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-/* Headless check of the map items and the flying grenade: enters the training (bots in the page, no server),
-   waits for the GLB props, walks the camera up to one item of each kind and throws a grenade.
+/* Headless check of the map items and the grenade: enters the training (bots in the page, no server), waits for the
+   GLB props, walks the camera up to one item of each kind, then shoots the throw phase by phase (pin, ready, wind-up
+   with the aim, release) and throws a grenade for real.
    PNGs land in OUT (default ./shots-items), console errors are printed.
    Run: node tools/shot-items.mjs   (playwright + chromium из ms-playwright, как в tools/shots.js) */
 import http from 'node:http';
@@ -68,15 +69,27 @@ for (const kind of ['ammo', 'med', 'nade']) {
   await shot(`game-${kind}.png`);
   console.log(kind, 'item at', at);
 }
-// throw a grenade and catch it in flight: G takes it in hand, held LMB charges (the nadeFill bar), release throws;
-// charging needs the pointer lock, which headless has not — set STATE.locked by hand
+// the throw, phase by phase: G takes the grenade in hand; MP.nadePose holds the arms still in one moment of it
+// (t: seconds in hand, pw: the charge, rel: seconds since the release) — the pin coming out, held ready, wound up full
+// (with the arc and the disc of the blast), the whip of the release. Charging needs the pointer lock, which headless has
+// not — set STATE.locked by hand
 await page.evaluate(() => {
-  window.__city.P.pitch = -0.15; window.__city.STATE.locked = true;
+  window.__city.P.pitch = 0.12; window.__city.STATE.locked = true;
+  window.__city.MP.nadePose = { t: 0.1, pw: 0, rel: -1, pwRel: 0 };
   window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyG' }));
   window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyG' }));
+});
+for (const [f, pose] of [['pin', { t: 0.3, pw: 0, rel: -1, pwRel: 0 }], ['ready', { t: 2, pw: 0, rel: -1, pwRel: 0 }], ['windup', { t: 2, pw: 1, rel: -1, pwRel: 0 }], ['release', { t: 9, pw: 0, rel: 0.05, pwRel: 1 }]]) {
+  await page.evaluate(p => { window.__city.MP.nadePose = p; }, pose);
+  await page.waitForTimeout(2500);
+  await shot(`game-nade-${f}.png`);
+}
+// then a real throw at full charge, caught in flight: held LMB charges (the arcs round the crosshair), release throws
+await page.evaluate(() => {
+  window.__city.MP.nadePose = null;
   document.querySelector('canvas').dispatchEvent(new MouseEvent('mousedown', { button: 0 }));   // слушатель заряда — на canvas
 });
-await page.waitForFunction(() => document.getElementById('nadeFill').style.width === '100%', null, { timeout: 60000, polling: 250 });
+await page.waitForFunction(() => document.getElementById('nadeUi').dataset.full === '1', null, { timeout: 60000, polling: 250 });
 await page.evaluate(() => window.dispatchEvent(new MouseEvent('mouseup', { button: 0 })));
 const fly = await page.evaluate(() => {
   let n = 0; window.__city.scene.traverse(o => {

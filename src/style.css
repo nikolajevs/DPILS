@@ -124,14 +124,26 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
 .cross .c-re { position: absolute; left: -21px; top: -21px; width: 42px; height: 42px; transform: rotate(-90deg); opacity: 0; transition: opacity .12s; }
 .cross .c-re circle { fill: none; stroke: #ffc24d; stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 106.81; filter: drop-shadow(0 0 1px rgba(0, 0, 0, .7)); }
 .cross.reloading .c-re { opacity: 1; }
-/* the aimed grenade throw (G): the power bar under the crosshair and its hint; the bar fills while the left mouse
-   button is held down, the frame glows red at full power */
-.nade-ui { position: fixed; left: 50%; top: 56%; transform: translateX(-50%); z-index: 6; text-align: center; pointer-events: none; font: 600 12px/1.3 var(--f-body); }
+/* the aimed grenade throw (G): two bracket arcs round the crosshair fill from below as the held left button gathers
+   the power (pale to amber to hot), ticks at the quarters; at full power they glow and pulse and "макс" lights up. The
+   metres to where the grenade will go off sit to the right, the hint low and quiet. mp.js nadeAimTick fills the arcs. */
+.nade-ui { position: fixed; left: 50%; top: 50%; width: 120px; height: 120px; transform: translate(-50%, -50%); z-index: 6; pointer-events: none; font: 600 12px/1.3 var(--f-body); animation: ng-in .18s ease-out; }
 .nade-ui[hidden] { display: none; }
-.nade-bar { width: 190px; height: 7px; margin: 0 auto 6px; border: 1px solid rgba(255, 210, 122, .85); border-radius: 4px; background: rgba(8, 10, 8, .55); overflow: hidden; box-shadow: 0 1px 4px rgba(0, 0, 0, .5); }
-.nade-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #9fd06a, #ffd24d 60%, #ff6a3d); }
-.nade-ui small { color: #ffd27a; text-shadow: 0 1px 3px rgba(0, 0, 0, .85); }
-.nade-ui[data-full="1"] .nade-bar { border-color: #ff6a3d; box-shadow: 0 0 9px rgba(255, 106, 61, .65); }
+@keyframes ng-in { from { opacity: 0; transform: translate(-50%, -50%) scale(1.25); } }
+.nade-ui .ng { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, .75)); }
+.ng path { fill: none; stroke-linecap: round; }
+.ng-track { stroke: rgba(255, 244, 220, .2); stroke-width: 3; }
+.ng-tick { stroke: rgba(255, 232, 190, .55); stroke-width: 1.4; }
+.ng-fill { stroke: url(#ngGrad); stroke-width: 3.6; stroke-dasharray: 59.34; stroke-dashoffset: 59.34; }
+.nade-ui[data-full="1"] .ng-fill { filter: drop-shadow(0 0 3px rgba(255, 110, 40, .95)); animation: ng-pulse .5s ease-in-out infinite alternate; }
+@keyframes ng-pulse { to { stroke-width: 4.6; } }
+.nade-read { position: absolute; left: calc(100% - 6px); top: 50%; transform: translateY(-50%); display: flex; align-items: baseline; gap: 2px; color: #fff3d6; text-shadow: 0 1px 3px rgba(0, 0, 0, .9); white-space: nowrap; }
+.nade-read b { font: 700 15px/1 var(--f-body); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.nade-read i { font: 600 10px/1 var(--f-body); font-style: normal; opacity: .75; }
+.nade-max { position: absolute; left: 50%; top: 6px; transform: translateX(-50%); font: 800 9px/1 var(--f-body); font-style: normal; letter-spacing: .22em; text-transform: uppercase; color: #ff8a4a; text-shadow: 0 0 6px rgba(255, 90, 36, .9), 0 1px 2px rgba(0, 0, 0, .9); opacity: 0; transition: opacity .12s; }
+.nade-ui[data-full="1"] .nade-max { opacity: 1; }
+.nade-hint { position: absolute; left: 50%; top: calc(100% + 38px); transform: translateX(-50%); white-space: nowrap; color: rgba(255, 236, 196, .72); font: 500 11px/1.3 var(--f-body); text-shadow: 0 1px 3px rgba(0, 0, 0, .9); }
+@media (prefers-reduced-motion: reduce) { .nade-ui, .nade-ui[data-full="1"] .ng-fill { animation: none; } }
 
 /* start card */
 .start { position: fixed; inset: 0; display: grid; place-items: center; background: var(--scrim); padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px)); overflow: auto; }
