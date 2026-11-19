@@ -333,7 +333,24 @@ function* subTrisSteps(flat, tris, tol) {
       else { const m = split(c, a); st.push(a, b, m, d + 1, m, b, c, d + 1); }
     } else T.push(a, b, c);
   }
-  return { flat: F, tris: T };
+  /* Conformity pass: a side one triangle bisected may be left whole by the triangle beyond it (that side lay on the
+     ground to within tol, so it was never split there). The two then meet in a T-junction: the whole side sags up to
+     tol below the midpoint the split side carries, and from a low camera that sag opens a sub-pixel crack through
+     which the layer below shows as a pale streak on the slope. Give every whole side the midpoint its neighbour
+     already carries (a "green" split, no new points); the children inherit the remaining marked sides, so three
+     marked sides refine to four triangles. Sides created here are halves or interior diagonals nobody else carries
+     whole, so one pass suffices. */
+  const out = [];
+  const emit = (a, b, c) => {
+    const mid = (u, v) => { const i = slot(u, v); return el[i + 1]; };
+    const carries = m => m === a || m === b || m === c;
+    let m = mid(a, b); if (m >= 0 && !carries(m)) { emit(a, m, c); emit(m, b, c); return; }
+    m = mid(b, c); if (m >= 0 && !carries(m)) { emit(a, b, m); emit(a, m, c); return; }
+    m = mid(c, a); if (m >= 0 && !carries(m)) { emit(a, b, m); emit(m, b, c); return; }
+    out.push(a, b, c);
+  };
+  for (let t = 0; t < T.length; t += 3) emit(T[t], T[t + 1], T[t + 2]);
+  return { flat: F, tris: out };
 }
 
 /* Sky: gradient with a sun glow that hugs the horizon, drifting clouds lit from the sun's side, stars at night.
