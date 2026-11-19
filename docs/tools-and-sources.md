@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Chatbox | chatbox/perf-fps | Убраны машины (парковки и статичные BMW), авто-качество в городе — 15 fps | src/world/cars.js, src/landmarks/parking.js, src/main.js, src/game/perf.js, src/render/lighting.js, src/style.css |
 
 ## Автономный цикл улучшений
 
