@@ -1,6 +1,6 @@
 /* The physics of the shots and the grenades, for the server and for the training game in the page: the same rules over
    two functions the caller brings, which house stands at a point (with its height in .top) and how high the ground is. */
-import { bulletDrop } from './combat.mjs';
+import { NADE, bulletDrop, segToSegment } from './combat.mjs';
 export function makePhysics(buildingAt, ground) {
   // how far from o along d (unit) a shot flies before the ground, a hill slope or a roof line stops it; len if it does
   // not. The scan starts at 0.3 m and steps 0.5 m through the first three metres, so a wall the shooter leans on stops
@@ -28,8 +28,11 @@ export function makePhysics(buildingAt, ground) {
   // one step of a grenade n = { p: [x, y, z], v: [vx, vy, vz] }: gravity, bounces on the ground, the roofs and the walls of
   // houses. On a slope the bounce reflects about the ground's normal and the settled grenade rolls downhill, so a rampart
   // throws it back the way it should instead of straight up. A real touch sets n.bounce = { sp, kind } (the impact speed and
-  // 'ground' | 'roof' | 'wall') for the page to clink; flat ground keeps exactly the old feel.
-  function stepNade(n, dt, g) {
+  // 'ground' | 'roof' | 'wall' | 'body') for the page to clink; flat ground keeps exactly the old feel.
+  // bodies, when given, are the living players the grenade can bounce off: { x, y, z, eye } (y at the eyes), each a capsule
+  // from the feet to the crown. The caller leaves the thrower out — one's own body does not stop one's own grenade. The
+  // bounce is physical only: no damage, no push; the server reports it ('nbounce') so the page can resync its copy.
+  function stepNade(n, dt, g, bodies) {
     const [px, py, pz] = n.p; n.v[1] -= g * dt;
     let x = px + n.v[0] * dt, y = py + n.v[1] * dt, z = pz + n.v[2] * dt;
     const b = buildingAt(x, z), gr = ground(x, z);
@@ -64,6 +67,25 @@ export function makePhysics(buildingAt, ground) {
       } else if (n.v[1] < 0) {   // flat: the old bounce
         const sp = -n.v[1]; n.v[1] *= -0.4; n.v[0] *= 0.7; n.v[2] *= 0.7; if (sp > 1.2) n.bounce = { sp, kind: 'ground' }; if (Math.abs(n.v[1]) < 0.8) n.v[1] = 0;
       } else { n.v[0] *= 0.7; n.v[2] *= 0.7; }
+    }
+    if (bodies) for (const bd of bodies) {   // a player: the swept path of the grenade against the body's capsule
+      const f = bd.y - (bd.eye || 1.7), R = NADE.bodyR + NADE.r;
+      const h = segToSegment([px, py, pz], [x, y, z], [bd.x, f + 0.05, bd.z], [bd.x, bd.y + 0.12, bd.z]);
+      if (h.dist >= R) continue;
+      let nx, ny, nz;   // the normal points from the body to the grenade
+      if (h.dist > 1e-6) { nx = (h.pa[0] - h.pb[0]) / h.dist; ny = (h.pa[1] - h.pb[1]) / h.dist; nz = (h.pa[2] - h.pb[2]) / h.dist; }
+      else {   // the step crossed the capsule's axis (a fast throw jumps half a metre): the side it came from is the normal,
+        const dx = px - h.pb[0], dy = py - h.pb[1], dz = pz - h.pb[2], l = Math.hypot(dx, dy, dz);   // else it would be pushed on through
+        if (l > 1e-6) { nx = dx / l; ny = dy / l; nz = dz / l; }
+        else { const vl = Math.hypot(n.v[0], n.v[1], n.v[2]) || 1; nx = -n.v[0] / vl; ny = -n.v[1] / vl; nz = -n.v[2] / vl; }   // dropped right onto the crown: bounce straight back
+      }
+      x = h.pb[0] + nx * R; y = h.pb[1] + ny * R; z = h.pb[2] + nz * R;
+      const vn = n.v[0] * nx + n.v[1] * ny + n.v[2] * nz;
+      if (vn < 0) {   // moving into the body: reflect about the normal, the slide along it damped
+        const sp = -vn, tx = n.v[0] - vn * nx, ty = n.v[1] - vn * ny, tz = n.v[2] - vn * nz;
+        n.v[0] = tx * 0.85 - 0.45 * vn * nx; n.v[1] = ty * 0.85 - 0.45 * vn * ny; n.v[2] = tz * 0.85 - 0.45 * vn * nz;
+        if (sp > 1.2) n.bounce = { sp, kind: 'body' };
+      }
     }
     n.p = [x, y, z];
   }

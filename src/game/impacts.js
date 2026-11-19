@@ -154,6 +154,14 @@ function bodyImpact(o, d, len, w) {
   const [x, y, z] = bulletAt(o, d, len, SPEED[w] ?? 560);
   for (let i = 0; i < 5; i++) puff(x, y, z, rnd(-1.2, 1.2) + d[0] * 0.6, rnd(-0.4, 1.2), rnd(-1.2, 1.2) + d[2] * 0.6, rnd(0.18, 0.3), 0.05, rnd(0.12, 0.2), 0x7a1f1f, 0.7, -3);
 }
+// the bullet met a grenade in the air ('nshot'): a strike of sparks and olive fragments where they crossed — no decal,
+// there is no surface; the blast itself follows at once (the server's 'boom')
+function nadeImpact(o, d, len, w) {
+  const [x, y, z] = bulletAt(o, d, len, SPEED[w] ?? 560);
+  for (let i = 0; i < 8; i++) puff(x, y, z, rnd(-3, 3) + d[0] * 1.5, rnd(-1, 3), rnd(-3, 3) + d[2] * 1.5, rnd(0.1, 0.25), 0.03, 0.008, 0xffc873, 0.95, -9);
+  for (let i = 0; i < 4; i++) puff(x, y, z, rnd(-2, 2), rnd(0, 2.5), rnd(-2, 2), rnd(0.15, 0.3), 0.04, 0.01, 0x3d5a2a, 0.8, -6);
+  puff(x, y, z, 0, 0.5, 0, 0.5, 0.1, 0.4, 0x9a9a9a, 0.3, 0.2);
+}
 
 /* ---------- tracers that fly ---------- */
 const tracers = [], SPEED = WEAPONS.map(w => w.vel ?? 560);   // m/s by weapon — the server's own muzzle velocities, so the eye and the hit agree
@@ -169,15 +177,17 @@ function tracerShot(o, d, len, w, kind, color, onArrive) {
   tracers.push(tr); return tr;
 }
 function bindTracer(bid, tr) { if (bid && tr) { tr.bid = bid; byBid.set(bid, tr); } }
-// the bullet reached a body (the server's 'bhit'): cut the tracer at the hit distance and let it bleed there. If the streak
-// already flew past (our own shot, drawn a round-trip early), show the impact at once.
+// the bullet reached a body (the server's 'bhit') or a grenade ('nshot', body = 'nade'): cut the tracer at the hit
+// distance and show the impact there. If the streak already flew past (our own shot, drawn a round-trip early), show it at once.
 function hitTracer(bid, dist, body) {
   const tr = byBid.get(bid); byBid.delete(bid);
   if (!tr) return;
   tr.len = Math.min(tr.len, dist);
-  if (body) tr.kind = 'body';
+  if (body === 'nade') tr.kind = 'nade'; else if (body) tr.kind = 'body';
+  const impact = () => { if (tr.kind === 'surface') surfaceImpact(tr.o, tr.d, tr.len, tr.w); else if (tr.kind === 'body') bodyImpact(tr.o, tr.d, tr.len, tr.w); else if (tr.kind === 'nade') nadeImpact(tr.o, tr.d, tr.len, tr.w); };
   if (tr.done || tr.start + tr.t * tr.speed >= tr.len) {   // already there or past: the impact now, not on a later frame
-    if (!tr.done) { tr.done = true; if (tr.kind === 'surface') surfaceImpact(tr.o, tr.d, tr.len, tr.w); else if (tr.kind === 'body') bodyImpact(tr.o, tr.d, tr.len, tr.w); if (tr.onArrive) tr.onArrive(); }
+    if (!tr.done) { tr.done = true; impact(); if (tr.onArrive) tr.onArrive(); }
+    else if (body === 'nade') nadeImpact(tr.o, tr.d, tr.len, tr.w);
     else if (body) bodyImpact(tr.o, tr.d, tr.len, tr.w);
   }
 }
@@ -205,6 +215,7 @@ function tickFx(dt) {
       tr.done = true;
       if (tr.kind === 'surface') surfaceImpact(tr.o, tr.d, tr.len, tr.w);
       else if (tr.kind === 'body') bodyImpact(tr.o, tr.d, tr.len, tr.w);
+      else if (tr.kind === 'nade') nadeImpact(tr.o, tr.d, tr.len, tr.w);
       if (tr.onArrive) tr.onArrive();
     }
     if (tr.done) { tr.fade += dt; tr.l.material.opacity = Math.max(0, 0.85 - tr.fade * 14); if (tr.fade > 0.07) { dropTracer(tr); tracers.splice(i, 1); } continue; }

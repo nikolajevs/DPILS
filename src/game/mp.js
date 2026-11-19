@@ -12,7 +12,7 @@ import { FLASH_SIZE, makeFlash } from './muzzle.js';
 import { SET, keyName, onChange } from './settings.js';
 import { firstGames } from './help.js';
 import { rememberServer } from '../ui/servers.js';
-import { addNade, blastGlow, boomNade, clearBlasts, clearNades, nadeSamples, tickNades, onNadeBounce, liveNades, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
+import { addNade, blastGlow, boomNade, clearBlasts, clearNades, nadeSamples, tickNades, onNadeBounce, setNadeBodies, syncNade, liveNades, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
 import { KINDS, SLOT_SVG, bindInv, setItems, itemBack, itemTook, tickItems, renderInv, invTick, closeInv, toggleInv } from './inventory.js';
 import { terrainH } from '../world/terrain.js';
 import { camera, canvas, renderer, scene } from '../render/renderer.js';
@@ -610,6 +610,13 @@ function onMsg(m) {
       break;
     }
     case 'shot': { const rs = remotes.get(m.id); if (rs) rs.shotAt = performance.now(); if (m.id === MP.id) { if (ownTracers) { m.rays.forEach((r, i) => bindTracer(r[4], ownTracers[i])); ownTracers = null; } } else otherShot(m); break; }
+    case 'nbounce': syncNade(m.id, m.p, m.v); break;   // the server bounced the grenade off a body: the copy follows its flight
+    case 'nshot': {   // a bullet shot the grenade down: cut the tracer, sparks there; the blast ('boom') follows at once
+      hitTracer(m.bid, m.d, 'nade');
+      if (m.by === MP.id) { feed('Граната сбита', 'sys'); tone(1200, 1800, 0.09, 0.25, 'triangle'); }
+      else { const s = spot(m.at[0], m.at[1], m.at[2]); if (s.d < 40) try { nadeBounce(ac(), actx.master, 'wall', 0.5 * (1 - s.d / 40), s.d, s.pan); } catch (e) {} }
+      break;
+    }
     case 'bhit': { const body = m.v && m.v !== MP.id; hitTracer(m.bid, m.d, body);
       if (body) { const rv = remotes.get(m.v); if (rv) { rv.flinchT = performance.now(); rv.flinchZone = m.zone; const rs = remotes.get(m.by), bp = rs && rs.buf.length ? rs.buf[rs.buf.length - 1] : null; let dx = bp ? m.at[0] - bp.x : Math.random() - 0.5, dz = bp ? m.at[2] - bp.z : Math.random() - 0.5; const l = Math.hypot(dx, dz) || 1; rv.flinchDX = dx / l; rv.flinchDZ = dz / l; } }   // the victim flinches away from the bullet's path
       if (body && m.by !== MP.id) { const s = spot(m.at[0], m.at[1], m.at[2]); if (s.d < 40) try { hitSound(ac(), actx.master, 'body', 0.6 * 4 / (4 + s.d) * (1 - s.d / 40), s.d, s.pan); } catch (e) {} } break; }   // the bullet reached a body: cut the tracer, bleed there; a bystander hears the impact (the shooter gets 'hit')
@@ -781,6 +788,18 @@ onNadeBounce((p, b) => {
   const s = spot(p[0], p[1], p[2]), vol = Math.min(1, b.sp / 12) * (1 - d / 50);
   let real = false; try { real = nadeBounce(ac(), actx.master, b.kind, vol, d, s.pan); } catch (e) {}
   if (!real) tone(1100, 650, 0.05, 0.16 * vol, 'triangle');
+});
+// the bodies the flying grenade (and the aim arc) bounces off, as the server sees them: the living players, the thrower
+// left out (one's own body does not stop one's own grenade); the arc of the aimed throw leaves your own body out too
+setNadeBodies(n => {
+  const out = [];
+  for (const r of remotes.values()) {
+    if (r.fallT || !r.buf.length || (n && n.by === r.id)) continue;
+    const b = r.buf[r.buf.length - 1];
+    out.push({ x: b.x, y: b.y, z: b.z, eye: b.h || 1.7 });
+  }
+  if (!MP.dead && !(n && (n.preview || n.by === MP.id))) out.push({ x: P.x, y: P.y, z: P.z, eye: P.eye });
+  return out;
 });
 // the danger indicator: a live enemy grenade near you is marked on the screen, or at its edge with a pointer when it is
 // off to the side or behind; it pulses faster as the fuse runs out, so you know to move before it goes off

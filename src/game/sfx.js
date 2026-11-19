@@ -88,6 +88,11 @@ function boomSound(ctx, out, vol = 1, d = 0, pan = 0, surf = 'ground') {
 // a roof or a wall. vol carries the impact speed and the distance; the sound arrives at the speed of sound (d / 340).
 function nadeBounce(ctx, out, kind = 'ground', vol = 1, d = 0, pan = 0) {
   const delay = d / 340, lp = lpFor(d);
+  if (kind === 'body') {   // a player: a dull thud of the body, no ring of metal
+    const played = snd(ctx, out, pick(FAM['debris-soft']), { vol: vol * 0.9, pan, lp: Math.min(lp, 900), delay, rate: 0.6 + Math.random() * 0.15 });
+    snd(ctx, out, pick(FAM['debris-concrete']), { vol: vol * 0.25, pan, lp: Math.min(lp, 1500), delay: delay + 0.01, rate: 0.9 + Math.random() * 0.2 });
+    return played;
+  }
   const metal = kind !== 'ground';
   let played = snd(ctx, out, pick(FAM[metal ? 'debris-metal' : 'debris-concrete']), { vol: vol * (metal ? 1 : 0.7), pan, lp, delay, rate: (metal ? 1.1 : 0.85) + Math.random() * 0.3 });
   snd(ctx, out, pick(FAM[metal ? 'debris-stone' : 'debris-soft']), { vol: vol * 0.5, pan, lp: Math.min(lp, metal ? 4000 : 1200), delay: delay + 0.012, rate: 0.8 + Math.random() * 0.2 });
