@@ -1,4 +1,4 @@
-import { STATE } from '../core/state.js';
+﻿import { STATE } from '../core/state.js';
 import { due, pause } from '../core/pause.js';
 import { CARROAD, TRAMGRID } from '../transit/transit.js';
 import { fortBridgeLine, fortSkipLine } from '../fortress/index.js';
@@ -16,6 +16,7 @@ import { COL, LINES, M_ASPH, M_BALLAST, M_DIRT, M_LAND, M_MARK, M_PAVE, ROAD, ST
 import { LINE } from './palette.js';
 import { TERR, bridgeDeck, bridgeOf, densify } from './terrain.js';
 import { WH, walkStrip, walkStripV } from './walkgrid.js';
+import { buildStreetWear, wearMat } from './streetwear.js';
 import { scene } from '../render/renderer.js';
 import { GB, SegGrid, box, polyA } from '../core/geometry.js';
 import { bbox, dec, hb, rnd, sh } from '../core/util.js';
@@ -90,7 +91,7 @@ function skirt(sk, q, y, col, flip) {
   for (let i = 0; i < n; i++) {
     const a = Math.max(0, i - 1), c = Math.min(n - 1, i + 1), h = typeof y === 'number' ? y : y[i];
     let tx = q[2 * c] - q[2 * a], tz = q[2 * c + 1] - q[2 * a + 1]; const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
-    sk.vert(q[2 * i], 0, q[2 * i + 1], -tz * s, 0, tx * s, col); sk.vert(q[2 * i], h, q[2 * i + 1], -tz * s, 0, tx * s, col);
+    sk.vert(q[2 * i], 0, q[2 * i + 1], -tz * s, 0, tx * s, sh(col, 0.85)); sk.vert(q[2 * i], h, q[2 * i + 1], -tz * s, 0, tx * s, col);   // dirt at the foot
   }
   for (let i = 0; i < n - 1; i++) { const k = v0 + 2 * i;
     if (flip) { sk.tri(k, k + 1, k + 3); sk.tri(k, k + 3, k + 2); } else { sk.tri(k, k + 2, k + 3); sk.tri(k, k + 3, k + 1); } }
@@ -141,10 +142,11 @@ function curbBar(b, p, w, sA, col) {
   const top = sh(col, 1.06), face = sh(col, 0.88), back = sh(col, 0.78);
   for (let i = 0; i < n; i++) {
     const [tx, tz, m] = frame(q, i, n, null), nx = -tz, nz = tx, x = q[2 * i], z = q[2 * i + 1], P = (t, y) => [x + nx * t * m, y, z + nz * t * m];
+    const f = 0.95 + rnd(i, 7) * 0.1, fc = sh(face, f), tc = sh(top, f), bc = sh(back, f), dirty = sh(fc, 0.8);   // each stone weathers its own way, dirt at its foot
     const a = P(-w, 0), c = P(-w + 0.03, CH), d = P(w, CH), e = P(w, 0);
-    b.vert(a[0], a[1], a[2], -nx, 0, -nz, face); b.vert(c[0], c[1], c[2], -nx, 0, -nz, face);
-    b.vert(c[0], c[1], c[2], 0, 1, 0, top); b.vert(d[0], d[1], d[2], 0, 1, 0, top);
-    b.vert(d[0], d[1], d[2], nx, 0, nz, back); b.vert(e[0], e[1], e[2], nx, 0, nz, back);
+    b.vert(a[0], a[1], a[2], -nx, 0, -nz, dirty); b.vert(c[0], c[1], c[2], -nx, 0, -nz, fc);
+    b.vert(c[0], c[1], c[2], 0, 1, 0, tc); b.vert(d[0], d[1], d[2], 0, 1, 0, tc);
+    b.vert(d[0], d[1], d[2], nx, 0, nz, bc); b.vert(e[0], e[1], e[2], nx, 0, nz, sh(bc, 0.85));
   }
   for (let i = 0; i < n - 1; i++) { const k = v0 + 6 * i, r = k + 6;
     b.tri(k, k + 1, r); b.tri(k + 1, r + 1, r); b.tri(k + 2, k + 3, r + 2); b.tri(k + 3, r + 3, r + 2); b.tri(k + 5, r + 5, k + 4); b.tri(k + 4, r + 5, r + 4); }
@@ -165,8 +167,9 @@ const LAMPS = [];
 async function buildLines() {
   if (TERR.on) ovPrep();
   const groups = [0, 1, 2, 3, 4, 5].map(() => new GB(false)), lineCol = {}; for (const k in LINE) lineCol[k] = hb(LINE[k][1]);
-  const walk = groups[1], marks = groups[5], extra = new GB(false);
+  const walk = groups[1], marks = groups[5], extra = new GB(false), wear = new GB(false);
   const PAVE = hb('#8f897e'), CURB = hb('#a9a69e'), WHITE = hb('#e8e6df'), RAIL = hb('#4a4440'), SLEEP = hb('#635d56'), GRAVEL = hb('#8b8475');
+  const GUT = hb('#0a0a0a');   // the gutter shadow at the kerb foot: a transparent ribbon over the asphalt (src/world/streetwear.js)
   const sorted = C.l.map(l => ({ cls: l[0], name: l[1], pts: dec(l[2]), bridge: !!l[3] }));
   // the carriageways from the least to the main streets, so a main street is laid over the service roads that join it
   // (the comparator used to leave the other lines in between, which left that order to the sort and let some service roads lie over 18. novembra iela)
@@ -175,8 +178,8 @@ async function buildLines() {
   /* Joints. OSM splits a street into ways at many nodes where nothing else meets it, and each piece was laid with square
      ends across its own last segment: where the two turn there, even by a few degrees, a wedge of ground showed between
      them from the centre line out, widest at the outer edge of the sidewalk (in the fortress by the Konstantin gate,
-     where two living streets meet at 3°). Where exactly two lines of the same class end at a node (or a closed line
-     meets itself) and turn there by less than 60°, both ends are cut across the bisector of the two, the way a ribbon
+     where two living streets meet at 3В°). Where exactly two lines of the same class end at a node (or a closed line
+     meets itself) and turn there by less than 60В°, both ends are cut across the bisector of the two, the way a ribbon
      is mitred at its inner points, so the two pieces meet edge to edge as if they were one way. Not between classes: a
      narrower piece (a footway on from a street) would leave bare the inner corner the wider one gives up; nor at a
      sharper turn or where the inner corner would draw back past the first point of either line, which would fold the
@@ -205,10 +208,10 @@ async function buildLines() {
   }
   let lampSeq = 0; const lampGrid = new Set(), tramLater = [];
   /* Dual carriageways. OSM maps many main streets as two one-way ways side by side, and the data keep neither the
-     one-way flag nor the lanes, so each way was drawn as a whole two-way street 6–11 m wide. On 18. novembra iela west of
-     the overpass, where the two ways run 3–10 m apart, the carriageways overlapped with their centre lines, edge lines
+     one-way flag nor the lanes, so each way was drawn as a whole two-way street 6вЂ“11 m wide. On 18. novembra iela west of
+     the overpass, where the two ways run 3вЂ“10 m apart, the carriageways overlapped with their centre lines, edge lines
      and sidewalks. A road most of whose points have beside them (not ahead) another way of the same name and class
-     running parallel 3–26 m away is one carriageway of a pair: a lane wide where the two run 8 m apart or less, two
+     running parallel 3вЂ“26 m away is one carriageway of a pair: a lane wide where the two run 8 m apart or less, two
      lanes from 11 m; a median under 4.5 m is painted asphalt with a double line, a wider one is left to the ground; the
      sidewalk, the kerb and the lamps go on the outer side only. */
   const PAIR = new SegGrid(40), TRK = new SegGrid(20), MED = new SegGrid(20);   // MED: the asphalt medians with tracks in them
@@ -216,7 +219,7 @@ async function buildLines() {
   // the ends of the named streets: how many other lines of the same street end within 2.5 m of (x, z)
   const ENDS = []; sorted.forEach((l, li) => { if (l.cls <= 3 && l.name >= 0) { const p = l.pts, n = p.length; ENDS.push([p[0], p[1], li], [p[n - 2], p[n - 1], li]); } });
   /* One-way ramps (OSM oneway, street-tags.js) that leave the end of a two-way road together, as at both ends of the
-     teardrop junction at Vienības tilts: OSM starts both from the road's end node, so their kerbs and edge lines crossed
+     teardrop junction at VienД«bas tilts: OSM starts both from the road's end node, so their kerbs and edge lines crossed
      in a V. Each is laid in its half of the road it splits from (a lane's half width aside at the node), turning back to
      its own line over 30 m. */
   const ONE = []; sorted.forEach((l, li) => { if (l.cls <= 3) { const t = streetTags(l.pts); if (t && t.oneway) { const p = l.pts, n = p.length; ONE.push([p[0], p[1], li, 0], [p[n - 2], p[n - 1], li, 1]); } } });
@@ -258,9 +261,9 @@ async function buildLines() {
     last = null; for (let i = m - 1; i >= 0; i--) { if (D[i] === null) D[i] = last; else last = D[i]; }
     if (D[0] === null) return null;
     /* Where the pair splits off a single road, OSM joins both carriageways to the end node of that road, so over the last
-       10–20 m their centre lines run together into a point. At the west end of the overpass bridge they did, and the edge
+       10вЂ“20 m their centre lines run together into a point. At the west end of the overpass bridge they did, and the edge
        lines, kerbs and sidewalks of the two carriageways cut in a V across the four lanes of the bridge. There the end of
-       each carriageway is laid straight on, the way it comes from 30–55 m out: the two stay apart at the distance they
+       each carriageway is laid straight on, the way it comes from 30вЂ“55 m out: the two stay apart at the distance they
        settled at, and carry on the edges of the road they split from. */
     if (dp !== pts) for (const end of [0, 1]) {
       const np = pts.length; if (splitAt(li, end ? pts[np - 2] : pts[0], end ? pts[np - 1] : pts[1]) < 2) continue;
@@ -281,7 +284,7 @@ async function buildLines() {
       const cx = dp[2 * i] - tz / l * side * d / 2, cz = dp[2 * i + 1] + tx / l * side * d / 2; let t = false; TRK.near(cx, cz, Math.max(0.5, d / 2 - 0.6 * H[i]), () => { t = true; }); return t; });
     /* A narrow median is asphalt: painted under 4 m, or under 4.5 m where tram tracks run in it (by the overpass bridge):
        too narrow for a track bed of its own, the rails lie flush between the lanes as on the bridge. The width is taken
-       over ±30 m and runs shorter than 25 m join their neighbours: a median of 4–5 m (Latgales iela) went from painted to
+       over В±30 m and runs shorter than 25 m join their neighbours: a median of 4вЂ“5 m (Latgales iela) went from painted to
        grass and back every few metres, the two carriageways each deciding for themselves. */
     const cumD = [0]; for (let i = 1; i < m; i++) cumD.push(cumD[i - 1] + Math.hypot(dp[2 * i] - dp[2 * i - 2], dp[2 * i + 1] - dp[2 * i - 1]));
     const paint = Ds.map((d, i) => { let a = 0, k = 0; for (let j = i; j >= 0 && cumD[i] - cumD[j] <= 30; j--) { a += Ds[j] - 2 * H[j]; k++; } for (let j = i + 1; j < m && cumD[j] - cumD[i] <= 30; j++) { a += Ds[j] - 2 * H[j]; k++; }
@@ -332,7 +335,7 @@ async function buildLines() {
     let s = -1; for (let i = 0; i <= n; i++) { const k = i < n && keep[i]; if (k && s < 0) s = i; if (!k && s >= 0) { if (i - s >= 2) job(q.slice(2 * s, 2 * i), s); s = -1; } } }
   /* the zones near (x, z) within r that may cut a marking of line li running along (tx, tz): the carriageways of the
      streets that cross it and the painted medians (type 0), service roads (1, only the kerbs stop at them) and the zebras
-     (2, only the centre and lane lines); each [x1, z1, dx, dz, |d|², radius², type] */
+     (2, only the centre and lane lines); each [x1, z1, dx, dz, |d|ВІ, radiusВІ, type] */
   const ZNONE = []; let zSeen = null, zStamp = 0;
   function zonesNear(li, x, z, r, tx, tz) {
     const me = sorted[li], s = ZR.s, e = ZEB.s; let out = ZNONE; zStamp++;
@@ -344,7 +347,7 @@ async function buildLines() {
     ZEB.near(x, z, r + 3, id => put(id * 6, e, e[id * 6 + 5], 2));
     return out; }
   function inZones(Z, kind, x, z) {
-    for (let j = 0; j < Z.length; j++) { const c = Z[j]; if ((c[6] === 1 && kind !== 'k') || (c[6] === 2 && kind !== 'c')) continue;
+    for (let j = 0; j < Z.length; j++) { const c = Z[j]; if ((c[6] === 1 && kind !== 'k' && kind !== 'g') || (c[6] === 2 && kind !== 'c')) continue;
       let t = ((x - c[0]) * c[2] + (z - c[1]) * c[3]) / c[4]; t = t < 0 ? 0 : t > 1 ? 1 : t; const ex = x - c[0] - c[2] * t, ez = z - c[1] - c[3] * t; if (ex * ex + ez * ez < c[5]) return true; }
     return false; }
   // the zones near segment i of the polyline p that line li is drawn along, found once for all the markings of the line
@@ -354,13 +357,13 @@ async function buildLines() {
     if (c[i] === undefined) { const ax = p[2 * i], az = p[2 * i + 1], bx = p[2 * i + 2], bz = p[2 * i + 3], L = Math.hypot(bx - ax, bz - az) || 1e-9;
       c[i] = zonesNear(li, (ax + bx) / 2, (az + bz) / 2, L / 2 + 9, (bx - ax) / L, (bz - az) / L); }
     return c[i]; }
-  // the part of the segment (ax, az) + t (dx, dz), 0 ≤ t ≤ 1, inside the capsule c (a zone): [t0, t1], or null
+  // the part of the segment (ax, az) + t (dx, dz), 0 в‰¤ t в‰¤ 1, inside the capsule c (a zone): [t0, t1], or null
   function capInt(ax, az, dx, dz, c) {
     const px = c[0], pz = c[1], ex = c[2], ez = c[3], el2 = c[4], r2 = c[5], dd = dx * dx + dz * dz || 1e-12; let lo = Infinity, hi = -Infinity;
     for (const [cx, cz] of [[px, pz], [px + ex, pz + ez]]) {   // the round ends
       const fx = ax - cx, fz = az - cz, b = fx * dx + fz * dz, disc = b * b - dd * (fx * fx + fz * fz - r2); if (disc <= 0) continue;
       const sq = Math.sqrt(disc); lo = Math.min(lo, (-b - sq) / dd); hi = Math.max(hi, (-b + sq) / dd); }
-    // the band between them: 0 ≤ along ≤ 1 and |across| < r, both linear in t
+    // the band between them: 0 в‰¤ along в‰¤ 1 and |across| < r, both linear in t
     const el = Math.sqrt(el2), r = Math.sqrt(r2); let t0 = -Infinity, t1 = Infinity;
     const within = (c0, c1, mn, mx) => { if (Math.abs(c1) < 1e-12) { if (c0 <= mn || c0 >= mx) t0 = Infinity; return; } let u = (mn - c0) / c1, v = (mx - c0) / c1; if (u > v) [u, v] = [v, u]; t0 = Math.max(t0, u); t1 = Math.min(t1, v); };
     within(((ax - px) * ex + (az - pz) * ez) / el2, (dx * ex + dz * ez) / el2, 0, 1);
@@ -375,7 +378,7 @@ async function buildLines() {
     for (let i = 0; i < n - 1; i++) {
       const ax = q[2 * i], az = q[2 * i + 1], bx = q[2 * i + 2], bz = q[2 * i + 3], dx = bx - ax, dz = bz - az; if (dx * dx + dz * dz < 1e-8) continue;
       const Z = segZones(J.li, J.p, J.i0 + i); let iv = null;
-      for (let j = 0; j < Z.length; j++) { const c = Z[j]; if ((c[6] === 1 && kind !== 'k') || (c[6] === 2 && kind !== 'c')) continue; const r = capInt(ax, az, dx, dz, c); if (r) (iv || (iv = [])).push(r); }
+      for (let j = 0; j < Z.length; j++) { const c = Z[j]; if ((c[6] === 1 && kind !== 'k' && kind !== 'g') || (c[6] === 2 && kind !== 'c')) continue; const r = capInt(ax, az, dx, dz, c); if (r) (iv || (iv = [])).push(r); }
       if (!iv) { if (!cur) cur = [ax, az]; cur.push(bx, bz); continue; }
       iv.sort((a, b) => a[0] - b[0]); let t = 0;
       for (const [u, v] of iv) { if (v <= t) continue; if (u > t + 1e-6) { if (!cur) cur = [ax + dx * t, az + dz * t]; cur.push(ax + dx * u, az + dz * u); } end(); t = v; }
@@ -383,7 +386,7 @@ async function buildLines() {
     }
     end(); return runs;
   }
-  // pedestrian crossings: a short footway (under 45 m) across the carriageway of a main street (classes 0-2) at more than 65°
+  // pedestrian crossings: a short footway (under 45 m) across the carriageway of a main street (classes 0-2) at more than 65В°
   function zebras() {
     const out = [], seen = new Set(), s = ZR.s;
     for (const f of sorted) { if (f.cls !== 6) continue; const p = f.pts; let len = 0; for (let i = 0; i < p.length - 2; i += 2) len += Math.hypot(p[i + 2] - p[i], p[i + 3] - p[i + 1]); if (len > 45) continue;
@@ -453,16 +456,16 @@ async function buildLines() {
     l.bb = bbox(pts); l.w = def[0]; LINES.push(l);
     if (spwTrackLine(cls, pts)) continue;   // the speedway track: lmSpeedway lays the whole track, the line stays on the map
     const tag0 = cls <= 3 ? streetTags(pts) : null, hw = tag0 && tag0.hw && !tag0.oneway ? tag0.hw : def[0] / 2;   // a narrower country road where OSM says so (src/world/street-tags.js)
-    if (l.bridge && vbOnLine(pts)) {   // on Vienības tilts: lmVienibas draws the deck, the line still guides traffic and walking
+    if (l.bridge && vbOnLine(pts)) {   // on VienД«bas tilts: lmVienibas draws the deck, the line still guides traffic and walking
       if (cls <= 4) for (let i = 0; i < n - 1; i++) CARROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, cls);
       for (let i = 0; i < n - 1; i++) ROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw + (cls <= 3 ? 2.6 : 0), cls <= 7 ? l.name : -1);
       continue;
     }
-    if (l.bridge && gubOnLine(pts)) {   // the boardwalk at Gubiščes ezers: lmGubisce draws its deck of planks, the line still guides walking
+    if (l.bridge && gubOnLine(pts)) {   // the boardwalk at GubiЕЎДЌes ezers: lmGubisce draws its deck of planks, the line still guides walking
       for (let i = 0; i < n - 1; i++) ROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, l.name);
       continue;
     }
-    if (l.bridge && airOnLine(pts)) {   // the air bridge to Jaunā Forštadte: lmAirBridge draws it and sets its heights
+    if (l.bridge && airOnLine(pts)) {   // the air bridge to JaunДЃ ForЕЎtadte: lmAirBridge draws it and sets its heights
       for (let i = 0; i < n - 1; i++) ROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, l.name);
       continue;
     }
@@ -477,6 +480,7 @@ async function buildLines() {
     l.gbc = STATE.GBC;
     l.isDual = false;
     const tags = cls <= 3 ? streetTags(pts) : null, lanes4 = !!tags && tags.lanes >= 4, rural = !!tags && !!tags.rural, one = !!tags && !!tags.oneway; l.one = one;
+    l.hw = hw; l.rural = rural; l.lanes4 = lanes4;   // read by the street wear (covers, patches, weeds)
     const dual = cls <= 3 && l.name >= 0 && !jn && !one ? dualOf(li, pts, dp, tags && tags.lanes) : null; l.isDual = !!dual; l.side = dual ? dual.side : 0;   // side: where the other carriageway of a pair is (+1 right of the line, the way it runs)
     let je = jointEnds(li, dp); l.dp = dp; l.je = je;   // after dualOf, which may move the ends of dp
     // four lanes: across the overpass from guard rail to guard rail, elsewhere 13 m where OSM says so
@@ -503,6 +507,7 @@ async function buildLines() {
       const wk = H.map((h, i) => dual.bed[i] ? h + 0.1 : h + 2.7);   // a sidewalk of no width beside a tram bed
       walkSlabV(walk, extra, dp, H.map((h, i) => s > 0 ? -wk[i] : h + 0.1), H.map((h, i) => s > 0 ? -(h + 0.1) : wk[i]), PAVE, je);
       mark(li, dp, H.map(h => -s * (h + 0.08)), 0.06, CURB, 'k');
+      mark(li, dp, H.map(h => -s * (h - 0.02)), 0.09, GUT, 'g');   // the gutter shadow at the kerb foot
     } else if (W) {   // 18. novembra iela with four lanes: a double centre line, broken lines between the lanes, the trams in the inner two
       const H = W, four = H.map(h => h >= 6);
       ribbonV(groups[def[2]], dp, H.map(h => -h), H, lineCol[cls], je);
@@ -513,6 +518,7 @@ async function buildLines() {
         mark(li, dp, H.map(h => sg * h / 2), 0.07, WHITE, 'c', [3, 9], four); }                           // between the lanes
       mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9], four.map(f => !f));                                         // past the overpass, two lanes again
       hwC = H.slice().sort((a, b) => a - b)[H.length >> 1];
+      for (const sg of [1, -1]) mark(li, dp, H.map(h => sg * (h - 0.02)), 0.09, GUT, 'g');   // the gutter shadow at each kerb
     } else if (one) {   // a one-way ramp (OSM oneway): its lanes of 3.5 m with margins, kerbs and edge lines, no sidewalk
       const h1 = tags.hw || Math.max(2.6, tags.lanes * 1.75 + 0.85);
       splitApart(li, pts, dp, h1); l.je = je = jointEnds(li, dp);
@@ -520,7 +526,8 @@ async function buildLines() {
       for (const sg of [1, -1]) { mark(li, dp, sg * (h1 + 0.08), 0.12, CURB, 'k'); mark(li, dp, sg * (h1 - 0.35), 0.07, WHITE, 'e'); }
       if (tags.lanes >= 2) mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9]);
       if (tags.hatch) { const m = dp.length >> 1; HATCH.push({ li, p: dp, A: new Array(m).fill(h1 - 2.25), B: new Array(m).fill(h1 - 0.35), s: tags.hatch, gbc: STATE.GBC }); }   // the hatched margin
-      hwC = h1;
+      hwC = h1; l.h1 = h1;
+      for (const sg of [1, -1]) mark(li, dp, sg * (h1 - 0.02), 0.09, GUT, 'g');   // the gutter shadow at each kerb
     } else {
       if (rural) { ribbon(groups[2], dp, hw + 0.6, 0.6, GRAVEL, 0, je); ribbon(groups[2], dp, -hw - 0.6, 0.6, GRAVEL, 0, je); }   // a country road: gravel shoulders, no kerb or sidewalk
       else if (cls <= 3) { walkSlab(walk, extra, dp, hw + 1.4, 1.3, PAVE, je); walkSlab(walk, extra, dp, -hw - 1.4, 1.3, PAVE, je); mark(li, dp, hw + 0.08, 0.12, CURB, 'k'); mark(li, dp, -hw - 0.08, 0.12, CURB, 'k'); }
@@ -528,6 +535,7 @@ async function buildLines() {
       else if (cls !== 9) ribbon(groups[def[2]], dp, 0, hw, lineCol[cls], 0, je);
       if (cls <= 2 && !(tags && tags.noCentre)) mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9]);   // no centre line where OSM says lane_markings=no
       if (cls === 0) { mark(li, dp, hw - 0.45, 0.07, WHITE, 'e'); mark(li, dp, -hw + 0.45, 0.07, WHITE, 'e'); }
+      if (cls <= 3 && !rural) for (const sg of [1, -1]) mark(li, dp, sg * (hw - 0.02), 0.09, GUT, 'g');   // the gutter shadow where a kerb stands
     }
     if (cls <= 4) { l.zone = hwC; for (let i = 0; i < n - 1; i++) addZone(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], li, hwC); }
     if (cls === 8) { dashes(marks, dp, 0, 1.25, 0.25, 0.6, SLEEP); railBar(extra, dp, 0.76); railBar(extra, dp, -0.76); }   // steel rails on the sleepers
@@ -580,13 +588,16 @@ async function buildLines() {
       marks.triUp(v, v + 1, v + 3); marks.triUp(v, v + 3, v + 2); }
   }
   zSeen = new Int32Array(ZR.s.length / 6);
-  for (const J of JOBS) { if (due()) await pause(); STATE.GBC = J.gbc; for (const run of clipRuns(J)) { if (J.dash) dashes(marks, run, 0, J.w, J.dash[0], J.dash[1], J.col); else ribbon(marks, run, 0, J.w, J.col); if (J.kind === 'k') curbBar(extra, run, J.w, J.sA, CURB); } }
+  for (const J of JOBS) { if (due()) await pause(); STATE.GBC = J.gbc; const tgt = J.kind === 'w' || J.kind === 'g' ? wear : marks;   // wheel polish and gutter shadow go to the transparent wear sheet
+    for (const run of clipRuns(J)) { if (J.dash) dashes(tgt, run, 0, J.w, J.dash[0], J.dash[1], J.col); else ribbon(tgt, run, 0, J.w, J.col); if (J.kind === 'k') curbBar(extra, run, J.w, J.sA, CURB); } }
   for (const Hh of HATCH) { if (due()) await pause(); STATE.GBC = Hh.gbc; hatch(marks, Hh.p, Hh.A, Hh.B, Hh.s, WHITE, (x, z, tx, tz) => inZones(zonesNear(Hh.li, x, z, 0.2, tx, tz), 'c', x, z)); }
   STATE.GBC = null;
   buildSignals(sorted, ZR, ZB, marks, WHITE, N18);   // traffic lights and stop lines on 18. novembra iela, give way at the roundabouts
   const orders = [-37, -37, -36, -35, -34, -33], mats = [M_LAND, M_PAVE, M_DIRT, M_BALLAST, M_ASPH, M_MARK];
   groups.forEach((g, k) => { const m = g.mesh(mats[k]); if (m) { m.renderOrder = orders[k] + (k === 0 ? -0.5 : 0); m.frustumCulled = false; m.receiveShadow = true; scene.add(m); } });
   const em = extra.mesh(matPlain); if (em) { em.castShadow = em.receiveShadow = true; scene.add(em); }
+  const wm = wear.mesh(wearMat()); if (wm) { wm.renderOrder = -33.6; wm.frustumCulled = false; wm.receiveShadow = true; scene.add(wm); }
+  await buildStreetWear(sorted);   // covers, patches, stains and the weeds of the kerbs (src/world/streetwear.js)
 }
 function bridge(b, p, hw) {
   const n = p.length >> 1, CON = hb('#9d9a92'), RAILC = hb('#5f6266');
@@ -606,3 +617,5 @@ function bridge(b, p, hw) {
 }
 
 export { LAMPS, buildLines, ribbon };
+
+
