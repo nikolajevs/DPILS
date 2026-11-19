@@ -185,7 +185,7 @@ function camouflage(m, hue) {
   };
   m.customProgramCacheKey = () => 'camo'; m.needsUpdate = true;
 }
-// one player's model: update(dt, { speed, air, dead, shotAt, throwAt }) every frame (shotAt: the time of the last shot, a new one flashes; throwAt: of the last grenade thrown, the arm swings)
+// one player's model: update(dt, { speed, air, dead, shotAt, throwAt, flinch }) every frame (shotAt: the time of the last shot, a new one flashes; throwAt: of the last grenade thrown, the arm swings; flinch: { k, zone, side } of a hit just taken — the head snaps back, the spine jolts)
 function makeAvatar(hue) {
   if (!asset) return null;
   const root = clone(asset.scene), inner = new THREE.Group(), mixer = new THREE.AnimationMixer(root), act = {}, C = MODEL.clips;
@@ -201,6 +201,8 @@ function makeAvatar(hue) {
   const armBones = MODEL.arms.map(n => root.getObjectByName(n)).filter(o => o && o.isBone), head = root.getObjectByName(MODEL.head);
   const holdMixer = new THREE.AnimationMixer(root); if (asset.clips[C.hold]) { const a = holdMixer.clipAction(asset.clips[C.hold]); a.play(); holdMixer.update(0.001); }
   const armQ = armBones.map(o => o.quaternion.clone()); holdMixer.stopAllAction(); holdMixer.uncacheRoot(root);
+  const spine = root.getObjectByName('Spine1') || root.getObjectByName('Spine');   // the flinch bends the spine and the head on top of the clip
+  const flHeadQ = head ? head.quaternion.clone() : null, flSpineQ = spine ? spine.quaternion.clone() : null; let flOn = false;
   let deadT = -1, tied = null; const shot = { at: 0, w: 0, dt: 0 };
   const want = s => s.dead ? { [C.death]: 1 } : s.air ? { [C.jump]: 1 } : s.speed > 5 ? { [C.run]: 1 } : s.speed > 0.5 ? { [C.walk]: 1 } : { [C.idle]: 1 };
   function update(dt, s) {
@@ -212,6 +214,14 @@ function makeAvatar(hue) {
     mixer.update(dt);
     if (!s.dead) armBones.forEach((o, i) => o.quaternion.copy(armQ[i]));
     if (head) head.scale.setScalar(MODEL.headScale);
+    // the flinch of a hit (the bhit of mp.js): the mixer rewrote the bones this frame, so the offset is fresh every
+    // frame; when it ends the pose the bones had before it is put back (a clip that does not move them would keep it)
+    if (!s.dead && s.flinch) {
+      const k = s.flinch.k, zn = s.flinch.zone;
+      if (head) { head.rotation.x -= (zn === 1 ? 0.4 : 0.15) * k; head.rotation.z -= s.flinch.side * 0.12 * k; }
+      if (spine) { spine.rotation.x += (zn === 2 ? 0.05 : 0.13) * k; spine.rotation.z -= s.flinch.side * 0.09 * k; }
+      flOn = true;
+    } else if (flOn) { if (head && flHeadQ) head.quaternion.copy(flHeadQ); if (spine && flSpineQ) spine.quaternion.copy(flSpineQ); flOn = false; }
     if (H && gun.userData.both) { if (!s.dead) hold(H, inner, gun, headProxy.rotation.x); else if (tied) carry(H, inner, gun, tied); }
     if (H && !s.dead && s.throwAt) throwArm(H, inner, (performance.now() - s.throwAt) / 1000);
     shot.dt = dt; shotFlash(flash, s, shot);
