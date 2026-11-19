@@ -10,6 +10,7 @@ import { upPatch, upUnder } from './underpass.js';
 import { rbPatches } from './underpass-rail.js';
 import { U, renderer, scene, terrUniforms } from '../render/renderer.js';
 import { SegGrid } from '../core/geometry.js';
+import { walkH } from './walkgrid.js';
 import { dec } from '../core/util.js';
 import { C, WL } from '../core/env.js';
 
@@ -247,7 +248,7 @@ function vbLift(x, z) {
 }
 function vbComp(x, y, z) { if (y <= WL + 0.5) return 0; const [s, d] = vbLocal(x, z); if (y <= 0.05 && Math.abs(d) > VB.HW + 0.01) return 0; return vbLine(s) - terrainH(x, z); }
 // the height a walker stands at above the level city
-const walkLift = (x, z, prev = null) => fortGround(x, z) + (upUnder(x, z, 0, 0, prev) ? 0 : vbGround(x, z) + vbLift(x, z)) + terrainH(x, z) + bridgeY(x, z, 0, 0, prev) + spwGround(x, z);   // under the end of Vienības tilts: on Daugavas iela
+const walkLift = (x, z, prev = null) => fortGround(x, z) + (upUnder(x, z, 0, 0, prev) ? 0 : vbGround(x, z) + vbLift(x, z)) + terrainH(x, z) + bridgeY(x, z, 0, 0, prev) + spwGround(x, z) + walkH(x, z);   // under the end of Vienības tilts: on Daugavas iela; walkH: the raised sidewalk slabs
 // the surface of a river or lake at a point: in the terrain model water is the lowest ground around, so the lowest
 // height within 50 m keeps the water level right up to its banks
 function waterLevel(x, z) { let m = terrainH(x, z); for (const r of [20, 50]) for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4; m = Math.min(m, terrainH(x + Math.cos(a) * r, z + Math.sin(a) * r)); } return m; }

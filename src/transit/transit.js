@@ -13,6 +13,7 @@ import { AO } from '../landmarks/autoosta.js';
 import { std } from '../render/materials.js';
 import { mkCanvas, toTex } from '../render/textures.js';
 import { bridgeY, terrainH, vbLift } from '../world/terrain.js';
+import { walkH } from '../world/walkgrid.js';
 import { camera, scene } from '../render/renderer.js';
 import { GB, SegGrid, box, lathe } from '../core/geometry.js';
 import { hb } from '../core/util.js';
@@ -248,6 +249,7 @@ function buildStops() {
     // off a house or another carriageway: along the kerb
     let ok = false; for (const sft of [0, 2, -2, 4, -4, 6, -6, 8, -8]) { const x = cx + tx * sft, z = cz + tz * sft; if (!inBuilding(x, z) && !inBuilding(x + rx * 0.8, z + rz * 0.8) && !onCarriage(x, z)) { cx = x; cz = z; ok = true; break; } }
     placed.push([cx, cz]);
+    const lift = walkH(cx, cz); STATE.GBC = () => lift;   // the shelter and its pole stand on the raised sidewalk
     const pole = (x, z) => { lathe(b, x, z, 0, [[0.045, 0], [0.045, 2.95]], 6, 0, POSTC); box(b, x, z, tx, tz, 0.02, 0.24, 2.45, 2.93, sign); COL.add(x, z, x + 0.01, z, 0.08, 0); };
     if (!ok) { pole(cx - rx * 1.2, cz - rz * 1.2); return; }
     box(b, cx + rx * 0.68, cz + rz * 0.68, tx, tz, 2.0, 0.035, 0.12, 2.28, GLASSC);
@@ -258,6 +260,7 @@ function buildStops() {
     pole(cx - tx * 2.7 - rx * 0.5, cz - tz * 2.7 - rz * 0.5);
     COL.add(cx + rx * 0.68 - tx * 2, cz + rz * 0.68 - tz * 2, cx + rx * 0.68 + tx * 2, cz + rz * 0.68 + tz * 2, 0.06, 0);
   });
+  STATE.GBC = null;
   const m = b.mesh(matPlain); if (m) { m.castShadow = m.receiveShadow = true; scene.add(m); }
 }
 function scanActive() {
