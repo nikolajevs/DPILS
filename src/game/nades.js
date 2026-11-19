@@ -160,12 +160,12 @@ function blast(x, y, z) {
   const floor = onRoof ? top : gr, air = y - floor > 1.3, S = SURF[air ? 'air' : onRoof ? 'roof' : onRoad(x, z, 0.5) ? 'road' : 'ground'];
   const cy = air ? y : floor + 0.12;   // the heart of the burst
   // the flash: a white-hot core and a wide glow in the air, gone in a few hundredths of a second
-  emit(FIRE, { x, y: cy + 0.35, z, life: 0.07, s0: 2.4, s1: 4.2, grow: 1, c0: [7, 6, 4.6], c1: [4, 2.4, 1], fout: 0, frame: 2 });
-  emit(FIRE, { x, y: cy + 0.6, z, life: 0.22, s0: 6, s1: 9, c0: [1.6, 0.85, 0.35], c1: [0.8, 0.25, 0.05], op: 0.55, fout: 0, frame: 2 });
+  emit(FIRE, { x, y: cy + 0.4, z, life: 0.08, s0: 3, s1: 5, grow: 1, c0: [6.5, 4.4, 2], c1: [3.5, 1.5, 0.4], fout: 0, frame: 2 });
+  emit(FIRE, { x, y: cy + 0.7, z, life: 0.25, s0: 7, s1: 10, c0: [1.8, 0.85, 0.3], c1: [0.8, 0.22, 0.04], op: 0.55, fout: 0, frame: 2 });
   // the fireball: billows of flame thrown out a metre or two and burnt out in a fifth of a second
-  for (let i = 0; i < 10; i++) {
-    const [dx, dy, dz] = dir(air, 0.2), sp = rnd(5, 12);
-    emit(FIRE, { x: x + dx * 0.25, y: cy + 0.3 + dy * 0.25, z: z + dz * 0.25, vx: dx * sp, vy: dy * sp, vz: dz * sp, drag: 9, life: rnd(0.12, 0.26), s0: rnd(0.5, 0.8), s1: rnd(1.6, 2.6), grow: 2.5, roll: rnd(0, 6.28), spin: rnd(-3, 3), c0: [4.5, 3.2, 1.6], c1: [1.4, 0.35, 0.06], op: 0.9, fout: 0.25, frame: i & 1 });
+  for (let i = 0; i < 14; i++) {
+    const [dx, dy, dz] = dir(air, 0.2), sp = rnd(6, 14);
+    emit(FIRE, { x: x + dx * 0.3, y: cy + 0.35 + dy * 0.3, z: z + dz * 0.3, vx: dx * sp, vy: dy * sp, vz: dz * sp, drag: 8, life: rnd(0.14, 0.3), s0: rnd(0.9, 1.3), s1: rnd(2.2, 3.4), grow: 2.5, roll: rnd(0, 6.28), spin: rnd(-3, 3), c0: [5, 2.6, 0.9], c1: [1.3, 0.28, 0.04], op: 0.95, fout: 0.3, frame: i & 1 });
   }
   // hot fragments: fast streaks out in every direction (from a surface — along it and up)
   for (let i = 0; i < 34; i++) {
@@ -173,9 +173,9 @@ function blast(x, y, z) {
     emit(FIRE, { x, y: cy + 0.15, z, vx: dx * sp, vy: dy * sp, vz: dz * sp, drag: 1.2, grav: -9.8, life: rnd(0.07, 0.28), len: rnd(0.7, 1.6), w: rnd(0.035, 0.06), c0: [4, 2.6, 1.1], c1: [2.6, 0.9, 0.2], fout: 0.4, frame: 3 });
   }
   // the cloud: dark smoke and dust shot up and out, glowing from the fire inside for a moment, then rising, drifting and greying
-  for (let i = 0; i < 24; i++) {
-    const [dx, dy, dz] = dir(air, 0.35), sp = rnd(2.5, 9);
-    emit(SMOKE, { x: x + dx * 0.3, y: cy + 0.25 + dy * 0.3, z: z + dz * 0.3, vx: dx * sp, vy: dy * sp, vz: dz * sp, drag: 2.8, rise: rnd(0.35, 0.9), wind: 1, life: rnd(4, 7.5), s0: rnd(0.7, 1.1), s1: rnd(3.2, 5.2), grow: 3, roll: rnd(0, 6.28), spin: rnd(-0.5, 0.5), c0: S.soot, c1: S.dust, op: rnd(0.7, 0.9), fin: 0.03, fout: 0.3, heat: rnd(0.5, 1), heatT: rnd(0.15, 0.35), floor, frame: i % 3 });
+  for (let i = 0; i < 28; i++) {
+    const [dx, dy, dz] = dir(air, 0.35), sp = rnd(3, 12);
+    emit(SMOKE, { x: x + dx * 0.3, y: cy + 0.25 + dy * 0.3, z: z + dz * 0.3, vx: dx * sp, vy: dy * sp, vz: dz * sp, drag: 2.5, rise: rnd(0.4, 1), wind: 1, life: rnd(6, 10), s0: rnd(0.8, 1.2), s1: rnd(3.6, 5.8), grow: 3, roll: rnd(0, 6.28), spin: rnd(-0.5, 0.5), c0: S.soot, c1: S.dust, op: rnd(0.85, 1), fin: 0.03, fout: 0.4, heat: rnd(0.5, 1), heatT: rnd(0.15, 0.35), floor, frame: i % 3 });
   }
   glow.x = x; glow.y = cy + 0.8; glow.z = z; glow.t = 0;
   const d = camera.position.distanceTo(V.set(x, cy, z)), a = clamp(1 - d / 32) ** 1.6;   // the jolt, when the shock reaches the camera
@@ -184,12 +184,12 @@ function blast(x, y, z) {
   // the skirt: the shock throws dust out along the surface in a ring that slows, rolls and settles
   for (let i = 0, n = 18; i < n; i++) {
     const an = (i + rnd(-0.3, 0.3)) / n * 6.283, ca = Math.cos(an), sa = Math.sin(an), sp = rnd(8, 15);
-    emit(SMOKE, { x: x + ca * 0.5, y: floor + 0.4, z: z + sa * 0.5, vx: ca * sp, vy: rnd(0.3, 1.5), vz: sa * sp, drag: 3.2, rise: rnd(0.1, 0.35), wind: 1, life: rnd(2.4, 4), s0: 0.6, s1: rnd(2.4, 3.6), grow: 3, roll: rnd(0, 6.28), spin: rnd(-0.6, 0.6), c0: S.dust, c1: S.dust, op: 0.55, fin: 0.03, fout: 0.3, floor, frame: i % 3 });
+    emit(SMOKE, { x: x + ca * 0.5, y: floor + 0.4, z: z + sa * 0.5, vx: ca * sp, vy: rnd(0.3, 1.5), vz: sa * sp, drag: 3.2, rise: rnd(0.1, 0.35), wind: 1, life: rnd(3.5, 5.5), s0: 0.6, s1: rnd(2.6, 3.8), grow: 3, roll: rnd(0, 6.28), spin: rnd(-0.6, 0.6), c0: S.dust, c1: S.dust, op: 0.7, fin: 0.03, fout: 0.3, floor, frame: i % 3 });
   }
   // a low haze of dust that hangs on longest
   for (let i = 0; i < 4; i++) {
     const an = rnd(0, 6.283), r = rnd(0.5, 2), ca = Math.cos(an), sa = Math.sin(an);
-    emit(SMOKE, { x: x + ca * r, y: floor + 0.8, z: z + sa * r, vx: ca * 1.5, vz: sa * 1.5, drag: 1.5, rise: 0.12, wind: 1, life: rnd(7, 10), s0: 2, s1: rnd(5, 7), roll: rnd(0, 6.28), spin: rnd(-0.15, 0.15), c0: S.dust, c1: S.dust, op: 0.3, fin: 0.4, fout: 0.25, floor, frame: i % 3 });
+    emit(SMOKE, { x: x + ca * r, y: floor + 0.8, z: z + sa * r, vx: ca * 1.5, vz: sa * 1.5, drag: 1.5, rise: 0.12, wind: 1, life: rnd(9, 13), s0: 2, s1: rnd(5, 7), roll: rnd(0, 6.28), spin: rnd(-0.15, 0.15), c0: S.dust, c1: S.dust, op: 0.4, fin: 0.4, fout: 0.25, floor, frame: i % 3 });
   }
   // clods flung up (the bigger ones trail dust), falling back and lying a moment
   for (let i = 0; i < 28; i++) {
@@ -213,7 +213,7 @@ function scorch(x, y, z, roof) {
   if (!roof) { const e = 0.8, hx = (terrainH(x + e, z) - terrainH(x - e, z)) / (2 * e), hz = (terrainH(x, z + e) - terrainH(x, z - e)) / (2 * e), L = Math.hypot(hx, 1, hz); nx = -hx / L; ny = 1 / L; nz = -hz / L; }   // lies along the slope
   d.t = 0; d.mesh.material.opacity = 0.9; d.mesh.position.set(x + nx * 0.04, y + ny * 0.04, z + nz * 0.04);
   d.mesh.lookAt(V.set(x + nx, y + ny, z + nz)); d.mesh.rotateZ(rnd(0, 6.283));
-  const s = rnd(2.6, 3.4); d.mesh.scale.set(s, s, 1);
+  const s = rnd(3.2, 4.2); d.mesh.scale.set(s, s, 1);
   scorches.push(d);
 }
 /* ---------- the frame ---------- */
