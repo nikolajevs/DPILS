@@ -122,7 +122,7 @@ export function createBrain(g) {
     if (L.nades && p.nades > 0 && dist > 12 && dist < 26 && Math.random() < L.nades) { const d = [q.x - p.x, 0.28 * dist / 20, q.z - p.z], l = Math.hypot(...d); g.throwNade(p, d.map(x => x / l)); return; }
     if (now < b.pauseUntil || now < b.nextShot) return;
     const W = g.WEAPONS[w], aimY = q.y - (Math.random() < L.head ? HIT.headDrop : 0.56 * (q.eye / 1.7));   // the head centre, otherwise the chest (lower on a crouched target)
-    const dx = q.x - p.x, dz = q.z - p.z, dy2 = aimY - p.y, d3 = Math.hypot(dx, dy2, dz), sig = L.sigma * (b.moving ? 1.3 : 1) * (w === 2 ? 0.5 : 1) * (1 + dist / 150);
+    const dx = q.x - p.x, dz = q.z - p.z, dy2 = aimY - p.y, d3 = Math.hypot(dx, dy2, dz), sig = L.sigma * (b.moving ? 1.3 : 1) * (w === 2 ? 0.5 : 1) * (1 + dist / 150);   // the hit is judged at the click (the bullet only delays the damage), so no lead is needed
     const rays = [];
     for (let i = 0; i < W.pellets; i++) {
       const e1 = gauss() * sig + (W.pellets > 1 ? gauss() * 0.03 : 0), e2 = gauss() * sig + (W.pellets > 1 ? gauss() * 0.03 : 0);

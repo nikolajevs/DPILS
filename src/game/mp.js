@@ -22,19 +22,19 @@ import { openLocal } from './local.js';
 import { ambStart, ambTick } from './ambience.js';
 import { statEvent } from './stats.js';
 import { playerKey, boardOn, setBoardOn, account } from './identity.js';
-import { rayHit } from '../../server/combat.mjs';
 import { initLeaders } from './leaders.js';
 import { rest } from '../core/pause.js';
 import { $ } from '../core/env.js';
 import { boomSound, crackSound, hitSound, loadSounds, shotSound, stepSound } from './sfx.js';
 import { carAt, carPath } from '../world/car-hit.js';
-import { fxSamples, tracerShot, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke } from './impacts.js';
+import { fxSamples, tracerShot, bindTracer, hitTracer, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke } from './impacts.js';
 
 /* ---------- online shooter: deathmatch on the city map ----------
    The server (server/index.mjs) owns health, kills and respawns. This module: the connection, the other players
    (simple procedural figures, drawn 120 ms in the past between two snapshots), the gun in hand, shooting with the
-   line of fire checked against terrain and buildings, and the game panels. The hitboxes are the server's own
-   (rayHit from server/combat.mjs): the page predicts a hit by exactly the geometry the server judges by. */
+   line of fire checked against terrain and buildings, and the game panels. The bullet really flies on the server
+   (server/game.mjs, at the weapon's vel from server/combat.mjs): the page draws the tracer to the wall and the server's
+   'bhit' cuts it at the body when the bullet arrives — the damage, the hit marker and the blood all land together. */
 // the weapons (keep server/combat.mjs in step; the server has the damage): the rifle fires bursts, the shotgun
 // throws eight pellets in a cone, one shot per click
 const WEAPONS = [
@@ -327,18 +327,13 @@ function otherShot(m) {
     let real = false; try { real = shotSound(ac(), actx.master, m.w, (SHOT_VOL[m.w] ?? 0.5) * (1 - s.d / hear) * 25 / (25 + s.d), s.d, s.pan); } catch (e) {}
     if (!real) bang((m.w === 2 ? 0.7 : m.w === 1 ? 0.5 : (wf.vol ?? FEEL.vol) * 0.85) * (1 - s.d / hear), true);
   }
-  let hits = 0, crack = false;
+  let heard = 0, crack = false;
   for (const r of m.rays) {
-    const who = r[4], len = who ? r[3] : carPath(m.o, r, r[3]);   // the server does not know the cars: its bullet stops in one here too
-    const kind = who === MP.id ? 'air' : who ? 'body' : (len < wf.range - 0.5 ? 'surface' : 'air');   // into you: no mark, 'hurt' speaks
-    let cb = null;
-    if (who !== MP.id && hits < 2) {   // the hits of its bullets near you are heard when they arrive
-      hits++;
-      if (who) { const h = spot(m.o[0] + r[0] * len, m.o[1] + r[1] * len, m.o[2] + r[2] * len); cb = () => { if (h.d < 40) try { hitSound(ac(), actx.master, 'body', 0.6 * 4 / (4 + h.d) * (1 - h.d / 40), h.d, h.pan); } catch (e) {} }; }
-      else if (kind === 'surface') cb = () => wallHit(m.o, r, len);
-    }
-    tracerShot(m.o, r, len, m.w, kind, 0xffb060, cb);
-    if (crack || MP.dead || who === MP.id) continue;
+    const len = carPath(m.o, r, r[3]);   // the server does not know the cars: its bullet stops in one here too
+    const kind = len < wf.range - 0.5 ? 'surface' : 'air';   // a body hit arrives as 'bhit' and cuts the tracer there
+    const cb = kind === 'surface' && heard < 2 ? (heard++, () => wallHit(m.o, r, len)) : null;   // of a shotgun's pellets, two are heard
+    bindTracer(r[4], tracerShot(m.o, r, len, m.w, kind, 0xffb060, cb));
+    if (crack || MP.dead) continue;
     const t = (P.x - m.o[0]) * r[0] + (P.y - m.o[1]) * r[1] + (P.z - m.o[2]) * r[2];   // the point of the bullet's path nearest to your head
     if (t < 6 || t > len + 1) continue;
     const cx = m.o[0] + r[0] * t, cy = m.o[1] + r[1] * t, cz = m.o[2] + r[2] * t, near = Math.hypot(cx - P.x, cy - P.y, cz - P.z);
@@ -353,6 +348,7 @@ function tone(f0, f1, dur, vol, type = 'sine', delay = 0) {
   } catch (e) {}
 }
 /* ---------- shooting ---------- */
+let ownTracers = null;   // the tracers of the shot just fired, bound to the server's bullet ids when its 'shot' echo returns
 const W = () => WEAPONS[MP.weapon];
 function fire(now) {
   const w = W();
@@ -360,21 +356,15 @@ function fire(now) {
   if (MP.reloadAt) return;
   if (MP.ammo[MP.weapon] <= 0) { reload(now); return; }
   statEvent('shot', {}, !!MP.local); MP.lastShot = now; MP.ammo[MP.weapon]--; MP.kick = 1;
-  const o = [P.x, P.y, P.z], t = performance.now() - 120, rays = [], yaw0 = P.yaw, pitch0 = P.pitch;   // the rays fly where the crosshair stood: the recoil kicks the view only after they are computed — kicking first lifted every sniper shot 0.03 rad (1.7°) over the target, a clean miss past ~40 m
+  const o = [P.x, P.y, P.z], rays = [], mine = [], yaw0 = P.yaw, pitch0 = P.pitch;   // the rays fly where the crosshair stood: the recoil kicks the view only after they are computed — kicking first lifted every sniper shot 0.03 rad (1.7°) over the target, a clean miss past ~40 m
   for (let i = 0; i < w.pellets; i++) {
     const sp = spreadNow(), ang = Math.random() * 6.283, rad = sp * Math.sqrt(Math.random());
     const d = aim(yaw0 + Math.cos(ang) * rad, pitch0 + Math.sin(ang) * rad), clear = freePath(o, d, w.range, true);
-    let best = null;
-    for (const [id, r] of remotes) {
-      if (isMate(r)) continue;   // no friendly fire: shots pass through teammates
-      const p = pose(r, t); if (!p || !r.group.visible) continue;
-      const h = rayHit(o, d, clear, { x: p.x, y: p.y, z: p.z, eye: p.h || 1.7, yaw: p.yaw });
-      if (h && (!best || h.t < best.t)) best = { id, t: h.t };
-    }
-    const len = best ? best.t : clear; rays.push([+d[0].toFixed(4), +d[1].toFixed(4), +d[2].toFixed(4), +len.toFixed(1), best ? best.id : 0]);
-    const kind = best ? 'body' : (clear < w.range - 0.5 ? 'surface' : 'air');
-    tracerShot(o, d, len, MP.weapon, kind, 0xffe9a0, kind === 'surface' && i < 2 ? () => wallHit(o, d, clear) : null);   // the mark and the hit sound appear when the bullet arrives (of a shotgun's pellets, two are heard)
+    rays.push([+d[0].toFixed(4), +d[1].toFixed(4), +d[2].toFixed(4)]);   // the server judges the hit itself, when the bullet arrives
+    const kind = clear < w.range - 0.5 ? 'surface' : 'air';   // a body, if the bullet finds one, comes back as 'bhit'
+    mine.push(tracerShot(o, d, clear, MP.weapon, kind, 0xffe9a0, kind === 'surface' && i < 2 ? () => wallHit(o, d, clear) : null));   // the mark and the hit sound appear when the bullet arrives (of a shotgun's pellets, two are heard)
   }
+  ownTracers = mine;
   P.pitch = Math.min(1.5, P.pitch + (w.pellets > 1 ? 0.02 : w.scope ? 0.03 : (w.kick ?? FEEL.kick))); P.yaw += (Math.random() - 0.5) * (w.pellets > 1 ? 0.006 : 0.0016); if (w.auto) MP.burst = Math.min(w.cap ?? 0.03, MP.burst + (w.burst ?? 0.0045));
   if (vm && vm.has(MP.weapon)) { vm.fire(FLASH_SIZE[MP.weapon]); vm.muzzle(MV); }
   else { const f = ownFlash(); f.fire(1, FLASH_SIZE[MP.weapon]); gun.updateWorldMatrix(true, false); f.group.getWorldPosition(MV); }
@@ -581,7 +571,8 @@ function onMsg(m) {
       for (const [id, r] of remotes) if (!seen.has(id) && !r.fallT) { r.group.visible = false; r.buf.length = 0; }
       break;
     }
-    case 'shot': { if (m.id === MP.id) break; const rs = remotes.get(m.id); if (rs) rs.shotAt = performance.now(); otherShot(m); break; }
+    case 'shot': { const rs = remotes.get(m.id); if (rs) rs.shotAt = performance.now(); if (m.id === MP.id) { if (ownTracers) { m.rays.forEach((r, i) => bindTracer(r[4], ownTracers[i])); ownTracers = null; } } else otherShot(m); break; }
+    case 'bhit': { const body = m.v && m.v !== MP.id; hitTracer(m.bid, m.d, body); if (body && m.by !== MP.id) { const s = spot(m.at[0], m.at[1], m.at[2]); if (s.d < 40) try { hitSound(ac(), actx.master, 'body', 0.6 * 4 / (4 + s.d) * (1 - s.d / 40), s.d, s.pan); } catch (e) {} } break; }   // the bullet reached a body: cut the tracer, bleed there; a bystander hears the impact (the shooter gets 'hit')
     case 'hit': statEvent('hit', m, !!MP.local); hitT = performance.now(); if (m.kill) { tone(880, 880, 0.12, 0.25, 'triangle'); tone(1320, 1320, 0.25, 0.25, 'triangle', 0.1); } else tone(m.head ? 2600 : 1700, m.head ? 2200 : 1400, 0.07, 0.2, 'square'); { const r = remotes.get(m.id), g = r && r.group.visible ? r.group.position : null; if (g) { const s = spot(g.x, g.y + 1.2, g.z); try { hitSound(ac(), actx.master, m.head ? 'head' : 'body', 0.75 * 6 / (6 + s.d), s.d, s.pan); } catch (e) {} if (m.dmg > 0) dmgFloat(g.x, g.y + 1.9, g.z, String(m.dmg), m.head ? 'head' : m.kill ? 'kill' : ''); } } el('mpHit').className = m.head ? 'head' : m.kill ? 'kill' : ''; el('mpHit').hidden = false; break;
     case 'hurt': {
       statEvent('taken', { dmg: Math.max(0, MP.hp - m.hp) }, !!MP.local); MP.hp = m.hp; hurtT = performance.now(); { let real = false; try { real = hitSound(ac(), actx.master, 'body', 1); } catch (e) {} if (!real) tone(160, 60, 0.18, 0.4, 'sawtooth'); } el('mpHurt').hidden = false; updatePanel();

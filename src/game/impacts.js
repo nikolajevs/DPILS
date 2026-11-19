@@ -4,10 +4,12 @@ import { terrainH } from '../world/terrain.js';
 import { camera, scene } from '../render/renderer.js';
 import { worldSpace } from '../render/world-space.js';
 import { carAt } from '../world/car-hit.js';
+import { WEAPONS } from '../../server/combat.mjs';
 
 /* ---------- realistic shots: flying tracers, bullet marks, dust, sparks, shells ----------
    The game (mp.js) knows where every bullet stops: a wall, the ground or a body. This module draws the consequences.
-   A tracer is a short bright streak that really flies (560 m/s for the rifle, slower pellets, a faster sniper bullet);
+   A tracer is a short bright streak that really flies at the weapon's muzzle velocity (the same vel the server steps the
+   bullet by, server/combat.mjs), so the streak and the hit arrive together; the server's 'bhit' cuts it short at a body;
    when its head reaches the end of the path, the mark appears: a bullet hole on the surface, a puff of dust, sparks
    off stone, a wisp of smoke. The hole is oriented by the true surface normal (the nearest wall edge of the building
    outline, the slope of the terrain), so it lies on the wall instead of floating in front of it. Marks live half a
@@ -150,14 +152,30 @@ function bodyImpact(o, d, len) {
 }
 
 /* ---------- tracers that fly ---------- */
-const tracers = [], SPEED = [560, 380, 820, 430, 560];   // m/s by weapon, for the eye (the hit itself is judged at once)
+const tracers = [], SPEED = WEAPONS.map(w => w.vel ?? 560);   // m/s by weapon — the server's own muzzle velocities, so the eye and the hit agree
+const byBid = new Map();   // the server's bullet id → its tracer, so 'bhit' can cut the right streak at the body
 const tracerMat = color => worldSpace(new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85, fog: false }));
+function dropTracer(tr) { scene.remove(tr.l); tr.l.geometry.dispose(); tr.l.material.dispose(); if (tr.bid) byBid.delete(tr.bid); }
 function tracerShot(o, d, len, w, kind, color, onArrive) {
-  if (tracers.length > 80) { const tr = tracers.shift(); scene.remove(tr.l); tr.l.geometry.dispose(); tr.l.material.dispose(); }
+  if (tracers.length > 80) dropTracer(tracers.shift());
   const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
   const l = new THREE.Line(g, tracerMat(color));
   l.frustumCulled = false; scene.add(l);
-  tracers.push({ l, o, d, len, w, kind, onArrive, t: 0, speed: SPEED[w] ?? 560, trail: w === 1 ? 2.5 : 7, start: 0.9, done: false, fade: 0 });
+  const tr = { l, o, d, len, w, kind, onArrive, t: 0, speed: SPEED[w] ?? 560, trail: w === 1 ? 2.5 : 7, start: 0.9, done: false, fade: 0, bid: 0 };
+  tracers.push(tr); return tr;
+}
+function bindTracer(bid, tr) { if (bid && tr) { tr.bid = bid; byBid.set(bid, tr); } }
+// the bullet reached a body (the server's 'bhit'): cut the tracer at the hit distance and let it bleed there. If the streak
+// already flew past (our own shot, drawn a round-trip early), show the impact at once.
+function hitTracer(bid, dist, body) {
+  const tr = byBid.get(bid); byBid.delete(bid);
+  if (!tr) return;
+  tr.len = Math.min(tr.len, dist);
+  if (body) tr.kind = 'body';
+  if (tr.done || tr.start + tr.t * tr.speed >= tr.len) {   // already there or past: the impact now, not on a later frame
+    if (!tr.done) { tr.done = true; if (tr.kind === 'surface') surfaceImpact(tr.o, tr.d, tr.len, tr.w); else if (tr.kind === 'body') bodyImpact(tr.o, tr.d, tr.len); if (tr.onArrive) tr.onArrive(); }
+    else if (body) bodyImpact(tr.o, tr.d, tr.len);
+  }
 }
 
 /* ---------- shells out of your own gun ---------- */
@@ -185,7 +203,7 @@ function tickFx(dt) {
       else if (tr.kind === 'body') bodyImpact(tr.o, tr.d, tr.len);
       if (tr.onArrive) tr.onArrive();
     }
-    if (tr.done) { tr.fade += dt; tr.l.material.opacity = Math.max(0, 0.85 - tr.fade * 14); if (tr.fade > 0.07) { scene.remove(tr.l); tr.l.geometry.dispose(); tr.l.material.dispose(); tracers.splice(i, 1); } continue; }
+    if (tr.done) { tr.fade += dt; tr.l.material.opacity = Math.max(0, 0.85 - tr.fade * 14); if (tr.fade > 0.07) { dropTracer(tr); tracers.splice(i, 1); } continue; }
     const p = tr.l.geometry.attributes.position;
     p.setXYZ(0, tr.o[0] + tr.d[0] * tail, tr.o[1] - 0.05 + tr.d[1] * tail, tr.o[2] + tr.d[2] * tail);
     p.setXYZ(1, tr.o[0] + tr.d[0] * head, tr.o[1] + tr.d[1] * head, tr.o[2] + tr.d[2] * head);
@@ -232,7 +250,7 @@ function tickFx(dt) {
   }
 }
 function clearFx() {
-  for (const tr of tracers) { scene.remove(tr.l); tr.l.geometry.dispose(); tr.l.material.dispose(); } tracers.length = 0;
+  for (const tr of tracers) dropTracer(tr); tracers.length = 0; byBid.clear();
   free.push(...parts); parts.length = 0; partMesh.count = 0;
   for (const f of floats) f.el.remove(); floats.length = 0;
   for (const d of decals) { scene.remove(d.mesh); d.mesh.material.dispose(); } decals.length = 0;
@@ -243,4 +261,4 @@ function clearFx() {
 // into the warm-up of the city (mp.js loadModels), so the first shot does not wait for their shaders and textures
 const fxSamples = () => [new THREE.Mesh(decalGeo, decalMat()), new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -1)]), tracerMat(0xffe9a0)), new THREE.Mesh(shellGeo, shellMat)];
 
-export { fxSamples, tracerShot, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke };
+export { fxSamples, tracerShot, bindTracer, hitTracer, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke };

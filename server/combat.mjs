@@ -5,13 +5,15 @@ export const RULES = {
   runSpeed: 11, tickHz: 15,
 };
 // the weapons (keep src/game/mp.js in step): pellets per shot, damage of a pellet to the body and to the head, range, how
-// much of the damage is lost over the range (falloff 0.6: 40 % left at the end), the least time between shots
+// much of the damage is lost over the range (falloff 0.6: 40 % left at the end), the least time between shots, and vel —
+// the muzzle velocity in m/s: the bullet really flies (server/game.mjs steps it), so the hit lands when it arrives, not at
+// the click. The page draws its tracers at the same speeds (src/game/impacts.js reads vel from here).
 export const WEAPONS = [
-  { name: 'Автомат', mag: 30, gapMs: 85, pellets: 1, dmg: 22, head: 40, range: 160, falloff: 0 },
-  { name: 'Дробовик', mag: 6, gapMs: 750, pellets: 8, dmg: 9, head: 16, range: 45, falloff: 0.6 },
-  { name: 'Снайперская', mag: 5, gapMs: 1300, pellets: 1, dmg: 70, head: 100, range: 400, falloff: 0 },
-  { name: 'Пистолет', mag: 12, gapMs: 150, pellets: 1, dmg: 20, head: 42, range: 90, falloff: 0.3 },
-  { name: 'Пулемёт', mag: 100, gapMs: 60, pellets: 1, dmg: 16, head: 28, range: 140, falloff: 0.25 },
+  { name: 'Автомат', mag: 30, gapMs: 85, pellets: 1, dmg: 22, head: 40, range: 160, falloff: 0, vel: 560 },
+  { name: 'Дробовик', mag: 6, gapMs: 750, pellets: 8, dmg: 9, head: 16, range: 45, falloff: 0.6, vel: 380 },
+  { name: 'Снайперская', mag: 5, gapMs: 1300, pellets: 1, dmg: 70, head: 100, range: 400, falloff: 0, vel: 820 },
+  { name: 'Пистолет', mag: 12, gapMs: 150, pellets: 1, dmg: 20, head: 42, range: 90, falloff: 0.3, vel: 430 },
+  { name: 'Пулемёт', mag: 100, gapMs: 60, pellets: 1, dmg: 16, head: 28, range: 140, falloff: 0.25, vel: 560 },
 ];   // mag: the magazine size (keep src/game/mp.js in step); the reserve and the reload time are below
 // the grenade (keep src/game/nades.js in step): thrown along the aim lifted by `loft`, falls with `g`, bounces on the
 // ground and off walls, goes off after `fuseMs`; damage falls linearly from `dmg` at the blast to 0 at `radius`.
