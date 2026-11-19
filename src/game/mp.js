@@ -545,7 +545,7 @@ function onMsg(m) {
     case 'inv': MP.ammo = m.mag.slice(); MP.reserve = m.reserve.slice(); MP.nades = m.nades; MP.meds = m.meds; updatePanel(); break;
     case 'heal': { const got = m.hp - MP.hp; MP.hp = m.hp; MP.meds = m.meds; feed('Аптечка: +' + got + ' HP', 'sys'); tone(440, 660, 0.16, 0.25, 'sine'); updatePanel(); break; }
     case 'boom': {
-      boomNade(m); const dd = Math.hypot(m.x - P.x, m.z - P.z), hear = 300; if (dd < hear) { const v = 1 - dd / hear; let real = false; try { real = boomSound(ac(), actx.master, 1.1 * v, dd, spot(m.x, P.y, m.z).pan, onRoad(m.x, m.z, 0.5) ? 'road' : 'ground'); } catch (e) {} if (!real) { bang(1.1 * v, true); tone(80, 35, 0.6, 0.5 * v, 'sine'); } }
+      const surf = boomNade(m), dd = Math.hypot(m.x - P.x, m.z - P.z), hear = 300; if (dd < hear) { const v = 1 - dd / hear; let real = false; try { real = boomSound(ac(), actx.master, 1.1 * v, dd, spot(m.x, P.y, m.z).pan, surf); } catch (e) {} if (!real) { bang(1.1 * v, true); tone(80, 35, 0.6, 0.5 * v, 'sine'); } }
       if (dd < 14 && !MP.dead) {   // the white of the flash: full when you look at it, a little from the side or behind
         const look = dd < 1 ? 1 : Math.max(0, -(Math.sin(P.yaw) * (m.x - P.x) + Math.cos(P.yaw) * (m.z - P.z)) / dd);
         el('mpFlash').hidden = false; el('mpFlash').style.opacity = String(0.8 * (1 - dd / 14) * (0.3 + 0.7 * look)); setTimeout(() => { el('mpFlash').hidden = true; }, 220);

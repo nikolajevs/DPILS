@@ -157,7 +157,7 @@ function dir(air, up) {
 const glow = { x: 0, y: 0, z: 0, t: 9 }, shake = { a: 0, t: 9, ph: [0, 0, 0, 0, 0, 0] };
 function blast(x, y, z) {
   const gr = terrainH(x, z), b = buildingAt(x, z), top = b ? gr + (b.top || 12) : -1e9, onRoof = !!b && y > top - 0.6;
-  const floor = onRoof ? top : gr, air = y - floor > 1.3, S = SURF[air ? 'air' : onRoof ? 'roof' : onRoad(x, z, 0.5) ? 'road' : 'ground'];
+  const floor = onRoof ? top : gr, air = y - floor > 1.3, kind = air ? 'air' : onRoof ? 'roof' : onRoad(x, z, 0.5) ? 'road' : 'ground', S = SURF[kind];
   const cy = air ? y : floor + 0.12;   // the heart of the burst
   // the flash: a white-hot core and a wide glow in the air, gone in a few hundredths of a second
   emit(FIRE, { x, y: cy + 0.4, z, life: 0.08, s0: 3, s1: 5, grow: 1, c0: [6.5, 4.4, 2], c1: [3.5, 1.5, 0.4], fout: 0, frame: 2 });
@@ -180,7 +180,7 @@ function blast(x, y, z) {
   glow.x = x; glow.y = cy + 0.8; glow.z = z; glow.t = 0;
   const d = camera.position.distanceTo(V.set(x, cy, z)), a = clamp(1 - d / 32) ** 1.6;   // the jolt, when the shock reaches the camera
   if (a > 0.01 && a >= shake.a * Math.exp(-Math.max(0, shake.t) * 5)) { shake.a = a; shake.t = -d / 340; for (let i = 0; i < 6; i++) shake.ph[i] = rnd(0, 6.283); }
-  if (air) return;
+  if (air) return kind;
   // the skirt: the shock throws dust out along the surface in a ring that slows, rolls and settles
   for (let i = 0, n = 22; i < n; i++) {
     const an = (i + rnd(-0.3, 0.3)) / n * 6.283, ca = Math.cos(an), sa = Math.sin(an), sp = rnd(8, 15);
@@ -197,10 +197,12 @@ function blast(x, y, z) {
     emit(SMOKE, { x, y: floor + 0.1, z, vx: Math.cos(an) * ce * sp, vy: Math.sin(el) * sp, vz: Math.sin(an) * ce * sp, grav: -9.8, drag: 0.25, life: rnd(1.4, 2.4), s0: s, s1: s, roll: rnd(0, 6.28), spin: rnd(-12, 12), c0: S.dirt, c1: S.dirt, fout: 0.85, frame: 3, clod: true, roof: onRoof ? top : 0, trail: i < 12 ? 0.06 : 0, dust: S.dust });
   }
   scorch(x, floor, z, onRoof);
+  return kind;
 }
+// the server's blast: the flying copy goes, the blast is drawn; gives what it went off on ('ground', 'road', 'roof' or 'air') for its sound
 function boomNade(m) {
   const n = list.get(m.id); if (n) { scene.remove(n.mesh); list.delete(m.id); }
-  blast(m.x, m.y, m.z);
+  return blast(m.x, m.y, m.z);
 }
 /* ---------- the scorch marks ---------- */
 const scorches = [], SCORCH_MAX = 10, SCORCH_LIFE = 45;

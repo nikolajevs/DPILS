@@ -64,15 +64,15 @@ function stepSound(ctx, out, surf = 'concrete', vol = 0.1, pan = 0, low = false)
   return snd(ctx, out, pick(fam), { vol, pan, lp: low ? 420 : (surf === 'grass' ? 950 : 1700) * (0.85 + Math.random() * 0.3), rate: (low ? 0.7 : 0.9) + Math.random() * 0.2 });
 }
 // the explosion of a grenade: the crunch of the blast and the low rumble under it, duller and later with distance; then the
-// slap of its echo off the houses around and, near enough, the earth (surf 'ground') or the grit of the road ('road') it
-// threw up pattering back down
+// slap of its echo off the houses around and, near enough, the earth (surf 'ground') or the grit of the road or the roof
+// ('road', 'roof') it threw up pattering back down; a burst in the air ('air') throws nothing up
 function boomSound(ctx, out, vol = 1, d = 0, pan = 0, surf = 'ground') {
   const delay = d / 340, lp = Math.min(9000, 7000 / (1 + d * 0.04));
   if (!snd(ctx, out, pick('explosionCrunch', 4), { vol, pan, lp, delay, rate: 0.9 + Math.random() * 0.15 })) return false;
   snd(ctx, out, pick('lowFrequency_explosion', 2), { vol: vol * 0.9, pan, lp: 340, delay: delay + 0.02, rate: 0.9 + Math.random() * 0.1 });
   snd(ctx, out, pick('explosionCrunch', 4), { vol: vol * 0.25, pan: -pan * 0.5, lp: Math.min(lp, 1600), delay: delay + 0.12 + Math.random() * 0.2, rate: 0.8 + Math.random() * 0.08 });
-  if (d < 70) {
-    const fam = FAM[surf === 'road' ? 'debris-stone' : 'debris-soft'];
+  if (d < 70 && surf !== 'air') {
+    const fam = FAM[surf === 'ground' ? 'debris-soft' : 'debris-stone'];
     for (let i = 0, n = 3 + Math.floor(Math.random() * 3); i < n; i++)
       snd(ctx, out, pick(fam), { vol: vol * 0.2 * (1 - d / 70) * (0.5 + Math.random() * 0.5), pan: pan + (Math.random() - 0.5) * 0.5, lp: lpFor(d), delay: delay + 0.5 + Math.random() * 1.1, rate: 0.8 + Math.random() * 0.4 });
   }

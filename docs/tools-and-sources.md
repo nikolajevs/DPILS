@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/pine-sway | Медленнее качание и дрожь кроны деревьев | src/world/trees.js |
-| Claude | claude/laughing-rubin-hcxief | Реалистичный взрыв гранаты | src/game/nades.js, src/game/sfx.js, src/game/mp.js (взрыв, свет, звук), src/game/loop.js (тряска) |
 
 ## Проверка в браузере без экрана: `tools/shots.js`
 
