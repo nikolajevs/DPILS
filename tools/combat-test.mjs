@@ -16,6 +16,8 @@
    2g. The grenade bounces about the normal of the outline edge it crossed (a 45° bastion face), not the world axes.
    2h. The blast judges two rays, chest and head: one hidden is half the blow, both hidden is a bunker.
    2i. The drag: v(s) = v0·e^(−k·s), damage as v²/v0², the longer flight time, one formula for server, page and bots.
+   2j. The player cap: 64 places, bot names stay unique past the name list, a human steps a bot out of a full
+      server, and with no bots left the join is refused.
    3. A real bot fight on a flat arena (12 s of real time): with the small hitboxes the bots must still see,
       shoot and kill each other. */
 import { BULLET_G, FALL, HIT, WEAPONS, NADE, W_FALL, bulletAt, bulletDir, bulletDrop, dragDist, dragTime, dragVel, rayHit } from '../server/combat.mjs';
@@ -827,6 +829,31 @@ console.log('bullet drag (v(s), damage, flight time):');
   clock += 30; g.stepBullets();
   ok(A.all('bhit').length === 1, 'by 120 ms it has');
   g.stop();
+}
+
+/* ---------- 2j. the player cap ---------- */
+console.log('the player cap (64):');
+{
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'cap' });
+  ok(g.health().max === 64, 'the server holds up to 64 players');
+  const bots = [];
+  for (let i = 0; i < 64; i++) bots.push(g.addBot('easy'));
+  ok(bots.every(b => b), '64 bots fit');
+  ok(g.addBot('easy') === null, 'the 65th bot is refused');
+  ok(new Set(bots.map(b => b.name)).size === 64, 'the bot names stay unique past the 16-name list');
+  const H = seat(g, conn());
+  msg(H, { t: 'join', name: 'Игрок', team: 0, x: 0, z: 0, yaw: 0 });
+  ok(H.last('hello') && g.health().players === 1 && g.health().bots === 63, 'a human joins the full server: a bot steps aside');
+  g.stop();
+  // a small server of two humans and no bots: the third join is refused for real
+  const g2 = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'full', maxPlayers: 2 });
+  const A = seat(g2, conn()), B = seat(g2, conn()), C = seat(g2, conn());
+  msg(A, { t: 'join', name: 'Первый', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Второй', team: 1, x: 0, z: 0, yaw: 0 });
+  msg(C, { t: 'join', name: 'Третий', team: 0, x: 0, z: 0, yaw: 0 });
+  ok(C.last('full') && !C.last('hello'), 'with no bots to step aside the server is full');
+  g2.stop();
 }
 
 /* ---------- 3. a real bot fight ---------- */

@@ -17,9 +17,9 @@ const world = { ...makePhysics(buildingAt, ground), buildingAt, ground };
 class LocalSocket {
   constructor(opts) {
     this.readyState = 0; this.closed = false;
-    this.game = createGame({ world, mode: opts.mode, arena: ARENAS[opts.arena] || null, level: opts.level, name: 'Тренировка с ботами', maxPlayers: 16 });
+    this.game = createGame({ world, mode: opts.mode, arena: ARENAS[opts.arena] || null, level: opts.level, name: 'Тренировка с ботами', maxPlayers: 64 });
     this.h = this.game.attach({ send: s => this.deliver(s), close: () => this.close() });
-    for (let i = 0; i < Math.max(0, Math.min(12, opts.bots | 0)); i++) this.game.addBot(opts.level);
+    for (let i = 0; i < Math.max(0, Math.min(63, opts.bots | 0)); i++) this.game.addBot(opts.level);   // 63 bots + you = the 64 places
     setTimeout(() => { if (this.closed) return; this.readyState = 1; if (this.onopen) this.onopen(); }, 0);
   }
   deliver(s) { setTimeout(() => { if (!this.closed && this.onmessage) this.onmessage({ data: s }); }, 0); }   // later, as a network would

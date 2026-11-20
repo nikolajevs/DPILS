@@ -19,7 +19,7 @@ const PORT = +process.env.PORT || 8787, WORLD = loadWorld();
 const LB = process.env.LEADERBOARD === 'off' ? null : createBoard({ file: process.env.LEADERBOARD || path.join(path.dirname(fileURLToPath(import.meta.url)), 'data', 'leaderboard.json') });
 const ACC = process.env.ACCOUNTS === 'off' ? null : createAccounts({ file: process.env.ACCOUNTS || path.join(path.dirname(fileURLToPath(import.meta.url)), 'data', 'accounts.json') });
 const game = createGame({ board: LB, world: WORLD, mode: process.env.MODE === 'ffa' ? 'ffa' : 'team', win: +process.env.WIN_SCORE || 0, name: String(process.env.SERVER_NAME || 'Даугавпилс').slice(0, 40), arena: ARENAS[process.env.ARENA] || null, level: process.env.BOT_LEVEL || 'normal' });
-for (let i = 0; i < Math.max(0, Math.min(15, +process.env.BOTS || 0)); i++) game.addBot();
+for (let i = 0; i < Math.max(0, Math.min(63, +process.env.BOTS || 0)); i++) game.addBot();   // up to 63 bots: with one human that fills the 64 places
 
 /* the page itself (STATIC=dist): files of the folder, / is index.html; the bundle in assets/ has hashes in its names
    and is cached for long, the rest (the page, the city data, servers.json) is checked every time */

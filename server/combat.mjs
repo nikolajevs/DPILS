@@ -1,7 +1,7 @@
 /* Combat geometry: the rules, the weapons and the hitboxes. The hitboxes (HIT, rayHit) are shared with the page
    (src/game/mp.js imports them); the weapons table is kept in step with the copy there by hand. */
 export const RULES = {
-  maxPlayers: 16, hp: 100, bodyDmg: 22, headDmg: 40, range: 160, fireGapMs: 85, respawnMs: 3000, protectMs: 2500,
+  maxPlayers: 64, hp: 100, bodyDmg: 22, headDmg: 40, range: 160, fireGapMs: 85, respawnMs: 3000, protectMs: 2500,
   runSpeed: 11, tickHz: 15,
 };
 // the weapons (keep src/game/mp.js in step): pellets per shot, damage of a pellet to the body and to the head, range,
