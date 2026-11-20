@@ -18,7 +18,7 @@ const PROBES = [
 ];
 const SIZE = 256;
 const SOFT = /SwiftShader|llvmpipe|Software/i.test(GPU);
-let enabled = false, ready = false, busy = false, wantTime = 0, active = null;
+let enabled = false, ready = false, busy = false, wantTime = 0, fadeList = null, fadeT = 0;
 const captured = [];   // per time of day: [{ pos, rt }]
 // a 1×1 black cube till the first probe is shot: the samplers are bound from the first compile of the shaders
 const dummy = (() => { const c = document.createElement('canvas'); c.width = c.height = 1; const t = new THREE.CubeTexture([c, c, c, c, c, c]); t.needsUpdate = true; return t; })();
@@ -44,7 +44,7 @@ async function ensure(i) {
       list.push({ pos: cam.position.clone(), rt });
       await rest();
     }
-    captured[i] = list; active = list;
+    captured[i] = list;
   } finally {
     sky.position.copy(skyPos);
     renderer.shadowMap.autoUpdate = autoUp; renderer.shadowMap.needsUpdate = true;
@@ -56,14 +56,17 @@ async function ensure(i) {
 async function captureProbes() { ready = true; if (enabled) await ensure(wantTime); }
 const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 function updateProbes(cx, cz) {   // every frame from renderFrame: the two nearest probes and the weight between them
-  const list = captured[wantTime] || active;
-  if (!list || !enabled) { PU.uProbeOn.value = 0; return; }
+  const list = captured[wantTime];   // only the cubes of this time of day: till they are shot, the sky as before
+  if (!list || !enabled) { PU.uProbeOn.value = 0; fadeList = null; return; }
+  if (list !== fadeList) { fadeList = list; fadeT = performance.now(); }   // the city fades into the mirror, not pops
   let i1 = 0, d1 = Infinity, i2 = 1 % list.length, d2 = Infinity;
   for (let k = 0; k < list.length; k++) { const dx = list[k].pos.x - cx, dz = list[k].pos.z - cz, d = dx * dx + dz * dz; if (d < d1) { i2 = i1; d2 = d1; i1 = k; d1 = d; } else if (d < d2) { i2 = k; d2 = d; } }
   const w1 = 1 / (d1 + 400), w2 = 1 / (d2 + 400);
   PU.uProbeA.value = list[i1].rt.texture; PU.uProbeB.value = list[i2].rt.texture;
   PU.uProbeMix.value = w2 / (w1 + w2);
-  PU.uProbeOn.value = 1 - sstep(700, 1400, Math.sqrt(d1));   // beyond the reach of the probes — the sky as before
+  PU.uProbeOn.value = (1 - sstep(700, 1400, Math.sqrt(d1))) * Math.min(1, (performance.now() - fadeT) / 600);   // beyond the reach of the probes — the sky as before
 }
 
-export { PU, captureProbes, probeQuality, probeTime, updateProbes };
+function probeState() { return { on: PU.uProbeOn.value, mix: PU.uProbeMix.value, wantTime, enabled, ready, busy, captured: captured.map(l => l || null) }; }   // for window.__city
+
+export { PU, captureProbes, probeQuality, probeState, probeTime, updateProbes };
