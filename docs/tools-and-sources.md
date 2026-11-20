@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Chatbox | chatbox/quiet-windows | Спокойные окна ночью: редкий плавный «телевизор» вместо резкого мерцания | src/render/materials.js |
 
 ## Автономный цикл улучшений
 
