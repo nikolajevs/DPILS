@@ -3,5 +3,6 @@ node_modules/
 dist/
 server/data/
 sketchfab.token
+mapillary.token
 loop-logs/
 LOOP-STOP
