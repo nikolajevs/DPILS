@@ -13,7 +13,9 @@ export const LEVELS = {
   hard: { react: 0.2, sigma: 0.004, turn: 10, burst: [4, 8], pause: 0.3, sight: 130, nades: 0.006, head: 0.1 },
 };
 const rnd = (a, b) => a + Math.random() * (b - a), gauss = () => { let s = 0; for (let i = 0; i < 4; i++) s += Math.random(); return (s - 2) * 1.7; };
-export const botName = i => NAMES[i % NAMES.length] + ' (бот)';
+// the server holds up to 64 players and the name list is shorter: past the first cycle a number keeps the names
+// unique ("Андрис 2 (бот)"), so addBot never loops forever looking for a free one
+export const botName = i => NAMES[i % NAMES.length] + (i < NAMES.length ? '' : ' ' + (1 + (i / NAMES.length | 0))) + ' (бот)';
 
 // g: the game's own tools: players, now(), world (freePath, ground, walkable), area { cx, cz, r }, bases, FFA, WEAPONS, R, shoot(p, w, rays, lagMs), throwNade(p, dir), spawn(p), roundOver()
 export function createBrain(g) {
