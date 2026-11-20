@@ -304,13 +304,13 @@ console.log('bullet drop (gravity, holdover, determinism):');
   const wall = A.last('shot').rays[0][3];
   ok(wall < 400, 'the fallen bullet meets the ground before 400 m', String(wall));
   clock += 1400;   // past the sniper's gapMs
-  const hold = bulletDrop(400, 820);
+  const hold = bulletDrop(400, 820, WEAPONS[2].drag);
   const b = fly(aim(0, 1.1 + hold, -400), 2, 600);
   ok(b && b.v === bid && near(b.d, 400, 1) && near(b.at[1], 1.1, 0.06), 'the holdover aim hits the chest at 400 m', JSON.stringify(b));
   const h = A.last('hit');
   ok(h && h.dmg === dmgAt(2, 400 - MUZZLE), 'the sniper body damage at 400 m: ~90 % left after the drag', JSON.stringify(h));
   clock += 1400;
-  const hb = fly(aim(0, 1.6 + bulletDrop(400, 820), -400), 2, 600);
+  const hb = fly(aim(0, 1.6 + bulletDrop(400, 820, WEAPONS[2].drag), -400), 2, 600);
   ok(hb && hb.zone === 1 && A.last('hit').kill, 'the head holdover at 400 m kills', JSON.stringify(hb));
   g.stop();
 }
@@ -324,7 +324,7 @@ console.log('bullet drop (gravity, holdover, determinism):');
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(B, { t: 'state', x: 0, y: 1.7, z: -130, yaw: 0, pitch: 0 });
-  const aimY = 1.7 - 0.56, dy2 = aimY - 1.7, d3 = Math.hypot(130, dy2), hold = bulletDrop(d3, 820);
+  const aimY = 1.7 - 0.56, dy2 = aimY - 1.7, d3 = Math.hypot(130, dy2), hold = bulletDrop(d3, 820, WEAPONS[2].drag);
   const pitch = Math.asin((dy2 + hold) / d3), cp = Math.cos(pitch);
   msg(A, { t: 'shoot', w: 2, rays: [[0, Math.sin(pitch), -cp]] });
   clock += 300; g.stepBullets();
@@ -350,7 +350,7 @@ console.log('bullet drop (gravity, holdover, determinism):');
     clock += 3000;
     msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
     msg(B, { t: 'state', x: 2, y: 1.7, z: -300, yaw: 0.4, pitch: 0 });
-    const ty = 1.2 + bulletDrop(300, 820), l = Math.hypot(2, ty - 1.7, 300);
+    const ty = 1.2 + bulletDrop(300, 820, WEAPONS[2].drag), l = Math.hypot(2, ty - 1.7, 300);
     msg(A, { t: 'shoot', w: 2, rays: [[2 / l, (ty - 1.7) / l, -300 / l]] });
     for (let i = 0; i < 12; i++) { clock += 50; g.stepBullets(); }   // the same 30 Hz-ish stepping both times
     const b = A.last('bhit'); g.stop(); return b && JSON.stringify(b);

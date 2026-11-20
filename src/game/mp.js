@@ -28,7 +28,8 @@ import { $, reduceMotion } from '../core/env.js';
 import { boomSound, crackSound, hitSound, loadSounds, nadeBounce, shotSound, stepSound } from './sfx.js';
 import { carAt, carPath } from '../world/car-hit.js';
 import { fxSamples, tracerShot, bindTracer, hitTracer, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke } from './impacts.js';
-import { WEAPONS as WSRV, bulletAt, bulletDrop } from '../../server/combat.mjs';   // the server's own ballistics: the muzzle velocities and the bullet's fall
+import { WEAPONS as WSRV, bulletAt, bulletDrop } from '../../server/combat.mjs';   // the server's own ballistics: the muzzle velocities, the drag and the bullet's fall
+import { makePhysics } from '../../server/physics.mjs';   // the server's own shot scan: the page predicts the punched walls by the same code
 
 /* ---------- online shooter: deathmatch on the city map ----------
    The server (server/index.mjs) owns health, kills and respawns. This module: the connection, the other players
@@ -77,18 +78,22 @@ const remotes = new Map();   // id → { name, group, buf: [{ t, x, y, z, yaw, p
 const DEFAULT_SERVER = '';   // e.g. 'wss://dpils-game.example.com'; empty: ?server=…, the saved address, or localhost
 
 /* ---------- geometry ---------- */
-// how far the shot flies before the ground or a roof line stops it; the scan starts at 0.3 m (a wall the shooter leans
-// on stops the shot too) and is bisected to ~3 mm (the same refinement impacts.js uses for the mark), so the tracer
-// stops at the wall, not up to 1.5 m inside it. The barrel stands MUZZLE along the ray: fire/otherShot start the tracer
-// there, and a wall nearer than the barrel rests the muzzle on it (a zero-length flight, the mark at the face).
-// v (m/s) bends the scan down by the bullet's gravity — the same arc the server flies (server/combat.mjs bulletDrop)
-function freePath(o, d, len, cars = false, v = 0) {   // cars: parked and standing cars stop it too (shots only; sight lines look over them)
-  const wall = wallPath(o, d, len, v);
-  return cars ? carPath(o, d, wall, v) : wall;
+// the server's shot scan over the page's own city data: fire() predicts the wall (and the walls punched through by the
+// weapon's budget) by exactly the code the server flies — the tracer and the hit agree on thin sheds and corner clips
+const cityPhys = makePhysics(buildingAt, terrainH);
+// how far the shot flies before the ground or a roof line stops it (sight lines, sound, the near-wall muzzle check);
+// the scan starts at 0.3 m (a wall the shooter leans on stops the shot too) and is bisected to ~3 mm (the same
+// refinement impacts.js uses for the mark), so the tracer stops at the wall, not up to 1.5 m inside it. The barrel
+// stands MUZZLE along the ray: fire/otherShot start the tracer there, and a wall nearer than the barrel rests the muzzle
+// on it (a zero-length flight, the mark at the face).
+// v (m/s) and k (drag) bend the scan down by the bullet's gravity — the same arc the server flies (combat.mjs bulletDrop)
+function freePath(o, d, len, cars = false, v = 0, k = 0) {   // cars: parked and standing cars stop it too (shots only; sight lines look over them)
+  const wall = wallPath(o, d, len, v, k);
+  return cars ? carPath(o, d, wall, v, k) : wall;
 }
-function wallPath(o, d, len, v) {
+function wallPath(o, d, len, v, k = 0) {
   const block = t => {
-    const x = o[0] + d[0] * t, y = o[1] + d[1] * t - (v ? bulletDrop(t, v) : 0), z = o[2] + d[2] * t, g = terrainH(x, z);
+    const x = o[0] + d[0] * t, y = o[1] + d[1] * t - (v ? bulletDrop(t, v, k) : 0), z = o[2] + d[2] * t, g = terrainH(x, z);
     if (y < g) return true;
     const b = buildingAt(x, z); return !!(b && y < g + (b.top || 12));
   };
@@ -217,14 +222,17 @@ function nameOf(id) { const b = MP.board.find(e => e.id === id); return b ? b.na
 const isMate = r => !MP.ffa && r.team === MP.team;   // in the free-for-all nobody is a teammate
 function teamOf(id) { const b = MP.board.find(e => e.id === id); return b ? b.team : 0; }
 // the body of a killed remote: its last snapshot, the speed it had, and the throw of the killing blow —
-// away from where the shot came (m.dx/dz of the server's kill), with a random spread so no two falls match
+// along the bullet's own tangent at the hit (m.bd of the server's kill), or along the blast's normal (−m.dx/dz);
+// the known directions keep a tight spread, only an unknown one scatters wide, so no two falls match
 function corpseOf(r, m) {
   const b = r.buf, c = { ...b[b.length - 1] }, p = b[b.length - 2] || c, dt = Math.max(0.03, (c.t - p.t) / 1000);
   c.vel = { x: (c.x - p.x) / dt, y: (c.y - p.y) / dt, z: (c.z - p.z) / dt };
-  let dx = -(m.dx || 0), dz = -(m.dz || 0);
+  let dx, dz, spread;
+  if (m.bd) { dx = m.bd[0]; dz = m.bd[2]; spread = 0.2; }   // the bullet's way: the body falls along it, into the struck zone
+  else { dx = -(m.dx || 0); dz = -(m.dz || 0); spread = m.w === 9 ? 0.24 : 1.1; }   // the blast's normal, almost exact
   if (Math.hypot(dx, dz) < 0.01) { const a = Math.random() * 6.283; dx = Math.sin(a); dz = Math.cos(a); }   // no direction known: any way
-  const a = Math.atan2(dx, dz) + (Math.random() - 0.5) * 1.1;
-  c.fall = { x: Math.sin(a), z: Math.cos(a), head: !!m.head, nade: m.w === 9, soft: m.w === 10, roll: (Math.random() - 0.5) * 0.5 };   // a fall crumples in place
+  const a = Math.atan2(dx, dz) + (Math.random() - 0.5) * spread;
+  c.fall = { x: Math.sin(a), z: Math.cos(a), y: m.bd ? m.bd[1] : 0, zone: m.zone == null ? (m.head ? 1 : 0) : m.zone, head: !!m.head, nade: m.w === 9, soft: m.w === 10, vf: m.vf == null ? 1 : m.vf, roll: (Math.random() - 0.5) * 0.5 };   // a fall crumples in place
   return c;
 }
 function pose(r, t) {
@@ -341,8 +349,8 @@ const SHOT_VOL = [0.55, 0.7, 0.75, 0.45, 0.55];
 // what a bullet hits, by the facade style of the cadastre (tools/process.js): wood, brick, plaster or metal
 const WALL_MAT = { 0: 'concrete', 1: 'stone', 2: 'stone', 3: 'concrete', 4: 'concrete', 5: 'wood', 6: 'metal', 12: 'metal', 13: 'metal', 14: 'concrete' };
 // a bullet stopped by a wall or the ground at distance len along d from o: the sound of the hit, if it is near enough to hear
-function wallHit(o, d, len, hear = 45, v = 0) {
-  const [x, y, z] = v ? bulletAt(o, d, len, v) : [o[0] + d[0] * len, o[1] + d[1] * len, o[2] + d[2] * len], s = spot(x, y, z);
+function wallHit(o, d, len, hear = 45, v = 0, k = 0) {
+  const [x, y, z] = v ? bulletAt(o, d, len, v, k) : [o[0] + d[0] * len, o[1] + d[1] * len, o[2] + d[2] * len], s = spot(x, y, z);
   if (s.d > hear) return;
   const car = !!carAt(x, y, z), ground = !car && y - terrainH(x, z) < 0.5;
   if (car) { try { hitSound(ac(), actx.master, 'metal', 0.8 * 4 / (4 + s.d) * (1 - s.d / hear), s.d, s.pan); } catch (e) {} return; }
@@ -361,17 +369,17 @@ function otherShot(m) {
   let heard = 0, crack = false;
   for (const r of m.rays) {
     // the server's length starts at the barrel; a zero length means the muzzle rested on a wall nearer than MUZZLE
-    const vel = (WSRV[m.w] || WSRV[0]).vel || 560;   // the muzzle velocity lives in the server's table (the page's copy above has no vel)
-    const mz = r[3] > 0 ? MUZZLE : Math.min(MUZZLE, wallPath(m.o, r, MUZZLE + 0.5, vel));
+    const vel = (WSRV[m.w] || WSRV[0]).vel || 560, drag = (WSRV[m.w] || WSRV[0]).drag || 0;   // the muzzle velocity and the drag live in the server's table (the page's copy above has neither)
+    const mz = r[3] > 0 ? MUZZLE : Math.min(MUZZLE, wallPath(m.o, r, MUZZLE + 0.5, vel, drag));
     const o = [m.o[0] + r[0] * mz, m.o[1] + r[1] * mz, m.o[2] + r[2] * mz];
-    const len = carPath(o, r, r[3], vel);   // the server does not know the cars: its bullet stops in one here too
+    const len = carPath(o, r, r[3], vel, drag);   // the server does not know the cars: its bullet stops in one here too
     const kind = mz + len < wf.range - 0.5 ? 'surface' : 'air';   // a body hit arrives as 'bhit' and cuts the tracer there
-    const cb = kind === 'surface' && heard < 2 ? (heard++, () => wallHit(o, r, len, 45, vel)) : null;   // of a shotgun's pellets, two are heard
+    const cb = kind === 'surface' && heard < 2 ? (heard++, () => wallHit(o, r, len, 45, vel, drag)) : null;   // of a shotgun's pellets, two are heard
     bindTracer(r[4], tracerShot(o, r, len, m.w, kind, 0xffb060, cb));
     if (crack || MP.dead) continue;
     const t = (P.x - m.o[0]) * r[0] + (P.y - m.o[1]) * r[1] + (P.z - m.o[2]) * r[2];   // the point of the bullet's path nearest to your head
     if (t < 6 || t > mz + len + 1) continue;
-    const cx = m.o[0] + r[0] * t, cy = m.o[1] + r[1] * t - bulletDrop(Math.max(0, t - mz), vel), cz = m.o[2] + r[2] * t, near = Math.hypot(cx - P.x, cy - P.y, cz - P.z);
+    const cx = m.o[0] + r[0] * t, cy = m.o[1] + r[1] * t - bulletDrop(Math.max(0, t - mz), vel, drag), cz = m.o[2] + r[2] * t, near = Math.hypot(cx - P.x, cy - P.y, cz - P.z);
     if (near < 2.5) { crack = true; try { crackSound(ac(), actx.master, 0.25 + 0.5 * (1 - near / 2.5), spot(cx, cy, cz).pan); } catch (e) {} }
   }
 }
@@ -395,11 +403,12 @@ function fire(now) {
   for (let i = 0; i < w.pellets; i++) {
     const sp = spreadNow(), ang = Math.random() * 6.283, rad = sp * Math.sqrt(Math.random());
     const d = aim(yaw0 + Math.cos(ang) * rad, pitch0 + Math.sin(ang) * rad);
-    const vel = WSRV[MP.weapon].vel || 560;
-    const wallEye = wallPath(eye, d, w.range, vel), { o, mz } = muzzleAt(eye, d, wallEye), clear = carPath(o, d, wallEye - mz, vel);   // the wall along the falling arc, as the server sees it
+    const vel = WSRV[MP.weapon].vel || 560, drag = WSRV[MP.weapon].drag || 0;
+    const wallEye = cityPhys.shotPath(eye, d, w.range, vel, drag, WSRV[MP.weapon].pen || 0).dist;   // the wall along the falling arc, thin walls punched by the budget — exactly as the server sees it
+    const { o, mz } = muzzleAt(eye, d, wallEye), clear = carPath(o, d, wallEye - mz, vel, drag);
     rays.push([+d[0].toFixed(4), +d[1].toFixed(4), +d[2].toFixed(4)]);   // the server judges the hit itself, when the bullet arrives
     const kind = mz + clear < w.range - 0.5 ? 'surface' : 'air';   // a body, if the bullet finds one, comes back as 'bhit'
-    mine.push(tracerShot(o, d, clear, MP.weapon, kind, 0xffe9a0, kind === 'surface' && i < 2 ? () => wallHit(o, d, clear, 45, vel) : null));   // the mark and the hit sound appear when the bullet arrives (of a shotgun's pellets, two are heard)
+    mine.push(tracerShot(o, d, clear, MP.weapon, kind, 0xffe9a0, kind === 'surface' && i < 2 ? () => wallHit(o, d, clear, 45, vel, drag) : null));   // the mark and the hit sound appear when the bullet arrives (of a shotgun's pellets, two are heard)
   }
   ownTracers = mine;
   P.pitch = Math.min(1.5, P.pitch + (w.pellets > 1 ? 0.02 : w.scope ? 0.03 : (w.kick ?? FEEL.kick))); P.yaw += (Math.random() - 0.5) * (w.pellets > 1 ? 0.006 : 0.0016); if (w.auto) MP.burst = Math.min(w.cap ?? 0.03, MP.burst + (w.burst ?? 0.0045));
@@ -630,7 +639,7 @@ function onMsg(m) {
       break;
     }
     case 'bhit': { const body = m.v && m.v !== MP.id; hitTracer(m.bid, m.d, body);
-      if (body) { const rv = remotes.get(m.v); if (rv) { rv.flinchT = performance.now(); rv.flinchZone = m.zone; const rs = remotes.get(m.by), bp = rs && rs.buf.length ? rs.buf[rs.buf.length - 1] : null; let dx = bp ? m.at[0] - bp.x : Math.random() - 0.5, dz = bp ? m.at[2] - bp.z : Math.random() - 0.5; const l = Math.hypot(dx, dz) || 1; rv.flinchDX = dx / l; rv.flinchDZ = dz / l; } }   // the victim flinches away from the bullet's path
+      if (body) { const rv = remotes.get(m.v); if (rv) { rv.flinchT = performance.now(); rv.flinchZone = m.zone; const rs = remotes.get(m.by), bp = rs && rs.buf.length ? rs.buf[rs.buf.length - 1] : null; let dx = m.bd ? m.bd[0] : (bp ? m.at[0] - bp.x : Math.random() - 0.5), dz = m.bd ? m.bd[2] : (bp ? m.at[2] - bp.z : Math.random() - 0.5); const l = Math.hypot(dx, dz) || 1; rv.flinchDX = dx / l; rv.flinchDZ = dz / l; } }   // the victim jolts along the bullet's own way (bd), not merely away from the shooter
       if (body && m.by !== MP.id) { const s = spot(m.at[0], m.at[1], m.at[2]); if (s.d < 40) try { hitSound(ac(), actx.master, 'body', 0.6 * 4 / (4 + s.d) * (1 - s.d / 40), s.d, s.pan); } catch (e) {} } break; }   // the bullet reached a body: cut the tracer, bleed there; a bystander hears the impact (the shooter gets 'hit')
     case 'hit': statEvent('hit', m, !!MP.local); hitT = performance.now(); if (m.kill) { tone(880, 880, 0.12, 0.25, 'triangle'); tone(1320, 1320, 0.25, 0.25, 'triangle', 0.1); } else tone(m.head ? 2600 : 1700, m.head ? 2200 : 1400, 0.07, 0.2, 'square'); { const r = remotes.get(m.id), g = r && r.group.visible ? r.group.position : null; if (g) { const s = spot(g.x, g.y + 1.2, g.z); try { hitSound(ac(), actx.master, m.head ? 'head' : 'body', 0.75 * 6 / (6 + s.d), s.d, s.pan); } catch (e) {} if (m.dmg > 0) dmgFloat(g.x, g.y + 1.9, g.z, String(m.dmg), m.head ? 'head' : m.kill ? 'kill' : ''); } } { const hm = el('mpHit'); hm.className = m.head ? 'head' : m.kill ? 'kill' : ''; hm.hidden = false; hm.style.animation = 'none'; void hm.offsetWidth; hm.style.animation = ''; hitDur = m.kill ? 260 : 180; } break;   // every hit pops the marker afresh, even in a long burst
     case 'hurt': {
@@ -641,9 +650,12 @@ function onMsg(m) {
         let real = false; try { real = hitSound(ac(), actx.master, 'body', 1); } catch (e) {} if (!real) tone(160, 60, 0.18, 0.4, 'sawtooth');
         el('mpHurtDir').hidden = false;
         const a = Math.atan2(-m.dx, -m.dz) - P.yaw; el('mpHurtDir').style.transform = 'rotate(' + (-a) + 'rad)';   // the side the shot came from
-        const s = Math.min(1.5, 0.3 + dmg / 35), rel = Math.atan2(Math.sin(a), Math.cos(a));   // the aim punch: up and away from the shooter's side, scaled by the damage
+        const s = Math.min(1.5, 0.3 + dmg / 35), rel = Math.atan2(Math.sin(a), Math.cos(a));   // the aim punch: up, scaled by the damage
         punch.p = Math.min(0.085, punch.p + 0.026 * s + Math.random() * 0.006);
-        punch.y = Math.max(-0.045, Math.min(0.045, punch.y - Math.sign(rel || Math.random() - 0.5) * 0.011 * s + (Math.random() - 0.5) * 0.008));
+        // the yaw kicks along the bullet's own vector (m.bd): the view turns the way the blow pushes; without bd — away from the shooter's side, as before
+        const ul = m.bd ? Math.hypot(m.bd[0], m.bd[2]) : 0;
+        const kick = ul > 0.05 ? (-m.bd[0] / ul * Math.cos(P.yaw) + m.bd[2] / ul * Math.sin(P.yaw)) * 0.03 : -Math.sign(rel || Math.random() - 0.5) * 0.011;
+        punch.y = Math.max(-0.045, Math.min(0.045, punch.y + kick * s + (Math.random() - 0.5) * 0.008));
         punch.r = Math.max(-0.025, Math.min(0.025, punch.r + (Math.random() - 0.5) * 0.02 * s));
         MP.kick = Math.max(MP.kick, 0.45 + 0.25 * s); hurtBloom = Math.min(26, hurtBloom + 7 * s);
       }
@@ -927,7 +939,7 @@ function scopeBdc(fov) {
   const pxPerRad = (window.innerHeight / 2) / Math.tan(fov * Math.PI / 360);
   const marks = el('mpScope').querySelectorAll('s.b1, s.b2, s.b3');
   [0.5, 0.75, 1].forEach((k, i) => {
-    const L = range * k, px = bulletDrop(L, vel) / L * pxPerRad;
+    const L = range * k, px = bulletDrop(L, vel, WSRV[w].drag || 0) / L * pxPerRad;
     marks[i].style.top = 'calc(50% + ' + px.toFixed(1) + 'px)';
     marks[i].dataset.m = String(Math.round(L));
   });

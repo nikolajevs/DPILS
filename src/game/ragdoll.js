@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { walkLift } from '../world/terrain.js';
+import { walkLift, terrainH } from '../world/terrain.js';
+import { buildingAt } from '../world/data.js';
 
 /* ---------- the ragdoll of a killed player ----------
    The death clip used to topple every body backwards the same way. Now the skeleton itself falls: the
@@ -9,7 +10,13 @@ import { walkLift } from '../world/terrain.js';
    the particles every frame, so the skin, the gun tied to the hand and the gear follow. All four
    characters share the Mixamo bone names (tools/character.mjs); 2B has one more spine bone, and her
    skirt hangs from the hips and rides along. makeRagdoll returns null when a bone is missing — the
-   caller keeps the death clip. The body settles and goes to sleep; mp.js hides it after three seconds. */
+   caller keeps the death clip. The body settles and goes to sleep; mp.js hides it after three seconds.
+   The houses are solid for the dead too: a particle inside an outline is pushed out through the nearest
+   edge (no corpse lying in the lobby of the Unity House), and one thrown onto a roof rests on it.
+   The blow itself: fall = { x, z, y, zone, head, nade, soft, vf } — the direction it came along (the
+   bullet's own tangent at the hit, or away from the blast), the zone it struck (1 head, 0 torso, 2 legs:
+   that chain takes the most, the rest fade through THROW_W), and vf, the speed fraction left in the
+   bullet — a spent bullet pushes less, but the ceiling stays: a real 4–5 N·s must not launch a body. */
 
 const H = 1 / 60, G = 9.81, DAMP = 0.996, ITER = 8;
 // the particles: 0 hips, 1 chest, 2 neck, 3 head, 4–6 left arm, 7–9 right arm, 10–12 left leg, 13–15 right leg
@@ -55,13 +62,17 @@ function makeRagdoll(inner, find, opts) {
   const fall = opts.fall || {};
   let fx = fall.x || 0, fz = fall.z || 0;
   if (!fx && !fz) { const a = Math.random() * 6.283; fx = Math.sin(a); fz = Math.cos(a); }
-  const pow = fall.soft ? 0.25 + Math.random() * 0.35 : fall.nade ? 4.5 + Math.random() * 2.5 : 2 + Math.random() * 1.4 + (fall.head ? 1.2 : 0);   // soft: a fall from height crumples in place
+  const zone = fall.zone == null ? (fall.head ? 1 : 0) : fall.zone, fy = fall.y || 0;
+  const vf = fall.vf == null ? 1 : Math.max(0, Math.min(1, fall.vf));   // the speed left in the bullet after drag and stone
+  const pow = fall.soft ? 0.25 + Math.random() * 0.35 : fall.nade ? 4.5 + Math.random() * 2.5 : (2 + Math.random() * 1.4 + (fall.head ? 1.2 : 0)) * (0.6 + 0.4 * vf);   // soft: a fall from height crumples in place
   const up = fall.nade ? 2.2 + Math.random() * 2 : fall.head ? 0.6 : 0.15;
   const vel = opts.vel || { x: 0, y: 0, z: 0 }, vl = Math.hypot(vel.x, vel.y, vel.z), vk = vl > 9 ? 9 / vl : 1;
   const P = [], O = [];
   for (let i = 0; i < 16; i++) {
-    const p = rest.get(boneOf[i]).clone(), w = THROW_W[i] * (fall.head && (i === 3 || i === 2) ? 1.7 : 1), j = i >= 4 ? 0.8 : 0.5;   // the limbs flail more than the core
-    const vx = vel.x * vk + fx * pow * w + (Math.random() - 0.5) * j, vy = vel.y * vk + up * w + (Math.random() - 0.5) * j * 0.5, vz = vel.z * vk + fz * pow * w + (Math.random() - 0.5) * j;
+    // the struck chain takes the blow, the rest fade through THROW_W: head/neck ×1.7, legs ×1.5 (the core 0.7), torso ×1.15;
+    // a blast or a soft fall shakes the whole body evenly, as before
+    const p = rest.get(boneOf[i]).clone(), w = THROW_W[i] * (fall.nade || fall.soft ? 1 : zone === 1 && (i === 2 || i === 3) ? 1.7 : zone === 2 ? (i >= 10 ? 1.5 : 0.7) : zone === 0 && (i === 0 || i === 1) ? 1.15 : 1), j = i >= 4 ? 0.8 : 0.5;   // the limbs flail more than the core
+    const vx = vel.x * vk + fx * pow * w + (Math.random() - 0.5) * j, vy = vel.y * vk + up * w + fy * pow * w * 0.5 + (Math.random() - 0.5) * j * 0.5, vz = vel.z * vk + fz * pow * w + (Math.random() - 0.5) * j;
     P.push(p); O.push(p.clone().addScaledVector(new THREE.Vector3(vx, vy, vz), -H));
   }
   const sticks = STICKS.map(([a, b]) => ({ a, b, r: P[a].distanceTo(P[b]) }));
@@ -108,6 +119,33 @@ function makeRagdoll(inner, find, opts) {
       }
     }
   }
+  // the houses: a particle inside an outline is pushed out through the nearest edge — the corpse must not lie in the
+  // lobby; above the roof line it rests on the roof instead (walkLift knows the ground, not the roofs). The wall kills
+  // the inward way and drags the slide, as the ground does.
+  function walls() {
+    for (let i = 0; i < 16; i++) {
+      const p = P[i], o = O[i], b = buildingAt(p.x, p.z);
+      if (!b) continue;
+      const roof = terrainH(p.x, p.z) + (b.top || 12);
+      if (p.y > roof - 0.4) {
+        const g = roof + RAD[i];
+        if (p.y < g) { p.y = g; o.x = p.x - (p.x - o.x) * 0.35; o.z = p.z - (p.z - o.z) * 0.35; o.y = p.y + (p.y - o.y) * 0.1; }
+        continue;
+      }
+      const r = b.ring; let qx = p.x, qz = p.z, bd = 1e18;
+      for (let k = 0, j = r.length - 2; k < r.length; j = k, k += 2) {
+        const ax = r[j], az = r[j + 1], ex = r[k] - ax, ez = r[k + 1] - az, L2 = ex * ex + ez * ez; if (L2 < 1e-9) continue;
+        const s = Math.max(0, Math.min(1, ((p.x - ax) * ex + (p.z - az) * ez) / L2)), px = ax + ex * s, pz = az + ez * s, dd = (px - p.x) * (px - p.x) + (pz - p.z) * (pz - p.z);
+        if (dd < bd) { bd = dd; qx = px; qz = pz; }
+      }
+      let nx = qx - p.x, nz = qz - p.z; const L = Math.hypot(nx, nz);
+      if (L > 1e-6) { nx /= L; nz /= L; } else { nx = 0; nz = 1; }
+      p.x = qx + nx * (RAD[i] + 0.02); p.z = qz + nz * (RAD[i] + 0.02);
+      const vx = p.x - o.x, vz = p.z - o.z, vn = vx * nx + vz * nz;
+      const tx = vx - vn * nx, tz = vz - vn * nz, rn = Math.max(0, vn) * 0.2;
+      o.x = p.x - (tx * 0.6 + rn * nx); o.z = p.z - (tz * 0.6 + rn * nz);
+    }
+  }
   function step() {
     for (let i = 0; i < 16; i++) {
       const p = P[i], o = O[i];
@@ -116,9 +154,9 @@ function makeRagdoll(inner, find, opts) {
     for (let it = 0; it < ITER; it++) {
       for (const s of sticks) relax(s.a, s.b, s.r, 1);
       for (const l of limits) { const d = P[l.a].distanceTo(P[l.b]); if (d < l.mn) relax(l.a, l.b, l.mn, 0.9); else if (d > l.mx) relax(l.a, l.b, l.mx, 0.9); }
-      if (it % 2 === 1) ground();
+      if (it % 2 === 1) { ground(); walls(); }
     }
-    ground();
+    ground(); walls();
     life += H;
     let mx = 0; for (let i = 0; i < 16; i++) mx = Math.max(mx, P[i].distanceToSquared(O[i]));
     quiet = mx < 2e-6 ? quiet + 1 : 0;   // everything under ~0.09 m/s for half a second: the body has settled
