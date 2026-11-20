@@ -136,6 +136,7 @@ function roofMaterial() {
   });
   m.extensions = { derivatives: true }; return m;
 }
+const SSR_ON = { value: 0 };   // 1 while the screen-space mirror runs (src/render/post.js): the painted sheen steps back
 const RELIEF = 0.05;   // depth of the ground relief in metres at colour amount 1
 /* The low octave of the detail also drives the roughness: asphalt gets damp patches that catch the sky and the lamps
    (and darken a little, as wet stone does), paving a faint sheen; the grain itself varies the roughness slightly. */
@@ -143,11 +144,11 @@ const GROUND_WET = { asph: 0.5, pave: 0.15 };
 function groundMaterial(tex, scale, amt, key, extra = '') {   // extra: GLSL that may change diffuseColor at the world point vWxz
   const wet = GROUND_WET[key] || 0;
   return std({ vertexColors: true, roughness: 0.96, metalness: 0, depthWrite: false }, 'ground-' + key, s => {
-    s.uniforms.uDetail = { value: tex }; s.uniforms.uNight = U.night;
+    s.uniforms.uDetail = { value: tex }; s.uniforms.uNight = U.night; s.uniforms.uSsr = SSR_ON;
     s.vertexShader = 'varying vec2 vWxz; varying float vGy;\n' + s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvWxz = (modelMatrix * vec4(transformed, 1.0)).xz; vGy = (modelMatrix * vec4(transformed, 1.0)).y + terrainH(vWxz);')
       .replace('#include <beginnormal_vertex>', `vec2 tW = (modelMatrix * vec4(position, 1.0)).xz;   // ground lies flat in its geometry: its normal is that of the terrain
         vec3 objectNormal = normalize(vec3(terrainH(tW - vec2(6.0, 0.0)) - terrainH(tW + vec2(6.0, 0.0)), 12.0, terrainH(tW - vec2(0.0, 6.0)) - terrainH(tW + vec2(0.0, 6.0))));`);
-    s.fragmentShader = 'uniform sampler2D uDetail; uniform float uNight; varying vec2 vWxz; varying float vGy;\n' + SAMPLE_GLSL +
+    s.fragmentShader = 'uniform sampler2D uDetail; uniform float uNight; uniform float uSsr; varying vec2 vWxz; varying float vGy;\n' + SAMPLE_GLSL +
       `float gnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
         return mix(mix(h12(i), h12(i + vec2(1.0, 0.0)), f.x), mix(h12(i + vec2(0.0, 1.0)), h12(i + vec2(1.0, 1.0)), f.x), f.y); }\n` +
       s.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
@@ -157,7 +158,9 @@ function groundMaterial(tex, scale, amt, key, extra = '') {   // extra: GLSL tha
       diffuseColor.rgb *= mix(1.0, dt, ${amt.toFixed(3)}) * mix(1.0, dt2, ${(amt * 0.6).toFixed(3)}) * (1.0 - 0.3 * wetP);${extra}`)
       .replace('#include <roughnessmap_fragment>', `float roughnessFactor = roughness * (0.9 + 0.1 * dt); roughnessFactor = mix(roughnessFactor, 0.28, wetP);`)
       .replace('#include <emissivemap_fragment>', wet > 0 ? `#include <emissivemap_fragment>
-      {   // the wet patch mirrors the lamps and the evening sky as a sheen stretched along the view: one term, no SSR.
+      {   // the wet patch mirrors the lamps and the evening sky as a sheen stretched along the view. Where the SSR
+          // mirror runs (src/render/post.js) it carries the near field — the real lamps and facades — and this painted
+          // term keeps only a quarter of itself for the far grazing glow the ray no longer reaches.
           // The noise runs across the view azimuth (soft bands several metres wide, long along it), broken by a slower
           // noise into lamp-like streaks; it lives only at a grazing look. The bands converge to the vanishing point and
           // alias into a vertical comb far off: the sheen fades with the pixel footprint of the band coordinate and dies
@@ -170,7 +173,7 @@ function groundMaterial(tex, scale, amt, key, extra = '') {   // extra: GLSL tha
           * (0.35 + 0.65 * gnoise(vec2(across * 0.04 + 7.3, along * 0.008)));   // broken into lamp-like streaks, not corduroy
         float aa = 1.0 - smoothstep(0.02, 0.08, fwidth(across) * 0.12);   // bands thinner than a pixel dissolve instead of combing
         float far = 1.0 - smoothstep(60.0, 160.0, length(vViewPosition));
-        totalEmissiveRadiance += wetP * uNight * graz * st * aa * far * (vec3(1.0, 0.72, 0.4) * 0.32 + uFogGlow * 0.12);
+        totalEmissiveRadiance += wetP * uNight * graz * st * aa * far * (1.0 - 0.75 * uSsr) * (vec3(1.0, 0.72, 0.4) * 0.32 + uFogGlow * 0.12);
       }` : '#include <emissivemap_fragment>')
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
       #if ${amt > 0 ? 1 : 0}
@@ -187,4 +190,4 @@ function groundMaterial(tex, scale, amt, key, extra = '') {   // extra: GLSL tha
   });
 }
 
-export { SAMPLE_GLSL, allMats, facadeMaterial, groundMaterial, roofMaterial, std };
+export { SAMPLE_GLSL, SSR_ON, allMats, facadeMaterial, groundMaterial, roofMaterial, std };

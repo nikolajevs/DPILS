@@ -7,7 +7,9 @@ import { treeTiles } from '../world/trees.js';
 import { tiles } from '../buildings/walls.js';
 import { terrainH } from '../world/terrain.js';
 import { LIGHTDIR, POST, U, camera, renderer, scene, sun } from './renderer.js';
-import { updateProbes } from './cityprobe.js';
+import { PU, updateProbes } from './cityprobe.js';
+import { SSR_ON } from './materials.js';
+import { waterSsr } from '../world/water.js';
 import { TILE, TTILE, reduceMotion } from '../core/env.js';
 
 /* ---------- HDR post-processing: ambient occlusion from depth, bloom, tone mapping ---------- */
@@ -18,7 +20,7 @@ vec3 posAt(vec2 uv) { float z = zAt(uv); return vec3((uv * 2.0 - 1.0) * uProj.zw
 // Scalable ambient obscurance (McGuire et al.): a spiral of depth taps around the pixel, normal rebuilt from depth
 const AO_FRAG = `${DEPTH_GLSL}
 uniform vec2 uPx; uniform float uAoRes; varying vec2 vUv;
-#define NS 10
+#define NS 12
 float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
 void main() {
   if (textureLod(tDepth, vUv, 0.0).x >= 0.999999) { gl_FragColor = vec4(1.0, 1e5, 1.0, 1.0); return; }
@@ -26,7 +28,7 @@ void main() {
   vec3 l = posAt(vUv - vec2(uPx.x, 0.0)), r = posAt(vUv + vec2(uPx.x, 0.0)), dn = posAt(vUv - vec2(0.0, uPx.y)), up = posAt(vUv + vec2(0.0, uPx.y));
   vec3 dx = abs(l.z - P.z) < abs(r.z - P.z) ? P - l : r - P, dy = abs(dn.z - P.z) < abs(up.z - P.z) ? P - dn : up - P;
   vec3 cn = cross(dy, dx); float cl = length(cn); vec3 n = cl > 1e-12 ? cn / cl : vec3(0.0, 0.0, -1.0);
-  float R = clamp(P.z * 0.03, 0.8, 14.0), rPix = min(R / (P.z * uProj.w) * 0.5 * uAoRes, 0.12 * uAoRes), ao = 1.0;
+  float R = clamp(P.z * 0.10, 1.5, 18.0), rPix = min(R / (P.z * uProj.w) * 0.5 * uAoRes, 0.14 * uAoRes), ao = 1.0;
   if (rPix > 1.5) {
     float phi = ign(gl_FragCoord.xy) * 6.2831853, sum = 0.0;
     for (int i = 0; i < NS; i++) {
@@ -38,6 +40,22 @@ void main() {
     ao = max(0.0, 1.0 - sum * 5.0 / (float(NS) * R * R * R * R * R * R));
   }
   if (isnan(ao) || isinf(ao) || !(ao >= 0.0)) ao = 1.0;   // recessed windows can leave a degenerate depth stencil
+  // the middle scale (3 m): courtyards enclosed by walls, porches and canopies over the pavement — occluders too big
+  // for the contact spiral and too near for the large one, which reaches whole buildings at a distance
+  float aoM = 1.0, Rm = 3.0;
+  float rPixM = min(Rm / (P.z * uProj.w) * 0.5 * uAoRes, 0.10 * uAoRes);
+  if (rPixM > 1.0) {
+    float phiM = ign(gl_FragCoord.xy + 31.0) * 6.2831853, sumM = 0.0;
+    for (int i = 0; i < 8; i++) {
+      float a = (float(i) + 0.5) / 8.0, ang = float(i) * 2.3999632 + phiM;
+      vec3 v = posAt(vUv + vec2(cos(ang), sin(ang)) * (sqrt(a) * rPixM) * uPx * 2.0) - P;
+      float vv = dot(v, v), f = max(Rm * Rm - vv, 0.0);
+      sumM += f * f * f * max((dot(v, n) - 0.003 * P.z - 0.01) / (vv + 0.01), 0.0);
+    }
+    aoM = max(0.0, 1.0 - sumM * 5.5 / (8.0 * Rm * Rm * Rm * Rm * Rm * Rm));
+    if (isnan(aoM) || isinf(aoM) || !(aoM >= 0.0)) aoM = 1.0;
+  }
+  ao *= 0.25 + 0.75 * aoM;
   // contact shadows: a second, tight spiral (35 cm) that darkens the seams where geometry meets — wall bases, curbs,
   // props on the ground. The cascaded sun map cannot resolve such small occluders, so this carries the contact detail.
   float contact = 1.0, Rc = 0.35;
@@ -55,6 +73,95 @@ void main() {
   }
   gl_FragColor = vec4(ao, P.z, contact, 1.0);
 }`;
+/* Screen-space reflections for the wet ground and the water. No extra geometry pass: the mask is rebuilt from the
+   depth buffer alone — a flat normal near the terrain is street or square, the shore field says where water stands.
+   The wet patches are the very noise of the ground shader (src/render/materials.js), the ripples the very normal map
+   of the water (src/world/water.js), so the mirror agrees with what the surface already shows. The ray marches the
+   depth of the scene (28 growing steps, 5 of bisection); where it finds geometry, its colour replaces what the
+   surface mirrored before: on water the static city cube gives way to the true buildings (the delta keeps the probe
+   as the fallback where the ray leaves the screen), on asphalt the reflection is added over the sky sheen. Half the
+   resolution, faded at the screen edge and with the ray's distance; «низкая»/«минимум» skip it (QUALITY.ssr). */
+const SSR_FRAG = `${DEPTH_GLSL}
+#include <common>
+uniform sampler2D tScene; uniform sampler2D uShore; uniform sampler2D uNormal;
+uniform vec4 uShoreA; uniform vec2 uPx; uniform vec2 uSsrPx; uniform float uTime;
+uniform samplerCube uProbeA; uniform samplerCube uProbeB; uniform float uProbeMix; uniform float uProbeOn;
+varying vec2 vUv;
+float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
+float h12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+float gnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h12(i), h12(i + vec2(1.0, 0.0)), f.x), mix(h12(i + vec2(0.0, 1.0)), h12(i + vec2(1.0, 1.0)), f.x), f.y); }
+vec3 viewN(vec3 P) {
+  vec3 l = posAt(vUv - vec2(uPx.x, 0.0)), r = posAt(vUv + vec2(uPx.x, 0.0)), dn = posAt(vUv - vec2(0.0, uPx.y)), up = posAt(vUv + vec2(0.0, uPx.y));
+  vec3 dx = abs(l.z - P.z) < abs(r.z - P.z) ? P - l : r - P, dy = abs(dn.z - P.z) < abs(up.z - P.z) ? P - dn : up - P;
+  vec3 cn = cross(dy, dx); float cl = length(cn); return cl > 1e-12 ? cn / cl : vec3(0.0, 0.0, -1.0);
+}
+vec3 march(vec3 P, vec3 R, float maxD, float blur, out float conf) {
+  conf = 0.0;
+  float t = 0.4 + ign(gl_FragCoord.xy) * 0.4, prev = 0.0;
+  vec2 uv = vUv; bool hit = false;
+  for (int i = 0; i < 28; i++) {
+    vec3 Q = P + R * t;
+    if (Q.z <= 0.05) break;
+    uv = Q.xy / (Q.z * uProj.zw) * 0.5 + 0.5;
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) break;
+    if (textureLod(tDepth, uv, 0.0).x >= 0.999999) break;   // the sky: nothing to mirror
+    float dz = Q.z - zAt(uv);
+    if (dz > 0.02 + t * 0.002 && dz < max(0.5, t * 0.06)) {   // behind the surface, but not through it
+      float lo = prev, hi = t;
+      for (int k = 0; k < 5; k++) {
+        float m = (lo + hi) * 0.5; vec3 Qm = P + R * m;
+        vec2 um = Qm.xy / (Qm.z * uProj.zw) * 0.5 + 0.5;
+        if (Qm.z - zAt(um) > 0.0) hi = m; else lo = m;
+      }
+      t = hi; hit = true; break;
+    }
+    prev = t; t += max(0.4, t * 0.10);
+    if (t > maxD) break;
+  }
+  if (!hit) return vec3(0.0);
+  vec3 Q = P + R * t; uv = Q.xy / (Q.z * uProj.zw) * 0.5 + 0.5;
+  float edge = smoothstep(0.0, 0.10, uv.x) * smoothstep(1.0, 0.90, uv.x) * smoothstep(0.0, 0.10, uv.y) * smoothstep(1.0, 0.90, uv.y);
+  conf = edge * (1.0 - smoothstep(maxD * 0.55, maxD, t));
+  vec2 e = uSsrPx * blur * (1.0 + t * 0.012);   // the wet asphalt is rougher than water: a wider tap, wider still far off
+  return textureLod(tScene, uv, 0.0).rgb * 0.4
+    + (textureLod(tScene, uv + vec2(e.x, 0.0), 0.0).rgb + textureLod(tScene, uv - vec2(e.x, 0.0), 0.0).rgb
+    + textureLod(tScene, uv + vec2(0.0, e.y), 0.0).rgb + textureLod(tScene, uv - vec2(0.0, e.y), 0.0).rgb) * 0.15;
+}
+void main() {
+  gl_FragColor = vec4(0.0, 0.0, 0.0, 1e5);
+  if (textureLod(tDepth, vUv, 0.0).x >= 0.999999) return;
+  vec3 P = posAt(vUv);
+  vec3 n = viewN(P);
+  vec3 nw = normalize(vec3(n.x, n.y, -n.z) * mat3(viewMatrix));
+  if (nw.y < 0.6) return;   // mirrors lie flat: streets, squares, water — not walls, roofs or cars
+  vec3 w = cameraPosition + vec3(P.x, P.y, -P.z) * mat3(viewMatrix);
+  float th = terrainH(w.xz);
+  float shore = texture2D(uShore, (w.xz - uShoreA.xy) * uShoreA.zw).r;
+  vec3 Vw = normalize(cameraPosition - w);
+  vec3 col = vec3(0.0); float conf = 0.0;
+  if (shore > 0.02 && w.y - th < 1.2) {   // water (the depth under it is the bed, a hand's breadth below the surface)
+    vec3 n1 = texture2D(uNormal, w.xz / 34.0 + uTime * vec2(0.010, 0.006)).xyz * 2.0 - 1.0;
+    vec3 n2 = texture2D(uNormal, w.xz / 13.0 + uTime * vec2(-0.012, 0.018)).xyz * 2.0 - 1.0;
+    vec3 wn = normalize(vec3(n1.x + n2.x, n1.z * n2.z, n1.y + n2.y));   // the map's z up, as in the water shader
+    wn = normalize(mix(wn, vec3(0.0, 1.0, 0.0), smoothstep(150.0, 1500.0, length(P)) * 0.75));
+    vec3 Rw = reflect(-Vw, wn);
+    if (Rw.y < 0.03) return;   // a steep ripple would mirror the bed, not the city
+    float F = 0.05 + 0.95 * pow(1.0 - max(dot(wn, Vw), 0.0), 4.0);
+    vec3 nv = mat3(viewMatrix) * wn;
+    vec3 hit = march(P, reflect(normalize(P), normalize(vec3(nv.x, nv.y, -nv.z))), 420.0, 0.8, conf);
+    vec3 Rp = normalize(vec3(Rw.x, max(Rw.y, 0.02), Rw.z));
+    vec3 pc = mix(textureCube(uProbeA, Rp).rgb, textureCube(uProbeB, Rp).rgb, uProbeMix) * uProbeOn;
+    col = F * conf * (hit - pc);   // the cube keeps the mirror where the ray found nothing
+  } else if (w.y - th < 2.2) {   // wet ground: the same patches the ground shader darkens and smooths
+    float wetP = smoothstep(0.62, 0.82, gnoise(w.xz * 0.045) * 0.65 + gnoise(w.xz * 0.16) * 0.35) * 0.5;
+    if (wetP < 0.01) return;
+    float F = 0.04 + 0.96 * pow(1.0 - max(dot(nw, Vw), 0.0), 5.0);
+    vec3 hit = march(P, reflect(normalize(P), n), 160.0, 1.0, conf);
+    col = F * conf * hit * (0.2 + 2.8 * wetP);   // the core of a patch mirrors like a puddle, its rim only hints
+  }
+  gl_FragColor = vec4(col, P.z);
+}`;
 const BRIGHT_FRAG = `uniform sampler2D tSrc; uniform vec2 uPx; uniform float uThresh; uniform float uExposure; varying vec2 vUv;
 void main() {
   vec3 s = vec3(0.0); float w = 0.0;
@@ -68,8 +175,8 @@ void main() {
 const DOWN_FRAG = `uniform sampler2D tSrc; uniform vec2 uPx; varying vec2 vUv;
 void main() { gl_FragColor = vec4((texture2D(tSrc, vUv + uPx * vec2(-1.0, -1.0)).rgb + texture2D(tSrc, vUv + uPx * vec2(1.0, -1.0)).rgb + texture2D(tSrc, vUv + uPx * vec2(-1.0, 1.0)).rgb + texture2D(tSrc, vUv + uPx).rgb) * 0.25, 1.0); }`;
 const FINAL_FRAG = `${DEPTH_GLSL}
-uniform sampler2D tScene; uniform sampler2D tAO; uniform sampler2D tB1; uniform sampler2D tB2; uniform sampler2D tB3;
-uniform vec2 uAoPx; uniform float uExposure; uniform float uBloom; uniform float uAo; uniform float uContact; uniform float uSeed;
+uniform sampler2D tScene; uniform sampler2D tAO; uniform sampler2D tSSR; uniform sampler2D tB1; uniform sampler2D tB2; uniform sampler2D tB3;
+uniform vec2 uAoPx; uniform vec2 uSsrPx; uniform float uExposure; uniform float uBloom; uniform float uAo; uniform float uContact; uniform float uSsr; uniform float uSeed;
 uniform vec2 uSunUv; uniform float uRayI; uniform vec3 uRayC;
 varying vec2 vUv;
 vec3 fit(vec3 v) { vec3 a = v * (v + 0.0245786) - 0.000090537; vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081; return a / b; }
@@ -91,6 +198,15 @@ void main() {
     a = mix(a, 1.0, clamp(dot(col, vec3(0.2126, 0.7152, 0.0722)) * 0.4, 0.0, 0.65));   // sunlit surfaces keep most of their brightness
     col *= mix(1.0, a, uAo * (1.0 - smoothstep(1500.0, 3000.0, z)));
     col *= mix(1.0, c, uContact * (1.0 - smoothstep(40.0, 140.0, z)));   // contact seams fade out before they alias
+  }
+  if (uSsr > 0.0 && textureLod(tDepth, vUv, 0.0).x < 0.999999) {   // the mirror, upsampled by depth like the AO
+    float z = zAt(vUv); vec3 s = vec3(0.0); float w = 0.0;
+    for (int j = 0; j < 2; j++) for (int i = 0; i < 2; i++) {
+      vec4 t = textureLod(tSSR, vUv + (vec2(float(i), float(j)) - 0.5) * uSsrPx, 0.0);
+      float k = max(0.0, 1.0 - abs(t.a - z) / (0.05 * z + 0.03)) + 1e-3;
+      s += t.rgb * k; w += k;
+    }
+    col += s / w;
   }
   if (uBloom > 0.0) col += (texture2D(tB1, vUv).rgb * 0.45 + texture2D(tB2, vUv).rgb * 0.33 + texture2D(tB3, vUv).rgb * 0.22) * uBloom;
   if (uRayI > 0.001) {   // volumetric sun rays: march the depth from the pixel towards the sun on screen, sky texels glow
@@ -115,25 +231,26 @@ const fsMat = (frag, uniforms) => new THREE.ShaderMaterial({ vertexShader: FS_VE
 const PROJ = new THREE.Vector4(), PXV = new THREE.Vector2();
 // scale: the share of the drawing buffer the scene is drawn at (set by the frame rate, see src/game/perf.js); the
 // last pass draws it up to the full canvas
-const PP = { rt: null, ao: null, bl: [], w: 0, h: 0, msaa: -1, scale: 1 };
-let matAO, matBright, matDown, matFinal;
+const PP = { rt: null, ao: null, ssr: null, bl: [], w: 0, h: 0, msaa: -1, scale: 1 };
+let matAO, matSSR, matBright, matDown, matFinal;
 if (POST) {
   const t = () => ({ value: null }), v2 = () => ({ value: new THREE.Vector2() });
   matAO = fsMat(AO_FRAG, { tDepth: t(), uProj: { value: PROJ }, uPx: v2(), uAoRes: { value: 1 } });
+  matSSR = fsMat(SSR_FRAG, Object.assign({ tDepth: t(), tScene: t(), uProj: { value: PROJ }, uPx: v2(), uSsrPx: v2(), uShore: t(), uShoreA: { value: new THREE.Vector4() }, uNormal: t(), uTime: U.time }, PU));
   matBright = fsMat(BRIGHT_FRAG, { tSrc: t(), uPx: v2(), uThresh: { value: 2 }, uExposure: { value: 1 } });
   matDown = fsMat(DOWN_FRAG, { tSrc: t(), uPx: v2() });
-  matFinal = fsMat(FINAL_FRAG, { tDepth: t(), uProj: { value: PROJ }, tScene: t(), tAO: t(), tB1: t(), tB2: t(), tB3: t(), uAoPx: v2(), uExposure: { value: 1 }, uBloom: { value: 0 }, uAo: { value: 0 }, uContact: { value: 0 }, uSeed: { value: 0 }, uSunUv: v2(), uRayI: { value: 0 }, uRayC: { value: new THREE.Vector3(1, 0.7, 0.4) } });
+  matFinal = fsMat(FINAL_FRAG, { tDepth: t(), uProj: { value: PROJ }, tScene: t(), tAO: t(), tSSR: t(), tB1: t(), tB2: t(), tB3: t(), uAoPx: v2(), uSsrPx: v2(), uExposure: { value: 1 }, uBloom: { value: 0 }, uAo: { value: 0 }, uContact: { value: 0 }, uSsr: { value: 0 }, uSeed: { value: 0 }, uSunUv: v2(), uRayI: { value: 0 }, uRayC: { value: new THREE.Vector3(1, 0.7, 0.4) } });
 }
 function ppTargets(w, h, msaa) {
   w = Math.max(1, Math.round(w * PP.scale)); h = Math.max(1, Math.round(h * PP.scale));
   if (PP.rt && PP.w === w && PP.h === h && PP.msaa === msaa) return;
-  for (const t of [PP.rt, PP.ao, ...PP.bl]) if (t) t.dispose();
+  for (const t of [PP.rt, PP.ao, PP.ssr, ...PP.bl]) if (t) t.dispose();
   PP.w = w; PP.h = h; PP.msaa = msaa;
   const o = { type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, stencilBuffer: false };
   PP.rt = new THREE.WebGLRenderTarget(w, h, Object.assign({ samples: Math.max(0, msaa) }, o));
   PP.rt.depthTexture = new THREE.DepthTexture(w, h, THREE.UnsignedIntType);
   const small = k => new THREE.WebGLRenderTarget(Math.max(1, w >> k), Math.max(1, h >> k), Object.assign({ depthBuffer: false }, o));
-  PP.ao = small(1); PP.bl = [1, 2, 3, 4].map(small);
+  PP.ao = small(1); PP.ssr = small(1); PP.bl = [1, 2, 3, 4].map(small);
 }
 function fsPass(mat, target) { fsQuad.material = mat; renderer.setRenderTarget(target); renderer.render(fsScene, fsCam); }
 function renderFrame() {
@@ -145,13 +262,25 @@ function renderFrame() {
   renderer.setRenderTarget(PP.rt); renderer.render(scene, camera);
   const th = Math.tan(camera.fov * Math.PI / 360); PROJ.set(camera.near, camera.far, th * camera.aspect, th);
   if (q.ao) { const u = matAO.uniforms; u.tDepth.value = PP.rt.depthTexture; u.uPx.value.set(1 / PP.w, 1 / PP.h); u.uAoRes.value = PP.ao.height; fsPass(matAO, PP.ao); }
+  let ssrOn = false;
+  if (q.ssr) {
+    const wu = waterSsr();   // the shore field and the ripple map appear while the city is built; till then, no mirror
+    if (wu.shoreTex && wu.normal && wu.normal.value) {
+      const u = matSSR.uniforms;
+      u.tDepth.value = PP.rt.depthTexture; u.tScene.value = PP.rt.texture;
+      u.uPx.value.set(1 / PP.w, 1 / PP.h); u.uSsrPx.value.set(1 / PP.ssr.width, 1 / PP.ssr.height);
+      u.uShore.value = wu.shoreTex; u.uShoreA.value.copy(wu.shoreA); u.uNormal.value = wu.normal.value;
+      fsPass(matSSR, PP.ssr); ssrOn = true;
+    }
+  }
+  SSR_ON.value = ssrOn ? 1 : 0;   // the ground sheen steps back where the true mirror runs
   if (q.bloom) {
     let u = matBright.uniforms; u.tSrc.value = PP.rt.texture; u.uPx.value.set(1 / PP.w, 1 / PP.h); u.uThresh.value = T.thresh; u.uExposure.value = T.exp; fsPass(matBright, PP.bl[0]);
     u = matDown.uniforms; for (let k = 1; k < 4; k++) { u.tSrc.value = PP.bl[k - 1].texture; u.uPx.value.set(1 / PP.bl[k - 1].width, 1 / PP.bl[k - 1].height); fsPass(matDown, PP.bl[k]); }
   }
   const u = matFinal.uniforms;
-  u.tScene.value = PP.rt.texture; u.tDepth.value = PP.rt.depthTexture; u.tAO.value = PP.ao.texture; u.tB1.value = PP.bl[1].texture; u.tB2.value = PP.bl[2].texture; u.tB3.value = PP.bl[3].texture;
-  u.uAoPx.value.set(1 / PP.ao.width, 1 / PP.ao.height); u.uExposure.value = T.exp; u.uBloom.value = q.bloom ? T.bloom : 0; u.uAo.value = q.ao ? 0.85 : 0; u.uContact.value = q.ao ? 0.9 : 0; u.uSeed.value = reduceMotion ? 0 : (clock * 60 % 64);
+  u.tScene.value = PP.rt.texture; u.tDepth.value = PP.rt.depthTexture; u.tAO.value = PP.ao.texture; u.tSSR.value = PP.ssr.texture; u.tB1.value = PP.bl[1].texture; u.tB2.value = PP.bl[2].texture; u.tB3.value = PP.bl[3].texture;
+  u.uAoPx.value.set(1 / PP.ao.width, 1 / PP.ao.height); u.uSsrPx.value.set(1 / PP.ssr.width, 1 / PP.ssr.height); u.uExposure.value = T.exp; u.uBloom.value = q.bloom ? T.bloom : 0; u.uAo.value = q.ao ? 0.85 : 0; u.uContact.value = q.ao ? 0.9 : 0; u.uSsr.value = ssrOn ? 1 : 0; u.uSeed.value = reduceMotion ? 0 : (clock * 60 % 64);
   // the sun (the moon at night) on screen: rays only while it is in front of the camera, near the frame
   SUNV.copy(camera.position).addScaledVector(LIGHTDIR, 3000).project(camera);
   const fwd = LIGHTDIR.dot(camera.getWorldDirection(RAYF));
@@ -182,7 +311,7 @@ async function warmUp(report, nextFrame) {
   // the passes after the scene, each into the kind of target it draws into (the output encoding is part of a program),
   // one a frame
   if (POST) { target(); renderer.setRenderTarget(null);
-    for (const [m, t] of [[matAO, PP.ao], [matBright, PP.bl[0]], [matDown, PP.bl[1]], [matFinal, null]]) { fsQuad.material = m; renderer.setRenderTarget(t); renderer.compile(fsScene, fsCam); renderer.setRenderTarget(null); await nextFrame(); } }
+    for (const [m, t] of [[matAO, PP.ao], [matSSR, PP.ssr], [matBright, PP.bl[0]], [matDown, PP.bl[1]], [matFinal, null]]) { fsQuad.material = m; renderer.setRenderTarget(t); renderer.compile(fsScene, fsCam); renderer.setRenderTarget(null); await nextFrame(); } }
 }
 const SUNV = new THREE.Vector3(), RAYF = new THREE.Vector3();
 /* The sun shadow is redrawn only when a coarse cell of the camera state changes: the cascades snap their centres to
