@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Chatbox | chatbox/saules-junction-detail | Перекрёсток Vienības iela × Rīgas iela у Дома Единства: балластное трамвайное полотно, аллея, углы и переходы по фото Mapillary | src/world/streets.js, src/landmarks/unity-square.js, src/world/tram-wires.js |
 
 ## Автономный цикл улучшений
 
