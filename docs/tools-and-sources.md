@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/evening-light | Вечер: окна колоннами и этажами, ореол bloom у ярких окон, блики фонарей на мокром асфальте; затем город в отражениях (кубмапы) | src/render/materials.js, src/render/lighting.js, src/world/water.js, src/render/cityprobe.js |
 
 ## Автономный цикл улучшений
 
