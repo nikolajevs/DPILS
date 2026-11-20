@@ -7,6 +7,7 @@ import { treeTiles } from '../world/trees.js';
 import { tiles } from '../buildings/walls.js';
 import { terrainH } from '../world/terrain.js';
 import { LIGHTDIR, POST, U, camera, renderer, scene, sun } from './renderer.js';
+import { updateProbes } from './cityprobe.js';
 import { TILE, TTILE, reduceMotion } from '../core/env.js';
 
 /* ---------- HDR post-processing: ambient occlusion from depth, bloom, tone mapping ---------- */
@@ -121,6 +122,7 @@ function ppTargets(w, h, msaa) {
 function fsPass(mat, target) { fsQuad.material = mat; renderer.setRenderTarget(target); renderer.render(fsScene, fsCam); }
 function renderFrame() {
   renderer.info.reset();
+  updateProbes(camera.position.x, camera.position.z);   // the two nearest city cubes for the water and the glass
   if (!POST) { renderer.render(scene, camera); return; }
   const q = QUALITY[qi], T = TIMES[timeI];
   renderer.getDrawingBufferSize(PXV); ppTargets(PXV.x, PXV.y, q.msaa);

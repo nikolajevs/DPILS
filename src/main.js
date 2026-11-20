@@ -14,6 +14,7 @@ import './ui/auth.js';
 import './ui/hud.js';
 import './ui/map.js';
 import { PP, renderFrame, warmUp } from './render/post.js';
+import { captureProbes } from './render/cityprobe.js';
 import { splitBigMeshes } from './render/chunks.js';
 import { QUALITY, TIMES, qi, qAuto, setQuality, setQualityMode, setTime, timeI } from './render/lighting.js';
 import { P, setFly, teleport } from './game/player.js';
@@ -77,7 +78,7 @@ import { $, C } from './core/env.js';
    laptop with both of its GPUs (RTX 3050 and Intel UHD: 25 and 35 s of building), the shares of the two averaged; the
    shaders are given more than a second visit takes, when the browser has them compiled already. Re-measure when a
    step changes much: a step heavier than its weight slows the bar down, a lighter one leaves it behind. */
-const W = { materials: 2100, ground: 2800, lines: 1600, houses: 3100, blocks: 300, landmarks: 4000, fortress: 2400, trees: 3500, flora: 500, transit: 3500, split: 1600, models: 1500, shaders: 2500, frame: 4000 };
+const W = { materials: 2100, ground: 2800, lines: 1600, houses: 3100, blocks: 300, landmarks: 4000, fortress: 2400, trees: 3500, flora: 500, transit: 3500, split: 1600, probes: 1500, models: 1500, shaders: 2500, frame: 4000 };
 const WSUM = Object.values(W).reduce((a, b) => a + b, 0);
 let wDone = 0;
 const step = (text, w, reported) => {
@@ -113,6 +114,7 @@ const step = (text, w, reported) => {
       const ms = []; scene.traverse(o => { if (o.isMesh && o.frustumCulled && o.geometry) ms.push(o); });
       for (const o of ms) { if (due()) await pause(); const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere(); if (g.boundingSphere && !g.userData.terrGrown) { g.boundingSphere.radius += 70; g.userData.terrGrown = true; } }
     }
+    await step('Снимаю отражения города…', W.probes); await captureProbes();   // the city cubes for water and glass, once per time of day
     // the players and the guns join the scene for the warm-up: the game starts with them ready (a minute at most for slow files)
     await step('Одеваю игроков и раздаю оружие…', W.models, true); modelsStep = true; loading.part(modelsF);
     await Promise.race([models, new Promise(r => setTimeout(r, 60000))]); modelsStep = false; await warmSamples(true);

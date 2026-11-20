@@ -72,7 +72,7 @@ async function build(flowers) {
       for (const p of set.parts) {
         const im = new THREE.InstancedMesh(p.geo, p.mat, list.length);
         im.instanceMatrix = attr;
-        im.computeBoundingSphere(); im.castShadow = false; im.receiveShadow = false; scene.add(im);
+        im.computeBoundingSphere(); im.castShadow = false; im.receiveShadow = false; im.userData.noProbe = true; scene.add(im);
       }
     }
   }

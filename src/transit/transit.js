@@ -211,7 +211,7 @@ async function buildTransit() {
   TX.mesh = [0, 1, 2].map(kind => {
     const [bg, gg] = vehicleModel(kind);
     const b = new THREE.InstancedMesh(bg, bodyMat, VCAP[kind]), g = new THREE.InstancedMesh(gg, glowMat, VCAP[kind]), s = new THREE.InstancedMesh(blobGeo, blobMat, VCAP[kind]);
-    for (const m of [b, g, s]) { m.count = 0; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(m); }
+    for (const m of [b, g, s]) { m.count = 0; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.userData.noProbe = true; scene.add(m); }
     b.receiveShadow = true; s.renderOrder = 3; TX.glow.push(g);
     return { b, g, s };
   });
