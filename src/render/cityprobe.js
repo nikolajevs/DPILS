@@ -41,6 +41,7 @@ async function ensure(i) {
       cam.position.set(p.x, terrainH(p.x, p.z) + (p.bridge ? bridgeY(p.x, p.z, 0, 0) : 0) + p.h, p.z);
       sky.position.copy(cam.position);   // the sky sphere is small and sits at the origin: carry it to the probe
       cam.update(renderer, scene);
+      renderer.shadowMap.needsUpdate = true;   // the cascades were fitted to the cube face: refit them to the view camera on the next frame
       list.push({ pos: cam.position.clone(), rt });
       await rest();
     }

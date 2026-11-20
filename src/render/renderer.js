@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { SunLight } from 'three/addons/lights/SunLight.js';
 import { $, progress } from '../core/env.js';
 
 /* ---------- renderer & scene ---------- */
@@ -19,7 +20,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = POST ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFShadowMap;   // PCFSoftShadowMap was removed; PCF is soft enough now
+renderer.shadowMap.type = THREE.PCFShadowMap;   // r18x PCF: 5 Vogel-disk samples × 4 hardware comparison taps, rotated per pixel
 renderer.info.autoReset = false;
 const GL2 = true, MAXTEX = renderer.capabilities.maxTextureSize, ANISO = Math.min(8, renderer.capabilities.getMaxAnisotropy());
 let GPU = ''; try { const gl = renderer.getContext(), e = gl.getExtension('WEBGL_debug_renderer_info'); if (e) GPU = String(gl.getParameter(e.UNMASKED_RENDERER_WEBGL) || ''); } catch (e) {}
@@ -28,10 +29,17 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xffffff, 1e-4, 3000);     // .near carries the haze density, .far the distance where the world fades out
 const camera = new THREE.PerspectiveCamera(66, 1, 0.3, 3200);
 camera.rotation.order = 'YXZ';
-const sun = new THREE.DirectionalLight(0xffffff, 3 * Math.PI); scene.add(sun); scene.add(sun.target);
-sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.04;
-const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.15 * Math.PI); scene.add(hemi);
 const LIGHTDIR = new THREE.Vector3(-0.55, 0.62, 0.56).normalize();   // towards the sun (or the moon)
+/* The sun is a SunLight (three r18x): the renderer fits its shadow as two cascaded maps in one atlas — a near slice of
+   the view frustum at full detail and a far slice for the distance, blended where they meet. Each cascade is snapped
+   to its own texel grid and culled separately, so building edges stay crisp instead of one map stretched over the
+   whole city. The light has no target: it shines from its position towards the origin, so the position only carries
+   the direction. shadow.camera.far is the coverage (how far from the eye shadows reach), driven by updateSun. */
+const sun = new SunLight(0xffffff, 3 * Math.PI); scene.add(sun);
+sun.position.copy(LIGHTDIR).multiplyScalar(1000);
+sun.shadow.bias = -0.0002; sun.shadow.normalBias = 0.05; sun.shadow.radius = 0.8;
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 360;
+const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.15 * Math.PI); scene.add(hemi);
 // uniforms shared by many materials
 const U = { night: { value: 0 }, lit: { value: 0 }, time: { value: 0 }, sunDir: { value: LIGHTDIR }, fogGlow: { value: new THREE.Color(0, 0, 0) }, sunCol: { value: new THREE.Color(1, 1, 1) }, impFar: { value: 2600 } };   // impFar: where the far-tree impostors fade out and their tiles stop drawing (src/render/post.js updateLod)
 
