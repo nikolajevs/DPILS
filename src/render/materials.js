@@ -90,21 +90,28 @@ function facadeMaterial() {
         }`).replace('#include <emissivemap_fragment>', `
         // the evening reads in columns and floors, not random cells: a column with the curtains drawn stays dark,
         // a floor gone to bed dims, the stairwell column of some houses is lit whole; uLit is the share of lit windows
-        // of the time of day (it was set but never used). A rare cold television flickers behind its own curtain.
+        // of the time of day (it was set but never used).
         float hcol = h12(vec2(cell.x, 0.0) + sd * 57.0 + 11.0);
         float hfl = h12(vec2(0.0, cell.y) + sd * 71.0 + 23.0);
         float hw = h12(cell + sd * 13.1 + 5.0);
         float p = uLit * (hcol < 0.18 ? 0.12 : 1.0) * (hfl < 0.14 ? 0.25 : 1.0);
         float stair = step(0.86, hcol);
         float lit = max(step(1.0 - p, hw), stair);
-        float tv = step(0.94, hc2);
-        float flick = 0.75 + 0.45 * h12(vec2(floor(uTime * 2.5), cell.x * 3.1 + cell.y * 7.7) + sd);
         vec3 lc = mix(vec3(1.0, 0.68, 0.36), vec3(0.74, 0.83, 1.0), stair * 0.6);
         // only the brightest fifth of the lit windows crosses the bloom threshold of the evening: the halo sits on
         // single windows, not on the whole facade (the rest stays below it, see TIMES.thresh in lighting.js)
         float bright = 1.0 + hc2 * 0.5 + step(0.78, hc2) * 2.2;
-        vec3 emit = lc * bright * lit + vec3(0.5, 0.68, 1.0) * tv * flick * 1.6;
+        vec3 emit = lc * bright * lit;
         emit += lc * 0.25 * smoothstep(1.0 - p - 0.1, 1.0 - p, hw) * (1.0 - lit);   // a dim glow behind a drawn curtain
+        // a rare television behind the curtain of a dark room: a faint cold glow breathing slowly and smoothly, each
+        // window on its own phase. (the old hard 2.5 Hz hash steps on 6% of ALL cells, lit or dark, peaked above the
+        // bloom threshold and read as TV static with pulsing halos across whole facades)
+        float tv = step(0.985, hc2) * (1.0 - lit);
+        float ft = uTime * 0.5 + cell.x * 1.7 + cell.y * 2.3;
+        float f0 = h12(vec2(floor(ft), cell.x * 3.1 + cell.y * 7.7) + sd);
+        float f1 = h12(vec2(floor(ft) + 1.0, cell.x * 3.1 + cell.y * 7.7) + sd);
+        float flick = 0.8 + 0.25 * mix(f0, f1, smoothstep(0.0, 1.0, fract(ft)));
+        emit += vec3(0.5, 0.66, 0.95) * tv * flick * 0.6;   // peaks at 0.6: under the night bloom threshold of 1.1
         totalEmissiveRadiance += fm.g * uNight * emit;
       `).replace('#include <aomap_fragment>', `
         float aoF = mix(1.0, pb.a, 0.9);   // the crevices baked from the height take less indirect light
