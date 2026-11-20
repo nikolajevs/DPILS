@@ -406,7 +406,7 @@ export function createGame(opts) {
   function stepBots(dt) { for (const p of [...players.values()]) if (p.bot) brain.think(p, dt); }
   timers.push(setInterval(() => { const t = now(), dt = Math.min(0.2, (t - last) / 1000); last = t; stepBots(dt); }, 50));
   return {
-    attach, addBot, removeBot, players, arena, mode: MODE,
+    attach, addBot, removeBot, players, arena, world, mode: MODE,   // world: the city's physics (freePath, shotPath, stepNade) — the tools and the headless checks probe it
     stepBullets: () => advanceBullets(now()),   // the tests drive the flight by their own clock
     stepNades,   // the tests drive the fuse by their own clock too
     stepBots,   // and the bots' think by the test clock, for the fall test

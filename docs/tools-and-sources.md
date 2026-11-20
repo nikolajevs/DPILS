@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/wall-rib-chord-drag | Бой: нормаль ребра (граната/взрыв/рэгдолл), хорда пробития стен, торможение пули и импульс в кость | server/combat.mjs, server/physics.mjs, server/game.mjs, server/bots.mjs, src/game/mp.js, src/game/impacts.js, src/game/ragdoll.js, src/world/car-hit.js, tools/combat-test.mjs |
 
 ## Автономный цикл улучшений
 
