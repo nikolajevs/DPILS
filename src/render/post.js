@@ -21,7 +21,7 @@ uniform vec2 uPx; uniform float uAoRes; varying vec2 vUv;
 #define NS 10
 float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
 void main() {
-  if (textureLod(tDepth, vUv, 0.0).x >= 0.999999) { gl_FragColor = vec4(1.0, 1e5, 0.0, 1.0); return; }
+  if (textureLod(tDepth, vUv, 0.0).x >= 0.999999) { gl_FragColor = vec4(1.0, 1e5, 1.0, 1.0); return; }
   vec3 P = posAt(vUv);
   vec3 l = posAt(vUv - vec2(uPx.x, 0.0)), r = posAt(vUv + vec2(uPx.x, 0.0)), dn = posAt(vUv - vec2(0.0, uPx.y)), up = posAt(vUv + vec2(0.0, uPx.y));
   vec3 dx = abs(l.z - P.z) < abs(r.z - P.z) ? P - l : r - P, dy = abs(dn.z - P.z) < abs(up.z - P.z) ? P - dn : up - P;
@@ -38,7 +38,22 @@ void main() {
     ao = max(0.0, 1.0 - sum * 5.0 / (float(NS) * R * R * R * R * R * R));
   }
   if (isnan(ao) || isinf(ao) || !(ao >= 0.0)) ao = 1.0;   // recessed windows can leave a degenerate depth stencil
-  gl_FragColor = vec4(ao, P.z, 0.0, 1.0);
+  // contact shadows: a second, tight spiral (35 cm) that darkens the seams where geometry meets — wall bases, curbs,
+  // props on the ground. The cascaded sun map cannot resolve such small occluders, so this carries the contact detail.
+  float contact = 1.0, Rc = 0.35;
+  float rPixC = min(Rc / (P.z * uProj.w) * 0.5 * uAoRes, 0.1 * uAoRes);
+  if (rPixC > 0.75) {
+    float phiC = ign(gl_FragCoord.xy + 17.0) * 6.2831853, sumC = 0.0;
+    for (int i = 0; i < 8; i++) {
+      float a = (float(i) + 0.5) / 8.0, ang = float(i) * 2.3999632 + phiC;
+      vec3 v = posAt(vUv + vec2(cos(ang), sin(ang)) * (sqrt(a) * rPixC) * uPx * 2.0) - P;
+      float vv = dot(v, v), f = max(Rc * Rc - vv, 0.0);
+      sumC += f * f * f * max((dot(v, n) - 0.002 * P.z - 0.006) / (vv + 0.005), 0.0);
+    }
+    contact = max(0.0, 1.0 - sumC * 6.5 / (8.0 * Rc * Rc * Rc * Rc * Rc * Rc));
+    if (isnan(contact) || isinf(contact) || !(contact >= 0.0)) contact = 1.0;
+  }
+  gl_FragColor = vec4(ao, P.z, contact, 1.0);
 }`;
 const BRIGHT_FRAG = `uniform sampler2D tSrc; uniform vec2 uPx; uniform float uThresh; uniform float uExposure; varying vec2 vUv;
 void main() {
@@ -54,7 +69,7 @@ const DOWN_FRAG = `uniform sampler2D tSrc; uniform vec2 uPx; varying vec2 vUv;
 void main() { gl_FragColor = vec4((texture2D(tSrc, vUv + uPx * vec2(-1.0, -1.0)).rgb + texture2D(tSrc, vUv + uPx * vec2(1.0, -1.0)).rgb + texture2D(tSrc, vUv + uPx * vec2(-1.0, 1.0)).rgb + texture2D(tSrc, vUv + uPx).rgb) * 0.25, 1.0); }`;
 const FINAL_FRAG = `${DEPTH_GLSL}
 uniform sampler2D tScene; uniform sampler2D tAO; uniform sampler2D tB1; uniform sampler2D tB2; uniform sampler2D tB3;
-uniform vec2 uAoPx; uniform float uExposure; uniform float uBloom; uniform float uAo; uniform float uSeed;
+uniform vec2 uAoPx; uniform float uExposure; uniform float uBloom; uniform float uAo; uniform float uContact; uniform float uSeed;
 uniform vec2 uSunUv; uniform float uRayI; uniform vec3 uRayC;
 varying vec2 vUv;
 vec3 fit(vec3 v) { vec3 a = v * (v + 0.0245786) - 0.000090537; vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081; return a / b; }
@@ -67,14 +82,15 @@ float h12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx 
 void main() {
   vec3 col = texture2D(tScene, vUv).rgb * uExposure;
   if (uAo > 0.0 && textureLod(tDepth, vUv, 0.0).x < 0.999999) {
-    float z = zAt(vUv), a = 0.0, w = 0.0;
+    float z = zAt(vUv), a = 0.0, c = 0.0, w = 0.0;
     for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
-      vec2 s = textureLod(tAO, vUv + vec2(float(i), float(j)) * uAoPx, 0.0).rg;
-      float k = max(0.0, 1.0 - abs(s.g - z) / (0.08 * z + 0.05)) + 1e-3; a += s.r * k; w += k;
+      vec3 s = textureLod(tAO, vUv + vec2(float(i), float(j)) * uAoPx, 0.0).rgb;
+      float k = max(0.0, 1.0 - abs(s.g - z) / (0.08 * z + 0.05)) + 1e-3; a += s.r * k; c += s.b * k; w += k;
     }
-    a /= w; if (isnan(a) || isinf(a)) a = 1.0;
+    a /= w; c /= w; if (isnan(a) || isinf(a)) a = 1.0; if (isnan(c) || isinf(c)) c = 1.0;
     a = mix(a, 1.0, clamp(dot(col, vec3(0.2126, 0.7152, 0.0722)) * 0.4, 0.0, 0.65));   // sunlit surfaces keep most of their brightness
     col *= mix(1.0, a, uAo * (1.0 - smoothstep(1500.0, 3000.0, z)));
+    col *= mix(1.0, c, uContact * (1.0 - smoothstep(40.0, 140.0, z)));   // contact seams fade out before they alias
   }
   if (uBloom > 0.0) col += (texture2D(tB1, vUv).rgb * 0.45 + texture2D(tB2, vUv).rgb * 0.33 + texture2D(tB3, vUv).rgb * 0.22) * uBloom;
   if (uRayI > 0.001) {   // volumetric sun rays: march the depth from the pixel towards the sun on screen, sky texels glow
@@ -106,7 +122,7 @@ if (POST) {
   matAO = fsMat(AO_FRAG, { tDepth: t(), uProj: { value: PROJ }, uPx: v2(), uAoRes: { value: 1 } });
   matBright = fsMat(BRIGHT_FRAG, { tSrc: t(), uPx: v2(), uThresh: { value: 2 }, uExposure: { value: 1 } });
   matDown = fsMat(DOWN_FRAG, { tSrc: t(), uPx: v2() });
-  matFinal = fsMat(FINAL_FRAG, { tDepth: t(), uProj: { value: PROJ }, tScene: t(), tAO: t(), tB1: t(), tB2: t(), tB3: t(), uAoPx: v2(), uExposure: { value: 1 }, uBloom: { value: 0 }, uAo: { value: 0 }, uSeed: { value: 0 }, uSunUv: v2(), uRayI: { value: 0 }, uRayC: { value: new THREE.Vector3(1, 0.7, 0.4) } });
+  matFinal = fsMat(FINAL_FRAG, { tDepth: t(), uProj: { value: PROJ }, tScene: t(), tAO: t(), tB1: t(), tB2: t(), tB3: t(), uAoPx: v2(), uExposure: { value: 1 }, uBloom: { value: 0 }, uAo: { value: 0 }, uContact: { value: 0 }, uSeed: { value: 0 }, uSunUv: v2(), uRayI: { value: 0 }, uRayC: { value: new THREE.Vector3(1, 0.7, 0.4) } });
 }
 function ppTargets(w, h, msaa) {
   w = Math.max(1, Math.round(w * PP.scale)); h = Math.max(1, Math.round(h * PP.scale));
@@ -135,7 +151,7 @@ function renderFrame() {
   }
   const u = matFinal.uniforms;
   u.tScene.value = PP.rt.texture; u.tDepth.value = PP.rt.depthTexture; u.tAO.value = PP.ao.texture; u.tB1.value = PP.bl[1].texture; u.tB2.value = PP.bl[2].texture; u.tB3.value = PP.bl[3].texture;
-  u.uAoPx.value.set(1 / PP.ao.width, 1 / PP.ao.height); u.uExposure.value = T.exp; u.uBloom.value = q.bloom ? T.bloom : 0; u.uAo.value = q.ao ? 0.85 : 0; u.uSeed.value = reduceMotion ? 0 : (clock * 60 % 64);
+  u.uAoPx.value.set(1 / PP.ao.width, 1 / PP.ao.height); u.uExposure.value = T.exp; u.uBloom.value = q.bloom ? T.bloom : 0; u.uAo.value = q.ao ? 0.85 : 0; u.uContact.value = q.ao ? 0.9 : 0; u.uSeed.value = reduceMotion ? 0 : (clock * 60 % 64);
   // the sun (the moon at night) on screen: rays only while it is in front of the camera, near the frame
   SUNV.copy(camera.position).addScaledVector(LIGHTDIR, 3000).project(camera);
   const fwd = LIGHTDIR.dot(camera.getWorldDirection(RAYF));
@@ -169,22 +185,26 @@ async function warmUp(report, nextFrame) {
     for (const [m, t] of [[matAO, PP.ao], [matBright, PP.bl[0]], [matDown, PP.bl[1]], [matFinal, null]]) { fsQuad.material = m; renderer.setRenderTarget(t); renderer.compile(fsScene, fsCam); renderer.setRenderTarget(null); await nextFrame(); } }
 }
 const SUNV = new THREE.Vector3(), RAYF = new THREE.Vector3();
-let shadowHalf = 0;
-const LX = new THREE.Vector3(), LY = new THREE.Vector3(), UPV = new THREE.Vector3(0, 1, 0), TGT = new THREE.Vector3();
+/* The sun shadow is redrawn only when a coarse cell of the camera state changes: the cascades snap their centres to
+   their own texel grids (SunLightShadow), so between redraws the maps stay fixed in the world and do not shimmer.
+   Coverage grows with the eye's height above the ground — on foot the near cascade keeps street detail, in flight the
+   slices stretch so the ground below stays inside them. The last cascade fades to no shadow at the coverage edge. */
+let shadowFar = 0;
 function updateSun() {
-  const dir = LIGHTDIR;
-  const half = P.fly ? Math.min(1400, Math.max(180, (P.y - terrainH(P.x, P.z)) * 2.6)) : 170;
-  if (Math.abs(half - shadowHalf) > half * 0.15) { shadowHalf = half; const c = sun.shadow.camera; c.left = -half; c.right = half; c.top = half; c.bottom = -half; c.near = 1; c.far = 3000; c.updateProjectionMatrix(); }
-  const fwdX = -Math.sin(P.yaw), fwdZ = -Math.cos(P.yaw), lead = P.fly ? 0 : shadowHalf * 0.45;
-  TGT.set(P.x + fwdX * lead, 0, P.z + fwdZ * lead); TGT.y = Math.round(terrainH(TGT.x, TGT.z) / 10) * 10;
-  LX.crossVectors(UPV, dir).normalize(); LY.crossVectors(dir, LX);
-  // snap to a coarse grid (a whole number of texels) and redraw the shadow map only when the grid cell changes
-  const texel = 2 * shadowHalf / Math.max(512, sun.shadow.mapSize.x), stepS = texel * Math.max(1, Math.round(shadowHalf * 0.06 / texel));
-  const a = Math.round(TGT.dot(LX) / stepS) * stepS, b = Math.round(TGT.dot(LY) / stepS) * stepS, c = Math.round(TGT.dot(dir) / 50) * 50;
-  const key = a + ',' + b + ',' + c + ',' + shadowHalf + ',' + timeI;
-  if (key !== shadowKey || STATE.shadowDirty) { shadowKey = key; STATE.shadowDirty = false; renderer.shadowMap.needsUpdate = true; }
-  TGT.copy(LX).multiplyScalar(a).addScaledVector(LY, b).addScaledVector(dir, c);
-  sun.target.position.copy(TGT); sun.position.copy(TGT).addScaledVector(dir, 1200); sun.target.updateMatrixWorld();
+  sun.position.copy(LIGHTDIR).multiplyScalar(1000);   // the light shines from its position towards the origin
+  if (!renderer.shadowMap.enabled) return;
+  const alt = Math.max(0, P.y - terrainH(P.x, P.z));
+  const far = Math.min(2400, Math.round((360 + alt * 1.8) / 20) * 20);
+  const step = far * 0.02;
+  const key = Math.round(camera.position.x / step) + ',' + Math.round(camera.position.z / step) + ',' +
+    Math.round(camera.rotation.y / 0.05) + ',' + Math.round(camera.rotation.x / 0.08) + ',' +
+    Math.round(camera.fov) + ',' + Math.round(camera.near * 20) + ',' + Math.round(camera.far / 200) + ',' +
+    far + ',' + timeI + ',' + qi;
+  if (key !== shadowKey || STATE.shadowDirty) {
+    shadowKey = key; STATE.shadowDirty = false;
+    if (far !== shadowFar) { shadowFar = far; sun.shadow.camera.far = far; }
+    renderer.shadowMap.needsUpdate = true;
+  }
 }
 let shadowKey = ''; STATE.shadowDirty = true;
 renderer.shadowMap.autoUpdate = false;
