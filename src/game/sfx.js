@@ -99,4 +99,21 @@ function nadeBounce(ctx, out, kind = 'ground', vol = 1, d = 0, pan = 0) {
   if (metal && Math.random() < 0.5) snd(ctx, out, pick(FAM['debris-metal']), { vol: vol * 0.4, pan, lp, delay: delay + 0.05, rate: 1.4 + Math.random() * 0.4 });
   return played;
 }
-export { boomSound, crackSound, hitSound, loadSounds, nadeBounce, shotSound, stepSound };
+// a spent case touching down: the thin ring of brass on stone — three decaying partials of a small metal body,
+// brighter and longer on a roof or a sidewalk (hard), duller on the earth. No recording of a case exists in the sets,
+// so this one is always synthesised; vol carries the impact speed and the distance, the sound arrives at d / 340.
+function shellTink(ctx, out, vol = 0.2, d = 0, pan = 0, hard = true) {
+  try {
+    const t = ctx.currentTime + d / 340, f0 = (hard ? 2400 : 1400) * (0.9 + Math.random() * 0.25);
+    const g = ctx.createGain(); g.gain.setValueAtTime(Math.max(0.001, vol), t); g.gain.exponentialRampToValueAtTime(0.0008, t + (hard ? 0.11 : 0.06));
+    let tail = g;
+    if (pan) { const p = ctx.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan)); g.connect(p); tail = p; }
+    tail.connect(out);
+    for (const [m, a, dur] of [[1, 1, hard ? 0.09 : 0.05], [2.71, 0.45, hard ? 0.06 : 0.035], [4.85, 0.22, hard ? 0.04 : 0.025]]) {
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f0 * m * (0.98 + Math.random() * 0.04);
+      const og = ctx.createGain(); og.gain.setValueAtTime(a, t); og.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      o.connect(og); og.connect(g); o.start(t); o.stop(t + dur + 0.02);
+    }
+  } catch (e) {}
+}
+export { boomSound, crackSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, stepSound };

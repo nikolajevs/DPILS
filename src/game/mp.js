@@ -25,9 +25,9 @@ import { playerKey, boardOn, setBoardOn, account } from './identity.js';
 import { initLeaders } from './leaders.js';
 import { rest } from '../core/pause.js';
 import { $, reduceMotion } from '../core/env.js';
-import { boomSound, crackSound, hitSound, loadSounds, nadeBounce, shotSound, stepSound } from './sfx.js';
+import { boomSound, crackSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, stepSound } from './sfx.js';
 import { carAt, carPath } from '../world/car-hit.js';
-import { fxSamples, tracerShot, bindTracer, hitTracer, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke } from './impacts.js';
+import { fxSamples, tracerShot, bindTracer, hitTracer, tickFx, clearFx, dmgFloat, ejectShell, onShellBounce, muzzleSmoke } from './impacts.js';
 import { WEAPONS as WSRV, bulletAt, bulletDrop } from '../../server/combat.mjs';   // the server's own ballistics: the muzzle velocities, the drag and the bullet's fall
 import { makePhysics } from '../../server/physics.mjs';   // the server's own shot scan: the page predicts the punched walls by the same code
 
@@ -310,6 +310,7 @@ function ownFlash() {
 const flashLight = new THREE.PointLight(0xffb868, 0, 22, 2); scene.add(flashLight);
 const near = { x: 0, y: 0, z: 0, t: 9, pow: 0 };   // the last flash of another player within 60 m
 const MV = new THREE.Vector3();
+const EV = new THREE.Vector3(), EQ = new THREE.Quaternion(), ER = new THREE.Vector3(), EU = new THREE.Vector3(), EB = new THREE.Vector3();   // the muzzle and the axes of another player's gun, for its spent case
 let actx = null;
 function ac() {   // the audio context of the game sounds, with one volume knob (the settings)
   if (!actx) {
@@ -359,7 +360,7 @@ function wallHit(o, d, len, hear = 45, v = 0, k = 0) {
 }
 // someone else's shot: its sound (later and duller the farther it is), the hits of its bullets near you and the crack of one
 // that flies past your head
-function otherShot(m) {
+function otherShot(m, rs) {
   const wf = WEAPONS[m.w] || WEAPONS[0], hear = m.w === 2 ? 600 : (wf.hear ?? FEEL.hear), s = spot(m.o[0], m.o[1], m.o[2]);
   if (s.d < 60 && m.rays && m.rays[0]) { const d = m.rays[0]; near.x = m.o[0] + d[0] * 0.9; near.y = m.o[1] - 0.15 + d[1] * 0.9; near.z = m.o[2] + d[2] * 0.9; near.t = 0; near.pow = 0.8 * (1 - s.d / 60); }   // its flash lights the street
   if (s.d < hear) {
@@ -381,6 +382,20 @@ function otherShot(m) {
     if (t < 6 || t > mz + len + 1) continue;
     const cx = m.o[0] + r[0] * t, cy = m.o[1] + r[1] * t - bulletDrop(Math.max(0, t - mz), vel, drag), cz = m.o[2] + r[2] * t, near = Math.hypot(cx - P.x, cy - P.y, cz - P.z);
     if (near < 2.5) { crack = true; try { crackSound(ac(), actx.master, 0.25 + 0.5 * (1 - near / 2.5), spot(cx, cy, cz).pan); } catch (e) {} }
+  }
+  // the shooter's own case: out of the port of the gun in hand (the avatar holds it in the frame of the figure: +z
+  // the barrel, +y the top, the right −x), or from the shoulder of the box figure while the models have not come
+  if (rs && !rs.fallT) {
+    if (rs.av) {
+      const g = rs.av.gun; g.updateWorldMatrix(true, false);
+      if (g.userData.both) EV.copy(g.userData.flashAt); else EV.set(0, 0.04, g.userData.muzzle || 0.5);
+      g.localToWorld(EV); g.getWorldQuaternion(EQ);
+      ER.set(-1, 0, 0).applyQuaternion(EQ); EU.set(0, 1, 0).applyQuaternion(EQ); EB.set(0, 0, -1).applyQuaternion(EQ);
+      ejectShell(m.w, [EV.x, EV.y, EV.z], [ER.x, ER.y, ER.z], [EU.x, EU.y, EU.z], [EB.x, EB.y, EB.z]);
+    } else if (m.rays && m.rays[0]) {
+      const d = m.rays[0], rl = Math.hypot(d[0], d[2]) || 1, rx = -d[2] / rl, rz = d[0] / rl;
+      ejectShell(m.w, [m.o[0] + d[0] * 0.4 + rx * 0.12, m.o[1] - 0.12, m.o[2] + d[2] * 0.4 + rz * 0.12], [rx, 0, rz], [0, 1, 0], [-d[0], -d[1], -d[2]]);
+    }
   }
 }
 function tone(f0, f1, dur, vol, type = 'sine', delay = 0) {
@@ -414,7 +429,9 @@ function fire(now) {
   P.pitch = Math.min(1.5, P.pitch + (w.pellets > 1 ? 0.02 : w.scope ? 0.03 : (w.kick ?? FEEL.kick))); P.yaw += (Math.random() - 0.5) * (w.pellets > 1 ? 0.006 : 0.0016); if (w.auto) MP.burst = Math.min(w.cap ?? 0.03, MP.burst + (w.burst ?? 0.0045));
   if (vm && vm.has(MP.weapon)) { vm.fire(FLASH_SIZE[MP.weapon]); vm.muzzle(MV); }
   else { const f = ownFlash(); f.fire(1, FLASH_SIZE[MP.weapon]); gun.updateWorldMatrix(true, false); f.group.getWorldPosition(MV); }
-  ejectShell(); muzzleSmoke(MV.x, MV.y, MV.z, aim());
+  camera.updateMatrixWorld(); const ce = camera.matrixWorld.elements;   // the case leaves the port on the right of the receiver: back from the muzzle, out to the right of the view
+  ejectShell(MP.weapon, [MV.x, MV.y, MV.z], [ce[0], ce[1], ce[2]], [ce[4], ce[5], ce[6]], [ce[8], ce[9], ce[10]]);
+  muzzleSmoke(MV.x, MV.y, MV.z, aim());
   let real = false; try { real = shotSound(ac(), actx.master, MP.weapon, SHOT_VOL[MP.weapon]); } catch (e) {}
   if (!real) bang(w.pellets > 1 ? 0.6 : w.scope ? 0.8 : (w.vol ?? FEEL.vol), true);
   MP.ws.send(JSON.stringify({ t: 'shoot', w: MP.weapon, rays }));
@@ -630,7 +647,7 @@ function onMsg(m) {
       for (const [id, r] of remotes) if (!seen.has(id) && !r.fallT) { r.group.visible = false; r.buf.length = 0; }
       break;
     }
-    case 'shot': { const rs = remotes.get(m.id); if (rs) rs.shotAt = performance.now(); if (m.id === MP.id) { if (ownTracers) { m.rays.forEach((r, i) => bindTracer(r[4], ownTracers[i])); ownTracers = null; } } else otherShot(m); break; }
+    case 'shot': { const rs = remotes.get(m.id); if (rs) rs.shotAt = performance.now(); if (m.id === MP.id) { if (ownTracers) { m.rays.forEach((r, i) => bindTracer(r[4], ownTracers[i])); ownTracers = null; } } else otherShot(m, rs); break; }
     case 'nbounce': syncNade(m.id, m.p, m.v); break;   // the server bounced the grenade off a body: the copy follows its flight
     case 'nshot': {   // a bullet shot the grenade down: cut the tracer, sparks there; the blast ('boom') follows at once
       hitTracer(m.bid, m.d, 'nade');
@@ -818,6 +835,17 @@ onNadeBounce((p, b) => {
   const s = spot(p[0], p[1], p[2]), vol = Math.min(1, b.sp / 12) * (1 - d / 50);
   let real = false; try { real = nadeBounce(ac(), actx.master, b.kind, vol, d, s.pan); } catch (e) {}
   if (!real) tone(1100, 650, 0.05, 0.16 * vol, 'triangle');
+});
+// the ring of a spent case touching down: the impact speed sets the volume, the distance dulls it; a burst of cases
+// does not stack into a roar — one clink at a time, at most about fourteen a second
+let shellSndT = 0;
+onShellBounce((p, sp, kind) => {
+  if (!MP.on || MP.dead) return;
+  const now = performance.now(); if (now - shellSndT < 70) return;
+  const d = Math.hypot(p[0] - P.x, p[2] - P.z); if (d > 28) return;
+  shellSndT = now;
+  const s = spot(p[0], p[1], p[2]);
+  try { shellTink(ac(), actx.master, Math.min(0.22, 0.05 + sp * 0.04) * (1 - d / 28), s.d, s.pan, kind !== 'ground'); } catch (e) {}
 });
 // the bodies the flying grenade (and the aim arc) bounces off, as the server sees them: the living players, the thrower
 // left out (one's own body does not stop one's own grenade); the arc of the aimed throw leaves your own body out too
