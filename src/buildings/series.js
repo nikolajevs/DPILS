@@ -3,7 +3,7 @@ import { STATE } from '../core/state.js';
 import { lr } from '../landmarks/tiles.js';
 import { band, flatRoof, roofFace, vband } from './walls.js';
 import { SAMPLE_GLSL, std } from '../render/materials.js';
-import { bakeAO, mkCanvas, toTex } from '../render/textures.js';
+import { bakeAO, bakeNormals, mkCanvas, toTex } from '../render/textures.js';
 import { U } from '../render/renderer.js';
 import { box, polyA } from '../core/geometry.js';
 import { area2, hb, obb, offsetRing, pick, reversed, rnd, sh } from '../core/util.js';
@@ -48,7 +48,9 @@ function seriesAtlas() {
   // the PBR atlas of the series: R roughness, G metalness, B height, A occlusion baked from the height (as in facadeAtlas)
   const pk = mkCanvas(CW * SER_COLS, CH * SER_ROWS), p = pk.getContext('2d', { willReadFrequently: true });
   p.fillStyle = 'rgb(230,0,128)'; p.fillRect(0, 0, pk.width, pk.height);
+  const kinds = [];   // the wall material of each cell, for the grain of the baked normal map
   const cell = (k, Wm, Hm, wall, draw, pj = 4) => {
+    kinds[k] = wall === 'brick' ? 'brick' : 'concrete';
     const ox = (k % SER_COLS) * CW, oy = Math.floor(k / SER_COLS) * CH, sx = CW / Wm, sy = CH / Hm;
     const X = x => ox + x * sx, Yp = y => oy + (Hm - y) * sy;
     const WM = wall === 'brick' ? { r: 0.85, m: 0, h: 0.58 } : { r: 0.9, m: 0, h: 0.55 }, TM = { r: 0.55, m: 0, h: 0.66 }, GLASSP = { r: 0.06, m: 0, h: 0.5 };
@@ -92,15 +94,16 @@ function seriesAtlas() {
     cell(spec.cells.E, 12, 2.8, spec.wall, d => { for (const [f] of spec.end) d.win(f * d.Wm, 1.2, 0.85, 1.45, 2, d.id()); }, 4);
   }
   bakeAO(p, pk.width, pk.height, CW, CH);
+  const nk = bakeNormals(p, m, pk.width, pk.height, CW, CH, (c, r) => kinds[r * SER_COLS + c] || 'concrete', 9);
   const mkT = (c, srgb) => { const t = toTex(c, srgb, false); t.minFilter = THREE.LinearMipmapLinearFilter; return t; };
-  return [mkT(cv, true), mkT(mk, false), mkT(pk, false)];
+  return [mkT(cv, true), mkT(mk, false), mkT(pk, false), mkT(nk, false)];
 }
 function seriesMaterial() {
   const m = std({ roughness: 0.9, metalness: 0 }, 'series', s => {
-    s.uniforms.uAtlas = { value: STATE.serTex }; s.uniforms.uMask = { value: STATE.serMask }; s.uniforms.uPbr = { value: STATE.serPbr }; s.uniforms.uNight = U.night;
+    s.uniforms.uAtlas = { value: STATE.serTex }; s.uniforms.uMask = { value: STATE.serMask }; s.uniforms.uPbr = { value: STATE.serPbr }; s.uniforms.uNrm = { value: STATE.serNrm }; s.uniforms.uNight = U.night;
     s.vertexShader = 'attribute vec2 aUv; attribute vec3 aInfo; attribute vec3 aTint;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint;\n' +
       s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvCellUv = aUv; vInfo = aInfo; vTint = pow(aTint, vec3(2.2));');
-    s.fragmentShader = 'uniform sampler2D uAtlas; uniform sampler2D uMask; uniform sampler2D uPbr; uniform float uNight;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint;\n' + SAMPLE_GLSL +
+    s.fragmentShader = 'uniform sampler2D uAtlas; uniform sampler2D uMask; uniform sampler2D uPbr; uniform sampler2D uNrm; uniform float uNight;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint;\n' + SAMPLE_GLSL +
       s.fragmentShader.replace('#include <map_fragment>', `
         vec2 cell = floor(vCellUv), f = fract(vCellUv), dX = dFdx(vCellUv), dY = dFdy(vCellUv);
         vec3 inf = floor(vInfo + 0.5);   // interpolated constants drift by an ulp, and the hashes below would turn that into speckle
@@ -135,24 +138,30 @@ function seriesMaterial() {
       `).replace('#include <roughnessmap_fragment>', 'float roughnessFactor = mix(pb.r, 0.06, fm.g);')
         .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = pb.g * (1.0 - fm.g);')
         .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-        {   // relief from the height channel of the PBR atlas, on a tangent frame from the wall's uv; none on glass,
-            // fading out with distance (the blocks are read from farther than the old-town bays)
-          vec2 ae = vec2(1.5 / 2048.0, 1.5 / 2048.0);
-          float hu = ATLAS(uPbr, auv + vec2(ae.x, 0.0), dX * sc, dY * sc).b - ATLAS(uPbr, auv - vec2(ae.x, 0.0), dX * sc, dY * sc).b;
-          float hv = ATLAS(uPbr, auv + vec2(0.0, ae.y), dX * sc, dY * sc).b - ATLAS(uPbr, auv - vec2(0.0, ae.y), dX * sc, dY * sc).b;
+        {   // the baked tangent-space normal map (Sobel of the PBR height + brick pores / concrete sand), on a tangent
+            // frame from the wall's uv; none on glass, fading out with distance (the blocks are read from farther away)
+          vec3 nm = ATLAS(uNrm, auv, dX * sc, dY * sc).rgb * 2.0 - 1.0;
           vec3 pp = -vViewPosition, dp1 = dFdx(pp), dp2 = dFdy(pp); vec2 du1 = dFdx(vCellUv), du2 = dFdy(vCellUv);
           vec3 p2 = cross(dp2, normal), p1 = cross(normal, dp1);
           vec3 tT = p2 * du1.x + p1 * du2.x, tB = p2 * du1.y + p1 * du2.y;
           float im = inversesqrt(max(max(dot(tT, tT), dot(tB, tB)), 1e-12));
-          if (wm > 1.5) {   // the pebble finish is drawn in the shader, not in the atlas: its grains carry relief too
+          if (wm > 0.5) {   // insulated or pebble-finished: the wall is redrawn in the shader, the atlas relief under it is not
+            nm.xy = mix(nm.xy, vec2(0.0), wall);
             vec2 gg = vCellUv * vec2(sw * 45.0, 126.0);
             float am = clamp(1.4 - max(fwidth(gg.x), fwidth(gg.y)) * 0.8, 0.0, 1.0);
             vec2 gc = floor(gg);
-            hu += (h12(gc + vec2(1.0, 0.0)) - h12(gc)) * 0.10 * am * wall;
-            hv += (h12(gc + vec2(0.0, 1.0)) - h12(gc)) * 0.10 * am * wall;
+            float ga = wm > 1.5 ? 0.35 : 0.10;   // the pebble grains, or a faint sand of the insulation plaster
+            nm.x -= (h12(gc + vec2(1.0, 0.0)) - h12(gc)) * ga * am * wall;
+            nm.y -= (h12(gc + vec2(0.0, 1.0)) - h12(gc)) * ga * am * wall;
+            if (wm > 1.5) {   // the panel joints of the finish: a bevel into the groove
+              float px = vCellUv.x * pj, jx = abs(fract(px + 0.5) - 0.5), jy = abs(fract(vCellUv.y + 0.5) - 0.5);
+              float jxs = smoothstep(0.004, 0.004 + fwidth(px), jx), jys = smoothstep(0.006, 0.006 + fwidth(vCellUv.y), jy);
+              nm.x -= sign(fract(px + 0.5) - 0.5) * 4.0 * jxs * (1.0 - jxs) * 0.8 * wall;
+              nm.y -= sign(fract(vCellUv.y + 0.5) - 0.5) * 4.0 * jys * (1.0 - jys) * 0.8 * wall;
+            }
           }
           float bw = (1.0 - step(0.1, fm.g)) * (1.0 - smoothstep(20.0, 120.0, length(vViewPosition)));
-          normal = normalize(normal - (hu * tT + hv * tB) * im * 3.5 * bw);
+          normal = normalize(normal + (nm.x * tT + nm.y * tB) * im * bw);
         }`)
         .replace('#include <emissivemap_fragment>', `
         float lit = step(0.52, h12(cell + vec2(wid * 1.37 + 5.0, floor(sd * 13.1))));
