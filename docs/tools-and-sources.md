@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/max-players-64 | Лимит игроков 16 → 64 (сервер, тренировка, имена ботов) | server/combat.mjs, server/bots.mjs, server/index.mjs, src/game/local.js, index.html, tools/combat-test.mjs, README.md |
 
 ## Автономный цикл улучшений
 
