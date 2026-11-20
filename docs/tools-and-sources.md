@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/wet-sheen-aa | Блик мокрого асфальта: убрать вертикальную «гребёнку» вдали (антиалиасинг полос, раннее затухание) | src/render/materials.js |
 
 ## Автономный цикл улучшений
 
