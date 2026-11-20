@@ -15,11 +15,11 @@ import { buildSignals } from './signals.js';
 import { COL, LINES, M_ASPH, M_BALLAST, M_DIRT, M_LAND, M_MARK, M_PAVE, ROAD, STREAM, TRAMLINES, inWater, matPlain } from './data.js';
 import { LINE } from './palette.js';
 import { TERR, bridgeDeck, bridgeOf, densify } from './terrain.js';
-import { WH, walkStrip, walkStripV } from './walkgrid.js';
+import { WH, walkStrip, walkStripV, walkSlab as walkRing } from './walkgrid.js';
 import { buildStreetWear, wearMat } from './streetwear.js';
 import { scene } from '../render/renderer.js';
 import { GB, SegGrid, box, polyA } from '../core/geometry.js';
-import { bbox, dec, hb, rnd, sh } from '../core/util.js';
+import { area2, bbox, dec, hb, reversed, rnd, sh, triangulate } from '../core/util.js';
 import { C, HX, HY, WL } from '../core/env.js';
 
 /* ---------- streets, sidewalks, rails, bridges, walls ---------- */
@@ -96,7 +96,7 @@ function skirt(sk, q, y, col, flip) {
   for (let i = 0; i < n - 1; i++) { const k = v0 + 2 * i;
     if (flip) { sk.tri(k, k + 1, k + 3); sk.tri(k, k + 3, k + 2); } else { sk.tri(k, k + 2, k + 3); sk.tri(k, k + 3, k + 1); } }
 }
-function walkSlab(b, sk, p, off, hw, col, E = null) {
+function slabRun(b, sk, p, off, hw, col, E = null) {
   const n = p.length >> 1; if (n < 2) return;
   const e0 = off - hw, e1 = off + hw, y0 = WH + (Math.abs(e0) < Math.abs(e1) ? 0 : 0.02), y1 = WH + (Math.abs(e0) < Math.abs(e1) ? 0.02 : 0);
   const v0 = b.v; b.ensure(n * 2); const q0 = [], q1 = [];
@@ -115,7 +115,7 @@ function walkSlab(b, sk, p, off, hw, col, E = null) {
   walkStrip(p, off, hw);
 }
 // the same slab between edges A[i], B[i] that change along the line (A < B throughout)
-function walkSlabV(b, sk, p, A, B, col, E = null) {
+function slabRunV(b, sk, p, A, B, col, E = null) {
   const n = p.length >> 1; if (n < 2) return;
   const v0 = b.v; b.ensure(n * 2); const q0 = [], q1 = [], yA = [], yB = [];
   for (let i = 0; i < n; i++) {
@@ -133,6 +133,14 @@ function walkSlabV(b, sk, p, A, B, col, E = null) {
   cap(0, -1); cap(n - 1, 1);
   walkStripV(p, A, B);
 }
+/* The slab stops at junctions like the kerb does: raised WH above the road, it would otherwise lie across the
+   carriageway of every street that crosses or joins (a paved bar with skirts and end caps over the asphalt, city-wide).
+   The runs are cut once all the carriageways are known, the same capsules as clipRuns, and each run gets square caps:
+   its skirt reads as the corner kerb. Deferred into SLABS because a street laid early must still stop at a street laid
+   after it. */
+const SLABS = [];
+function walkSlab(b, sk, li, p, off, hw, col, E = null) { SLABS.push({ li, p, off, hw, col, E, gbc: STATE.GBC, v: 0 }); }
+function walkSlabV(b, sk, li, p, A, B, col, E = null) { SLABS.push({ li, p, A, B, col, E, gbc: STATE.GBC, v: 1 }); }
 // a kerb stone along p: a battered face towards the road (the road lies to the left of p), a flat top CH high, a back
 // face down into the sidewalk; sA < 0 mirrors it to the other side by walking p backwards, keeping the winding
 function curbBar(b, p, w, sA, col) {
@@ -184,21 +192,37 @@ async function buildLines() {
      narrower piece (a footway on from a street) would leave bare the inner corner the wider one gives up; nor at a
      sharper turn or where the inner corner would draw back past the first point of either line, which would fold the
      ribbon: those keep their square ends. JOINT: the line ends at each node of the data. */
-  const JOINT = new Map(), jKey = (x, z) => Math.round(x * 10) + ',' + Math.round(z * 10);
+  const JOINT = new Map(), MITER = new Set(), jKey = (x, z) => Math.round(x * 10) + ',' + Math.round(z * 10);
   sorted.forEach((l, li) => { if (!LINE[l.cls] || l.cls === 10 || l.cls === 11) return; const p = l.pts, n = p.length;
     for (const end of [0, 1]) { const k = jKey(end ? p[n - 2] : p[0], end ? p[n - 1] : p[1]); let a = JOINT.get(k); if (!a) JOINT.set(k, a = []); a.push([li, end]); } });
+  /* Which pairs of lines continue one another (same street, turning by less than 60В° at a shared node): their zones do not
+     cut each other's markings or slabs. A fork of the same name (VienД«bas iela at Saules iela: three ways at one node, two
+     of them the same street turning by ~90В°) is a crossing, not a continuation: each branch stops at the other's
+     carriageway. Pairwise, not only where exactly two ends meet, so a dual carriageway splitting off a single road keeps
+     its edges through the split node where three ways meet. */
+  JOINT.forEach(at => {
+    for (let a = 0; a < at.length; a++) for (let b = a + 1; b < at.length; b++) {
+      const [li, ei] = at[a], [lj, ej] = at[b], L = sorted[li], O = sorted[lj];
+      if (L.cls !== O.cls || L.name < 0 || L.name !== O.name) continue;
+      const dir = (l, e) => { const p = l.pts, n = p.length, x = e ? p[n - 2] : p[0], z = e ? p[n - 1] : p[1];
+        const fx = (e ? p[n - 4] : p[2]) - x, fz = (e ? p[n - 3] : p[3]) - z, fl = Math.hypot(fx, fz); return fl < 1e-3 ? null : [fx / fl, fz / fl]; };
+      const f = dir(L, ei), g = dir(O, ej); if (!f || !g) continue;
+      if (-(f[0] * g[0] + f[1] * g[1]) < 0.5) continue;
+      MITER.add(li + ':' + lj); MITER.add(lj + ':' + li);
+    }
+  });
   // for line li laid along dp: [first, last] the directions its ends are cut across (frame's E), null for a square end
   function jointEnds(li, dp) {
     const l = sorted[li]; if (l.cls === 9) return null;   // the tram tracks are laid in runs of their own
     const p = l.pts, n = p.length, m = dp.length, E = [null, null];
     for (const end of [0, 1]) {
       const x = end ? p[n - 2] : p[0], z = end ? p[n - 1] : p[1], at = JOINT.get(jKey(x, z)); if (!at || at.length !== 2) continue;
-      if (Math.abs((end ? dp[m - 2] : dp[0]) - x) > 0.01 || Math.abs((end ? dp[m - 1] : dp[1]) - z) > 0.01) continue;   // its end was moved
       const [lj, ej] = at[0][0] === li && at[0][1] === end ? at[1] : at[0], q = sorted[lj].pts, nq = q.length; if (sorted[lj].cls !== l.cls) continue;
       // each line's first segment away from the node, from the data on both sides so the two lines agree on the cut
       const fx = (end ? p[n - 4] : p[2]) - x, fz = (end ? p[n - 3] : p[3]) - z, gx = (ej ? q[nq - 4] : q[2]) - x, gz = (ej ? q[nq - 3] : q[3]) - z;
       const fl = Math.hypot(fx, fz), gl = Math.hypot(gx, gz); if (fl < 1e-3 || gl < 1e-3) continue;
       const cos = -(fx * gx + fz * gz) / (fl * gl); if (cos < 0.5) continue;   // the turn, from the other line on into this one
+      if (Math.abs((end ? dp[m - 2] : dp[0]) - x) > 0.01 || Math.abs((end ? dp[m - 1] : dp[1]) - z) > 0.01) continue;   // its end was moved
       const reach = (LINE[l.cls][0] / 2 + (l.cls <= 3 ? 2.7 : 0)) * Math.sqrt((1 - cos) / (1 + cos));   // how far the inner corner of the sidewalk draws back
       if (reach >= Math.min(fl, gl)) continue;
       const tx = fx / fl - gx / gl, tz = fz / fl - gz / gl, tl = (end ? -1 : 1) * Math.hypot(tx, tz);
@@ -341,7 +365,7 @@ async function buildLines() {
     const me = sorted[li], s = ZR.s, e = ZEB.s; let out = ZNONE; zStamp++;
     const put = (k, g, rr, type) => { const dx = g[k + 2] - g[k], dz = g[k + 3] - g[k + 1]; if (out === ZNONE) out = []; out.push([g[k], g[k + 1], dx, dz, dx * dx + dz * dz || 1e-9, rr * rr, type]); };
     ZR.near(x, z, r + zMax, id => { if (zSeen[id] === zStamp) return; zSeen[id] = zStamp; const k = id * 6, lj = s[k + 4]; if (lj === li) return; const o = sorted[lj];
-      if (me.name >= 0 && o.name === me.name && o.cls === me.cls && !(me.one && o.one)) return;   // the same street: its next piece, the other carriageway (one-way ramps crossing in a junction do cut each other)
+      if (me.name >= 0 && o.name === me.name && o.cls === me.cls && !(me.one && o.one) && MITER.has(li + ':' + lj)) return;   // the same street continuing through a mitred joint (one-way ramps crossing in a junction do cut each other); a fork of the same name is a crossing
       const dx = s[k + 2] - s[k], dz = s[k + 3] - s[k + 1], l = Math.hypot(dx, dz) || 1; if (Math.abs((dx * tx + dz * tz) / l) > 0.94) return;   // alongside
       put(k, s, s[k + 5] + 0.15, o.cls === 4 ? 1 : 0); });
     ZEB.near(x, z, r + 3, id => put(id * 6, e, e[id * 6 + 5], 2));
@@ -383,6 +407,40 @@ async function buildLines() {
       iv.sort((a, b) => a[0] - b[0]); let t = 0;
       for (const [u, v] of iv) { if (v <= t) continue; if (u > t + 1e-6) { if (!cur) cur = [ax + dx * t, az + dz * t]; cur.push(ax + dx * u, az + dz * u); } end(); t = v; }
       if (t < 1 - 1e-6) cur = [ax + dx * t, az + dz * t, bx, bz];
+    }
+    end(); return runs;
+  }
+  // the runs of the centre line p outside the carriageways that cross it: points as {x, z, i, t} (segment i, fraction t);
+  // service roads cut the slab too (a driveway crosses it), zebras do not (the crossing meets the sidewalk)
+  function clipSlab(li, p) {
+    const n = p.length >> 1, runs = []; let cur = null;
+    const end = () => { if (cur && cur.length >= 2) { let len = 0; for (let k = 0; k < cur.length - 1; k++) len += Math.hypot(cur[k + 1].x - cur[k].x, cur[k + 1].z - cur[k].z); if (len > 0.4) runs.push(cur); } cur = null; };
+    const pt = (i, t) => ({ x: p[2 * i] + (p[2 * i + 2] - p[2 * i]) * t, z: p[2 * i + 1] + (p[2 * i + 3] - p[2 * i + 1]) * t, i, t });
+    for (let i = 0; i < n - 1; i++) {
+      const ax = p[2 * i], az = p[2 * i + 1], dx = p[2 * i + 2] - ax, dz = p[2 * i + 3] - az; if (dx * dx + dz * dz < 1e-8) continue;
+      const Z = segZones(li, p, i); let iv = null;
+      for (const c of Z) { if (c[6] === 2) continue; const r = capInt(ax, az, dx, dz, c); if (r) (iv || (iv = [])).push(r); }
+      if (!iv) { if (!cur) cur = [pt(i, 0)]; cur.push(pt(i, 1)); continue; }
+      iv.sort((a, b) => a[0] - b[0]); let t = 0;
+      for (const [u, v] of iv) { if (v <= t) continue; if (u > t + 1e-6) { if (!cur) cur = [pt(i, t)]; cur.push(pt(i, u)); } end(); t = v; }
+      if (t < 1 - 1e-6) cur = [pt(i, t), pt(i, 1)];
+    }
+    end(); return runs;
+  }
+  // one edge of a slab (a point per point of p, with its height), cut outside the same capsules; the cut follows the
+  // crossing carriageway's own edge, so a skewed junction gets a clean corner instead of a square tab poking into it
+  function clipEdge(li, p, q) {
+    const n = q.length, runs = []; let cur = null;
+    const end = () => { if (cur && cur.length >= 2) { let len = 0; for (let k = 0; k < cur.length - 1; k++) len += Math.hypot(cur[k + 1].x - cur[k].x, cur[k + 1].z - cur[k].z); if (len > 0.4) runs.push(cur); } cur = null; };
+    for (let i = 0; i < n - 1; i++) {
+      const ax = q[i].x, az = q[i].z, dx = q[i + 1].x - ax, dz = q[i + 1].z - az; if (dx * dx + dz * dz < 1e-8) continue;
+      const Z = segZones(li, p, i); let iv = null;
+      for (const c of Z) { if (c[6] === 2) continue; const r = capInt(ax, az, dx, dz, c); if (r) (iv || (iv = [])).push(r); }
+      const pt = t => ({ x: ax + dx * t, z: az + dz * t, y: q[i].y + (q[i + 1].y - q[i].y) * t, i, t });
+      if (!iv) { if (!cur) cur = [pt(0)]; cur.push(pt(1)); continue; }
+      iv.sort((a, b) => a[0] - b[0]); let t = 0;
+      for (const [u, v] of iv) { if (v <= t) continue; if (u > t + 1e-6) { if (!cur) cur = [pt(t)]; cur.push(pt(u)); } end(); t = v; }
+      if (t < 1 - 1e-6) cur = [pt(t), pt(1)];
     }
     end(); return runs;
   }
@@ -505,13 +563,13 @@ async function buildLines() {
       hwC = H.slice().sort((a, b) => a - b)[H.length >> 1];
       mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9], H.map(h => h >= 3));                                      // the line between two lanes, where there are two
       const wk = H.map((h, i) => dual.bed[i] ? h + 0.1 : h + 2.7);   // a sidewalk of no width beside a tram bed
-      walkSlabV(walk, extra, dp, H.map((h, i) => s > 0 ? -wk[i] : h + 0.1), H.map((h, i) => s > 0 ? -(h + 0.1) : wk[i]), PAVE, je);
+      walkSlabV(walk, extra, li, dp, H.map((h, i) => s > 0 ? -wk[i] : h + 0.1), H.map((h, i) => s > 0 ? -(h + 0.1) : wk[i]), PAVE, je);
       mark(li, dp, H.map(h => -s * (h + 0.08)), 0.06, CURB, 'k');
       mark(li, dp, H.map(h => -s * (h - 0.02)), 0.09, GUT, 'g');   // the gutter shadow at the kerb foot
     } else if (W) {   // 18. novembra iela with four lanes: a double centre line, broken lines between the lanes, the trams in the inner two
       const H = W, four = H.map(h => h >= 6);
       ribbonV(groups[def[2]], dp, H.map(h => -h), H, lineCol[cls], je);
-      walkSlabV(walk, extra, dp, H.map(h => h + 0.1), H.map(h => h + 2.7), PAVE, je); walkSlabV(walk, extra, dp, H.map(h => -h - 2.7), H.map(h => -h - 0.1), PAVE, je);
+      walkSlabV(walk, extra, li, dp, H.map(h => h + 0.1), H.map(h => h + 2.7), PAVE, je); walkSlabV(walk, extra, li, dp, H.map(h => -h - 2.7), H.map(h => -h - 0.1), PAVE, je);
       for (const sg of [1, -1]) {
         mark(li, dp, H.map(h => sg * (h + 0.08)), 0.12, CURB, 'k'); mark(li, dp, H.map(h => sg * (h - 0.45)), 0.07, WHITE, 'e');
         mark(li, dp, sg * 0.12, 0.06, WHITE, 'c', null, four);                                            // the double centre line
@@ -530,7 +588,7 @@ async function buildLines() {
       for (const sg of [1, -1]) mark(li, dp, sg * (h1 - 0.02), 0.09, GUT, 'g');   // the gutter shadow at each kerb
     } else {
       if (rural) { ribbon(groups[2], dp, hw + 0.6, 0.6, GRAVEL, 0, je); ribbon(groups[2], dp, -hw - 0.6, 0.6, GRAVEL, 0, je); }   // a country road: gravel shoulders, no kerb or sidewalk
-      else if (cls <= 3) { walkSlab(walk, extra, dp, hw + 1.4, 1.3, PAVE, je); walkSlab(walk, extra, dp, -hw - 1.4, 1.3, PAVE, je); mark(li, dp, hw + 0.08, 0.12, CURB, 'k'); mark(li, dp, -hw - 0.08, 0.12, CURB, 'k'); }
+      else if (cls <= 3) { walkSlab(walk, extra, li, dp, hw + 1.4, 1.3, PAVE, je); walkSlab(walk, extra, li, dp, -hw - 1.4, 1.3, PAVE, je); mark(li, dp, hw + 0.08, 0.12, CURB, 'k'); mark(li, dp, -hw - 0.08, 0.12, CURB, 'k'); }
       if (cls === 8) { const [A, B] = railBed(li, dp, hw); ribbonV(groups[def[2]], dp, A, B, lineCol[cls], je); }
       else if (cls !== 9) ribbon(groups[def[2]], dp, 0, hw, lineCol[cls], 0, je);
       if (cls <= 2 && !(tags && tags.noCentre)) mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9]);   // no centre line where OSM says lane_markings=no
@@ -588,6 +646,49 @@ async function buildLines() {
       marks.triUp(v, v + 1, v + 3); marks.triUp(v, v + 3, v + 2); }
   }
   zSeen = new Int32Array(ZR.s.length / 6);
+  for (const S of SLABS) {   // the sidewalk slabs, cut at the junctions now that every carriageway is in ZR
+    if (due()) await pause();
+    STATE.GBC = S.gbc;
+    const n = S.p.length >> 1, p = S.p, q0 = [], q1 = [];
+    for (let i = 0; i < n; i++) {
+      const [tx, tz, m] = frame(p, i, n, S.E), nx = -tz, nz = tx;
+      const oa = S.v ? S.A[i] : S.off - S.hw, ob = S.v ? S.B[i] : S.off + S.hw, fall = Math.abs(oa) < Math.abs(ob);
+      q0.push({ x: p[2 * i] + nx * oa * m, z: p[2 * i + 1] + nz * oa * m, y: WH + (fall ? 0 : 0.02) });
+      q1.push({ x: p[2 * i] + nx * ob * m, z: p[2 * i + 1] + nz * ob * m, y: WH + (fall ? 0.02 : 0) });
+    }
+    const r0 = clipEdge(S.li, p, q0), r1 = clipEdge(S.li, p, q1), SC = sh(S.col, 0.72);
+    if (r0.length && r0.length === r1.length) {
+      for (let k = 0; k < r0.length; k++) {
+        const A = r0[k], B = r1[k];
+        let ring = []; for (const q of A) ring.push(q.x, q.z); for (let j = B.length - 1; j >= 0; j--) ring.push(B[j].x, B[j].z);
+        if (area2(ring) < 0) ring = reversed(ring);
+        const { flat, tris } = triangulate([ring]), yOf = new Map();
+        for (const q of A) yOf.set(q.x + ',' + q.z, q.y); for (const q of B) yOf.set(q.x + ',' + q.z, q.y);
+        const v0 = walk.v; walk.ensure(flat.length / 2);
+        for (let j = 0; j < flat.length; j += 2) walk.vert(flat[j], yOf.get(flat[j] + ',' + flat[j + 1]) ?? WH, flat[j + 1], 0, 1, 0, S.col);
+        for (let j = 0; j < tris.length; j += 3) walk.triUp(v0 + tris[j], v0 + tris[j + 1], v0 + tris[j + 2]);
+        skirt(extra, A.flatMap(q => [q.x, q.z]), A.map(q => q.y), SC, true);
+        skirt(extra, B.flatMap(q => [q.x, q.z]), B.map(q => q.y), SC, false);
+        const cap = (u, v, sgn) => {
+          if (Math.hypot(u.x - v.x, u.z - v.z) < 1e-6) return;
+          const [tx, tz] = frame(p, u.i, n, S.E);
+          polyA(extra, [[u.x, 0, u.z], [u.x, u.y, u.z], [v.x, v.y, v.z], [v.x, 0, v.z]], SC, tx * sgn, 0, tz * sgn);
+        };
+        cap(A[0], B[0], -1); cap(A[A.length - 1], B[B.length - 1], 1);
+        walkRing(ring, WH);
+      }
+    } else {   // the edges disagree on the number of runs (a capsule grazing one edge): square caps on centre-line runs
+      const np = n;
+      for (const r of clipSlab(S.li, p)) {
+        const m = r.length, pr = new Float32Array(m * 2); for (let j = 0; j < m; j++) { pr[2 * j] = r[j].x; pr[2 * j + 1] = r[j].z; }
+        const E = S.E ? [r[0].i === 0 && r[0].t === 0 ? S.E[0] : null, r[m - 1].i === np - 2 && r[m - 1].t === 1 ? S.E[1] : null] : null;
+        const En = E && (E[0] || E[1]) ? E : null;
+        if (S.v) slabRunV(walk, extra, pr, r.map(q => S.A[q.i] + (S.A[q.i + 1] - S.A[q.i]) * q.t), r.map(q => S.B[q.i] + (S.B[q.i + 1] - S.B[q.i]) * q.t), S.col, En);
+        else slabRun(walk, extra, pr, S.off, S.hw, S.col, En);
+      }
+    }
+  }
+  STATE.GBC = null;
   for (const J of JOBS) { if (due()) await pause(); STATE.GBC = J.gbc; const tgt = J.kind === 'w' || J.kind === 'g' ? wear : marks;   // wheel polish and gutter shadow go to the transparent wear sheet
     for (const run of clipRuns(J)) { if (J.dash) dashes(tgt, run, 0, J.w, J.dash[0], J.dash[1], J.col); else ribbon(tgt, run, 0, J.w, J.col); if (J.kind === 'k') curbBar(extra, run, J.w, J.sA, CURB); } }
   for (const Hh of HATCH) { if (due()) await pause(); STATE.GBC = Hh.gbc; hatch(marks, Hh.p, Hh.A, Hh.B, Hh.s, WHITE, (x, z, tx, tz) => inZones(zonesNear(Hh.li, x, z, 0.2, tx, tz), 'c', x, z)); }
