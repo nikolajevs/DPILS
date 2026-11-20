@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildingAt } from '../world/data.js';
 import { terrainH } from '../world/terrain.js';
+import { walkH } from '../world/walkgrid.js';
 import { camera, scene } from '../render/renderer.js';
 import { worldSpace } from '../render/world-space.js';
 import { carAt } from '../world/car-hit.js';
@@ -192,16 +193,90 @@ function hitTracer(bid, dist, body) {
   }
 }
 
-/* ---------- shells out of your own gun ---------- */
-const shells = [], SHELL_MAX = 24;
-const shellGeo = new THREE.CylinderGeometry(0.006, 0.006, 0.032, 6), shellMat = worldSpace(new THREE.MeshBasicMaterial({ color: 0xd2a94f }));
-function ejectShell() {
-  if (shells.length >= SHELL_MAX) { const s = shells.shift(); scene.remove(s.m); }
-  camera.updateMatrixWorld();
-  V.set(0.2, -0.14, -0.4).applyMatrix4(camera.matrixWorld);
-  const e = camera.matrixWorld.elements;
-  const m = new THREE.Mesh(shellGeo, shellMat); m.position.copy(V); m.userData.noProbe = true; scene.add(m);
-  shells.push({ m, vx: e[0] * rnd(1.2, 2.2) + rnd(-0.3, 0.3), vy: e[1] * rnd(1.2, 2.2) + rnd(0.6, 1.4), vz: e[2] * rnd(1.2, 2.2) + rnd(-0.3, 0.3), rx: rnd(4, 12), rz: rnd(4, 12), t: 0 });
+/* ---------- spent cases: out of the ejection port, tumbling, ringing on the ground ----------
+   Every weapon throws its own case: the AK and the Minimi a necked brass rifle case, the SVD a longer rimmed one,
+   the Makarov a short straight pistol case, the Remington a red 12-gauge hull with a brass head. The profile is a
+   lathe of the true cartridge (metres), scaled per weapon; three instanced pools (rifle brass, pistol brass, hulls)
+   draw every case lying about in three calls. The case leaves the port on the right of the receiver — mp.js gives
+   the muzzle and the axes of the gun, the port stands back from the muzzle by the weapon's own measure — tossed
+   right and up, tumbling about a random axis. The pump and the bolt throw late (a third of a second after the shot),
+   as the action opens. Gravity brings the case down onto the terrain, the sidewalk under it (walkH) or the roof it
+   was fired from; it bounces a few times, ringing on stone (mp.js plays the clink), then lies on its side and stays
+   a while, fading at the end. The pools are capped: a long firefight recycles the oldest cases. */
+const lathe = pts => new THREE.LatheGeometry(pts.map(p => new THREE.Vector2(p[0], p[1])), 10);
+// 7.62×39: rim, extractor groove, tapered body, shoulder, neck; the SVD and the Minimi scale it to their own rounds
+const rifleGeo = lathe([[0, 0], [0.00565, 0], [0.00565, 0.0016], [0.0046, 0.002], [0.0046, 0.0032], [0.00565, 0.0036], [0.00545, 0.027], [0.00435, 0.0315], [0.0043, 0.033], [0.0043, 0.0382], [0.0036, 0.039], [0, 0.039]]);
+// 9×18 Makarov: rim, groove, straight body
+const pistolGeo = lathe([[0, 0], [0.0048, 0], [0.0048, 0.0014], [0.0039, 0.0018], [0.0039, 0.0028], [0.00475, 0.0032], [0.00475, 0.0172], [0.0044, 0.018], [0, 0.018]]);
+// 12 gauge fired hull: brass head, red plastic body, crimped mouth
+const hullGeo = lathe([[0, 0], [0.01, 0], [0.01, 0.0018], [0.0088, 0.0022], [0.0088, 0.0034], [0.0099, 0.0038], [0.0099, 0.0155], [0.0093, 0.0162], [0.0093, 0.062], [0.0086, 0.066], [0.008, 0.068], [0, 0.068]]);
+{   // the hull's two materials by vertex colour: brass below the head's edge, red plastic above
+  const p = hullGeo.attributes.position, c = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) { const brass = p.getY(i) < 0.0158; c[i * 3] = brass ? 0.85 : 0.68; c[i * 3 + 1] = brass ? 0.66 : 0.11; c[i * 3 + 2] = brass ? 0.32 : 0.09; }
+  hullGeo.setAttribute('color', new THREE.BufferAttribute(c, 3));
+}
+// the opacity of each case rides an instanced attribute into the fragment (the fade at the end of its life)
+function shellMat(vc) {
+  const m = worldSpace(new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: vc ? 0.5 : 0.85, roughness: vc ? 0.45 : 0.3, vertexColors: vc, transparent: true }));
+  const base = THREE.Material.prototype.onBeforeCompile;
+  m.onBeforeCompile = function (s) {
+    base.call(this, s);
+    s.vertexShader = 'attribute float aOp;\nvarying float vOp;\n' + s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvOp = aOp;');
+    s.fragmentShader = 'varying float vOp;\n' + s.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.a *= vOp;');
+  };
+  m.customProgramCacheKey = () => 'shell-op';
+  return m;
+}
+const SHELL_POOLS = [];
+function shellPool(geo, mat, max) {
+  const op = new THREE.InstancedBufferAttribute(new Float32Array(max), 1); op.setUsage(THREE.DynamicDrawUsage);
+  geo.setAttribute('aOp', op);
+  const mesh = new THREE.InstancedMesh(geo, mat, max);
+  mesh.count = 0; mesh.frustumCulled = false; mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  mesh.setColorAt(0, new THREE.Color(1, 1, 1)); mesh.userData.noProbe = true; scene.add(mesh);
+  const pool = { mesh, op, list: [], free: Array.from({ length: max }, () => ({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, q: new THREE.Quaternion(), ax: new THREE.Vector3(1, 0, 0), spin: 0, t: 0, life: 1, sx: 1, sy: 1, r: 0.005, sleep: false, b: 0, c: new THREE.Color(), op: 1 })) };
+  SHELL_POOLS.push(pool); return pool;
+}
+const POOL_RIFLE = shellPool(rifleGeo, shellMat(false), 48);
+const POOL_PISTOL = shellPool(pistolGeo, shellMat(false), 24);
+const POOL_HULL = shellPool(hullGeo, shellMat(true), 16);
+// the port of each weapon: back from the muzzle, out to the right, up; the delay of the action; the scale of its
+// case on the rifle profile; the toss of the ejection (a heavy hull flies slower than a rifle case)
+const CASE = [
+  { p: POOL_RIFLE, back: 0.55, side: 0.055, lift: 0.03, delay: 0, sx: 1, sy: 1, r: 0.0057, v: 1 },        // АК: 7.62×39
+  { p: POOL_HULL, back: 0.42, side: 0.05, lift: 0, delay: 0.32, sx: 1, sy: 1, r: 0.01, v: 0.72 },         // Remington: 12 gauge, the pump
+  { p: POOL_RIFLE, back: 0.52, side: 0.05, lift: 0.03, delay: 0.42, sx: 1.27, sy: 1.38, r: 0.0072, v: 0.95 }, // СВД: 7.62×54R, the bolt
+  { p: POOL_PISTOL, back: 0.1, side: 0.032, lift: 0.035, delay: 0, sx: 1, sy: 1, r: 0.0048, v: 1.15 },    // Макаров: 9×18
+  { p: POOL_RIFLE, back: 0.36, side: 0.05, lift: 0.02, delay: 0, sx: 0.85, sy: 1.16, r: 0.0048, v: 1.05 }, // Minimi: 5.56×45
+];
+const pending = [];   // the pump and the bolt: their cases leave when the action opens
+let shellBounceFn = null;
+const onShellBounce = fn => { shellBounceFn = fn; };
+const SQ = new THREE.Quaternion(), SY = new THREE.Vector3(0, 1, 0);
+function spawnCase(w, port, right, up, back) {
+  const c = CASE[w] || CASE[0], pool = c.p;
+  const s = pool.free.pop() || pool.list.shift();   // the oldest case gives its place to the new one
+  s.x = port[0] + rnd(-0.01, 0.01); s.y = port[1] + rnd(-0.01, 0.01); s.z = port[2] + rnd(-0.01, 0.01);
+  const vr = rnd(1.7, 2.9) * c.v, vu = rnd(1.0, 2.0) * c.v, vb = rnd(0, 0.5) * c.v;
+  s.vx = right[0] * vr + up[0] * vu + back[0] * vb + rnd(-0.3, 0.3);
+  s.vy = right[1] * vr + up[1] * vu + back[1] * vb + rnd(-0.2, 0.3);
+  s.vz = right[2] * vr + up[2] * vu + back[2] * vb + rnd(-0.3, 0.3);
+  s.ax.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize(); s.spin = rnd(9, 22) * c.v;
+  s.q.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize();
+  s.t = 0; s.life = rnd(13, 19); s.sleep = false; s.b = 0; s.sx = c.sx; s.sy = c.sy; s.r = c.r * c.sx;
+  const tint = rnd(0.85, 1.1);
+  if (pool === POOL_HULL) s.c.setRGB(tint, tint * rnd(0.9, 1.1), tint); else s.c.setRGB(0.84 * tint, 0.68 * tint, 0.36 * tint);
+  pool.list.push(s);
+}
+// mp.js gives the world muzzle of the gun and its axes (right, up, back — unit vectors); the port stands back from
+// the muzzle on the right of the receiver, and the case flies out of it
+function ejectShell(w, muzzle, right, up, back) {
+  const c = CASE[w] || CASE[0];
+  const port = [muzzle[0] - back[0] * c.back + right[0] * c.side + up[0] * c.lift,
+    muzzle[1] - back[1] * c.back + right[1] * c.side + up[1] * c.lift,
+    muzzle[2] - back[2] * c.back + right[2] * c.side + up[2] * c.lift];
+  if (c.delay > 0) pending.push({ t: c.delay, w, port, right, up, back });
+  else spawnCase(w, port, right, up, back);
 }
 // a wisp of powder smoke at the muzzle of your own gun (mp.js gives the world point and the aim)
 function muzzleSmoke(x, y, z, d) { puff(x, y, z, d[0] * 0.7 + rnd(-0.1, 0.1), 0.35, d[2] * 0.7 + rnd(-0.1, 0.1), 0.5, 0.05, 0.22, 0xb9b9b9, 0.22, 0.15); }
@@ -255,13 +330,45 @@ function tickFx(dt) {
     if (d.t >= DECAL_LIFE) { scene.remove(d.mesh); d.mesh.material.dispose(); decals.splice(i, 1); continue; }
     if (d.t > DECAL_LIFE - 4) d.mesh.material.opacity = (DECAL_LIFE - d.t) / 4;
   }
-  for (let i = shells.length - 1; i >= 0; i--) {
-    const s = shells[i]; s.t += dt;
-    if (s.t > 2.5) { scene.remove(s.m); shells.splice(i, 1); continue; }
-    s.vy -= 9.8 * dt; s.m.position.x += s.vx * dt; s.m.position.y += s.vy * dt; s.m.position.z += s.vz * dt;
-    s.m.rotation.x += s.rx * dt; s.m.rotation.z += s.rz * dt;
-    const g = terrainH(s.m.position.x, s.m.position.z) + 0.01;
-    if (s.m.position.y < g && s.vy < 0) { s.m.position.y = g; s.vy *= -0.3; s.vx *= 0.6; s.vz *= 0.6; s.rx *= 0.5; s.rz *= 0.5; }
+  for (let i = pending.length - 1; i >= 0; i--) { const p = pending[i]; p.t -= dt; if (p.t <= 0) { spawnCase(p.w, p.port, p.right, p.up, p.back); pending.splice(i, 1); } }
+  for (const pool of SHELL_POOLS) {
+    const L = pool.list;
+    for (let i = L.length - 1; i >= 0; i--) {
+      const s = L[i]; s.t += dt;
+      if (s.t >= s.life) { L.splice(i, 1); pool.free.push(s); continue; }
+      if (!s.sleep) {
+        s.vy -= 9.81 * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
+        if (s.spin > 0.01) { SQ.setFromAxisAngle(s.ax, s.spin * dt); s.q.premultiply(SQ); }
+        const g0 = terrainH(s.x, s.z); let g = g0 + walkH(s.x, s.z), kind = 'ground';
+        const b = buildingAt(s.x, s.z, s.y);
+        if (b && s.y >= g0 + (b.top || 12) - 0.1) { g = g0 + (b.top || 12); kind = 'roof'; }   // fired from a roof: the case stays on it
+        else if (g > g0 + 0.01) kind = 'step';
+        if (s.y <= g + s.r && s.vy < 0) {
+          s.y = g + s.r;
+          const sp = -s.vy;
+          if (sp > 0.7 && s.b < 3) {
+            s.vy = sp * 0.32; s.vx *= 0.55; s.vz *= 0.55; s.spin *= 0.45; s.b++;
+            s.ax.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize();
+            if (shellBounceFn && sp > 0.9) shellBounceFn([s.x, s.y, s.z], sp, kind);
+          } else {   // spent: lie on the side and stay
+            s.sleep = true; s.vx = s.vy = s.vz = 0; s.spin = 0;
+            const a = rnd(0, 6.283); s.q.setFromUnitVectors(SY, V.set(Math.cos(a), 0, Math.sin(a)));
+            s.y = g + s.r * 0.95;
+            if (shellBounceFn && sp > 0.9 && s.b === 0) shellBounceFn([s.x, s.y, s.z], sp, kind);
+          }
+        }
+      }
+      s.op = s.t > s.life - 1.5 ? (s.life - s.t) / 1.5 : 1;
+    }
+    for (let i = 0; i < L.length; i++) {
+      const s = L[i];
+      PM.compose(PV.set(s.x, s.y, s.z), s.q, PS.set(s.sx, s.sy, s.sx));
+      pool.mesh.setMatrixAt(i, PM); pool.mesh.setColorAt(i, s.c); pool.op.setX(i, s.op);
+    }
+    pool.mesh.count = L.length;
+    pool.mesh.instanceMatrix.needsUpdate = true;
+    if (pool.mesh.instanceColor) pool.mesh.instanceColor.needsUpdate = true;
+    pool.op.needsUpdate = true;
   }
 }
 function clearFx() {
@@ -269,11 +376,12 @@ function clearFx() {
   free.push(...parts); parts.length = 0; partMesh.count = 0;
   for (const f of floats) f.el.remove(); floats.length = 0;
   for (const d of decals) { scene.remove(d.mesh); d.mesh.material.dispose(); } decals.length = 0;
-  for (const s of shells) scene.remove(s.m); shells.length = 0;
+  pending.length = 0;
+  for (const pool of SHELL_POOLS) { pool.free.push(...pool.list); pool.list.length = 0; pool.mesh.count = 0; }
 }
 
 // one of each mark that is made only in a firefight (a hole, a tracer, a shell), out of the scene: the game's models put them
 // into the warm-up of the city (mp.js loadModels), so the first shot does not wait for their shaders and textures
-const fxSamples = () => [new THREE.Mesh(decalGeo, decalMat()), new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -1)]), tracerMat(0xffe9a0)), new THREE.Mesh(shellGeo, shellMat)];
+const fxSamples = () => [new THREE.Mesh(decalGeo, decalMat()), new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -1)]), tracerMat(0xffe9a0)), new THREE.InstancedMesh(rifleGeo, POOL_RIFLE.mesh.material, 1), new THREE.InstancedMesh(pistolGeo, POOL_PISTOL.mesh.material, 1), new THREE.InstancedMesh(hullGeo, POOL_HULL.mesh.material, 1)];
 
-export { fxSamples, tracerShot, bindTracer, hitTracer, tickFx, clearFx, dmgFloat, ejectShell, muzzleSmoke };
+export { fxSamples, tracerShot, bindTracer, hitTracer, tickFx, clearFx, dmgFloat, ejectShell, onShellBounce, muzzleSmoke };
