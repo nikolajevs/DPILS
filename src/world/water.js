@@ -145,4 +145,8 @@ function waterMat(shoreFix = -1) {
   return m;
 }
 
-export { SMALL_WATER, prepShore, waterDeep, waterMat };
+// what the screen-space mirror of the water reads (src/render/post.js): the shore field that marks the water in the
+// depth buffer and the drifting ripple map; both appear while the city is built, the normal once waterMat is made
+function waterSsr() { return { shoreTex: SHORE && SHORE.tex, shoreA: SHORE && SHORE.a, normal: NORMAL }; }
+
+export { SMALL_WATER, prepShore, waterDeep, waterMat, waterSsr };

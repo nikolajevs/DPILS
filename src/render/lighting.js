@@ -50,10 +50,10 @@ function setTime(i) {
 }
 // shadow: the map size of EACH sun cascade (the two cascades share one atlas twice as wide, hence the MAXTEX/2 cap)
 const QUALITY = [
-  { name: 'высокая', shadow: Math.min(4096, MAXTEX >> 1), pr: 2, tree: 300, det: 700, far: 4200, msaa: 4, ao: 1, bloom: 1 },
-  { name: 'средняя', shadow: Math.min(2048, MAXTEX >> 1), pr: 1.25, tree: 170, det: 520, far: 3000, msaa: 4, ao: 1, bloom: 1 },
-  { name: 'низкая', shadow: 0, pr: 1, tree: 100, det: 360, far: 2400, msaa: 0, ao: 0, bloom: 0 },
-  { name: 'минимум', shadow: 0, pr: 0.7, tree: 50, det: 200, far: 1500, msaa: 0, ao: 0, bloom: 0 }   // for weak machines: a smaller picture, near houses only
+  { name: 'высокая', shadow: Math.min(4096, MAXTEX >> 1), pr: 2, tree: 300, det: 700, far: 4200, msaa: 4, ao: 1, bloom: 1, ssr: 1 },
+  { name: 'средняя', shadow: Math.min(2048, MAXTEX >> 1), pr: 1.25, tree: 170, det: 520, far: 3000, msaa: 4, ao: 1, bloom: 1, ssr: 1 },
+  { name: 'низкая', shadow: 0, pr: 1, tree: 100, det: 360, far: 2400, msaa: 0, ao: 0, bloom: 0, ssr: 0 },
+  { name: 'минимум', shadow: 0, pr: 0.7, tree: 50, det: 200, far: 1500, msaa: 0, ao: 0, bloom: 0, ssr: 0 }   // for weak machines: a smaller picture, near houses only
 ];
 /* Quality mode: 'auto' — the page adapts by itself (dynamic resolution and the level, in the city and the game alike,
    see game/perf.js); a fixed level is the player's choice and stays. Both are remembered. */
