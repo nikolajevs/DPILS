@@ -5,7 +5,8 @@ import { setTime } from '../render/lighting.js';
 import { $ } from '../core/env.js';
 
 /* ---------- the start card, in steps ----------
-   First a choice: a walk through the city, a training against bots, or a game on a server. Only then the settings of
+   First a choice: a training against bots or a game on a server (the city walk was removed — the city is the arena of
+   the fight). Only then the settings of
    that choice, with a way back; and within them, a setting shows only when it means something: the team not in a
    training where everyone is for himself, the place to appear only in the open city (in an arena you appear on your
    base), the field for another server only when the list does not
@@ -53,9 +54,9 @@ window.addEventListener('keydown', e => { if (e.code === 'Escape' && !$('start')
 // the "?" button: the card again, on its first step, with the keys unfolded
 $('bHelp').onclick = () => {
   if (document.pointerLockElement) document.exitPointerLock();
-  $('go').querySelector('b').textContent = STATE.mp ? 'Вернуться в игру' : 'Продолжить прогулку';
+  $('go').hidden = !STATE.started;   // «Вернуться в игру» — только когда бой уже идёт
   $('chTrain').hidden = $('chOnline').hidden = !!STATE.mp;   // in a game, not another game
-  showStep('home'); $('keysBox').open = true; $('start').hidden = false; $('go').focus();
+  showStep('home'); $('keysBox').open = true; $('start').hidden = false; (STATE.started ? $('go') : $('chTrain')).focus();
 };
 
 export { showStep };

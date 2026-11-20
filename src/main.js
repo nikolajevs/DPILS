@@ -17,9 +17,9 @@ import { PP, renderFrame, warmUp } from './render/post.js';
 import { captureProbes, probeState } from './render/cityprobe.js';
 import { splitBigMeshes } from './render/chunks.js';
 import { QUALITY, TIMES, qi, qAuto, setQuality, setQualityMode, setTime, timeI } from './render/lighting.js';
-import { P, setFly, teleport } from './game/player.js';
+import { P } from './game/player.js';
 import './ui/places.js';
-import { TX, buildTransit, setClock, updateBoard } from './transit/transit.js';
+import { TX, buildTransit, setClock } from './transit/transit.js';
 import { LIDAR_STATS, buildTrees } from './world/trees.js';
 import { PSTAT } from './landmarks/parking.js';
 import { SER_STAT } from './buildings/series.js';
@@ -124,7 +124,7 @@ const step = (text, w, reported) => {
     await loading.frame(); warmSamples(false);
     loading.done('Готово: ' + BLD.length.toLocaleString('ru') + ' зданий, ' + LINES.length.toLocaleString('ru') + ' улиц и дорожек, ' + trees.toLocaleString('ru') + ' деревьев, ' + lamps.toLocaleString('ru') + ' фонарей' + (tripsN ? ', ' + tripsN.toLocaleString('ru') + ' рейсов в расписании' : '') + '.');
     $('view').classList.add('shown');
-    $('go').disabled = false; enablePlay(); $('go').focus();
-    window.__city = { PERF, ambProbe, ambStatus, statEvent, statsOf, MP, STATE, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, updateBoard, P, teleport, setFly, setTime, fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, setQualityMode, qualityMode: () => (qAuto ? 'auto' : qi), scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU, probeState };
+    enablePlay(); $('chTrain').focus();
+    window.__city = { PERF, ambProbe, ambStatus, statEvent, statsOf, MP, STATE, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, P, setTime, fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, setQualityMode, qualityMode: () => (qAuto ? 'auto' : qi), scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU, probeState };
   } catch (e) { console.error(e); loading.fail('Ошибка при сборке города: ' + e.message); }
 })();

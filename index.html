@@ -11,35 +11,14 @@
 <div class="hud" id="hud" hidden>
   <div class="where">
     <div class="plate" id="street">Vienības laukums</div>
-    <div class="panel near" id="near" hidden></div>
-    <div class="panel clock" id="clock" hidden>
-      <div class="clk-row"><b id="clkTime">--:--</b><span class="clk-day" id="clkDay"></span>
-        <button class="mbtn" id="clkBack" title="На час назад">−1 ч</button>
-        <button class="mbtn" id="clkSpeed" title="Скорость времени, клавиша T">×1</button>
-        <button class="mbtn" id="clkFwd" title="На час вперёд">+1 ч</button>
-        <button class="mbtn" id="clkNow" hidden>сейчас</button>
-      </div>
-      <div class="clk-info"><span id="clkInfo"></span><button class="mbtn" id="clkFirst" hidden>к первому рейсу</button></div>
-    </div>
-    <div class="panel board" id="board" hidden aria-live="polite">
-      <div class="board-h">Остановка<b id="boardName"></b></div>
-      <ol id="boardList"></ol>
-    </div>
   </div>
   <div class="panel mini" id="mini" role="button" tabindex="0" aria-label="Открыть карту города">
     <canvas id="minimap" width="190" height="190"></canvas><span class="n">С</span>
   </div>
-  <nav class="panel places" id="places" hidden aria-label="Места">
-    <h2>Перенестись</h2>
-    <ul id="placeList"></ul>
-  </nav>
   <div class="bottom">
-  <div class="panel status" id="status"><span id="stMode">пешком</span><span id="stHead">курс 000° С</span><span class="opt" id="stPos"></span><span class="opt" id="stPerf" title="Кадры в секунду · draw calls — команды отрисовки за кадр (сцена, тени, постобработка) · CPU — среднее время кадра на процессоре · GPU — на видеокарте (н/д, если браузер не даёт замер)"></span></div>
+  <div class="panel status" id="status"><span id="stHead">курс 000° С</span><span class="opt" id="stPos"></span><span class="opt" id="stPerf" title="Кадры в секунду · draw calls — команды отрисовки за кадр (сцена, тени, постобработка) · CPU — среднее время кадра на процессоре · GPU — на видеокарте (н/д, если браузер не даёт замер)"></span></div>
   <div class="panel bar">
-    <button class="btn" id="bPlaces" aria-pressed="false">Места<kbd>P</kbd></button>
     <button class="btn" id="bMap">Карта<kbd>M</kbd></button>
-    <a class="btn" id="bSV" href="https://www.google.com/maps" target="_blank" rel="noopener" title="Открыть настоящую панораму Google Street View в этой точке и в этом направлении">Street View<kbd>V</kbd></a>
-    <button class="btn" id="bFly" aria-pressed="false">Полёт<kbd>F</kbd></button>
     <button class="btn" id="bQuality" title="Качество графики: авто или фиксированное">Графика: авто</button>
     <button class="btn" id="bHelp">?</button>
     <button class="btn" id="bHint" title="Все клавиши, F1">Клавиши<kbd>F1</kbd></button>
@@ -68,8 +47,8 @@
     </div>
     <div class="step-home" id="stepHome">
       <div class="choices">
-        <button class="choice main" id="go" disabled><b>Начать прогулку</b><span>пешком или в полёте, по всему городу</span></button>
-        <button class="choice" id="chTrain" type="button" disabled><b>Тренировка с ботами</b><span>бой прямо в браузере, без сервера</span></button>
+        <button class="choice main" id="go" hidden><b>Вернуться в игру</b><span>бой продолжится с того же места</span></button>
+        <button class="choice main" id="chTrain" type="button" disabled><b>Тренировка с ботами</b><span>бой прямо в браузере, без сервера</span></button>
         <button class="choice" id="chOnline" type="button" disabled><b>Играть онлайн</b><span>команды или каждый сам за себя на сервере</span></button>
       </div>
       <label class="time-pick" id="timeRow">Время суток
@@ -87,16 +66,15 @@
       <dl class="keys">
       <dt>W A S D / стрелки</dt><dd>идти, Shift — бегом</dd>
       <dt>Мышь</dt><dd>смотреть по сторонам (Esc — отпустить курсор)</dd>
-      <dt>1 – 5 · колесо</dt><dd>в игре: автомат · дробовик · снайперская (правая кнопка мыши — прицел) · пистолет · пулемёт</dd>
-      <dt>G · O</dt><dd>в игре: граната (две за жизнь) · настройки: мышь, звук, клавиши</dd>
-      <dt>Y · U · V</dt><dd>в игре: чат всем · чат команде · рация (удерживать)</dd>
-      <dt>Пробел · C</dt><dd>прыжок (в игре) · присесть (удерживать)</dd>
-      <dt>F</dt><dd>полёт: E / пробел — выше, Q — ниже</dd>
+      <dt>1 – 5 · колесо</dt><dd>автомат · дробовик · снайперская (правая кнопка мыши — прицел) · пистолет · пулемёт</dd>
+      <dt>G · O</dt><dd>граната (две за жизнь) · настройки: мышь, звук, клавиши</dd>
+      <dt>Y · U · V</dt><dd>чат всем · чат команде · рация (удерживать)</dd>
+      <dt>Пробел · C</dt><dd>прыжок · присесть (удерживать)</dd>
+      <dt>F</dt><dd>после смерти: камера — от первого лица · из-за спины · свободный полёт</dd>
+      <dt>После смерти</dt><dd>свободная камера: W A S D — лететь, пробел / E — выше, Q — ниже, Shift — быстрее; возрождение — пробел (в свободной камере — Enter)</dd>
       <dt>F3</dt><dd>счётчик производительности: кадры/с, вызовы отрисовки, время CPU и GPU</dd>
-      <dt>V</dt><dd>открыть настоящую панораму Street View в этой точке</dd>
-      <dt>M · P</dt><dd>карта · список мест</dd>
+      <dt>M</dt><dd>карта города</dd>
       <dt>Время суток</dt><dd>день, вечер или ночь — выбирается в этом меню до начала игры</dd>
-      <dt>T</dt><dd>ускорить часы транспорта: ×1, ×10, ×60</dd>
       <dt>На телефоне</dt><dd>левая половина экрана — идти, правая — смотреть</dd>
     </dl>
       </details>

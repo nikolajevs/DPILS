@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { STATE } from '../core/state.js';
-import { FALL, P, freeSpot, keys } from './player.js';
+import { FALL, P, flyStep, freeSpot, keys } from './player.js';
 import { PLACES } from '../ui/places.js';
 import { buildingAt, onRoad } from '../world/data.js';
 import { PERF } from './perf.js';
@@ -57,13 +57,15 @@ const DMG = [
   { dmg: 20, head: 42 },
   { dmg: 16, head: 28 },
 ];
-const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, lastNade: 0, spec: 0, specFP: true, scope: false, zoom: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0, sights: { sight: 0, optic: 0 }, attach: [null, null, null, null, null] };   // the picked-up sights: loose in the pocket and mounted per weapon (server/combat.mjs INV)
+const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, lastNade: 0, spec: 0, specMode: 0, scope: false, zoom: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0, sights: { sight: 0, optic: 0 }, attach: [null, null, null, null, null] };   // the picked-up sights: loose in the pocket and mounted per weapon (server/combat.mjs INV)
 // the pockets (keep server/combat.mjs in step: RESERVE and INV): the server owns them, the page only shows and predicts
 const RESERVE = [90, 24, 15, 36, 200], NADE_MAX = 3, MED_MAX = 2;
 // the aimed grenade throw: G takes the grenade in hand, the mouse aims it, the left button held down charges the power
 const NAIM = { on: false, charging: false, t0: 0, power: 0, full: false, at: 0 };
 const NTHROW = { at: 0, pw: 0, gone: false };   // the throw just made: the arm follows through, then the weapon comes back up; gone: its grenade is in the air
-try { MP.specFP = localStorage.getItem('dpils.specfp') !== '0'; } catch (e) {}   // the dead man's camera: from the eyes by default, the choice is remembered
+// the dead man's camera: 0 — from the eyes of the watched player (the default), 1 — from behind the back, 2 — a free
+// flight over the city; F cycles the three, the choice is remembered (the old two-view choice dpils.specfp migrates)
+try { const s = localStorage.getItem('dpils.specmode'); MP.specMode = s === '1' ? 1 : s === '2' ? 2 : localStorage.getItem('dpils.specfp') === '0' ? 1 : 0; } catch (e) {}
 bindInv({ useMed, switchWeapon, attach: (w, kind) => { if (MP.dead || !MP.ws || MP.ws.readyState !== 1) return; MP.ws.send(JSON.stringify({ t: 'attach', w, kind })); tone(kind ? 520 : 300, kind ? 780 : 200, 0.08, 0.2, 'triangle'); }, beep: kind => { if (kind === 'pick') tone(660, 990, 0.09, 0.22, 'triangle'); else if (kind === 'med') tone(440, 660, 0.16, 0.25, 'sine'); else tone(180, 120, 0.12, 0.2, 'square'); } });
 // the mounted sights of every weapon onto the arms in hand (and back, when a weapon is swapped or a sight taken off)
 function syncVm() { if (vm) MP.attach.forEach((k, w) => vm.attach(w, k)); }
@@ -576,22 +578,31 @@ function specNext(dir) {
   const l = specList(); if (!l.length) { MP.spec = 0; return; }
   const i = l.indexOf(MP.spec); MP.spec = l[i < 0 ? 0 : (i + dir + l.length) % l.length];
 }
-function specCam() {   // F or the button on the death panel: the eyes ↔ behind the back
-  MP.specFP = !MP.specFP;
-  try { localStorage.setItem('dpils.specfp', MP.specFP ? '1' : '0'); } catch (e) {}
+function specCam() {   // F or the button on the death panel: the eyes → behind the back → free flight → the eyes
+  MP.specMode = (MP.specMode + 1) % 3;
+  try { localStorage.setItem('dpils.specmode', String(MP.specMode)); } catch (e) {}
   specCamUi();
 }
-function specCamUi() { const b = el('mpSpecCam'); b.textContent = MP.specFP ? 'Из-за спины (F)' : 'От первого лица (F)'; b.setAttribute('aria-pressed', String(MP.specFP)); }
+function specCamUi() { const b = el('mpSpecCam'); b.textContent = ['Из-за спины (F)', 'Свободная камера (F)', 'От первого лица (F)'][MP.specMode]; b.setAttribute('aria-pressed', String(MP.specMode === 0)); }
 // dead: the camera rides a living player's eyes (first person, the default) or follows from behind — the killer first,
-// then teammates — until the respawn; F switches the two views
-function spectate(now) {
+// then teammates — until the respawn; the third view is a free flight over the city (WASD, the mouse, E / Space up,
+// Q down, Shift faster — flyStep of player.js), it starts where the last view stood and goes through walls and roofs;
+// F cycles the three views, the choice is remembered for the next death
+function spectate(dt, now) {
   if (!MP.dead) return;
+  const label = el('mpSpec');
+  if (MP.specMode === 2) {   // the free camera: P.fly lifts the near plane and the shadow reach with the height (loop.js, post.js)
+    P.fly = true; flyStep(dt, 10);
+    const t = 'Свободная камера · W A S D — лететь · пробел / E — выше, Q — ниже · Shift — быстрее · F — режим'; if (label.textContent !== t) label.textContent = t;
+    return;
+  }
+  P.fly = false;
   let r = remotes.get(MP.spec); if (!r || !specAble(r)) { specNext(1); r = remotes.get(MP.spec); }
-  const label = el('mpSpec'); if (!r) { label.textContent = 'Некого показывать'; return; }
+  if (!r) { const t = 'Некого показывать · F — свободная камера'; if (label.textContent !== t) label.textContent = t; return; }
   const p = pose(r, now - 120); if (!p) return;
-  if (MP.specFP) { P.x = p.x; P.y = p.y; P.z = p.z; P.yaw = p.yaw; P.pitch = p.pitch; }   // from the eyes: the watched body is hidden in mpTick
+  if (MP.specMode === 0) { P.x = p.x; P.y = p.y; P.z = p.z; P.yaw = p.yaw; P.pitch = p.pitch; }   // from the eyes: the watched body is hidden in mpTick
   else { P.yaw = p.yaw; P.pitch = -0.14; P.x = p.x + Math.sin(p.yaw) * 3.2; P.z = p.z + Math.cos(p.yaw) * 3.2; P.y = p.y + 0.6; }
-  const t = 'Наблюдение: ' + r.name + (isMate(r) ? ' (свой)' : MP.ffa ? '' : ' (враг)') + ' · ← → или щелчок — другой · F — ' + (MP.specFP ? 'из-за спины' : 'от первого лица'); if (label.textContent !== t) label.textContent = t;
+  const t = 'Наблюдение: ' + r.name + (isMate(r) ? ' (свой)' : MP.ffa ? '' : ' (враг)') + ' · ← → или щелчок — другой · F — ' + (MP.specMode === 0 ? 'из-за спины' : 'свободная камера'); if (label.textContent !== t) label.textContent = t;
 }
 // ---------- the arena: the choices of the respawn, the edge, the ring and the bases on the maps ----------
 function arenaChoices() {   // in an arena you come back on your base (or next to a teammate), not where you like
@@ -615,7 +626,7 @@ function onMsg(m) {
       if (MP.local) feed('Тренировка с ботами: ' + MP.board.filter(e => e.bot).length + ', уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || '') + '»', 'sys'); break;
     case 'spawn': {
       nadeCancel(); punchReset();
-      const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.vx = P.vz = 0; P.kx = P.kz = 0; P.fallTop = 0; P.landH = 0; P.land = 0; P.crouch = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
+      const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.vx = P.vz = 0; P.kx = P.kz = 0; P.fallTop = 0; P.landH = 0; P.land = 0; P.crouch = false; P.fly = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
       MP.weapon = 0; MP.scope = false; models.forEach((mm, k) => { mm.visible = k === 0; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; MP.sights = m.sights ? { ...m.sights } : { sight: 0, optic: 0 }; MP.attach = Array.isArray(m.attach) ? m.attach.slice() : [null, null, null, null, null]; syncVm(); clearNades(); gun.visible = true; if (vm) { vm.setWeapon(0); vm.equip(); } el('mpDead').hidden = true; slotsT = performance.now() + 2600; updatePanel();   // the belt greets the spawn, then hides
       MP.ws.send(JSON.stringify({ t: 'state', x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch }));   // the server has the point as asked: tell it where the player really stands
@@ -710,7 +721,6 @@ function showGame() {
   firstGames(); ambStart(); try { loadSounds(ac()); } catch (e) {}
   STATE.mp = true; MP.on = true; STATE.started = true; P.fly = false; document.body.classList.add('mp');
   $('start').hidden = true; $('hud').hidden = false; el('mpHud').hidden = false; $('cross').hidden = false; STATE.lodTimer = 0;
-  $('bFly').setAttribute('aria-pressed', false); if ($('places').hidden === false) $('places').hidden = true;
 }
 function join(local) {   // local: { bots, level, mode, arena } for the game against bots in the page, with no server
   const name = el('mpName').value.trim(), url = local ? 'local:' : serverUrl(), msg = el('mpMsg');
@@ -749,7 +759,11 @@ canvas.addEventListener('contextmenu', e => { if (MP.on) e.preventDefault(); });
 canvas.addEventListener('mousedown', e => {
   if (MP.on && e.button === 2) { if (NAIM.on) { nadeCancel(); return; } if ((W().scope || MP.attach[MP.weapon]) && !MP.dead && !MP.reloadAt) MP.scope = true; }   // right button: the sniper's own scope, or the sight mounted on any weapon
   if (!MP.on || e.button !== 0) return;
-  if (MP.dead) { specNext(1); return; }
+  if (MP.dead) {   // the follow views: the click takes the next player; the free camera: it takes the mouse back
+    if (MP.specMode === 2) { if (!STATE.locked && canvas.requestPointerLock) { try { const pr = canvas.requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (err) {} } }
+    else specNext(1);
+    return;
+  }
   if (NAIM.on) { if (STATE.locked) { NAIM.charging = true; NAIM.t0 = performance.now(); NAIM.power = 0; NAIM.full = false; } return; }   // the held left button gathers the throw instead of firing
   MP.firing = true; if (!STATE.locked && !MP.dead) return; fire(performance.now());
 });
@@ -762,8 +776,8 @@ window.addEventListener('keydown', e => {
   if (!MP.on || e.repeat) return;
   if (e.code === SET.keys.voice && voice) { if (!voice.hasMic) { voice.enableMic().then(ok => { el('mpVoice').dataset.mic = ok ? 'on' : 'denied'; }); } else voice.talk(true); }
   else if (!MP.dead && (e.code === SET.keys.chat || e.code === SET.keys.teamChat || e.code === 'Enter')) { e.preventDefault(); nadeCancel(); openChat(e.code === SET.keys.teamChat && !MP.ffa); }
-  else if (MP.dead && (e.code === 'ArrowRight' || e.code === 'KeyE')) specNext(1);
-  else if (MP.dead && (e.code === 'ArrowLeft' || e.code === 'KeyQ')) specNext(-1);
+  else if (MP.dead && MP.specMode !== 2 && (e.code === 'ArrowRight' || e.code === 'KeyE')) specNext(1);   // in the free camera E / Q are up / down
+  else if (MP.dead && MP.specMode !== 2 && (e.code === 'ArrowLeft' || e.code === 'KeyQ')) specNext(-1);
   else if (MP.dead && e.code === 'KeyF') specCam();
   else if (e.code === SET.keys.inv) { if (!MP.dead) { nadeCancel(); toggleInv(); } }
   else if (e.code === SET.keys.med) useMed();
@@ -771,7 +785,7 @@ window.addEventListener('keydown', e => {
   else if (e.code === SET.keys.reload) { closeInv(); nadeCancel(); reload(performance.now()); }
   else if (e.code === SET.keys.w1) switchWeapon(0); else if (e.code === SET.keys.w2) switchWeapon(1); else if (e.code === SET.keys.w3) switchWeapon(2); else if (e.code === SET.keys.w4) switchWeapon(3); else if (e.code === SET.keys.w5) switchWeapon(4);
   else if (e.code === SET.keys.board) { e.preventDefault(); el('mpBoard').hidden = false; drawBoard(); }
-  else if ((e.code === 'Space' || e.code === 'Enter') && MP.dead) { e.preventDefault(); respawn(); }
+  else if ((e.code === 'Enter' || (e.code === 'Space' && MP.specMode !== 2)) && MP.dead) { e.preventDefault(); respawn(); }   // in the free camera Space is up, Enter respawns
 });
 window.addEventListener('keyup', e => { if (e.code === SET.keys.board) el('mpBoard').hidden = true; if (e.code === SET.keys.voice && voice) voice.talk(false); });
 
@@ -883,7 +897,7 @@ function mpTick(dt) {
     if (el('mpScope').hidden === (scoped && !dot)) el('mpScope').hidden = !(scoped && !dot);
     if (scoped && !dot) scopeBdc(fov);
     gun.visible = !MP.dead && !nv && (mode === 'sight' || MP.zoom < 0.5); }   // the grenade in hand (and the throw) replaces the gun; the long zoom hides the arms, the red dot keeps them
-  ownSteps(dt); tickNades(dt); nadeWarnTick(); tickItems(dt, now); spectate(now); nadeAimTick(now); nadeHandTick(nv);
+  ownSteps(dt); tickNades(dt); nadeWarnTick(); tickItems(dt, now); spectate(dt, now); nadeAimTick(now); nadeHandTick(nv);
   if (P.landH > 0) { const h = P.landH; P.landH = 0; if (h > FALL.safe && !MP.dead && MP.ws.readyState === 1) MP.ws.send(JSON.stringify({ t: 'fall', h: +h.toFixed(2) })); }   // a hard landing: the height goes to the server, which owns the damage
   if (MP.reloadAt && now - MP.reloadAt >= WEAPONS[MP.reloadW].reloadMs) {   // the local picture of the reload; the server's 'inv' message is the truth. It finishes on the weapon that started it, even if another is in hand now
     const rw = MP.reloadW; MP.reloadAt = 0; const k = Math.min(WEAPONS[rw].mag - MP.ammo[rw], MP.reserve[rw]);
@@ -893,7 +907,7 @@ function mpTick(dt) {
   { const pk = Math.exp(-dt * 8); punch.p *= pk; punch.y *= pk; punch.r *= pk; if (punch.p < 1e-4) punch.p = 0; if (Math.abs(punch.y) < 1e-4) punch.y = 0; if (Math.abs(punch.r) < 1e-4) punch.r = 0; }   // the aim punch springs back
   if ((MP.pingT = (MP.pingT || 0) - dt) <= 0 && MP.ws.readyState === 1) { MP.pingT = 2; MP.ws.send(JSON.stringify({ t: 'ping', c: now, rtt: MP.rtt })); }
   if (MP.firing && W().auto) fire(now);
-  if (MP.dead) { const left = Math.max(0, 3 - (now - MP.deadAt) / 1000); el('mpRespawn').disabled = left > 0; el('mpRespawn').textContent = left > 0 ? 'Возрождение через ' + Math.ceil(left) : 'Возродиться (пробел)'; }
+  if (MP.dead) { const left = Math.max(0, 3 - (now - MP.deadAt) / 1000); el('mpRespawn').disabled = left > 0; el('mpRespawn').textContent = left > 0 ? 'Возрождение через ' + Math.ceil(left) : MP.specMode === 2 ? 'Возродиться (Enter)' : 'Возродиться (пробел)'; }
   else if ((MP.sendT -= dt) <= 0 && MP.ws.readyState === 1) { MP.sendT = 0.05; MP.ws.send(JSON.stringify({ t: 'state', x: +P.x.toFixed(2), y: +P.y.toFixed(2), z: +P.z.toFixed(2), yaw: +P.yaw.toFixed(3), pitch: +P.pitch.toFixed(3), h: +P.eye.toFixed(2), w: MP.weapon })); }
   for (const r of remotes.values()) {
     const g = r.group;
@@ -912,7 +926,7 @@ function mpTick(dt) {
     g.rotation.y = p.yaw; g.rotation.x = 0.075 * fk * (r.flinchZone === 1 ? 1.35 : r.flinchZone === 2 ? 0.55 : 1); g.rotation.z = -side * 0.07 * fk;   // the flinch: the torso snaps back, a leg hit buckles the knees
     g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
     if (!r.av && r.figHead) r.figHead.rotation.x = p.pitch - 0.35 * fk;   // the simple figure's head snaps back too
-    if (MP.dead && MP.specFP && r.id === MP.spec) g.visible = false;   // the first-person spectate: the watched body must not cover the eye
+    if (MP.dead && MP.specMode === 0 && r.id === MP.spec) g.visible = false;   // the first-person spectate: the watched body must not cover the eye
   }
   tickFx(dt);
   MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06; gun.rotation.z = punch.r * 1.6;   // the gun tilts with the flinch of the view
