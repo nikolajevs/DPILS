@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/plaza-edge-gaps | Тротуарные плиты поперёк проезжих частей на перекрёстках (скриншот владельца, по всему городу) | src/world/streets.js, README.md |
 
 ## Автономный цикл улучшений
 
