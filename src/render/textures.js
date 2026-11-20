@@ -198,9 +198,11 @@ function facadeAtlas(photos) {
   }
   g.putImageData(id, 0, 0); p.putImageData(pid, 0, 0);
   bakeAO(p, pk.width, pk.height, S, S);
-  const tc = toTex(cv, false, false), tm = toTex(mk, false, false), tp = toTex(pk, false, false);
-  tc.generateMipmaps = tm.generateMipmaps = tp.generateMipmaps = true; tc.minFilter = tm.minFilter = tp.minFilter = THREE.LinearMipmapLinearFilter;
-  return [tc, tm, tp];
+  const nk = bakeNormals(p, m, pk.width, pk.height, S, S, (c, r) => ['plaster', 'brick', 'brick', 'concrete', 'plaster', 'wood', 'metal', 'plaster'][r], 12);
+  const tc = toTex(cv, false, false), tm = toTex(mk, false, false), tp = toTex(pk, false, false), tn = toTex(nk, false, false);
+  tc.generateMipmaps = tm.generateMipmaps = tp.generateMipmaps = tn.generateMipmaps = true;
+  tc.minFilter = tm.minFilter = tp.minFilter = tn.minFilter = THREE.LinearMipmapLinearFilter;
+  return [tc, tm, tp, tn];
 }
 /* Ambient occlusion from the height channel of a PBR atlas: a pixel lower than the average of its neighbourhood sits in
    a joint, a groove or a recess and takes less indirect light. Samples stay inside the cell (the neighbours across a
@@ -217,6 +219,42 @@ function bakeAO(ctx, W, H, CW, CH) {
     d[k + 3] = Math.round((1 - Math.min(0.42, cav * 1.9)) * 255);
   }
   ctx.putImageData(id, 0, 0);
+}
+/* Tangent-space normal map baked from the height channel of a PBR atlas: a Sobel gradient of the height (mortar joints,
+   panel seams, plank grooves, frames) plus the micro-grain of the material that the 8-bit height cannot carry — brick
+   pores, plaster sand, wood fibres, the brush of the metal sheet. The grain is added in float before the gradient, so it
+   survives the quantisation; the mask keeps it off the glass and softens it on painted trim. kindAt(col, row) picks the
+   grain of the cell; strength is the slope per unit of height gradient (the old runtime relief was ≈13.5 for the bays,
+   ≈10.5 for the series). RGB = n·0.5+0.5 in the wall-uv frame: x along +u, y along +v (up the canvas). */
+function bakeNormals(pctx, mctx, W, H, CW, CH, kindAt, strength) {
+  const pd = pctx.getImageData(0, 0, W, H).data, md = mctx.getImageData(0, 0, W, H).data;
+  const grain = valueNoise(256, 64, 77), fine = valueNoise(256, 128, 91);
+  const hf = new Float32Array(W * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const k = y * W + x, kind = kindAt(Math.floor(x / CW), Math.floor(y / CH)), tx = x & 255, ty = y & 255;
+    let g = 0;
+    if (md[k * 4 + 1] < 128) {   // no grain on the glass
+      if (kind === 'wood') g = (grain[ty * 256 + ((x >> 2) & 255)] - 0.5) * 0.07 + (fine[ty * 256 + tx] - 0.5) * 0.014;   // fibres run along the plank
+      else if (kind === 'brick') g = (fine[ty * 256 + tx] - 0.5) * 0.034 + (grain[ty * 256 + tx] - 0.5) * 0.014;          // pores and sand
+      else if (kind === 'metal') g = (grain[((y >> 1) & 255) * 256 + ((x >> 3) & 255)] - 0.5) * 0.012;                    // a light brush along the sheet
+      else g = (fine[ty * 256 + tx] - 0.5) * 0.022 + (grain[ty * 256 + tx] - 0.5) * 0.016;                                // plaster / concrete sand
+      if (md[k * 4] < 13) g *= 0.35;   // frames, sills and trim are painted smoother than the wall
+    }
+    hf[k] = pd[k * 4 + 2] / 255 + g;
+  }
+  const nk = mkCanvas(W, H), n = nk.getContext('2d'), id = n.createImageData(W, H), d = id.data;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const cx = Math.floor(x / CW) * CW, cy = Math.floor(y / CH) * CH;
+    const x0 = Math.max(cx, x - 1), x1 = Math.min(cx + CW - 1, x + 1), y0 = Math.max(cy, y - 1), y1 = Math.min(cy + CH - 1, y + 1);
+    const sx = (hf[y0 * W + x1] + 2 * hf[y * W + x1] + hf[y1 * W + x1] - hf[y0 * W + x0] - 2 * hf[y * W + x0] - hf[y1 * W + x0]) / 8;
+    const sy = (hf[y1 * W + x0] + 2 * hf[y1 * W + x] + hf[y1 * W + x1] - hf[y0 * W + x0] - 2 * hf[y0 * W + x] - hf[y0 * W + x1]) / 8;
+    let nx = -sx * strength, ny = sy * strength;   // canvas y goes down, texture v goes up
+    const l = Math.hypot(nx, ny, 1); nx /= l; ny /= l;
+    const k = (y * W + x) * 4;
+    d[k] = (nx * 0.5 + 0.5) * 255; d[k + 1] = (ny * 0.5 + 0.5) * 255; d[k + 2] = (1 / l * 0.5 + 0.5) * 255; d[k + 3] = 255;
+  }
+  n.putImageData(id, 0, 0);
+  return nk;
 }
 /* Roof atlas, 4 × 2 tiles of 3 m: 0 concrete, 1 asbestos slate, 2 metal, 3 clay tiles, 4 shingles, 5 membrane, 6 glass, 7 wooden shingles */
 function roofAtlas() {
@@ -272,4 +310,4 @@ function waterNormalTex() {
 }
 function glowTex() { const cv = mkCanvas(128, 128), g = cv.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.4, 'rgba(255,255,255,0.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); return toTex(cv, false, false); }
 
-export { R, bakeAO, brickPhotos, detailTex, facadeAtlas, fbm, glowTex, mkCanvas, roofAtlas, toTex, valueNoise, waterNormalTex };
+export { R, bakeAO, bakeNormals, brickPhotos, detailTex, facadeAtlas, fbm, glowTex, mkCanvas, roofAtlas, toTex, valueNoise, waterNormalTex };

@@ -27,14 +27,13 @@ function std(opts, key, patch) {
   allMats.push(m); return m;
 }
 
-const FACADE_RELIEF = 4.5;   // strength of the facade relief (slope per unit of the PBR height difference)
 function facadeMaterial() {
   const m = std({ roughness: 0.9, metalness: 0 }, 'facade', s => {
-    s.uniforms.uAtlas = { value: STATE.facTex }; s.uniforms.uMask = { value: STATE.facMask }; s.uniforms.uPbr = { value: STATE.facPbr }; s.uniforms.uNight = U.night; s.uniforms.uLit = U.lit; s.uniforms.uTime = U.time;
+    s.uniforms.uAtlas = { value: STATE.facTex }; s.uniforms.uMask = { value: STATE.facMask }; s.uniforms.uPbr = { value: STATE.facPbr }; s.uniforms.uNrm = { value: STATE.facNrm }; s.uniforms.uNight = U.night; s.uniforms.uLit = U.lit; s.uniforms.uTime = U.time;
     Object.assign(s.uniforms, PU);   // the city cubes: the glass mirrors the street, not the filtered sky
     s.vertexShader = 'attribute vec2 aUv; attribute vec3 aInfo; attribute vec3 aTint;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint; varying float vWy;\n' +
       s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvCellUv = aUv; vInfo = aInfo; vTint = pow(aTint, vec3(2.2)); vWy = (modelMatrix * vec4(transformed, 1.0)).y;');
-    s.fragmentShader = 'uniform sampler2D uAtlas; uniform sampler2D uMask; uniform sampler2D uPbr; uniform float uNight; uniform float uLit; uniform float uTime;\nuniform samplerCube uProbeA; uniform samplerCube uProbeB; uniform float uProbeMix; uniform float uProbeOn;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint; varying float vWy;\n' + SAMPLE_GLSL +
+    s.fragmentShader = 'uniform sampler2D uAtlas; uniform sampler2D uMask; uniform sampler2D uPbr; uniform sampler2D uNrm; uniform float uNight; uniform float uLit; uniform float uTime;\nuniform samplerCube uProbeA; uniform samplerCube uProbeB; uniform float uProbeMix; uniform float uProbeOn;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint; varying float vWy;\n' + SAMPLE_GLSL +
       s.fragmentShader.replace('#include <map_fragment>', `
         vec2 dX = dFdx(vCellUv), dY = dFdy(vCellUv);
         float row = vInfo.x, sd = vInfo.y / 255.0, fl = vInfo.z;
@@ -78,18 +77,16 @@ function facadeMaterial() {
         }
 #endif`)
         .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-        {   // relief from the height channel of the PBR atlas (mortar, panel seams, plank grooves sit lower, frames and
-            // trim higher): the slope is the difference of two atlas samples, laid on a tangent frame taken from the
-            // wall's uv; none on glass, fading out with distance
-          vec2 ae = vec2(1.5 / 1024.0, 1.5 / 2048.0);
-          float hu = ATLAS(uPbr, auv + vec2(ae.x, 0.0), gx, gy).b - ATLAS(uPbr, auv - vec2(ae.x, 0.0), gx, gy).b;
-          float hv = ATLAS(uPbr, auv + vec2(0.0, ae.y), gx, gy).b - ATLAS(uPbr, auv - vec2(0.0, ae.y), gx, gy).b;
+        {   // the baked tangent-space normal map (Sobel of the PBR height + the micro-grain of the material, see
+            // bakeNormals): one fetch, laid on a tangent frame taken from the wall's uv; none on glass, fading out
+            // with distance (the mip chain flattens the grain on its own as well)
+          vec3 nm = ATLAS(uNrm, auv, gx, gy).rgb * 2.0 - 1.0;
           vec3 pp = -vViewPosition, dp1 = dFdx(pp), dp2 = dFdy(pp); vec2 du1 = dFdx(vCellUv), du2 = dFdy(vCellUv);
           vec3 p2 = cross(dp2, normal), p1 = cross(normal, dp1);
           vec3 tT = p2 * du1.x + p1 * du2.x, tB = p2 * du1.y + p1 * du2.y;
           float im = inversesqrt(max(max(dot(tT, tT), dot(tB, tB)), 1e-12));
           float bw = (1.0 - step(0.1, fm.g)) * (blank ? 0.0 : 1.0) * (1.0 - smoothstep(15.0, 80.0, length(vViewPosition)));
-          normal = normalize(normal - (hu * tT + hv * tB) * im * ${FACADE_RELIEF.toFixed(2)} * bw);
+          normal = normalize(normal + (nm.x * tT + nm.y * tB) * im * bw);
         }`).replace('#include <emissivemap_fragment>', `
         // the evening reads in columns and floors, not random cells: a column with the curtains drawn stays dark,
         // a floor gone to bed dims, the stairwell column of some houses is lit whole; uLit is the share of lit windows
