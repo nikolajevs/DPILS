@@ -140,7 +140,6 @@ function waterMat(shoreFix = -1) {
   const su = sky.material.uniforms, m = hook(new THREE.ShaderMaterial({ uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog]), vertexShader: VERT, fragmentShader: FRAG, fog: true, transparent: true, depthWrite: false }), 'water');
   Object.assign(m.uniforms, PU, { uTime: U.time, uNormal: NORMAL, uShore: { value: SHORE.tex }, uShoreA: { value: SHORE.a }, uShoreFix: { value: shoreFix }, uSunDir: U.sunDir, uSunCol: U.sunCol,
     uSkyTop: su.uSkyTop, uSkyHor: su.uSkyHor, uSkyGlow: su.uSkyGlow, uCloudLit: su.uCloudLit, uCloudDark: su.uCloudDark, uCover: su.uCover, uNight: U.night });
-  m.userData.noProbe = true;   // the water does not reflect itself in the city cubes
   MATS.set(shoreFix, m);
   return m;
 }

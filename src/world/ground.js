@@ -200,7 +200,7 @@ async function buildGround() {
     const water = new THREE.BufferGeometry(), uv = [], nrm = [];
     for (let i = 0; i < wp.length; i += 3) { uv.push(wp[i] / 24, wp[i + 2] / 24); nrm.push(0, 1, 0); }
     water.setAttribute('position', new THREE.Float32BufferAttribute(wp, 3)); water.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3)); water.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    water.setIndex(wi); const wm = new THREE.Mesh(water, k ? waterMat(SMALL_WATER) : waterMat()); wm.renderOrder = -38; wm.frustumCulled = false; scene.add(wm);
+    water.setIndex(wi); const wm = new THREE.Mesh(water, k ? waterMat(SMALL_WATER) : waterMat()); wm.renderOrder = -38; wm.frustumCulled = false; wm.userData.noProbe = true; scene.add(wm);   // the water does not mirror itself in the city cubes
   });
 }
 
