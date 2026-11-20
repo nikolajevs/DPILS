@@ -54,19 +54,9 @@ body { margin: 0; background: var(--page); color: var(--ink); font-family: var(-
   border-radius: 5px; box-shadow: inset 0 0 0 2px var(--plate), inset 0 0 0 3.5px rgba(255, 255, 255, .85);
   max-width: min(64vw, 520px); overflow-wrap: anywhere;
 }
-.near { font-size: 13px; padding: 5px 10px; max-width: min(64vw, 520px); overflow-wrap: anywhere; }
-.near b { font-weight: 600; }
-
 .mini { grid-area: tr; justify-self: end; align-self: start; padding: 5px; line-height: 0; position: relative; cursor: pointer; }
 .mini canvas { width: clamp(110px, 17vw, 190px); height: clamp(110px, 17vw, 190px); border-radius: 6px; display: block; }
 .mini .n { position: absolute; top: 9px; left: 50%; transform: translateX(-50%); font: 600 11px/1 var(--f-body); background: var(--panel-solid); color: var(--brick); border-radius: 3px; padding: 2px 4px; }
-
-.places { grid-area: mr; align-self: start; justify-self: end; width: min(270px, 78vw); max-height: 100%; overflow: auto; padding: 8px; }
-.places h2 { font: 500 11px/1 var(--f-body); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 4px 6px 8px; }
-.places ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-.places button { width: 100%; text-align: left; background: transparent; border: 0; border-radius: 6px; padding: 7px 8px; font: 500 14px/1.25 var(--f-body); color: var(--ink); cursor: pointer; display: grid; gap: 1px; }
-.places button small { font-weight: 400; font-size: 12px; color: var(--muted); }
-.places button:hover { background: var(--line); }
 
 .bottom { grid-area: bot; display: flex; flex-wrap: wrap-reverse; justify-content: space-between; align-items: flex-end; gap: 8px 10px; pointer-events: none !important; }
 .bottom > * { pointer-events: auto; min-width: 0; }
@@ -77,33 +67,14 @@ body { margin: 0; background: var(--page); color: var(--ink); font-family: var(-
 .btn kbd { font: 500 11px/1 var(--f-body); color: var(--muted); margin-left: 5px; }
 .btn:hover { background: var(--line); }
 
-/* transit clock, stop departures board, labels over vehicles */
-.clock { display: grid; gap: 5px; padding: 7px 9px; font-size: 13px; pointer-events: auto; max-width: min(64vw, 380px); }
-.clk-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.clk-row b { font: 600 18px/1 var(--f-body); font-variant-numeric: tabular-nums; }
-.clk-day { color: var(--muted); margin-right: 4px; }
-.clk-info { color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.mbtn { background: transparent; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: 500 12px/1 var(--f-body); cursor: pointer; font-variant-numeric: tabular-nums; }
-.mbtn:hover { background: var(--line); }
-.mbtn[aria-pressed="true"] { background: var(--brick); color: var(--brick-ink); border-color: transparent; }
-.board { pointer-events: auto; padding: 9px 11px; font-size: 13px; width: min(64vw, 340px); }
-.board-h { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
-.board-h b { display: block; margin-top: 3px; color: var(--ink); font-size: 15px; letter-spacing: 0; text-transform: none; overflow-wrap: anywhere; }
-.board ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
-.board li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; }
-.board li.empty { display: block; color: var(--muted); }
+/* labels over vehicles */
 .rt { min-width: 30px; text-align: center; border-radius: 4px; padding: 4px 5px; font: 700 12px/1 var(--f-body); color: #fff; background: var(--bus); }
 .rt.tram { background: var(--tram); }
 .rt.train { background: #2f7d4f; }
 .rt.coach { background: #e0782b; }
-.hd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mn { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
-.mn b { color: var(--ink); font-weight: 600; }
 #tags { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
 .vtag { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 5px; padding: 3px 8px 3px 3px; border-radius: 6px; background: var(--panel); border: 1px solid var(--line); font: 500 12px/1 var(--f-body); color: var(--ink); white-space: nowrap; will-change: transform; }
 .vtag .rt { min-width: 24px; padding: 3px 4px; font-size: 11px; }
-@media (max-height: 820px) { .board li:nth-child(n+4) { display: none; } .board { padding: 7px 9px; } .board-h { margin-bottom: 5px; } }
-@media (max-width: 640px) { .board { width: min(78vw, 300px); } .clk-day { display: none; } }
 .btn[aria-pressed="true"] { background: var(--brick); color: var(--brick-ink); border-color: transparent; }
 .btn[aria-pressed="true"] kbd { color: inherit; opacity: .75; }
 button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid var(--brick); outline-offset: 2px; }
@@ -190,7 +161,6 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
 .joy i { position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; background: rgba(255, 255, 255, .7); }
 
 @media (max-width: 640px) {
-  .places { width: min(240px, 70vw); }
   .btn kbd { display: none; }
   .status .opt { display: none; }
 }
@@ -263,7 +233,6 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
 .mp-dead .go { margin: 0; }
 #bLeave { display: none; }
 .mp #bLeave { display: inline-block; }
-.mp #bFly, .mp #bPlaces, .mp #places, .mp #clock, .mp #bSV, .mp #near { display: none !important; }
 .mp-teams { grid-column: 1 / 3; font: 600 14px/1.2 var(--f-body); }
 .mp-teams small { opacity: .8; font-weight: 500; }
 .t0 { --team: #d8392f; } .t1 { --team: #2f78d8; }
@@ -722,7 +691,7 @@ body.mp:not(:has(#view.locked)) .mp-sys { bottom: 64px; }   /* above the returne
   .mp-voice { left: 10px; top: 100px; }
   .mp-feed { left: 10px; top: 136px; }
   .mp-hints, .mp-itemhint { bottom: 216px; } .mp-chat { bottom: 220px; }
-  body.mp #status { display: none; }   /* the walk line would sit under the console here */
+  body.mp #status { display: none; }   /* the status line would sit under the console here */
   /* the button bar wraps into two rows on a narrow screen: the console steps up above it */
   body.mp:not(:has(#view.locked)) .mp-stat { bottom: 156px; }
   body.mp:not(:has(#view.locked)) .mp-slots { bottom: 264px; }
@@ -732,6 +701,6 @@ body.mp:not(:has(#view.locked)) .mp-sys { bottom: 64px; }   /* above the returne
 }
 @media (prefers-reduced-motion: reduce) { .mp-feed div { animation: none; } .mp-slots, .mp-slots span { transition: none; } }
 
-/* The graphics notice of the city walk (src/game/perf.js): a small toast above the toolbar, fades in and out. */
+/* The graphics notice outside the fight (src/game/perf.js): a small toast above the toolbar, fades in and out. */
 #perfNote { position: fixed; left: 50%; bottom: 86px; transform: translateX(-50%) translateY(6px); max-width: min(560px, 90vw); background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 7px 14px; font: 500 13px/1.35 var(--f-body); text-align: center; opacity: 0; pointer-events: none; transition: opacity .35s, transform .35s; z-index: 60; backdrop-filter: blur(6px); }
 #perfNote.shown { opacity: 1; transform: translateX(-50%) translateY(0); }

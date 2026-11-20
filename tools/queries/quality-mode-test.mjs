@@ -19,7 +19,7 @@ page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', e => errors.push('pageerror: ' + e.message));
 
 await page.goto(URL, { waitUntil: 'load', timeout: 60000 });
-await page.waitForFunction(() => !document.getElementById('go').disabled, null, { timeout: 300000 });
+await page.waitForFunction(() => !document.getElementById('goTrain').disabled, null, { timeout: 300000 });
 ok('город загрузился', true);
 
 const ev = (fn, ...a) => page.evaluate(fn, ...a);
@@ -37,8 +37,8 @@ const state = () => ev(() => ({
 let s = await state();
 ok('по умолчанию авто', s.mode === 'auto' && s.btn === 'Графика: авто', JSON.stringify(s));
 
-// 2. start the walk, open settings, the graphics group is there
-await ev(() => document.getElementById('go').click());
+// 2. enter the city view (the free camera of the tools: the walk mode was removed), open settings, the graphics group is there
+await ev(() => { document.getElementById('start').hidden = true; window.__city.STATE.started = true; });
 await ev(() => document.getElementById('bSet').click());
 const panel = await ev(() => {
   const sel = document.querySelector('#mpSetBody .set-row.sel select');
@@ -86,7 +86,7 @@ await ev(() => document.getElementById('mpSetClose').click());
 
 // 8. in the fight auto lowers the level by itself under the low fps
 await ev(() => { window.__city.setQualityMode('auto'); window.__city.setQuality(0); window.__city.PERF.dyn = false; });   // start the fight from the top level; the resolution dance is checked in the city (test 6) — here, on SwiftShader frames of tens of seconds, it would eat the whole timeout before the level moves
-await ev(() => document.getElementById('chTrain').click());
+await ev(() => { document.getElementById('start').hidden = false; document.getElementById('chTrain').click(); });
 await ev(() => document.getElementById('goTrain').click());
 await page.waitForFunction(() => window.__city.STATE.mp, null, { timeout: 180000 });
 ok('тренировка началась', true);

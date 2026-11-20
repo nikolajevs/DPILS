@@ -7,7 +7,7 @@ import { P, step } from './player.js';
 import { MP, mpLabels, mpTick, aimPunch } from './mp.js';
 import { camShake } from './nades.js';
 import { perfSample, perfTick } from './perf.js';
-import { TX, updateBoard, updateClockUI, updateTags, updateTransit } from '../transit/transit.js';
+import { updateTags, updateTransit } from '../transit/transit.js';
 import { lmTick } from '../landmarks/index.js';
 import { sky, terrainH } from '../world/terrain.js';
 import { U, camera, renderer, scene } from '../render/renderer.js';
@@ -20,8 +20,8 @@ window.addEventListener('resize', resize); resize();
 /* The near plane cuts away whatever is closer to the eye. Its corners lie farther out than its centre, the more so the
    wider the field of view (up to 100° in the game) and the screen: at 0.3 m they reached 0.5–0.8 m, past the 0.45 m the
    player keeps from a wall (collide in player.js), and a look along a wall or up a wall cut into it and showed the rooms
-   and streets behind. So the plane comes in until its farthest corner is 0.22 m from the eye; high in flight (and over the city
-   before the start) it goes out again for the depth precision of the far city. */
+   and streets behind. So the plane comes in until its farthest corner is 0.22 m from the eye; high in the free camera of
+   the dead man (and over the city before the start) it goes out again for the depth precision of the far city. */
 const NEAR_REACH = 0.22;
 function nearPlane() {
   const t = Math.tan(camera.fov * Math.PI / 360), corner = Math.sqrt(1 + t * t * (1 + camera.aspect * camera.aspect));
@@ -51,7 +51,7 @@ function frame(now) {
   if (gpuMeasure) gpuBegin();
   try { renderFrame(); } finally { if (gpuMeasure) gpuEnd(); }
   camera.updateMatrixWorld(); updateTags(); mpLabels();
-  if (STATE.started) { if ((STATE.hudTimer -= dt) <= 0) { STATE.hudTimer = 0.25; updateHud(); updateClockUI(); if ((TX.boardT = (TX.boardT || 0) - 1) <= 0) { TX.boardT = 2; updateBoard(); } } if ((STATE.mapTimer -= dt) <= 0) { STATE.mapTimer = 0.15; drawMini(); } }
+  if (STATE.started) { if ((STATE.hudTimer -= dt) <= 0) { STATE.hudTimer = 0.25; updateHud(); } if ((STATE.mapTimer -= dt) <= 0) { STATE.mapTimer = 0.15; drawMini(); } }
   perfSample(performance.now() - t0);
 }
 
