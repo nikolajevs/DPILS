@@ -4,7 +4,7 @@ import { MAP, big, closeMap, openMap } from '../ui/map.js';
 import { QUALITY, qi, qAuto, onQuality, setQualityMode } from '../render/lighting.js';
 import { P, freeSpot, keys, setFly, teleport, touch } from './player.js';
 import { PERF } from './perf.js';
-import { SET, onBuild, onReset } from './settings.js';
+import { SET, check, onBuild, onChange, onReset, save } from './settings.js';
 import { PLACES } from '../ui/places.js';
 import { SPEEDS, TX, rigaNow, setClock, updateClockUI } from '../transit/transit.js';
 import { camera, canvas } from '../render/renderer.js';
@@ -37,13 +37,14 @@ window.addEventListener('keydown', e => {
   if (!STATE.started) return;
   if (STATE.mp && !$('mpInv').hidden) return;   // the inventory panel is open: the keys go to it, not to the walk
   if (e.code === 'Escape' && !big.hidden) { closeMap(); return; }
-  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'F3'].includes(e.code)) e.preventDefault();
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (STATE.mp && e.code === SET.keys.voice) return;   // in the game V is push-to-talk, not Street View
   keys.add(e.code);
   if (e.repeat) return;
   if (e.code === 'KeyF') { if (!STATE.mp) setFly(!P.fly); }   // in the game F is the dead man's camera (mp.js); flight is off there anyway
   else if (e.code === 'KeyT') { TX.si = (TX.si + 1) % SPEEDS.length; if (TX.si) TX.live = false; updateClockUI(); } else if (e.code === 'KeyM') { big.hidden ? openMap() : closeMap(); } else if (e.code === 'KeyP') togglePlaces();
+  else if (e.code === 'F3') { SET.perfHud = !SET.perfHud; save(); }   // the performance line of the walk status
   else if (e.code === 'KeyV') { updateHud(); if (document.pointerLockElement) document.exitPointerLock(); keys.clear(); bSV.click(); }
 });
 window.addEventListener('keyup', e => keys.delete(e.code));
@@ -77,8 +78,16 @@ onBuild(panes => {
   hint.textContent = 'Авто: разрешение подстраивается под FPS, уровень графики снижается при нехватке кадров и повышается, когда запас есть, — и в городе, и в бою. Фиксированное: выбранный уровень и полное разрешение, без автоматических изменений.';
   const cur = document.createElement('p'); cur.className = 'set-hint';
   g.append(hint, cur); panes.video.append(g);
+  const gp = document.createElement('div'); gp.className = 'set-group';
+  gp.append(check('Счётчик производительности (F3)', 'perfHud'));
+  const ph = document.createElement('p'); ph.className = 'set-hint';
+  ph.textContent = 'Строка в статусе прогулки: кадры/с, draw calls за кадр (сцена, тени, постобработка), среднее время кадра CPU и GPU. GPU замеряется, если браузер поддерживает EXT_disjoint_timer_query_webgl2, иначе «н/д».';
+  gp.append(ph); panes.video.append(gp);
   qSel = sel; qCur = cur; qShow();
 });
+/* the performance line is shown while SET.perfHud is on; the checkbox and F3 both save, so onChange applies it */
+const applyPerfHud = () => { $('stPerf').hidden = !SET.perfHud; };
+onChange(applyPerfHud); applyPerfHud();
 bSV.addEventListener('pointerdown', updateHud);
 big.addEventListener('click', e => { if (e.target === big) closeMap(); });
 MAP.pick = (x, z) => { teleport(x, z, null); closeMap(); };
