@@ -14,7 +14,19 @@ const G = new SegGrid(20);
    (src/game/player.js) climbs a rise of up to STEP per substep, so a kerb or a tread is a step, not a wall and not a
    teleport: the feet follow the slab the renderer drew. Register a tread per step for a discrete flight. */
 const SLABS = [];
-function walkSlab(ring, h) { const r = ring instanceof Float32Array ? ring : Float32Array.from(ring); SLABS.push({ r, h, bb: bbox(r) }); }
+/* Spatial hash of the slab footprints. The sidewalks of the whole city register a ring each (src/world/streets.js),
+   so SLABS holds thousands of entries: a linear scan of them on every height query made walkLift ~300× dearer than
+   terrainH and froze the bot pathfinder for seconds at the start of a fight (it asks walkable hundreds of thousands
+   of times). A slab whose box covers the point is registered in the point's cell, so the query reads one cell, not
+   the whole array — the same box-and-pip test, only over the slabs that can possibly cover the point. */
+const SCELL = 24, SG = new Map();
+const skey = (i, j) => (i + 2000) * 4096 + (j + 2000);
+function walkSlab(ring, h) {
+  const r = ring instanceof Float32Array ? ring : Float32Array.from(ring), bb = bbox(r), id = SLABS.length;
+  SLABS.push({ r, h, bb });
+  const i0 = Math.floor(bb[0] / SCELL), i1 = Math.floor(bb[2] / SCELL), j0 = Math.floor(bb[1] / SCELL), j1 = Math.floor(bb[3] / SCELL);
+  for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) { const k = skey(i, j); let l = SG.get(k); if (!l) SG.set(k, l = []); l.push(id); }
+}
 // a sidewalk of constant offset and half width along p
 function walkStrip(p, off, hw) {
   const n = p.length >> 1;
@@ -41,7 +53,8 @@ function walkH(x, z) {
     const L = ((x - s[k]) * -dz + (z - s[k + 1]) * dx) / l;
     if (L >= s[k + 4] && L <= s[k + 5]) h = WH;
   });
-  for (const sl of SLABS) { const bb = sl.bb; if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && sl.h > h && pip(x, z, sl.r)) h = sl.h; }
+  const l = SG.get(skey(Math.floor(x / SCELL), Math.floor(z / SCELL)));
+  if (l) for (let q = 0; q < l.length; q++) { const sl = SLABS[l[q]], bb = sl.bb; if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && sl.h > h && pip(x, z, sl.r)) h = sl.h; }
   return h;
 }
 

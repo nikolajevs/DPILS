@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Chatbox | chatbox/perf-regression | Фриз старта боя: пространственный индекс плит тротуара (walkH) | src/world/walkgrid.js |
 
 ## Автономный цикл улучшений
 
