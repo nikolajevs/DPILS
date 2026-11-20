@@ -13,16 +13,17 @@ import { HX, HY } from '../core/env.js';
 const AREAS = [], LINES = [], BLD = [], WATER = [];
 const ROAD = new SegGrid(40), COL = new SegGrid(20), BGRID = new Map(), STREAM = new SegGrid(20);
 const TRAMLINES = [];
-function inBuilding(x, z) {
-  const l = BGRID.get((Math.floor(x / 60) + 2000) * 4096 + Math.floor(z / 60) + 2000); if (!l) return false;
-  for (const id of l) { const b = BLD[id], bb = b.bb; if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pip(x, z, b.ring) && !(b.holes && b.holes.some(h => pip(x, z, h)))) return true; }   // holes: the passages through a house
-  return false;
-}
-function buildingAt(x, z) {   // the building whose footprint holds the point (for the line of fire), or null
+// the building whose footprint holds the point and is solid at height y (for the line of fire, the body and the
+// walkable grid alike). y defaults to 1 m — a standing body. b.base is the underside of the solid part: a canopy on
+// posts (style 12) is open at the ground, so a shot or a walker at 1.7 m passes under it while its roof still stops
+// a lofted grenade. b.holes are passages and courtyards cut out of the footprint: not solid, walkable and shootable.
+function buildingAt(x, z, y = 1) {
   const l = BGRID.get((Math.floor(x / 60) + 2000) * 4096 + Math.floor(z / 60) + 2000); if (!l) return null;
-  for (const id of l) { const b = BLD[id], bb = b.bb; if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pip(x, z, b.ring)) return b; }
+  for (const id of l) { const b = BLD[id], bb = b.bb;
+    if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && y >= (b.base || 0) && pip(x, z, b.ring) && !(b.holes && b.holes.some(h => pip(x, z, h)))) return b; }
   return null;
 }
+function inBuilding(x, z) { return !!buildingAt(x, z, 1); }   // holes: the passages through a house
 function inWater(x, z) {
   for (const a of WATER) { const bb = a.bb; if (x < bb[0] || x > bb[2] || z < bb[1] || z > bb[3]) continue; if (!pip(x, z, a.rings[0])) continue; let hole = false; for (let k = 1; k < a.rings.length; k++) if (pip(x, z, a.rings[k])) { hole = true; break; } if (!hole) return true; }
   return false;
@@ -56,6 +57,27 @@ function wetTree(x, z) {
   let wet = false; STREAM.near(x, z, 6, (id, d) => { if (d < STREAM.s[id * 6 + 4] + 1.0) wet = true; }); return wet;
 }
 function onRoad(x, z, margin) { let ok = false; ROAD.near(x, z, 14, (id, d) => { if (d < ROAD.s[id * 6 + 4] + margin) ok = true; }); return ok; }
+/* the shore as a contour: the water polygons' outer edges in a segment grid, built once. A capsule that steps into
+   deep water is pushed back out along the bank's normal (shorePush) instead of being teleported to where it stood,
+   so the walk slides along the shore the way it slides along a wall — the water holds its edge, not a hard revert. */
+let SHORE = null;
+function shoreGrid() {
+  if (SHORE) return SHORE;
+  SHORE = new SegGrid(20);
+  for (const a of WATER) { const r = a.rings[0], n = r.length >> 1; for (let i = 0; i < n; i++) { const j = (i + 1) % n; SHORE.add(r[2 * i], r[2 * i + 1], r[2 * j], r[2 * j + 1], 0, 0); } }
+  return SHORE;
+}
+function shorePush(x, z, r) {
+  if (!inWater(x, z) || onRoad(x, z, 1.2)) return [x, z];   // a bridge or a ford over the water is walkable
+  const G = shoreGrid(); let bd = 1e9, bx = 0, bz = 0, bi = -1;
+  G.near(x, z, r + 3, (id, d, px, pz) => { if (d < bd) { bd = d; bx = px; bz = pz; bi = id; } });
+  if (bi < 0) return [x, z];
+  const s = G.s, o = bi * 6, dx = s[o + 2] - s[o], dz = s[o + 3] - s[o + 1], l = Math.hypot(dx, dz) || 1;
+  let nx = -dz / l, nz = dx / l;   // the bank normal, turned to the land side
+  if (inWater(x + nx * 0.6, z + nz * 0.6)) { nx = -nx; nz = -nz; }
+  const push = Math.max(0, r - bd) + 0.02;
+  return [x + nx * push, z + nz * push];
+}
 
 let matFac, matRoof, matPlain, matGold, matBank, M_LAND, M_PAVE, M_DIRT, M_BALLAST, M_ASPH, M_MARK;   // the water's material: src/world/water.js
 async function makeMaterials() {
@@ -70,4 +92,4 @@ async function makeMaterials() {
   M_MARK = std({ vertexColors: true, roughness: 0.8, metalness: 0, depthWrite: false }, 'mark');
 }
 
-export { AREAS, BGRID, BLD, COL, LINES, M_ASPH, M_BALLAST, M_DIRT, M_LAND, M_MARK, M_PAVE, ROAD, STREAM, TRAMLINES, WATER, WMASK, buildingAt, inBuilding, inWater, makeMaterials, matBank, matFac, matGold, matPlain, matRoof, onRoad, waterMask, wetTree };
+export { AREAS, BGRID, BLD, COL, LINES, M_ASPH, M_BALLAST, M_DIRT, M_LAND, M_MARK, M_PAVE, ROAD, STREAM, TRAMLINES, WATER, WMASK, buildingAt, inBuilding, inWater, makeMaterials, matBank, matFac, matGold, matPlain, matRoof, onRoad, shorePush, waterMask, wetTree };
