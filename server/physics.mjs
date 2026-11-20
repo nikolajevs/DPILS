@@ -18,9 +18,9 @@ export function makePhysics(buildingAt, ground) {
   function scan(o, d, len, v, k, pen) {
     const walls = []; let spent = 0, budget = pen || 0;
     const block = t => {
-      const x = o[0] + d[0] * t, y = o[1] + d[1] * t - (v ? bulletDrop(t, v, k) : 0), z = o[2] + d[2] * t, gr = ground(x, z);
+      const x = o[0] + d[0] * t, y = o[1] + d[1] * t - (v ? bulletDrop(t, v, k) : 0), z = o[2] + d[2] * t, gr = ground(x, z, y);
       if (y < gr) return 1;   // the ground itself, a hill slope included
-      const b = buildingAt(x, z);
+      const b = buildingAt(x, z, y);   // solid at this height: a canopy on posts is open at the ground, its roof still stops
       return (b && y < gr + (b.top || 12) - 1) ? 2 : 0;
     };
     if (block(0)) return { dist: 0, spent, walls };
@@ -81,7 +81,7 @@ export function makePhysics(buildingAt, ground) {
   function stepNade(n, dt, g, bodies) {
     const [px, py, pz] = n.p; n.v[1] -= g * dt;
     let x = px + n.v[0] * dt, y = py + n.v[1] * dt, z = pz + n.v[2] * dt;
-    const b = buildingAt(x, z), gr = ground(x, z);
+    const b = buildingAt(x, z, y), gr = ground(x, z, y);
     n.bounce = null;
     if (b) {
       const top = gr + (b.top || 12);
@@ -93,7 +93,7 @@ export function makePhysics(buildingAt, ground) {
       } else {   // hits a wall: reflect about the normal of the edge actually crossed (the bastion, the diagonal street),
         // not about the world axes — the normal takes 0.4, the slide along the face keeps 0.7, as the ground bounce does
         let sp = 0;
-        const h = b.ring && !buildingAt(px, pz) ? ringHit(b.ring, px, pz, x, z) : null;
+        const h = b.ring && !buildingAt(px, pz, py) ? ringHit(b.ring, px, pz, x, z) : null;
         if (h) {
           const vn = n.v[0] * h.nx + n.v[2] * h.nz;
           if (vn < 0) {
@@ -103,8 +103,8 @@ export function makePhysics(buildingAt, ground) {
             x = h.x + h.nx * 0.03; z = h.z + h.nz * 0.03;   // stand it just off the face, outside
           } else { x = px; z = pz; sp = Math.hypot(n.v[0], n.v[2]); n.v[0] *= -0.4; n.v[2] *= -0.4; }
         } else {   // already inside (a fast step jumped the face) or a vertex graze: the old axis turn
-          if (!buildingAt(px, z)) { x = px; sp = Math.abs(n.v[0]); n.v[0] *= -0.4; }
-          else if (!buildingAt(x, pz)) { z = pz; sp = Math.abs(n.v[2]); n.v[2] *= -0.4; }
+          if (!buildingAt(px, z, y)) { x = px; sp = Math.abs(n.v[0]); n.v[0] *= -0.4; }
+          else if (!buildingAt(x, pz, y)) { z = pz; sp = Math.abs(n.v[2]); n.v[2] *= -0.4; }
           else { x = px; z = pz; sp = Math.hypot(n.v[0], n.v[2]); n.v[0] *= -0.4; n.v[2] *= -0.4; }
         }
         if (sp > 1.2) n.bounce = { sp, kind: 'wall' };
@@ -148,6 +148,6 @@ export function makePhysics(buildingAt, ground) {
     n.p = [x, y, z];
   }
   // where a person can stand: no house, not in the river, a pond or a moat (the ground more than two metres under the square)
-  const walkable = (x, z) => !buildingAt(x, z) && ground(x, z) > -2;
+  const walkable = (x, z) => !buildingAt(x, z, 1) && ground(x, z) > -2;   // a standing body: open canopies and passages are walkable
   return { freePath, shotPath, stepNade, walkable };
 }

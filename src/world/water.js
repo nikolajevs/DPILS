@@ -4,6 +4,7 @@ import { rest } from '../core/pause.js';
 import { pip } from '../core/util.js';
 import { sky } from './terrain.js';
 import { U, hook } from '../render/renderer.js';
+import { PU } from '../render/cityprobe.js';
 import { waterNormalTex } from '../render/textures.js';
 
 /* ---------- water ----------
@@ -26,6 +27,7 @@ void main() {
 const FRAG = `uniform float uTime; uniform sampler2D uNormal; uniform sampler2D uShore; uniform vec4 uShoreA;
 uniform vec3 uSunDir; uniform vec3 uSunCol; uniform vec3 uSkyTop; uniform vec3 uSkyHor; uniform vec3 uSkyGlow; uniform vec3 uCloudLit; uniform vec3 uCloudDark;
 uniform float uCover; uniform float uNight; uniform float uShoreFix;
+uniform samplerCube uProbeA; uniform samplerCube uProbeB; uniform float uProbeMix; uniform float uProbeOn;
 varying vec3 vWorld;
 #include <common>
 #include <fog_pars_fragment>
@@ -50,6 +52,13 @@ void main() {
   vec2 cp = R.xz / (ry + 0.12) * 1.5 + uTime * vec2(0.004, 0.0015);
   float cn = wfbm(cp) + 0.3 * wfbm(cp * 0.31 + 5.3), dn = smoothstep(0.80 - uCover * 0.4, 1.10 - uCover * 0.4, cn) * smoothstep(0.0, 0.26, ry);
   skyc = mix(skyc, mix(uCloudDark, uCloudLit, 0.55 + 0.45 * pow(sd, 4.0)), dn * 0.85);
+  // the city itself in the mirror: the two nearest probes (bridge, square, Gubišče), shot once per time of day;
+  // they carry the sky and the clouds too, so where they reach they replace the procedural gradient whole
+  if (uProbeOn > 0.01) {
+    vec3 Rp = normalize(vec3(R.x, max(R.y, 0.02), R.z));   // the mirror shows only what stands above the waterline: a steep ripple
+    vec3 pc = mix(textureCube(uProbeA, Rp).rgb, textureCube(uProbeB, Rp).rgb, uProbeMix);   // would otherwise dip into the ground under the probe
+    skyc = mix(skyc, pc, uProbeOn);
+  }
   // the water body: greener over the shallows by the banks, dark blue-green out in the stream
   float dark = 1.0 - 0.6 * uNight - 0.3 * pow(uNight, 4.0);   // 1 by day, 0.4 in the evening (uNight 0.8), 0.1 at night
   vec3 body = mix(vec3(0.075, 0.30, 0.28), vec3(0.012, 0.085, 0.13), smoothstep(0.05, 0.8, depth)) * dark;
@@ -130,7 +139,7 @@ function waterMat(shoreFix = -1) {
     // the game's normal map once it has arrived (till then the procedural one of the city)
     new THREE.TextureLoader().load('textures/water_normal.webp', t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8; NORMAL.value = t; }); }
   const su = sky.material.uniforms, m = hook(new THREE.ShaderMaterial({ uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog]), vertexShader: VERT, fragmentShader: FRAG, fog: true, transparent: true, depthWrite: false }), 'water');
-  Object.assign(m.uniforms, { uTime: U.time, uNormal: NORMAL, uShore: { value: SHORE.tex }, uShoreA: { value: SHORE.a }, uShoreFix: { value: shoreFix }, uSunDir: U.sunDir, uSunCol: U.sunCol,
+  Object.assign(m.uniforms, PU, { uTime: U.time, uNormal: NORMAL, uShore: { value: SHORE.tex }, uShoreA: { value: SHORE.a }, uShoreFix: { value: shoreFix }, uSunDir: U.sunDir, uSunCol: U.sunCol,
     uSkyTop: su.uSkyTop, uSkyHor: su.uSkyHor, uSkyGlow: su.uSkyGlow, uCloudLit: su.uCloudLit, uCloudDark: su.uCloudDark, uCover: su.uCover, uNight: U.night });
   MATS.set(shoreFix, m);
   return m;

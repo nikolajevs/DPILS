@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildingAt, onRoad } from '../world/data.js';
-import { terrainH } from '../world/terrain.js';
+import { terrainH, walkLift } from '../world/terrain.js';
+import { STATE } from '../core/state.js';
 import { camera, scene } from '../render/renderer.js';
 import { worldSpace } from '../render/world-space.js';
 import { reduceMotion } from '../core/env.js';
@@ -20,7 +21,12 @@ const list = new Map();
 const GEO = new THREE.SphereGeometry(0.1, 10, 8), MAT = worldSpace(new THREE.MeshLambertMaterial({ color: 0x3d5a2a }));
 // the flight is the server's own step (server/physics.mjs), so the copy, the aim arc and the server never drift apart;
 // it also reports each touch (n.bounce) for the clink, and rolls a settled grenade downhill on a slope
-const stepNade = (() => { const s = makePhysics(buildingAt, terrainH).stepNade; return (n, dt) => s(n, dt, NADE.g, bodiesFn ? bodiesFn(n) : undefined); })();
+// the ground the copy flies over: in the network game the server owns the flight over the raw lidar grid, so the copy
+// matches it (terrainH); in the training game the city is the walk's own (walkLift: sidewalks, platforms, ramparts, decks),
+// so the copy, the aim arc and the local server stand on the same ground the body does.
+const gnd = (x, z) => STATE.mp ? terrainH(x, z) : walkLift(x, z, null);
+const gnd3 = (x, z, y = null) => STATE.mp ? terrainH(x, z) : walkLift(x, z, y == null ? null : y - 1.7);
+const stepNade = (() => { const s = makePhysics(buildingAt, gnd3).stepNade; return (n, dt) => s(n, dt, NADE.g, bodiesFn ? bodiesFn(n) : undefined); })();
 let bounceCb = null;
 const onNadeBounce = cb => { bounceCb = cb; };   // mp.js plays the clink of a touch it can hear
 let bodiesFn = null;
@@ -57,7 +63,7 @@ const trails = Array.from({ length: TR_MAX }, () => {
   geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TR_N * 6), 3).setUsage(THREE.DynamicDrawUsage));
   geo.setAttribute('aT', new THREE.BufferAttribute(new Float32Array(TR_N * 6), 3).setUsage(THREE.DynamicDrawUsage));
   for (let i = 0; i < TR_N - 1; i++) { const a = i * 2; ix.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } geo.setIndex(ix);
-  const mesh = new THREE.Mesh(geo, trailMat); mesh.frustumCulled = false; mesh.visible = false; mesh.renderOrder = 1; scene.add(mesh);
+  const mesh = new THREE.Mesh(geo, trailMat); mesh.frustumCulled = false; mesh.visible = false; mesh.renderOrder = 1; mesh.userData.noProbe = true; scene.add(mesh);
   return { mesh, geo, used: false };
 });
 function freeTrail(t) { if (t) { t.used = false; t.mesh.visible = false; } }
@@ -88,7 +94,7 @@ const SPOON_MAX = 6, spoonMat = worldSpace(new THREE.MeshLambertMaterial({ color
 const spoonLong = new THREE.BoxGeometry(0.016, 0.075, 0.0022).translate(0, -0.0375, 0), spoonHead = new THREE.BoxGeometry(0.016, 0.024, 0.0022).translate(0, 0.012, 0);
 const spoons = Array.from({ length: SPOON_MAX }, () => {
   const g = new THREE.Group(), a = new THREE.Mesh(spoonLong, spoonMat), b = new THREE.Mesh(spoonHead, spoonMat);
-  b.rotation.x = 1.25; g.add(a, b); g.visible = false; scene.add(g);
+  b.rotation.x = 1.25; g.add(a, b); g.visible = false; g.userData.noProbe = true; scene.add(g);
   return { g, on: false, p: [0, 0, 0], v: [0, 0, 0], ax: new THREE.Vector3(), w: 0, t: 0, rest: false };
 });
 function popSpoon(p, v) {
@@ -107,7 +113,7 @@ function tickSpoons(dt) {
     if (s.rest) continue;
     s.v[1] -= 9.8 * dt; const e = Math.exp(-dt * 0.6); s.v[0] *= e; s.v[2] *= e;
     s.p[0] += s.v[0] * dt; s.p[1] += s.v[1] * dt; s.p[2] += s.v[2] * dt;
-    const b = buildingAt(s.p[0], s.p[2]), gr = terrainH(s.p[0], s.p[2]), top = b ? gr + (b.top || 12) : gr, floor = (b && s.p[1] > top - 0.5 ? top : gr) + 0.006;
+    const b = buildingAt(s.p[0], s.p[2], s.p[1]), gr = gnd(s.p[0], s.p[2]), top = b ? gr + (b.top || 12) : gr, floor = (b && s.p[1] > top - 0.5 ? top : gr) + 0.006;
     if (s.p[1] < floor && s.v[1] < 0) {   // a clink on the ground: it hops once or twice and lies flat
       s.p[1] = floor; s.v[1] *= -0.32; s.v[0] *= 0.45; s.v[2] *= 0.45; s.w *= 0.4;
       if (Math.abs(s.v[1]) < 0.6) { s.rest = true; s.g.rotation.set(-Math.PI / 2 + rnd(-0.15, 0.15), rnd(0, 6.28), 0, 'YXZ'); s.g.position.set(s.p[0], floor, s.p[2]); continue; }
@@ -120,7 +126,7 @@ function tickSpoons(dt) {
 function addNade(m, from = null) {
   const model = flyNade();
   const mesh = model || new THREE.Mesh(GEO, MAT); if (!model) mesh.scale.setScalar(FLY_S); mesh.position.set(m.p[0], m.p[1], m.p[2]);
-  mesh.quaternion.setFromAxisAngle(V.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize(), rnd(0, 6.283)); scene.add(mesh);
+  mesh.quaternion.setFromAxisAngle(V.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize(), rnd(0, 6.283)); mesh.userData.noProbe = true; scene.add(mesh);
   const trail = trails.find(t => !t.used) || null; if (trail) trail.used = true;
   list.set(m.id, { mesh, model: !!model, p: m.p.slice(), v: m.v.slice(), age: 0, w: rnd(10, 15), trail, hist: [], ta: 0, fz: 0, by: m.by, off: from ? [from.x - m.p[0], from.y - m.p[1], from.z - m.p[2]] : null });
   popSpoon(from ? [from.x, from.y, from.z] : m.p, m.v);
@@ -211,7 +217,7 @@ function cloud(geo, mat, max, order) {
   const aP = new THREE.InstancedBufferAttribute(new Float32Array(max * 4), 4); aP.setUsage(THREE.DynamicDrawUsage); geo.setAttribute('aP', aP);
   const mesh = new THREE.InstancedMesh(geo, mat, max); mesh.count = 0; mesh.frustumCulled = false; mesh.renderOrder = order;
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); mesh.setColorAt(0, new THREE.Color(1, 1, 1)); mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);   // allocates the colours
-  scene.add(mesh);
+  mesh.userData.noProbe = true; scene.add(mesh);
   return { mesh, aP, list: [], free: Array.from({ length: max }, () => ({})) };
 }
 const smokeMat = particleMat(new THREE.MeshLambertMaterial({ map: SMOKE_TEX, transparent: true, depthWrite: false }), 'nade-smoke');
@@ -242,7 +248,7 @@ function dir(air, up) {
 }
 const glow = { x: 0, y: 0, z: 0, t: 9 }, shake = { a: 0, t: 9, ph: [0, 0, 0, 0, 0, 0] };
 function blast(x, y, z) {
-  const gr = terrainH(x, z), b = buildingAt(x, z), top = b ? gr + (b.top || 12) : -1e9, onRoof = !!b && y > top - 0.6;
+  const gr = gnd(x, z), b = buildingAt(x, z, y), top = b ? gr + (b.top || 12) : -1e9, onRoof = !!b && y > top - 0.6;
   const floor = onRoof ? top : gr, air = y - floor > 1.3, kind = air ? 'air' : onRoof ? 'roof' : onRoad(x, z, 0.5) ? 'road' : 'ground', S = SURF[kind];
   const cy = air ? y : floor + 0.12;   // the heart of the burst
   // the flash: a white-hot core and a wide glow in the air, gone in a few hundredths of a second
@@ -298,7 +304,7 @@ function scorch(x, y, z, roof) {
   let d = scorches.length >= SCORCH_MAX ? scorches.shift() : null;   // the oldest mark gives its place to the new one
   if (!d) { d = { mesh: new THREE.Mesh(scorchGeo, scorchMat()), t: 0 }; scene.add(d.mesh); }
   let nx = 0, ny = 1, nz = 0;
-  if (!roof) { const e = 0.8, hx = (terrainH(x + e, z) - terrainH(x - e, z)) / (2 * e), hz = (terrainH(x, z + e) - terrainH(x, z - e)) / (2 * e), L = Math.hypot(hx, 1, hz); nx = -hx / L; ny = 1 / L; nz = -hz / L; }   // lies along the slope
+  if (!roof) { const e = 0.8, hx = (gnd(x + e, z) - gnd(x - e, z)) / (2 * e), hz = (gnd(x, z + e) - gnd(x, z - e)) / (2 * e), L = Math.hypot(hx, 1, hz); nx = -hx / L; ny = 1 / L; nz = -hz / L; }   // lies along the slope
   d.t = 0; d.mesh.material.opacity = 0.9; d.mesh.position.set(x + nx * 0.04, y + ny * 0.04, z + nz * 0.04);
   d.mesh.lookAt(V.set(x + nx, y + ny, z + nz)); d.mesh.rotateZ(rnd(0, 6.283));
   const s = rnd(3.2, 4.2); d.mesh.scale.set(s, s, 1);
@@ -320,7 +326,7 @@ function stepCloud(sys, dt) {
         p.tt = p.trail;
         emit(sys, { x: p.x, y: p.y, z: p.z, vx: p.vx * 0.1, vy: p.vy * 0.1, vz: p.vz * 0.1, drag: 2, rise: 0.2, wind: 1, life: rnd(0.6, 1.1), s0: 0.12, s1: rnd(0.5, 0.8), roll: rnd(0, 6.28), c0: p.dust, c1: p.dust, op: 0.35, fin: 0.05, fout: 0.2, frame: (Math.random() * 3) | 0 });
       }
-      const g = (p.roof && buildingAt(p.x, p.z) ? p.roof : terrainH(p.x, p.z)) + p.s0 * 0.4;
+      const g = (p.roof && buildingAt(p.x, p.z, p.y) ? p.roof : gnd(p.x, p.z)) + p.s0 * 0.4;
       if (p.y < g && p.vy < 0) {   // down: it lies a moment and is gone
         if (p.vy < -4 && sys.free.length) emit(sys, { x: p.x, y: g, z: p.z, vy: 0.4, drag: 2, rise: 0.15, life: rnd(0.5, 0.8), s0: 0.15, s1: 0.6, roll: rnd(0, 6.28), c0: p.dust, c1: p.dust, op: 0.3, fout: 0.2, frame: (Math.random() * 3) | 0 });
         p.y = g; p.vx = p.vy = p.vz = 0; p.grav = 0; p.spin = 0; p.trail = 0; p.drag = 0; p.life = p.t + 1.2;
@@ -436,7 +442,7 @@ function predictNade(p, v, maxT = FUSE) {
   }
   return { pts, first, wall, end: n.p };
 }
-const surfAt = (x, z, roof) => { const g = terrainH(x, z); if (roof) { const b = buildingAt(x, z); if (b) return g + (b.top || 12); } return g; };
+const surfAt = (x, z, roof) => { const g = gnd(x, z); if (roof) { const b = buildingAt(x, z); if (b) return g + (b.top || 12); } return g; };
 const AIM_U = { uT: { value: 0 }, uCol: { value: new THREE.Color(1, 0.74, 0.34) } };
 // the ribbon: aArc = (across −1…1, metres along the arc, 0 before the first touch / 1 after)
 const ARC_MAX = 96;
@@ -512,7 +518,7 @@ beam.renderOrder = 5;
 const touch = new THREE.Mesh(new THREE.RingGeometry(0.17, 0.24, 28).rotateX(-Math.PI / 2), worldSpace(new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.85, depthWrite: false, fog: false })));
 touch.renderOrder = 4;
 const aimGroup = new THREE.Group(); aimGroup.add(arcGhost, arcLine, disc, beam, touch); aimGroup.visible = false;
-aimGroup.traverse(o => { o.frustumCulled = false; }); scene.add(aimGroup);
+aimGroup.traverse(o => { o.frustumCulled = false; }); aimGroup.userData.noProbe = true; scene.add(aimGroup);
 const AIM_COLD = new THREE.Color(1, 0.66, 0.2), AIM_HOT = new THREE.Color(1, 0.34, 0.07);
 let discAt = [1e9, 0, 0];
 // p, v: where the grenade leaves the hand and how fast (as the server will fly it); power 0…1 warms the colour; from: where
@@ -542,7 +548,7 @@ function showNadePreview(p, v, power = 0, from = null) {
   }
   arcGeo.attributes.position.needsUpdate = true; arcGeo.attributes.aArc.needsUpdate = true; arcGeo.setDrawRange(0, Math.max(0, n - 1) * 6);
   // the disc where it goes off, draped again only when the spot has moved
-  const [ex, ey, ez] = end, gr = terrainH(ex, ez), b = buildingAt(ex, ez), roof = !!b && ey > gr + (b.top || 12) - 0.6, floor = roof ? gr + (b.top || 12) : gr;
+  const [ex, ey, ez] = end, gr = gnd(ex, ez), b = buildingAt(ex, ez, ey), roof = !!b && ey > gr + (b.top || 12) - 0.6, floor = roof ? gr + (b.top || 12) : gr;
   if (Math.abs(ex - discAt[0]) + Math.abs(ez - discAt[2]) + Math.abs(ey - discAt[1]) > 0.02) {
     discAt = [ex, ey, ez];
     const D = discGeo.attributes.position.array, L = discGeo.attributes.aL.array;

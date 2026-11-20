@@ -82,7 +82,7 @@ const partMesh = new THREE.InstancedMesh(partGeo, partMat, PART_MAX);
 partMesh.count = 0; partMesh.frustumCulled = false;
 partMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 partMesh.setColorAt(0, new THREE.Color(1, 1, 1));   // allocates the instanceColor buffer
-scene.add(partMesh);
+partMesh.userData.noProbe = true; scene.add(partMesh);
 const pool = Array.from({ length: PART_MAX }, () => ({ x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, t: 0, life: 1, s0: 1, s1: 1, c: new THREE.Color(), op: 1, grav: 0 }));
 const free = [...pool], parts = [];
 const PM = new THREE.Matrix4(), PQ = new THREE.Quaternion(), PV = new THREE.Vector3(), PS = new THREE.Vector3();
@@ -172,7 +172,7 @@ function tracerShot(o, d, len, w, kind, color, onArrive) {
   if (tracers.length > 80) dropTracer(tracers.shift());
   const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
   const l = new THREE.Line(g, tracerMat(color));
-  l.frustumCulled = false; scene.add(l);
+  l.frustumCulled = false; l.userData.noProbe = true; scene.add(l);
   const tr = { l, o, d, len, w, kind, onArrive, t: 0, speed: SPEED[w] ?? 560, k: DRAG[w] ?? 0, trail: w === 1 ? 2.5 : 7, start: 0.9, done: false, fade: 0, bid: 0 };
   tracers.push(tr); return tr;
 }
@@ -200,7 +200,7 @@ function ejectShell() {
   camera.updateMatrixWorld();
   V.set(0.2, -0.14, -0.4).applyMatrix4(camera.matrixWorld);
   const e = camera.matrixWorld.elements;
-  const m = new THREE.Mesh(shellGeo, shellMat); m.position.copy(V); scene.add(m);
+  const m = new THREE.Mesh(shellGeo, shellMat); m.position.copy(V); m.userData.noProbe = true; scene.add(m);
   shells.push({ m, vx: e[0] * rnd(1.2, 2.2) + rnd(-0.3, 0.3), vy: e[1] * rnd(1.2, 2.2) + rnd(0.6, 1.4), vz: e[2] * rnd(1.2, 2.2) + rnd(-0.3, 0.3), rx: rnd(4, 12), rz: rnd(4, 12), t: 0 });
 }
 // a wisp of powder smoke at the muzzle of your own gun (mp.js gives the world point and the aim)

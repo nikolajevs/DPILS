@@ -3,6 +3,7 @@ import { LMS } from './tiles.js';
 import { LMWHITE } from './core.js';
 import { band, flatPlain, vband } from '../buildings/walls.js';
 import { COL } from '../world/data.js';
+import { walkSlab } from '../world/walkgrid.js';
 import { box, lathe, polyA } from '../core/geometry.js';
 import { area2, hb, offsetRing, reversed } from '../core/util.js';
 
@@ -40,7 +41,7 @@ function lmAutoosta(K) {
     signW(K, [cx + ux * 0.3 - ox * 0.02, cz + uz * 0.3 - oz * 0.02], [cx - ux * 0.3 - ox * 0.02, cz - uz * 0.3 - oz * 0.02], 2.95, 3.55, 'aoBay' + (k + 1), 1);
     lmRod(G, cx, cz, 3.55, 3.7, STEEL); });
   // the platform: raised, paved, the yellow edge along the buses
-  flatPlain(G, [r], 0.16, PAVE, false); vband(G, r, 0, 0.16, KERB);
+  flatPlain(G, [r], 0.16, PAVE, false); vband(G, r, 0, 0.16, KERB); walkSlab(r, 0.16);   // the body stands on the platform it sees
   box(G, ...at(L / 2, -0.25), ux, uz, L / 2, 0.25, 0.16, 0.17, YEL, true);
   // the roof: flat, 0.35 m deep, out 0.8 m over the buses
   const roof = offsetRing(r, 0.8) || r;
@@ -53,7 +54,7 @@ function lmAutoosta(K) {
   for (let s = 6; s <= L - 4; s += 9) { const [x, z] = at(s, -4.2); box(G, x, z, ux, uz, 1.0, 0.22, 0.6, 0.66, WOOD); box(G, x - ox * 0.22, z - oz * 0.22, ux, uz, 1.0, 0.04, 0.66, 1.05, WOOD);
     for (const e of [-0.85, 0.85]) box(G, x + ux * e, z + uz * e, ux, uz, 0.04, 0.2, 0.16, 0.6, STEEL);
     const [bx2, bz2] = at(s + 3.5, -1.0); lathe(G, bx2, bz2, 0.16, [[0.2, 0], [0.22, 0.85], [0.18, 0.9]], 10, 0, hb('#3d4a40')); }
-  COL.add(...at(0, -0.1), ...at(L, -0.1), 0.05, 0);   // the platform edge (a step)
+  // the platform edge is a step (0.16 m), not a wall: the walk's step-up climbs it (walkSlab above)
 }
 // a short rod down from the roof
 function lmRod(G, x, z, y0, y1, col) { box(G, x, z, 1, 0, 0.03, 0.03, y0, y1, col); }

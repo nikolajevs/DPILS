@@ -6,11 +6,12 @@ import { QUALITY, qi } from '../render/lighting.js';
 import { P, step } from './player.js';
 import { MP, mpLabels, mpTick, aimPunch } from './mp.js';
 import { camShake } from './nades.js';
-import { perfTick } from './perf.js';
+import { perfSample, perfTick } from './perf.js';
 import { TX, updateBoard, updateClockUI, updateTags, updateTransit } from '../transit/transit.js';
 import { lmTick } from '../landmarks/index.js';
 import { sky, terrainH } from '../world/terrain.js';
 import { U, camera, renderer, scene } from '../render/renderer.js';
+import { gpuBegin, gpuEnd } from '../render/gputime.js';
 import { $, reduceMotion } from '../core/env.js';
 
 /* ---------- frame loop ---------- */
@@ -30,6 +31,7 @@ function nearPlane() {
 let last = performance.now(), clock = 0;
 function frame(now) {
   requestAnimationFrame(frame);
+  const t0 = performance.now();   // CPU frame time: everything below, up to perfSample
   const dt = Math.min(0.05, (now - last) / 1000); perfTick(Math.min(5, (now - last) / 1000)); last = now; clock += dt;
   if (STATE.started) { if ($('start').hidden && big.hidden && !(MP.on && MP.dead)) step(dt); }
   else { STATE.introT += reduceMotion ? 0 : dt; P.yaw = 0.6 + STATE.introT * 0.05; P.x = -1350 + Math.sin(P.yaw) * 420; P.z = 1250 + Math.cos(P.yaw) * 420; P.y = 150 + terrainH(P.x, P.z); P.pitch = -0.33; }
@@ -45,9 +47,12 @@ function frame(now) {
   sky.position.copy(camera.position);
   updateSun();
   if ((STATE.lodTimer -= dt) <= 0) { STATE.lodTimer = 0.3; updateLod(); }
-  renderFrame();
+  const gpuMeasure = STATE.started;   // GPU frame time (gputime.js): only while the HUD is live — during the build and the intro three streams textures, and the counter is hidden anyway
+  if (gpuMeasure) gpuBegin();
+  try { renderFrame(); } finally { if (gpuMeasure) gpuEnd(); }
   camera.updateMatrixWorld(); updateTags(); mpLabels();
   if (STATE.started) { if ((STATE.hudTimer -= dt) <= 0) { STATE.hudTimer = 0.25; updateHud(); updateClockUI(); if ((TX.boardT = (TX.boardT || 0) - 1) <= 0) { TX.boardT = 2; updateBoard(); } } if ((STATE.mapTimer -= dt) <= 0) { STATE.mapTimer = 0.15; drawMini(); } }
+  perfSample(performance.now() - t0);
 }
 
 export { clock, frame, resize };

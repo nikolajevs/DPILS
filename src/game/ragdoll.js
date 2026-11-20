@@ -124,7 +124,7 @@ function makeRagdoll(inner, find, opts) {
   // the inward way and drags the slide, as the ground does.
   function walls() {
     for (let i = 0; i < 16; i++) {
-      const p = P[i], o = O[i], b = buildingAt(p.x, p.z);
+      const p = P[i], o = O[i], b = buildingAt(p.x, p.z, p.y);   // the height matters: under an open canopy the body lies free
       if (!b) continue;
       const roof = terrainH(p.x, p.z) + (b.top || 12);
       if (p.y > roof - 0.4) {

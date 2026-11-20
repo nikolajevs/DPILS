@@ -6,6 +6,7 @@ import { LMT, lr } from './tiles.js';
 import { LMF, LMWHITE, lmW } from './core.js';
 import { flatPlain, vband } from '../buildings/walls.js';
 import { COL } from '../world/data.js';
+import { walkSlab } from '../world/walkgrid.js';
 import { polyA } from '../core/geometry.js';
 import { area2, hb, reversed, sh } from '../core/util.js';
 
@@ -22,6 +23,7 @@ import { area2, hb, reversed, sh } from '../core/util.js';
    Frame vk: u from the portico towards the tracks, v along the building from its north end. */
 function lmStation(K) {
   const f = LMF.vk, G = K.plain, S = K.stone, at = (u, v, y) => { const w = lmW(f, u, v); return [w[0], y, w[1]]; };
+  const rect = (u0, u1, v0, v1) => Float32Array.from([lmW(f, u0, v0), lmW(f, u1, v0), lmW(f, u1, v1), lmW(f, u0, v1)].flat());   // a tread's footprint, for the walk's slabs
   const OCH = hb('#bc9e6c'), TRIM = sh(OCH, 0.9), PIL = sh(OCH, 0.86), RED = hb('#8c5849'), ROOF = hb('#8b9295'), STONE = hb('#8f8a84'), WHITE = hb('#e8e6df');
   const PL = 2.2, FL = 2.4, CW = 11.0, CE = 11.2, CC = 12.6, APEX = 18.0, VC = 41.65, AS = 10.6, R = 3.0, DN = 1.4;
   const ops = [], win = () => ({ d: 0.25, sill: TRIM, lit: lmLit(0.45) }), wt = () => lr() < 0.2 ? 'vkWinB' : 'vkWin';
@@ -119,15 +121,15 @@ function lmStation(K) {
     const t = LMT.vkSq, P = lmW(f, ud - 0.56, vd + 0.35), Q = lmW(f, ud - 0.56, vd - 0.35), F = lmWF(P, Q); K.det.q(F.at(0, yb + 0.2, 0), F.at(F.L, yb + 0.2, 0), F.at(F.L, yb + 0.9, 0), F.at(0, yb + 0.9, 0), [F.nx, 0, F.nz], [t.u1, t.v0, t.u0, t.v0, t.u0, t.v1, t.u1, t.v1], LMWHITE, lmLit(0.3) ? 1 : 0); }
   for (const [v0, v1, uf] of ENDS) { lmHip(G, f, uf, 21.6, v0, v1, CE - 0.05, 3.4, ROOF, 0.45); const vc = v0 ? v1 - 3.0 : v0 + 3.0; lmBoxL(G, f, 16.2, 17.1, vc - 0.35, vc + 0.35, CE + 1.5, CE + 4.6, sh(OCH, 0.92)); lmBoxL(G, f, 16.1, 17.2, vc - 0.45, vc + 0.45, CE + 4.6, CE + 4.8, sh(OCH, 0.85)); }
   // the steps to the portico: 17 steps between handrails, a side landing on the south
-  for (let k = 0; k < 17; k++) lmBoxL(S, f, -7.4 + 0.435 * k, 0.02, 36.6, 46.7, k * FL / 17, (k + 1) * FL / 17, sh(STONE, 0.96 + (k % 2) * 0.05), false);
-  lmBoxL(S, f, -3.6, 0.0, 46.7, 49.6, 0, FL, sh(STONE, 0.92));
+  for (let k = 0; k < 17; k++) { lmBoxL(S, f, -7.4 + 0.435 * k, 0.02, 36.6, 46.7, k * FL / 17, (k + 1) * FL / 17, sh(STONE, 0.96 + (k % 2) * 0.05), false); walkSlab(rect(-7.4 + 0.435 * k, -7.4 + 0.435 * (k + 1), 36.6, 46.7), (k + 1) * FL / 17); }
+  lmBoxL(S, f, -3.6, 0.0, 46.7, 49.6, 0, FL, sh(STONE, 0.92)); walkSlab(rect(-3.6, 0, 46.7, 49.6), FL);   // the side landing
   { const IRON = hb('#2f3236'); for (const v of [36.8, 41.65, 46.5]) { lmBar(G, at(-7.4, v, 0.95), at(0, v, FL + 0.95), 0.06, IRON); for (let k = 0; k <= 4; k++) { const u = -7.4 + 7.4 * k / 4, y = FL * k / 4; lmBar(G, at(u, v, y), at(u, v, y + 0.95), 0.05, IRON); } } }
   { const s0 = lmW(f, -7.4, 36.6), s1 = lmW(f, -7.4, 46.7), s2 = lmW(f, 0, 36.6), s3 = lmW(f, -3.6, 49.6), s4 = lmW(f, 0, 49.6), s5 = lmW(f, -3.6, 46.7);
     COL.add(s0[0], s0[1], s1[0], s1[1], 0, 0); COL.add(s0[0], s0[1], s2[0], s2[1], 0, 0); COL.add(s1[0], s1[1], s5[0], s5[1], 0, 0); COL.add(s5[0], s5[1], s3[0], s3[1], 0, 0); COL.add(s3[0], s3[1], s4[0], s4[1], 0, 0); }
   // the main platform along the building, as mapped in OSM: low, asphalt, a white edge towards the tracks
   { const PLAT = [[27.1, -37.9], [21.2, -37.9], [21.1, -27.2], [21.6, 0], [21.6, 35.3], [20.4, 35.3], [20.4, 48.0], [21.6, 48.0], [21.6, 83.7], [21.8, 87.9], [24.9, 87.8], [24.8, 253.0], [29.4, 252.7], [29.5, -110.8], [27.3, -110.7]];
     let r = []; for (const [u, v] of PLAT) r.push(...lmW(f, u, v)); r = new Float32Array(r); if (area2(r) < 0) r = reversed(r);
-    flatPlain(G, [r], 0.35, hb('#77787a'), false); vband(G, r, 0, 0.35, hb('#8a8a87'));
+    flatPlain(G, [r], 0.35, hb('#77787a'), false); vband(G, r, 0, 0.35, hb('#8a8a87')); walkSlab(r, 0.35);   // the body stands on the platform
     lmBoxL(G, f, 29.1, 29.5, -110.7, 252.7, 0.35, 0.37, WHITE, false); }
   lmRegisterOutline(f, [[0, 30.3], [0, 53.8], [7.6, 53.8], [7.6, 68.3], [5.9, 68.3], [5.9, 83.7], [21.6, 83.7], [21.6, 48.0], [20.4, 48.0], [20.4, 35.3], [21.6, 35.3], [21.6, 0], [6.0, 0], [6.0, 15.3], [7.9, 15.3], [7.9, 30.3]]);
 }

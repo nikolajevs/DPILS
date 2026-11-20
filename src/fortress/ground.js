@@ -183,7 +183,7 @@ function fortDitches() {
   if (!idx.length) return;
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(pos.length).fill(0).map((_, k) => k % 3 === 1 ? 1 : 0), 3)); g.setIndex(idx);
-  const m = new THREE.Mesh(g, waterMat(6)); m.frustumCulled = false; scene.add(m);   // the water of the city, 6 m from the bank (not in the water mask)
+  const m = new THREE.Mesh(g, waterMat(6)); m.frustumCulled = false; m.userData.noProbe = true; scene.add(m);   // the water of the city, 6 m from the bank (not in the water mask)
 }
 
 export { fortDitches, fortField, fortFine, fortWalls };

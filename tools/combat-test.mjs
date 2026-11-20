@@ -366,6 +366,22 @@ console.log('bullet drop (gravity, holdover, determinism):');
   ok(near(makePhysics(() => null, hill).freePath([0, 1.7, 0], [0, 0, -1], 160), 13.4, 0.05), 'freePath: the slope to 5 cm');
   ok(makePhysics(() => null, () => 0).freePath([0, 1.7, 0], [0, 0, -1], 160) === 160, 'freePath: an open field stays open');
 }
+{
+  // the contour is solid at a height: a canopy on posts is open at the ground (a shot and a walker pass under),
+  // its roof still stops a lofted grenade; a passage cut out of a footprint is walkable and shootable
+  const canopy = (x, z, y = 1) => (Math.abs(x) < 3 && z > -13 && z < -7 && y >= 4.75) ? { top: 5, base: 4.75 } : null;
+  const C = makePhysics(canopy, () => 0);
+  ok(C.freePath([0, 1.7, 0], [0, 0, -1], 160) === 160, 'canopy: a shot at 1.7 m passes under the open roof');
+  ok(C.walkable(0, -10), 'canopy: the ground under it is walkable');
+  const cn = { p: [0, 6, -10], v: [0, -5, 0] }; let ce = null;
+  for (let i = 0; i < 30 && !ce; i++) { C.stepNade(cn, 1 / 30, 18); if (cn.bounce) ce = cn.bounce; }
+  ok(ce && ce.kind === 'roof', 'canopy: a grenade from above lands on the roof', JSON.stringify(ce));
+  const passage = (x, z, y = 1) => (Math.abs(x) < 3 && z > -13 && z < -7 && Math.abs(x) >= 1) ? { top: 12 } : null;
+  const P = makePhysics(passage, () => 0);
+  ok(P.freePath([0, 1.7, 0], [0, 0, -1], 160) === 160, 'passage: a shot down the hole passes');
+  ok(P.walkable(0, -10), 'passage: the hole is walkable');
+  ok(!P.walkable(2, -10), 'passage: the wall beside the hole is not');
+}
 
 /* ---------- 2b. the grenade step (stepNade): bounces, slopes, rolling, the touch events ---------- */
 console.log('grenade physics (stepNade):');

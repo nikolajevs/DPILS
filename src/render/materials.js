@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { STATE } from '../core/state.js';
 import { U, hook } from './renderer.js';
+import { PU } from './cityprobe.js';
 
 /* ---------- materials ---------- */
 // vertex colours are given in sRGB: they are made linear as they are read. Since three.js r15x vColor is a vec4 and
@@ -29,10 +30,11 @@ function std(opts, key, patch) {
 const FACADE_RELIEF = 3.0;   // strength of the facade relief (slope per unit of atlas grey difference)
 function facadeMaterial() {
   const m = std({ roughness: 0.9, metalness: 0 }, 'facade', s => {
-    s.uniforms.uAtlas = { value: STATE.facTex }; s.uniforms.uMask = { value: STATE.facMask }; s.uniforms.uNight = U.night;
+    s.uniforms.uAtlas = { value: STATE.facTex }; s.uniforms.uMask = { value: STATE.facMask }; s.uniforms.uNight = U.night; s.uniforms.uLit = U.lit; s.uniforms.uTime = U.time;
+    Object.assign(s.uniforms, PU);   // the city cubes: the glass mirrors the street, not the filtered sky
     s.vertexShader = 'attribute vec2 aUv; attribute vec3 aInfo; attribute vec3 aTint;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint; varying float vWy;\n' +
       s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvCellUv = aUv; vInfo = aInfo; vTint = pow(aTint, vec3(2.2)); vWy = (modelMatrix * vec4(transformed, 1.0)).y;');
-    s.fragmentShader = 'uniform sampler2D uAtlas; uniform sampler2D uMask; uniform float uNight;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint; varying float vWy;\n' + SAMPLE_GLSL +
+    s.fragmentShader = 'uniform sampler2D uAtlas; uniform sampler2D uMask; uniform float uNight; uniform float uLit; uniform float uTime;\nuniform samplerCube uProbeA; uniform samplerCube uProbeB; uniform float uProbeMix; uniform float uProbeOn;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint; varying float vWy;\n' + SAMPLE_GLSL +
       s.fragmentShader.replace('#include <map_fragment>', `
         vec2 dX = dFdx(vCellUv), dY = dFdy(vCellUv);
         float row = vInfo.x, sd = vInfo.y / 255.0, fl = vInfo.z;
@@ -64,6 +66,15 @@ function facadeMaterial() {
         diffuseColor.rgb = tcol * mix(vec3(1.0), vTint, fm.r);
         diffuseColor.rgb *= mix(0.55, 1.0, smoothstep(0.0, 2.4, vWy));
       `).replace('#include <roughnessmap_fragment>', 'float roughnessFactor = mix(roughness, 0.06, fm.g);')
+        .replace('#include <lights_fragment_maps>', THREE.ShaderChunk.lights_fragment_maps.replace('radiance += iblRadiance;', 'radiance += iblRadiance * (1.0 - fm.g * uProbeOn);') + `
+#if defined( USE_ENVMAP ) && defined( RE_IndirectSpecular )
+        if (uProbeOn > 0.01 && fm.g > 0.01) {   // where the probes reach, the glass takes its mirror from the city cubes
+          vec3 wn = normalize(geometryNormal * mat3(viewMatrix));
+          vec3 wp = cameraPosition - vViewPosition * mat3(viewMatrix);
+          vec3 Rw = reflect(normalize(wp - cameraPosition), wn);
+          radiance += mix(textureCube(uProbeA, Rw).rgb, textureCube(uProbeB, Rw).rgb, uProbeMix) * fm.g * uProbeOn;
+        }
+#endif`)
         .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         {   // relief from the atlas itself: the grey of the colour atlas is the height (mortar, joints, frames and trim sit lower), the slope is
             // the difference of two atlas samples, laid on a tangent frame taken from the wall's uv; none on glass, fading out with distance
@@ -78,9 +89,24 @@ function facadeMaterial() {
           float bw = (1.0 - step(0.1, fm.g)) * (blank ? 0.0 : 1.0) * (1.0 - smoothstep(15.0, 80.0, length(vViewPosition)));
           normal = normalize(normal - (hu * tT + hv * tB) * im * ${FACADE_RELIEF.toFixed(2)} * bw);
         }`).replace('#include <emissivemap_fragment>', `
-        float lit = step(0.5, h12(cell + sd * 13.1 + 5.0));
-        vec3 lc = mix(vec3(1.0, 0.68, 0.36), vec3(0.62, 0.78, 1.0), step(0.92, hc2));
-        totalEmissiveRadiance += fm.g * lit * uNight * lc * (1.2 + hc2);
+        // the evening reads in columns and floors, not random cells: a column with the curtains drawn stays dark,
+        // a floor gone to bed dims, the stairwell column of some houses is lit whole; uLit is the share of lit windows
+        // of the time of day (it was set but never used). A rare cold television flickers behind its own curtain.
+        float hcol = h12(vec2(cell.x, 0.0) + sd * 57.0 + 11.0);
+        float hfl = h12(vec2(0.0, cell.y) + sd * 71.0 + 23.0);
+        float hw = h12(cell + sd * 13.1 + 5.0);
+        float p = uLit * (hcol < 0.18 ? 0.12 : 1.0) * (hfl < 0.14 ? 0.25 : 1.0);
+        float stair = step(0.86, hcol);
+        float lit = max(step(1.0 - p, hw), stair);
+        float tv = step(0.94, hc2);
+        float flick = 0.75 + 0.45 * h12(vec2(floor(uTime * 2.5), cell.x * 3.1 + cell.y * 7.7) + sd);
+        vec3 lc = mix(vec3(1.0, 0.68, 0.36), vec3(0.74, 0.83, 1.0), stair * 0.6);
+        // only the brightest fifth of the lit windows crosses the bloom threshold of the evening: the halo sits on
+        // single windows, not on the whole facade (the rest stays below it, see TIMES.thresh in lighting.js)
+        float bright = 1.0 + hc2 * 0.5 + step(0.78, hc2) * 2.2;
+        vec3 emit = lc * bright * lit + vec3(0.5, 0.68, 1.0) * tv * flick * 1.6;
+        emit += lc * 0.25 * smoothstep(1.0 - p - 0.1, 1.0 - p, hw) * (1.0 - lit);   // a dim glow behind a drawn curtain
+        totalEmissiveRadiance += fm.g * uNight * emit;
       `);
   });
   m.extensions = { derivatives: true }; return m;
@@ -108,11 +134,11 @@ const GROUND_WET = { asph: 0.5, pave: 0.15 };
 function groundMaterial(tex, scale, amt, key, extra = '') {   // extra: GLSL that may change diffuseColor at the world point vWxz
   const wet = GROUND_WET[key] || 0;
   return std({ vertexColors: true, roughness: 0.96, metalness: 0, depthWrite: false }, 'ground-' + key, s => {
-    s.uniforms.uDetail = { value: tex };
-    s.vertexShader = 'varying vec2 vWxz;\n' + s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvWxz = (modelMatrix * vec4(transformed, 1.0)).xz;')
+    s.uniforms.uDetail = { value: tex }; s.uniforms.uNight = U.night;
+    s.vertexShader = 'varying vec2 vWxz; varying float vGy;\n' + s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvWxz = (modelMatrix * vec4(transformed, 1.0)).xz; vGy = (modelMatrix * vec4(transformed, 1.0)).y + terrainH(vWxz);')
       .replace('#include <beginnormal_vertex>', `vec2 tW = (modelMatrix * vec4(position, 1.0)).xz;   // ground lies flat in its geometry: its normal is that of the terrain
         vec3 objectNormal = normalize(vec3(terrainH(tW - vec2(6.0, 0.0)) - terrainH(tW + vec2(6.0, 0.0)), 12.0, terrainH(tW - vec2(0.0, 6.0)) - terrainH(tW + vec2(0.0, 6.0))));`);
-    s.fragmentShader = 'uniform sampler2D uDetail; varying vec2 vWxz;\n' + SAMPLE_GLSL +
+    s.fragmentShader = 'uniform sampler2D uDetail; uniform float uNight; varying vec2 vWxz; varying float vGy;\n' + SAMPLE_GLSL +
       `float gnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
         return mix(mix(h12(i), h12(i + vec2(1.0, 0.0)), f.x), mix(h12(i + vec2(0.0, 1.0)), h12(i + vec2(1.0, 1.0)), f.x), f.y); }\n` +
       s.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
@@ -121,6 +147,19 @@ function groundMaterial(tex, scale, amt, key, extra = '') {   // extra: GLSL tha
       float wetP = smoothstep(0.62, 0.82, gnoise(vWxz * 0.045) * 0.65 + gnoise(vWxz * 0.16) * 0.35) * ${wet.toFixed(3)};
       diffuseColor.rgb *= mix(1.0, dt, ${amt.toFixed(3)}) * mix(1.0, dt2, ${(amt * 0.6).toFixed(3)}) * (1.0 - 0.3 * wetP);${extra}`)
       .replace('#include <roughnessmap_fragment>', `float roughnessFactor = roughness * (0.9 + 0.1 * dt); roughnessFactor = mix(roughnessFactor, 0.28, wetP);`)
+      .replace('#include <emissivemap_fragment>', wet > 0 ? `#include <emissivemap_fragment>
+      {   // the wet patch mirrors the lamps and the evening sky as a streak stretched along the view: one term, no SSR.
+          // The noise runs across the view azimuth (soft bands a few metres wide, long along it), broken by a slower noise
+          // into lamp-like streaks; it lives only at a grazing look and fades out far off, where the haze takes over
+        vec3 Vw = normalize(cameraPosition - vec3(vWxz.x, vGy, vWxz.y));
+        float graz = pow(1.0 - clamp(Vw.y, 0.0, 1.0), 5.0) * smoothstep(0.30, 0.10, Vw.y);   // a sheen of the grazing look only, not from above
+        vec2 va = Vw.xz / max(length(Vw.xz), 1e-3);
+        float across = dot(vWxz, vec2(-va.y, va.x)), along = dot(vWxz, va);
+        float st = smoothstep(0.58, 0.9, gnoise(vec2(across * 0.28, along * 0.05)))
+          * (0.35 + 0.65 * gnoise(vec2(across * 0.07 + 7.3, along * 0.011)));   // broken into lamp-like streaks, not corduroy
+        float far = 1.0 - smoothstep(250.0, 700.0, length(vViewPosition));
+        totalEmissiveRadiance += wetP * uNight * graz * st * far * (vec3(1.0, 0.72, 0.4) * 0.45 + uFogGlow * 0.18);
+      }` : '#include <emissivemap_fragment>')
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
       #if ${amt > 0 ? 1 : 0}
       {   // bump from the detail photograph: its grey is the height (relief ${(RELIEF).toFixed(2)} m × colour amount). The slope comes from texture

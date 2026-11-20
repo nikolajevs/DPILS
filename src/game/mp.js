@@ -95,7 +95,7 @@ function wallPath(o, d, len, v, k = 0) {
   const block = t => {
     const x = o[0] + d[0] * t, y = o[1] + d[1] * t - (v ? bulletDrop(t, v, k) : 0), z = o[2] + d[2] * t, g = terrainH(x, z);
     if (y < g) return true;
-    const b = buildingAt(x, z); return !!(b && y < g + (b.top || 12));
+    const b = buildingAt(x, z, y); return !!(b && y < g + (b.top || 12));   // the height matters: an open canopy does not muffle sound
   };
   if (block(0)) return 0;
   for (let t = 0.3, step = 0.5; t < len; t += step) {
@@ -144,7 +144,7 @@ function makeFigure(hue) {
 }
 function addRemote(id, name, team, char) {
   if (remotes.has(id) || id === MP.id) return remotes.get(id);
-  const hue = MP.ffa ? (id * 0.381966) % 1 : (HUE[team] ?? 0.3), group = makeFigure(hue), tag = document.createElement('div'); tag.className = 'mp-tag ' + (MP.ffa ? 'tf' : 't' + team); if (MP.ffa) tag.style.background = 'hsla(' + Math.round(hue * 360) + ', 55%, 32%, .78)'; tag.textContent = name || '…'; group.visible = false; scene.add(group); $('mpTags').append(tag);
+  const hue = MP.ffa ? (id * 0.381966) % 1 : (HUE[team] ?? 0.3), group = makeFigure(hue), tag = document.createElement('div'); tag.className = 'mp-tag ' + (MP.ffa ? 'tf' : 't' + team); if (MP.ffa) tag.style.background = 'hsla(' + Math.round(hue * 360) + ', 55%, 32%, .78)'; tag.textContent = name || '…'; group.visible = false; group.userData.noProbe = true; scene.add(group); $('mpTags').append(tag);
   const r = { id, name, team, hue, group, buf: [], tag, char: parseChar(char), figHead: group.userData.head, figArm: group.userData.arm }; remotes.set(id, r); attachAvatar(r); return r;
 }
 /* ---------- the models of the game, loaded with the city ----------
@@ -175,7 +175,7 @@ function loadModels(onPart) {
 async function warmSamples(on) {
   if (!samples) return;
   if (!on) { scene.remove(samples); samples = null; return; }
-  scene.add(samples);
+  samples.userData.noProbe = true; scene.add(samples);
   const tex = new Set();
   for (const root of [samples, camera]) root.traverse(o => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const v of Object.values(m)) if (v && v.isTexture) tex.add(v); });
   for (const t of tex) { await rest(); renderer.initTexture(t); }
@@ -254,7 +254,7 @@ const gun = new THREE.Group(), models = WEAPONS.map(() => new THREE.Group());
   add(n, m1, 0.045, 0.07, 1.0, 0, 0, -0.2); add(n, m3, 0.02, 0.02, 0.45, 0, 0.0, -0.95); add(n, m1, 0.05, 0.05, 0.28, 0, 0.065, -0.15); add(n, m2, 0.06, 0.15, 0.4, 0, -0.06, 0.4); add(n, m1, 0.04, 0.12, 0.07, 0, -0.08, 0.02);   // sniper rifle: long barrel, scope, stock
   models.slice(3).forEach(m => add(m, m1, 0.05, 0.08, 0.4, 0, 0, -0.1));   // the simple boxes of the weapons that have no ready model yet
   models.forEach((m, k) => { m.visible = k === 0; gun.add(m); });
-  gun.position.set(0.17, -0.16, -0.5); gun.scale.setScalar(0.8); gun.visible = false; camera.add(gun); scene.add(camera);   // a touch higher so the hands on the grip show above the bottom edge
+  gun.position.set(0.17, -0.16, -0.5); gun.scale.setScalar(0.8); gun.visible = false; camera.add(gun); camera.userData.noProbe = true; scene.add(camera);   // a touch higher so the hands on the grip show above the bottom edge
 })();
 // the hands that hold the gun: a fist on the grip, a supporting hand on the forend, the sleeves going off the bottom of the
 // frame. They live inside each weapon model, so they switch, kick and tilt with it and hide when the scope is up.

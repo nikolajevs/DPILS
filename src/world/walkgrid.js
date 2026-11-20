@@ -1,4 +1,5 @@
 import { SegGrid } from '../core/geometry.js';
+import { bbox, pip } from '../core/util.js';
 
 /* ---------- raised sidewalks ----------
    The sidewalks are slabs WH above the road (src/world/streets.js lays them, with a kerb along the road edge).
@@ -8,6 +9,12 @@ import { SegGrid } from '../core/geometry.js';
    lateral bounds, so a query is a short lateral test. The bounds ride in the segment's extra fields. */
 const WH = 0.13;
 const G = new SegGrid(20);
+/* raised slabs the body stands on: a bus platform, a station platform, a flight of steps. Each is a footprint ring
+   at a constant height above the level city; walkH takes the highest one under the point. The walk's step-up
+   (src/game/player.js) climbs a rise of up to STEP per substep, so a kerb or a tread is a step, not a wall and not a
+   teleport: the feet follow the slab the renderer drew. Register a tread per step for a discrete flight. */
+const SLABS = [];
+function walkSlab(ring, h) { const r = ring instanceof Float32Array ? ring : Float32Array.from(ring); SLABS.push({ r, h, bb: bbox(r) }); }
 // a sidewalk of constant offset and half width along p
 function walkStrip(p, off, hw) {
   const n = p.length >> 1;
@@ -34,7 +41,8 @@ function walkH(x, z) {
     const L = ((x - s[k]) * -dz + (z - s[k + 1]) * dx) / l;
     if (L >= s[k + 4] && L <= s[k + 5]) h = WH;
   });
+  for (const sl of SLABS) { const bb = sl.bb; if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && sl.h > h && pip(x, z, sl.r)) h = sl.h; }
   return h;
 }
 
-export { WH, walkH, walkStrip, walkStripV };
+export { WH, walkH, walkSlab, walkStrip, walkStripV };

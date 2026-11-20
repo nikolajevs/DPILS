@@ -34,7 +34,7 @@
     <ul id="placeList"></ul>
   </nav>
   <div class="bottom">
-  <div class="panel status" id="status"><span id="stMode">пешком</span><span id="stHead">курс 000° С</span><span class="opt" id="stPos"></span></div>
+  <div class="panel status" id="status"><span id="stMode">пешком</span><span id="stHead">курс 000° С</span><span class="opt" id="stPos"></span><span class="opt" id="stPerf" title="Кадры в секунду · draw calls — команды отрисовки за кадр (сцена, тени, постобработка) · CPU — среднее время кадра на процессоре · GPU — на видеокарте (н/д, если браузер не даёт замер)"></span></div>
   <div class="panel bar">
     <button class="btn" id="bPlaces" aria-pressed="false">Места<kbd>P</kbd></button>
     <button class="btn" id="bMap">Карта<kbd>M</kbd></button>
@@ -92,6 +92,7 @@
       <dt>Y · U · V</dt><dd>в игре: чат всем · чат команде · рация (удерживать)</dd>
       <dt>Пробел · C</dt><dd>прыжок (в игре) · присесть (удерживать)</dd>
       <dt>F</dt><dd>полёт: E / пробел — выше, Q — ниже</dd>
+      <dt>F3</dt><dd>счётчик производительности: кадры/с, вызовы отрисовки, время CPU и GPU</dd>
       <dt>V</dt><dd>открыть настоящую панораму Street View в этой точке</dd>
       <dt>M · P</dt><dd>карта · список мест</dd>
       <dt>Время суток</dt><dd>день, вечер или ночь — выбирается в этом меню до начала игры</dd>
