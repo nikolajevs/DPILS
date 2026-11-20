@@ -2,6 +2,7 @@ import { STATE } from '../core/state.js';
 import { PP } from '../render/post.js';
 import { QUALITY, qi, qAuto, setQuality } from '../render/lighting.js';
 import { POST, renderer } from '../render/renderer.js';
+import { gpuOk, gpuPoll } from '../render/gputime.js';
 
 /* ---------- frame rate ----------
    PERF.fps is the frame rate of the last second or so.
@@ -26,10 +27,14 @@ import { POST, renderer } from '../render/renderer.js';
    whole. */
 // scale: the share of the resolution the scene is drawn at; dyn: whether it follows the frame rate (tools/shots.js
 // switches it off: its frames take minutes, and a check of the picture wants it whole)
-const PERF = { fps: 60, scale: 1, dyn: true, lowered: 0, notice: null };
+// calls: draw calls of the last frame (scene, shadows, post-processing — renderer.info is reset by renderFrame);
+// cpu/gpu: the average frame time of the last second, ms — CPU is the whole frame on the processor (simulation,
+// draw submission, HUD), GPU is the video card's work measured by gputime.js (0 and gpuOk false when it cannot)
+const PERF = { fps: 60, scale: 1, dyn: true, lowered: 0, notice: null, calls: 0, cpu: 0, gpu: 0, gpuOk, gpuSeen: false };
 let frames = 0, span = 0, slow = 0, fast = 0, quiet = 6, fpsFrames = 0, fpsSpan = 0;
+let cpuSum = 0, cpuN = 0, gpuSum = 0, gpuN = 0;
 function perfTick(rdt) {   // rdt: the real time of the frame, seconds
-  fpsFrames++; fpsSpan += rdt; if (fpsSpan >= 1) { PERF.fps = Math.round(fpsFrames / fpsSpan); fpsFrames = 0; fpsSpan = 0; }
+  fpsFrames++; fpsSpan += rdt; if (fpsSpan >= 1) { PERF.fps = Math.round(fpsFrames / fpsSpan); fpsFrames = 0; fpsSpan = 0; PERF.cpu = cpuN ? cpuSum / cpuN : 0; PERF.gpu = gpuN ? gpuSum / gpuN : 0; PERF.gpuSeen = gpuN > 0; cpuSum = cpuN = gpuSum = gpuN = 0; }
   dynTick(rdt); PERF.scale = PP.scale;
   if (!qAuto) return;
   if (STATE.mapOpen) { frames = span = 0; slow = fast = 0; return; }   // the full map hides the city: its frames say nothing
@@ -92,4 +97,12 @@ function dynTick(rdt) {
   else dFast = 0;
 }
 
-export { PERF, perfTick };
+/* Called at the end of the frame (loop.js): the draw calls it issued and the CPU time it took; the GPU result of
+   an earlier frame, if one is ready. The averages are published by perfTick with the frame rate, once a second. */
+function perfSample(cpuMs) {
+  PERF.calls = renderer.info.render.calls;
+  cpuSum += cpuMs; cpuN++;
+  const g = gpuPoll(); if (g >= 0) { gpuSum += g; gpuN++; }
+}
+
+export { PERF, perfSample, perfTick };

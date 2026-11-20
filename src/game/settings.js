@@ -14,7 +14,7 @@ const ACTIONS = [
   ['inv', 'Инвентарь', 'KeyI'], ['med', 'Аптечка (использовать)', 'KeyH'],
   ['voice', 'Рация (удерживать)', 'KeyV'], ['chat', 'Чат всем', 'KeyY'], ['teamChat', 'Чат команде', 'KeyU'], ['board', 'Таблица очков', 'Tab'],
 ];
-const DEFAULTS = { sens: 1, fov: 66, vol: 0.8, voiceVol: 1, ambVol: 0.6, invertY: false, crossCol: '#ffffff', crossDot: true, crossDyn: true };
+const DEFAULTS = { sens: 1, fov: 66, vol: 0.8, voiceVol: 1, ambVol: 0.6, invertY: false, crossCol: '#ffffff', crossDot: true, crossDyn: true, perfHud: true };
 const CROSS_COLS = ['#ffffff', '#8dff7a', '#5ad7ff', '#ffd75a', '#ff6a5a', '#ff7ad9'];
 const SET = { ...DEFAULTS, v: 3, keys: Object.fromEntries(ACTIONS.map(a => [a[0], a[2]])) };
 const listeners = [], buildHooks = [], resetHooks = [];
@@ -24,6 +24,7 @@ try {
   const s = JSON.parse(localStorage.getItem('dpils.settings') || '{}'), num = (v, lo, hi, d) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
   SET.sens = num(s.sens, 0.2, 3, 1); SET.fov = num(s.fov, 60, 100, 66); SET.vol = num(s.vol, 0, 1, 0.8); SET.voiceVol = num(s.voiceVol, 0, 1, 1); SET.ambVol = num(s.ambVol, 0, 1, 0.6); SET.invertY = s.invertY === true;
   SET.crossCol = CROSS_COLS.includes(s.crossCol) ? s.crossCol : '#ffffff'; SET.crossDot = s.crossDot !== false; SET.crossDyn = s.crossDyn !== false;
+  SET.perfHud = s.perfHud !== false;   // the performance line of the walk status (draw calls, CPU/GPU frame time); F3 toggles it
   if (s.keys && typeof s.keys === 'object') for (const [a, , d] of ACTIONS) if (typeof s.keys[a] === 'string' && /^[A-Za-z0-9]{1,16}$/.test(s.keys[a])) SET.keys[a] = s.keys[a];
   if ((s.v || 1) < 3 && /^Control/.test(SET.keys.crouch)) { SET.keys.crouch = 'KeyC'; save(); }   // v3: crouch returns from Ctrl to C — Ctrl combos belong to the browser; a saved Ctrl default follows once
 } catch (e) {}
@@ -141,4 +142,4 @@ $('bSet').onclick = openSettings; $('bSetStart').onclick = openSettings;
 window.addEventListener('keydown', e => { if (e.code === 'KeyO' && box.hidden && !(e.target instanceof HTMLInputElement) && !e.ctrlKey && !e.metaKey && !e.altKey && document.body.classList.contains('mp')) { e.preventDefault(); openSettings(); } });
 box.addEventListener('click', e => { if (e.target === box) closeSettings(); });
 
-export { ACTIONS, SET, closeSettings, keyName, onBuild, onChange, onReset, openSettings };
+export { ACTIONS, SET, check, closeSettings, keyName, onBuild, onChange, onReset, openSettings, save };

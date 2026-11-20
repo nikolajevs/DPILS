@@ -1,10 +1,11 @@
 import { STATE } from '../core/state.js';
+import { PERF } from '../game/perf.js';
 import { P } from '../game/player.js';
 import { ROAD, inWater } from '../world/data.js';
 import { $, C, NAMES } from '../core/env.js';
 
 /* ---------- HUD ---------- */
-const elStreet = $('street'), elNear = $('near'), stMode = $('stMode'), stHead = $('stHead'), stPos = $('stPos'), bSV = $('bSV'); STATE.hudTimer = 0;
+const elStreet = $('street'), elNear = $('near'), stMode = $('stMode'), stHead = $('stHead'), stPos = $('stPos'), stPerf = $('stPerf'), bSV = $('bSV'); STATE.hudTimer = 0;
 const WIND = ['С', 'СВ', 'В', 'ЮВ', 'Ю', 'ЮЗ', 'З', 'СЗ'];
 function updateHud() {
   let best = 1e9, name = -1;
@@ -18,6 +19,8 @@ function updateHud() {
   const lat = C.lat0 - P.z / C.ky, lon = C.lon0 + P.x / C.kx;
   stPos.textContent = lat.toFixed(4) + '° с. ш., ' + lon.toFixed(4) + '° в. д.';
   bSV.href = 'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=' + lat.toFixed(6) + ',' + lon.toFixed(6) + '&heading=' + Math.round(deg) + '&pitch=' + Math.round(P.pitch * 57.3) + '&fov=90';
+  // the performance line (settings or F3): frame rate, draw calls of the last frame, average CPU and GPU frame time
+  stPerf.textContent = PERF.fps + ' кадр/с · ' + PERF.calls + ' вызовов · CPU ' + PERF.cpu.toFixed(1) + ' мс · GPU ' + (PERF.gpuOk && PERF.gpuSeen ? PERF.gpu.toFixed(1) + ' мс' : 'н/д') + (PERF.scale < 1 ? ' · разрешение ' + Math.round(PERF.scale * 100) + ' %' : '');
 }
 
 export { bSV, updateHud };
