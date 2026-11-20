@@ -55,7 +55,8 @@ void main() {
   // the city itself in the mirror: the two nearest probes (bridge, square, Gubišče), shot once per time of day;
   // they carry the sky and the clouds too, so where they reach they replace the procedural gradient whole
   if (uProbeOn > 0.01) {
-    vec3 pc = mix(textureCube(uProbeA, R).rgb, textureCube(uProbeB, R).rgb, uProbeMix);
+    vec3 Rp = normalize(vec3(R.x, max(R.y, 0.02), R.z));   // the mirror shows only what stands above the waterline: a steep ripple
+    vec3 pc = mix(textureCube(uProbeA, Rp).rgb, textureCube(uProbeB, Rp).rgb, uProbeMix);   // would otherwise dip into the ground under the probe
     skyc = mix(skyc, pc, uProbeOn);
   }
   // the water body: greener over the shallows by the banks, dark blue-green out in the stream
