@@ -27,6 +27,13 @@ function mieraOf(outer) {
   const n = outer.length >> 1; let x = 0, z = 0; for (let i = 0; i < n; i++) { x += outer[2 * i] / n; z += outer[2 * i + 1] / n; }
   return n >= 29 && n <= 33 && Math.hypot(x - 910, z + 246) < 8;
 }
+// the passage openings as footprint holes (the same rectangles the bridges leave open below). Shared with the
+// collision (passages.js): the body must walk through exactly where the model opens the wall.
+function mieraHoles() {
+  const holes = [];
+  for (const { r: [, , v0, v1], c, w } of BRIDGES) { const hw = w / 2; const h = [W(c - hw, v0 + 0.01), W(c + hw, v0 + 0.01), W(c + hw, v1 - 0.01), W(c - hw, v1 - 0.01)]; holes.push(new Float32Array(h.flat())); }
+  return holes;
+}
 
 function rect(u0, u1, v0, v1, alongV) {   // a rectangle of the frame as the o of serWing: a the half along its long axis
   const [cx, cz] = W((u0 + u1) / 2, (v0 + v1) / 2);
@@ -50,7 +57,7 @@ function mieraBuild(T, id, seed) {
   }
   serFiller(T, rect(...STUB, true), FL, tint, id, seed);
   // the bridges
-  const holes = [];
+  const holes = mieraHoles();
   for (const { r: [u0, u1, v0, v1], c, w, cars } of BRIDGES) {
     const hw = w / 2, wallH = YB + FH;
     for (const sv of [-1, 1]) {   // a face: the ground storey a wall with the opening, the four above in the series window cell
@@ -75,12 +82,10 @@ function mieraBuild(T, id, seed) {
     flatRoof(G.roof, [ring], H + 0.02, hb(pick(['#5d5f60', '#666867', '#545657'], id, 3)), 5, seed);
     for (const sv of [-1, 1]) { const vf = sv < 0 ? v0 : v1, a = W(u0, vf), b = W(u1, vf);
       wallStrip(G.plain, [a[0], 0, a[1]], [b[0], 0, b[1]], H, H + 0.45, pc, VX * sv, VZ * sv); }
-    // the hole in the footprint: the passage can be walked
-    const h = [W(c - hw, v0 + 0.01), W(c + hw, v0 + 0.01), W(c + hw, v1 - 0.01), W(c - hw, v1 - 0.01)]; holes.push(new Float32Array(h.flat()));
   }
   const b = BLD[BLD.length - 1]; if (b) b.holes = holes;
   void PLINTH;
   return true;
 }
 
-export { mieraBuild, mieraOf };
+export { mieraBuild, mieraHoles, mieraOf };
