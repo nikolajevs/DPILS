@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/city-reflections | Город в отражениях: кубмапы-пробы (мост, площадь, Губище) для воды и стекла фасадов | src/render/cityprobe.js, src/render/materials.js, src/render/lighting.js, src/render/post.js, src/world/water.js, src/main.js |
 
 ## Автономный цикл улучшений
 
