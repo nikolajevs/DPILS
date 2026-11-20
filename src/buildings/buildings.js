@@ -21,6 +21,20 @@ import { box, lathe, polyA } from '../core/geometry.js';
 import { area2, bbox, dec, edgeN, hb, insetOk, obb, offsetRing, pick, reversed, rnd, sh } from '../core/util.js';
 import { C, NAMES } from '../core/env.js';
 
+/* Neighbouring houses share party walls, and their rings cut the shared plane into edges with different endpoints, so
+   two facade quads with different window seeds overlap on one plane and z-fight into TV static across the panes (the
+   flicker-free "noise" of the evening windows; mip averaging hid it far off). Every house sinks its facade a hair
+   inward — a unique 1–7 cm per id — so coplanar walls of different houses never share a depth: the outermost copy wins
+   outright, and no copy ever sits flush on the ring plane where the plain bands and doors of a neighbour live. The
+   recess stays under the plinth and cornice bands and reads as a shadow line, not a hole; entrance doors move with
+   their wall. Duplicated footprints in the data settle the same way. */
+const PLANES = new Map();
+function facadeSink(id, nx, nz, x1, z1) {
+  const k = Math.round(nx * 50) + ',' + Math.round(nz * 50) + ',' + Math.round((nx * x1 + nz * z1) * 20);
+  const n = (PLANES.get(k) || 0) + 1; PLANES.set(k, n);
+  return 0.01 + ((id * 2654435761) % 97) / 97 * 0.06 + (n - 1) * 0.03;
+}
+
 async function buildBuildings(from, to) {
   for (let id = from; id < to; id++) {
     if (due()) await pause();
@@ -96,7 +110,8 @@ async function buildBuildings(from, to) {
         const x1 = r[2 * i], z1 = r[2 * i + 1], x2 = r[2 * j], z2 = r[2 * j + 1];
         const cnt = Math.max(1, Math.round(L / bay)), blank = L < bay * 0.55 || (small && row !== 5 && L < 2.5) ? 2 : 0;
         const ext = parapet ? 0.6 : 0;
-        wallQuad(G.fac, x1, z1, x2, z2, yb, h + ext, nx, nz, tint, 0, blank ? L / bay : cnt, 0, floors + ext / fh, row, seed, fl | blank);
+        const wo = facadeSink(id, nx, nz, x1, z1);
+        wallQuad(G.fac, x1 - nx * wo, z1 - nz * wo, x2 - nx * wo, z2 - nz * wo, yb, h + ext, nx, nz, tint, 0, blank ? L / bay : cnt, 0, floors + ext / fh, row, seed, fl | blank);
         if (apart && ri === 0 && L >= 14 && cnt >= 4) {
           const tx = (x2 - x1) / L, tz = (z2 - z1) / L, bw = L / cnt;
           if (rnd(id, 20 + i) < 0.6) { // balconies
@@ -111,9 +126,9 @@ async function buildBuildings(from, to) {
           } else if (rnd(id, 80 + i) < 0.8) { // entrances with canopies
             for (let k = 1; k < cnt; k += 4) {
               const ex = x1 + tx * (k + 0.5) * bw, ez = z1 + tz * (k + 0.5) * bw;
-              box(D.plain, ex + nx * 0.7, ez + nz * 0.7, tx, tz, 1.3, 0.7, yb + 2.3, yb + 2.45, hb('#9d9a93'));
-              polyA(D.plain, [[ex - tx * 0.6 + nx * 0.03, yb, ez - tz * 0.6 + nz * 0.03], [ex + tx * 0.6 + nx * 0.03, yb, ez + tz * 0.6 + nz * 0.03], [ex + tx * 0.6 + nx * 0.03, yb + 2.1, ez + tz * 0.6 + nz * 0.03], [ex - tx * 0.6 + nx * 0.03, yb + 2.1, ez - tz * 0.6 + nz * 0.03]], hb('#4a3e35'), nx, 0, nz);
-              box(D.plain, ex + nx * 0.6, ez + nz * 0.6, tx, tz, 1.0, 0.6, 0, yb, hb('#8f8c86'));
+              box(D.plain, ex + nx * (0.7 + wo), ez + nz * (0.7 + wo), tx, tz, 1.3, 0.7, yb + 2.3, yb + 2.45, hb('#9d9a93'));
+              polyA(D.plain, [[ex - tx * 0.6 + nx * (0.12 + wo), yb, ez - tz * 0.6 + nz * (0.12 + wo)], [ex + tx * 0.6 + nx * (0.12 + wo), yb, ez + tz * 0.6 + nz * (0.12 + wo)], [ex + tx * 0.6 + nx * (0.12 + wo), yb + 2.1, ez + tz * 0.6 + nz * (0.12 + wo)], [ex - tx * 0.6 + nx * (0.12 + wo), yb + 2.1, ez - tz * 0.6 + nz * (0.12 + wo)]], hb('#4a3e35'), nx, 0, nz);
+              box(D.plain, ex + nx * (0.6 + wo), ez + nz * (0.6 + wo), tx, tz, 1.0, 0.6, 0, yb, hb('#8f8c86'));
             }
           }
         }
