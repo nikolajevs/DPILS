@@ -3,7 +3,7 @@ import { STATE } from '../core/state.js';
 import { lr } from '../landmarks/tiles.js';
 import { band, flatRoof, roofFace, vband } from './walls.js';
 import { SAMPLE_GLSL, std } from '../render/materials.js';
-import { mkCanvas, toTex } from '../render/textures.js';
+import { bakeAO, mkCanvas, toTex } from '../render/textures.js';
 import { U } from '../render/renderer.js';
 import { box, polyA } from '../core/geometry.js';
 import { area2, hb, obb, offsetRing, pick, reversed, rnd, sh } from '../core/util.js';
@@ -45,36 +45,44 @@ const SER = {
 function seriesAtlas() {
   const CW = 1024, CH = 128, cv = mkCanvas(CW * SER_COLS, CH * SER_ROWS), mk = mkCanvas(CW * SER_COLS, CH * SER_ROWS), g = cv.getContext('2d'), m = mk.getContext('2d');
   g.fillStyle = '#808080'; g.fillRect(0, 0, cv.width, cv.height); m.fillStyle = '#000'; m.fillRect(0, 0, mk.width, mk.height);
+  // the PBR atlas of the series: R roughness, G metalness, B height, A occlusion baked from the height (as in facadeAtlas)
+  const pk = mkCanvas(CW * SER_COLS, CH * SER_ROWS), p = pk.getContext('2d', { willReadFrequently: true });
+  p.fillStyle = 'rgb(230,0,128)'; p.fillRect(0, 0, pk.width, pk.height);
   const cell = (k, Wm, Hm, wall, draw, pj = 4) => {
     const ox = (k % SER_COLS) * CW, oy = Math.floor(k / SER_COLS) * CH, sx = CW / Wm, sy = CH / Hm;
     const X = x => ox + x * sx, Yp = y => oy + (Hm - y) * sy;
-    const rect = (x0, y0, x1, y1, col, msk) => { const a = X(x0), b = Yp(y1), w = X(x1) - a, h = Yp(y0) - b; g.fillStyle = col; g.fillRect(a, b, w, h); if (msk) { m.fillStyle = msk; m.fillRect(a, b, w, h); } };
-    g.save(); m.save(); for (const c of [g, m]) { c.beginPath(); c.rect(ox, oy, CW, CH); c.clip(); }
+    const WM = wall === 'brick' ? { r: 0.85, m: 0, h: 0.58 } : { r: 0.9, m: 0, h: 0.55 }, TM = { r: 0.55, m: 0, h: 0.66 }, GLASSP = { r: 0.06, m: 0, h: 0.5 };
+    const pset = (a, b, w, h, o) => { p.fillStyle = `rgb(${Math.round(o.r * 255)},${Math.round(o.m * 255)},${Math.round(o.h * 255)})`; p.fillRect(a, b, w, h); };
+    const rect = (x0, y0, x1, y1, col, msk, po) => { const a = X(x0), b = Yp(y1), w = X(x1) - a, h = Yp(y0) - b; g.fillStyle = col; g.fillRect(a, b, w, h); if (msk) { m.fillStyle = msk; m.fillRect(a, b, w, h); } pset(a, b, w, h, po || (msk === 'rgb(255,0,0)' ? WM : TM)); };
+    g.save(); m.save(); p.save(); for (const c of [g, m, p]) { c.beginPath(); c.rect(ox, oy, CW, CH); c.clip(); }
     // the wall: silicate brick in stretcher courses, or concrete panels with their joints; red in the mask takes the tint
     m.fillStyle = 'rgb(255,0,0)'; m.fillRect(ox, oy, CW, CH);
     if (wall === 'brick') { const ch = 0.077 * sy, bl = 0.26 * sx;
-      for (let r = 0, y = 0; y < CH; r++, y += ch) { for (let x = -((r % 2) * bl / 2); x < CW; x += bl) { const t = 205 + Math.floor(lr() * 30); g.fillStyle = `rgb(${t},${t},${t})`; g.fillRect(ox + x + 1, oy + y + 1, bl - 1.2, ch - 1); }
-        g.fillStyle = 'rgb(236,236,236)'; g.fillRect(ox, oy + y, CW, 0.9); }
-    } else { g.fillStyle = 'rgb(214,214,214)'; g.fillRect(ox, oy, CW, CH);
-      for (let i = 0; i < 2000; i++) { const t = 195 + Math.floor(lr() * 40); g.fillStyle = `rgba(${t},${t},${t},0.5)`; g.fillRect(ox + lr() * CW, oy + lr() * CH, 2 + lr() * 6, 1 + lr() * 3); }
-      for (let x = 0; x <= Wm + 0.01; x += Wm / pj) rect(x - 0.02, 0, x + 0.02, Hm, 'rgb(150,150,150)'); rect(0, Hm - 0.03, Wm, Hm, 'rgb(150,150,150)'); }
+      for (let r = 0, y = 0; y < CH; r++, y += ch) { for (let x = -((r % 2) * bl / 2); x < CW; x += bl) { const t = 205 + Math.floor(lr() * 30); g.fillStyle = `rgb(${t},${t},${t})`; g.fillRect(ox + x + 1, oy + y + 1, bl - 1.2, ch - 1);
+          p.fillStyle = `rgb(217,0,${Math.max(0, Math.min(255, 148 + Math.round((t - 220) * 0.6)))})`; p.fillRect(ox + x + 1, oy + y + 1, bl - 1.2, ch - 1); }
+        g.fillStyle = 'rgb(236,236,236)'; g.fillRect(ox, oy + y, CW, 0.9); p.fillStyle = 'rgb(242,0,82)'; p.fillRect(ox, oy + y, CW, 0.9); }
+    } else { g.fillStyle = 'rgb(214,214,214)'; g.fillRect(ox, oy, CW, CH); pset(ox, oy, CW, CH, WM);
+      for (let i = 0; i < 2000; i++) { const t = 195 + Math.floor(lr() * 40), px = lr() * CW, py = lr() * CH, pw = 2 + lr() * 6, phh = 1 + lr() * 3;
+        g.fillStyle = `rgba(${t},${t},${t},0.5)`; g.fillRect(ox + px, oy + py, pw, phh);
+        p.fillStyle = `rgb(230,0,${Math.max(0, Math.min(255, 140 + Math.round((t - 215) * 0.6)))})`; p.fillRect(ox + px, oy + py, pw, phh); }
+      for (let x = 0; x <= Wm + 0.01; x += Wm / pj) rect(x - 0.02, 0, x + 0.02, Hm, 'rgb(150,150,150)', null, { r: 0.92, m: 0, h: 0.24 }); rect(0, Hm - 0.03, Wm, Hm, 'rgb(150,150,150)', null, { r: 0.92, m: 0, h: 0.24 }); }
     let wid = 0;
     const glass = (x0, y0, x1, y1, id) => { const a = X(x0), b = Yp(y1), w = X(x1) - a, h = Yp(y0) - b, gr = g.createLinearGradient(0, b, 0, b + h);
       gr.addColorStop(0, '#34424d'); gr.addColorStop(0.45, '#5c6e7c'); gr.addColorStop(0.5, '#3e4d59'); gr.addColorStop(1, '#2b353d'); g.fillStyle = gr; g.fillRect(a, b, w, h);
-      m.fillStyle = `rgb(0,255,${id * 16})`; m.fillRect(a, b, w, h); };
+      m.fillStyle = `rgb(0,255,${id * 16})`; m.fillRect(a, b, w, h); pset(a, b, w, h, GLASSP); };
     const FR = 'rgb(236,233,226)', FRT = 0.055;
-    const win = (c, w, y0, h, panes, id) => { const x0 = c - w / 2, x1 = c + w / 2; rect(x0 - 0.04, y0 - 0.04, x1 + 0.04, y0 + h + 0.03, 'rgb(118,116,112)', 'rgb(0,0,0)');
+    const win = (c, w, y0, h, panes, id) => { const x0 = c - w / 2, x1 = c + w / 2; rect(x0 - 0.04, y0 - 0.04, x1 + 0.04, y0 + h + 0.03, 'rgb(118,116,112)', 'rgb(0,0,0)', { r: 0.85, m: 0, h: 0.44 });
       rect(x0, y0, x1, y0 + h, FR, 'rgb(0,0,0)'); const tr = h * 0.3, pw = (w - FRT * (panes + 1)) / panes;
-      for (let p = 0; p < panes; p++) { const a = x0 + FRT + p * (pw + FRT); glass(a, y0 + FRT, a + pw, y0 + h - tr - FRT * 0.5, id); glass(a, y0 + h - tr + FRT * 0.5, a + pw, y0 + h - FRT, id); }
-      rect(x0 - 0.06, y0 - 0.1, x1 + 0.06, y0 - 0.02, 'rgb(150,148,143)', 'rgb(0,0,0)'); };
-    const door = (c, w, y0, h, id) => { const x0 = c - w / 2, x1 = c + w / 2; rect(x0, y0, x1, y0 + h, FR, 'rgb(0,0,0)'); glass(x0 + FRT, y0 + h * 0.42, x1 - FRT, y0 + h - FRT, id); rect(x0 + FRT, y0 + FRT, x1 - FRT, y0 + h * 0.4, 'rgb(205,202,195)', 'rgb(0,0,0)'); };
+      for (let q = 0; q < panes; q++) { const a = x0 + FRT + q * (pw + FRT); glass(a, y0 + FRT, a + pw, y0 + h - tr - FRT * 0.5, id); glass(a, y0 + h - tr + FRT * 0.5, a + pw, y0 + h - FRT, id); }
+      rect(x0 - 0.06, y0 - 0.1, x1 + 0.06, y0 - 0.02, 'rgb(150,148,143)', 'rgb(0,0,0)', { r: 0.75, m: 0, h: 0.7 }); };
+    const door = (c, w, y0, h, id) => { const x0 = c - w / 2, x1 = c + w / 2; rect(x0, y0, x1, y0 + h, FR, 'rgb(0,0,0)'); glass(x0 + FRT, y0 + h * 0.42, x1 - FRT, y0 + h - FRT, id); rect(x0 + FRT, y0 + FRT, x1 - FRT, y0 + h * 0.4, 'rgb(205,202,195)', 'rgb(0,0,0)', { r: 0.6, m: 0, h: 0.6 }); };
     draw({ Wm, Hm, rect, win, door, glass, id: () => ++wid % 16 });
-    g.restore(); m.restore();
+    g.restore(); m.restore(); p.restore();
   };
   // draw one storey of a façade from its axes; v: 0 ground, 1 typical, 2 top
   const storey = (k, spec, axes, v) => cell(k, spec.W, 2.8, spec.wall, d => {
     for (const [f, kind] of axes) { const c = f * d.Wm, id = d.id();
-      if (kind === 'S') { if (v === 0) { d.rect(c - 0.62, 0, c + 0.62, 1.35, 'rgb(74,62,52)', 'rgb(0,0,0)'); d.rect(c - 0.56, 0, c + 0.56, 1.29, 'rgb(96,82,70)', 'rgb(0,0,0)'); }
+      if (kind === 'S') { if (v === 0) { d.rect(c - 0.62, 0, c + 0.62, 1.35, 'rgb(74,62,52)', 'rgb(0,0,0)', { r: 0.7, m: 0, h: 0.5 }); d.rect(c - 0.56, 0, c + 0.56, 1.29, 'rgb(96,82,70)', 'rgb(0,0,0)', { r: 0.6, m: 0, h: 0.58 }); }
         else d.win(c, 1.0, -0.6, 1.2, 2, id);
         if (v < 2) d.win(c, 1.0, d.Hm - 0.6, 1.2, 2, id); continue; }
       if (kind === 'B' && v > 0) { const dl = f > 0.5 ? 1 : -1; d.door(c - dl * 0.68, 0.72, 0.02, 2.2, id); d.win(c + dl * 0.38, 1.2, 0.85, 1.45, 2, id); continue; }
@@ -83,15 +91,16 @@ function seriesAtlas() {
     for (const side of ['A', 'B', 'C']) if (spec[side] && spec.cells[side] !== undefined) for (let v = 0; v < 3; v++) storey(spec.cells[side] + v, spec, spec[side], v);
     cell(spec.cells.E, 12, 2.8, spec.wall, d => { for (const [f] of spec.end) d.win(f * d.Wm, 1.2, 0.85, 1.45, 2, d.id()); }, 4);
   }
+  bakeAO(p, pk.width, pk.height, CW, CH);
   const mkT = (c, srgb) => { const t = toTex(c, srgb, false); t.minFilter = THREE.LinearMipmapLinearFilter; return t; };
-  return [mkT(cv, true), mkT(mk, false)];
+  return [mkT(cv, true), mkT(mk, false), mkT(pk, false)];
 }
 function seriesMaterial() {
   const m = std({ roughness: 0.9, metalness: 0 }, 'series', s => {
-    s.uniforms.uAtlas = { value: STATE.serTex }; s.uniforms.uMask = { value: STATE.serMask }; s.uniforms.uNight = U.night;
+    s.uniforms.uAtlas = { value: STATE.serTex }; s.uniforms.uMask = { value: STATE.serMask }; s.uniforms.uPbr = { value: STATE.serPbr }; s.uniforms.uNight = U.night;
     s.vertexShader = 'attribute vec2 aUv; attribute vec3 aInfo; attribute vec3 aTint;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint;\n' +
       s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvCellUv = aUv; vInfo = aInfo; vTint = pow(aTint, vec3(2.2));');
-    s.fragmentShader = 'uniform sampler2D uAtlas; uniform sampler2D uMask; uniform float uNight;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint;\n' + SAMPLE_GLSL +
+    s.fragmentShader = 'uniform sampler2D uAtlas; uniform sampler2D uMask; uniform sampler2D uPbr; uniform float uNight;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint;\n' + SAMPLE_GLSL +
       s.fragmentShader.replace('#include <map_fragment>', `
         vec2 cell = floor(vCellUv), f = fract(vCellUv), dX = dFdx(vCellUv), dY = dFdy(vCellUv);
         vec3 inf = floor(vInfo + 0.5);   // interpolated constants drift by an ulp, and the hashes below would turn that into speckle
@@ -104,6 +113,7 @@ function seriesMaterial() {
         vec2 auv = (vec2(org.x, ${SER_ROWS - 1}.0 - org.y) + clamp(f, vec2(0.002, 0.004), vec2(0.998, 0.996))) * sc;
         vec3 tcol = pow(ATLAS(uAtlas, auv, dX * sc, dY * sc).rgb, vec3(2.2));
         vec4 fm = ATLAS(uMask, auv, dX * sc, dY * sc);
+        vec4 pb = ATLAS(uPbr, auv, dX * sc, dY * sc);   // R roughness, G metalness, B height, A occlusion
         float wall = step(0.5, fm.r), yv = f.y * 2.8;
         vec3 wtint = vTint;
         if (wm > 1.5) {   // pebble-finish panels: grains fading out with distance, the joints of the panels
@@ -111,20 +121,50 @@ function seriesMaterial() {
           float px = vCellUv.x * pj, jx = abs(fract(px + 0.5) - 0.5), jy = abs(fract(vCellUv.y + 0.5) - 0.5);
           float joint = smoothstep(0.004, 0.004 + fwidth(px), jx) * smoothstep(0.006, 0.006 + fwidth(vCellUv.y), jy);
           tcol = mix(tcol, vec3(0.6) * (0.86 + 0.28 * (h12(floor(g)) - 0.5) * amp + 0.14) * mix(0.62, 1.0, joint), wall);
-        } else if (wm > 0.5) tcol = mix(tcol, vec3(0.7) * (0.97 + 0.06 * h12(floor(vCellUv * vec2(4.0, 1.0)))), wall);
+          pb.r = mix(pb.r, 0.92, wall); pb.b = mix(pb.b, 0.5 + (h12(floor(g)) - 0.5) * 0.1 * amp, wall); pb.b = mix(pb.b, 0.28, (1.0 - joint) * wall);
+        } else if (wm > 0.5) { tcol = mix(tcol, vec3(0.7) * (0.97 + 0.06 * h12(floor(vCellUv * vec2(4.0, 1.0)))), wall); pb.r = mix(pb.r, 0.8, wall); pb.b = mix(pb.b, 0.5, wall); }
         if (mod(fb, 2.0) > 0.5 && ((yv > 2.08 && yv < 2.36) || (yv > 0.58 && yv < 0.82))) wtint = vec3(0.33, 0.085, 0.045);   // red-brick bands
         if (fb > 1.5 && abs(f.x - 0.5) < 0.62 / sw && !(cell.y < 0.5 && yv < 2.65)) {   // the stairs glazed from the door to the roof
           float mu = step(fract(yv / 0.933), 0.07) + step(0.62 / sw - 0.006, abs(f.x - 0.5));
           tcol = mix(vec3(0.07, 0.1, 0.13) * (0.8 + 0.4 * f.y), vec3(0.75), clamp(mu, 0.0, 1.0)); fm.g = 1.0 - clamp(mu, 0.0, 1.0); wall = 0.0;
+          pb = mix(vec4(0.12, 0.0, 0.5, 1.0), vec4(0.5, 0.0, 0.62, 1.0), clamp(mu, 0.0, 1.0));   // the glazing and its mullions, not the brick under them
         }
         float wid = floor(fm.b * 255.0 / 16.0 + 0.5), hw = h12(cell * vec2(1.0, 1.7) + vec2(wid * 3.7, floor(sd * 41.0)));
         tcol = mix(tcol, tcol * (0.75 + 0.5 * hw), fm.g);
         diffuseColor.rgb = tcol * mix(vec3(1.0), wtint, wall);
-      `).replace('#include <roughnessmap_fragment>', 'float roughnessFactor = mix(roughness, 0.06, fm.g);')
+      `).replace('#include <roughnessmap_fragment>', 'float roughnessFactor = mix(pb.r, 0.06, fm.g);')
+        .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = pb.g * (1.0 - fm.g);')
+        .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        {   // relief from the height channel of the PBR atlas, on a tangent frame from the wall's uv; none on glass,
+            // fading out with distance (the blocks are read from farther than the old-town bays)
+          vec2 ae = vec2(1.5 / 2048.0, 1.5 / 2048.0);
+          float hu = ATLAS(uPbr, auv + vec2(ae.x, 0.0), dX * sc, dY * sc).b - ATLAS(uPbr, auv - vec2(ae.x, 0.0), dX * sc, dY * sc).b;
+          float hv = ATLAS(uPbr, auv + vec2(0.0, ae.y), dX * sc, dY * sc).b - ATLAS(uPbr, auv - vec2(0.0, ae.y), dX * sc, dY * sc).b;
+          vec3 pp = -vViewPosition, dp1 = dFdx(pp), dp2 = dFdy(pp); vec2 du1 = dFdx(vCellUv), du2 = dFdy(vCellUv);
+          vec3 p2 = cross(dp2, normal), p1 = cross(normal, dp1);
+          vec3 tT = p2 * du1.x + p1 * du2.x, tB = p2 * du1.y + p1 * du2.y;
+          float im = inversesqrt(max(max(dot(tT, tT), dot(tB, tB)), 1e-12));
+          if (wm > 1.5) {   // the pebble finish is drawn in the shader, not in the atlas: its grains carry relief too
+            vec2 gg = vCellUv * vec2(sw * 45.0, 126.0);
+            float am = clamp(1.4 - max(fwidth(gg.x), fwidth(gg.y)) * 0.8, 0.0, 1.0);
+            vec2 gc = floor(gg);
+            hu += (h12(gc + vec2(1.0, 0.0)) - h12(gc)) * 0.10 * am * wall;
+            hv += (h12(gc + vec2(0.0, 1.0)) - h12(gc)) * 0.10 * am * wall;
+          }
+          float bw = (1.0 - step(0.1, fm.g)) * (1.0 - smoothstep(20.0, 120.0, length(vViewPosition)));
+          normal = normalize(normal - (hu * tT + hv * tB) * im * 3.5 * bw);
+        }`)
         .replace('#include <emissivemap_fragment>', `
         float lit = step(0.52, h12(cell + vec2(wid * 1.37 + 5.0, floor(sd * 13.1))));
         vec3 lc = mix(vec3(1.0, 0.68, 0.36), vec3(0.62, 0.78, 1.0), step(0.9, hw));
         totalEmissiveRadiance += fm.g * lit * uNight * lc * (1.1 + hw);
+      `).replace('#include <aomap_fragment>', `
+        float aoF = mix(1.0, pb.a, 0.9);
+        reflectedLight.indirectDiffuse *= aoF;
+#if defined( USE_ENVMAP ) && defined( STANDARD )
+        float dotNVao = saturate( dot( geometryNormal, geometryViewDir ) );
+        reflectedLight.indirectSpecular *= computeSpecularOcclusion( dotNVao, aoF, material.roughness );
+#endif
       `);
   });
   m.extensions = { derivatives: true }; return m;
