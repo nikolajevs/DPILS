@@ -4,16 +4,16 @@
 
    Run: node tools/warm.mjs            (one port, WARM_PORT=8771 by default; VW/VH set the viewport)
    It serves the repository itself (three.js CDN addresses rewritten to node_modules, as in shot-items.mjs),
-   loads the page, enters the walk mode (PERF.dyn off, fly on, HUD hidden) and answers on the same port:
+   loads the page, enters the free camera view (PERF.dyn off, P.fly on, HUD hidden) and answers on the same port:
 
      GET  /__warm/status          {ready, renderer, errs} — shots.js probes this and uses the warm page when ready
      GET  /__warm/shot?t=0&x=..&z=..&h=..&tx=..&tz=..&th=..&fov=60[&w=1100&vh=700]   → JPEG of the view
      GET  /__warm/errs            collected console errors/warnings since the last call (and clears them)
-     POST /__warm/reload          reload the page (after changed data/src) and enter the walk mode again
+     POST /__warm/reload          reload the page (after changed data/src) and enter the free camera view again
      POST /__warm/eval            body: JS expression evaluated in the page, JSON result (for custom checks)
 
    Requests are served one at a time (a single page). State persists between shots: time, camera and whatever
-   /__warm/eval changed — POST /__warm/reload returns a clean walk. Stop with Ctrl+C or by killing the process. */
+   /__warm/eval changed — POST /__warm/reload returns a clean view. Stop with Ctrl+C or by killing the process. */
 import http from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
@@ -29,9 +29,9 @@ const errs = [];
 let busy = Promise.resolve();
 const serial = fn => { const p = busy.then(fn); busy = p.catch(() => {}); return p; };   // one page — one job at a time
 
-const enterWalk = () => page.evaluate(() => {
-  document.getElementById('go').click();
-  const c = window.__city; c.PERF.dyn = false; c.P.fly = true; document.getElementById('hud').hidden = true;
+const enterView = () => page.evaluate(() => {   // the free camera of the tools: P.fly, no game (the walk mode was removed)
+  document.getElementById('start').hidden = true;
+  const c = window.__city; c.STATE.started = true; c.PERF.dyn = false; c.P.fly = true; document.getElementById('hud').hidden = true;
 });
 const waitCity = () => page.waitForFunction(() => window.__city, null, { timeout: 600000, polling: 500 });
 
@@ -63,7 +63,7 @@ const srv = http.createServer(async (req, res) => {
       if (!ready) return json(res, { error: 'not ready' }, 503);
       if (u.pathname === '/__warm/shot') { const buf = await serial(() => shot(u.searchParams)); res.writeHead(200, { 'Content-Type': 'image/jpeg' }); return res.end(buf); }
       if (u.pathname === '/__warm/reload' && req.method === 'POST') {
-        await serial(async () => { ready = false; errs.length = 0; await page.reload({ waitUntil: 'load' }); await waitCity(); await enterWalk(); ready = true; });
+        await serial(async () => { ready = false; errs.length = 0; await page.reload({ waitUntil: 'load' }); await waitCity(); await enterView(); ready = true; });
         return json(res, { ok: true });
       }
       if (u.pathname === '/__warm/eval' && req.method === 'POST') { const code = await body(req); const result = await serial(() => page.evaluate(code)); return json(res, { result }); }
@@ -93,6 +93,6 @@ await page.addInitScript(() => { try { localStorage.setItem('dpils-quality2', '1
 console.log(`warm: loading the city on http://127.0.0.1:${PORT}/ …`);
 await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'load' });
 try { await waitCity(); } catch (e) { console.log('warm: LOAD FAIL\n' + errs.join('\n')); process.exit(2); }
-await enterWalk();
+await enterView();
 ready = true;
 console.log(`warm: ready on http://127.0.0.1:${PORT} (${launched.gpu ? 'GPU' : 'SwiftShader'}) — tools/shots.js will use it automatically`);

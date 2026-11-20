@@ -267,7 +267,7 @@ function openMap() {
   hint();
 }
 function closeMap() { big.hidden = true; STATE.mapOpen = false; BT.cache.clear(); LBL = null; canvas.focus(); }
-function hint() { info.textContent = STATE.mp ? 'Колёсико — масштаб, перетаскивание — сдвиг' : 'Колёсико — масштаб, перетаскивание — сдвиг, щелчок — перенестись сюда'; }
+function hint() { info.textContent = 'Колёсико — масштаб, перетаскивание — сдвиг'; }
 // a frame of the full map (called by the frame loop while it is open)
 function mapFrame() {
   if (big.hidden) return;
@@ -304,8 +304,6 @@ function describe(x, y) {
   const lat = C.lat0 - wz / C.ky, lon = C.lon0 + wx / C.kx;
   info.textContent = (name ? name + ' · ' : '') + lat.toFixed(4) + '° с. ш., ' + lon.toFixed(4) + '° в. д.';
 }
-// MAP.pick(x, z): what a click on the map does (src/game/input.js: go there)
-const MAP = { pick: null };
 let drag = null; const ptrs = new Map();
 bigC.addEventListener('pointerdown', e => {
   bigC.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
@@ -328,8 +326,7 @@ bigC.addEventListener('pointermove', e => {
 const endPtr = e => {
   if (!ptrs.delete(e.pointerId)) return;
   if (ptrs.size) { if (drag) { drag.pinch = null; const [a] = [...ptrs.values()]; Object.assign(drag, { x: a.x, y: a.y, cx: V.cx, cz: V.cz }); } return; }
-  const d = drag; drag = null; bigC.style.cursor = '';
-  if (e.type === 'pointerup' && d && !d.moved && !STATE.mp && MAP.pick) MAP.pick(V.cx + (e.offsetX - V.w / 2) / V.ppm, V.cz + (e.offsetY - V.h / 2) / V.ppm);
+  drag = null; bigC.style.cursor = '';
 };
 bigC.addEventListener('pointerup', endPtr); bigC.addEventListener('pointercancel', endPtr);
 bigC.addEventListener('pointerleave', () => { if (!ptrs.size) hint(); });
@@ -348,4 +345,4 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('resize', () => { if (!big.hidden) { sizeMap(); sizeMap(); clampView(); } });
 
-export { MAP, big, closeMap, drawMini, mapFrame, openMap };
+export { big, closeMap, drawMini, mapFrame, openMap };

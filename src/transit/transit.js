@@ -8,7 +8,7 @@ import { upUnder } from '../world/underpass.js';
 import { COL, LINES, inBuilding, matPlain } from '../world/data.js';
 import { LINE } from '../world/palette.js';
 import { buildNet, dDir, laneRoute, matchShape, nearOn, routeAt } from './route-match.js';
-import { TRN, buildTrains, trainDepartures, updateTrains } from './trains.js';
+import { TRN, buildTrains, updateTrains } from './trains.js';
 import { AO } from '../landmarks/autoosta.js';
 import { std } from '../render/materials.js';
 import { mkCanvas, toTex } from '../render/textures.js';
@@ -36,11 +36,8 @@ function mergeFeeds(a, b) {
 const TR = mergeFeeds(window.TRANSIT || null, window.INTERCITY || null);
 const DAY0 = Date.UTC(2026, 0, 1) / 864e5;
 const CARROAD = new SegGrid(30), TRAMGRID = new SegGrid(20);
-const SPEEDS = [1, 10, 60];
-const WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
-const TX = { ok: false, day: 0, sec: 0, si: 0, live: true, scan: 0, resync: 0, shapes: [], pats: [], trips: [], svc: [], dayMin: 0, dayMax: 0, stopRefs: [], act: [], placed: [], trams: 0, buses: 0, glow: [], board: -2 };
-const plural = (n, a, b, c) => { const m10 = n % 10, m100 = n % 100; return n + ' ' + (m10 === 1 && m100 !== 11 ? a : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? b : c); };
-const hhmm = s => { s = ((Math.floor(s) % 86400) + 86400) % 86400; return String(Math.floor(s / 3600)).padStart(2, '0') + ':' + String(Math.floor(s / 60) % 60).padStart(2, '0'); };
+const SPEEDS = [1, 10, 60];   // the clock of the live schedule runs at ×1; the faster steps belonged to the removed walk
+const TX = { ok: false, day: 0, sec: 0, si: 0, live: true, scan: 0, resync: 0, shapes: [], pats: [], trips: [], svc: [], dayMin: 0, dayMax: 0, stopRefs: [], act: [], placed: [], trams: 0, buses: 0, glow: [] };
 function rigaNow() {
   const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Riga', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
   const g = t => +parts.find(p => p.type === t).value;
@@ -274,14 +271,6 @@ function scanActive() {
   }
   TX.act = act; TX.trams = trams; TX.buses = buses; TX.coaches = coaches;
 }
-function nextDeparture() { // first trip start after now (today or tomorrow)
-  for (let back = 0; back < 2; back++) {
-    let best = Infinity; const from = back ? -1 : TX.sec;
-    for (const t of TX.trips) if (t.start > from && t.start < best && svcOn(t.svc, TX.day + back)) best = t.start;
-    if (best < Infinity) return back * 86400 + best;
-  }
-  return null;
-}
 const PA = [0, 0, 0, 0], PB2 = [0, 0, 0, 0], MX = new THREE.Matrix4(), QY = new THREE.Quaternion(), VUP = new THREE.Vector3(0, 1, 0), VP = new THREE.Vector3(), VS = new THREE.Vector3(), VE = new THREE.Euler();
 function updateTransit(dt) {
   if (!TX.ok) return;
@@ -341,67 +330,7 @@ function updateTags() {
   }
   for (; k < tagEls.length; k++) tagEls[k].hidden = true;
 }
-// clock panel and the departures board of the nearest stop
-function updateClockUI() {
-  if (!TX.ok) return;
-  $('clock').hidden = false;
-  $('clkTime').textContent = hhmm(TX.sec);
-  $('clkDay').textContent = WD[new Date((TX.day + DAY0) * 864e5).getUTCDay()] + (TX.live ? ' · сейчас в Даугавпилсе' : '');
-  $('clkSpeed').textContent = '×' + SPEEDS[TX.si]; $('clkSpeed').setAttribute('aria-pressed', TX.si > 0);
-  $('clkNow').hidden = TX.live && TX.si === 0;
-  const info = $('clkInfo'), first = $('clkFirst');
-  if (TX.trams + TX.buses > 0) { info.textContent = 'на линии: ' + plural(TX.trams, 'трамвай', 'трамвая', 'трамваев') + ', ' + plural(TX.buses, 'автобус', 'автобуса', 'автобусов') + (TX.coaches ? ', ' + plural(TX.coaches, 'междугородний', 'междугородних', 'междугородних') : '') + (TX.trainsOn ? ', ' + plural(TX.trainsOn, 'поезд', 'поезда', 'поездов') : ''); first.hidden = true; }
-  else { const n = nextDeparture(); info.textContent = n == null ? 'транспорт не ходит' : 'транспорт не ходит, первый рейс в ' + hhmm(n); first.hidden = n == null; first.dataset.t = n == null ? '' : n; }
-}
-function updateBoard() {
-  const el = $('board');
-  if (!TX.ok || P.fly) { el.hidden = true; TX.board = -2; return; }
-  if (TRN.ok && TRN.near(P.x, P.z)) { trainBoard(el); return; }
-  let best = 35, bi = -1;
-  TR.stops.forEach((s, i) => { const d = Math.hypot(s[1] / 10 - P.x, s[2] / 10 - P.z); if (d < best) { best = d; bi = i; } });
-  if (bi < 0) { el.hidden = true; TX.board = -2; return; }
-  const name = TR.stops[bi][0], group = [];
-  TR.stops.forEach((s, i) => { if (s[0] === name && Math.hypot(s[1] - TR.stops[bi][1], s[2] - TR.stops[bi][2]) < 1500) group.push(i); });
-  const deps = [], now = TX.sec;
-  for (const si of group) for (const [pi, k] of TX.stopRefs[si]) {
-    const p = TX.pats[pi];
-    for (let back = 0; back < 2; back++) for (const day of [TX.day - back, TX.day + 1 - back]) {
-      const base = (day - TX.day) * 86400;
-      if (!p.trips.length) continue;
-      for (const t of p.trips) {
-        const at = base + t.start + p.dep[k]; if (at < now - 20 || at > now + 5400) continue;
-        if (!svcOn(t.svc, day)) continue; deps.push([at, p]);
-      }
-    }
-  }
-  const uniq = new Map(); for (const d of deps) uniq.set(d[0] + '|' + d[1].route + '|' + d[1].head, d);
-  const list = [...uniq.values()].sort((a, b) => a[0] - b[0]).slice(0, 6);
-  el.hidden = false; $('boardName').textContent = name;
-  const ol = $('boardList'); ol.textContent = '';
-  if (!list.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = 'В ближайшие полтора часа рейсов нет'; ol.append(li); return; }
-  for (const [at, p] of list) {
-    const li = document.createElement('li'), rt = document.createElement('span'), hd = document.createElement('span'), mn = document.createElement('span');
-    rt.className = 'rt' + (p.kind === 0 ? ' tram' : p.coach ? ' coach' : ''); rt.textContent = TR.routes[p.route][0];
-    hd.className = 'hd'; hd.textContent = destOf(p); hd.title = p.coach ? TR.routes[p.route][1] : TR.heads[p.head];
-    const m = Math.ceil((at - now) / 60); mn.className = 'mn';
-    const b = document.createElement('b'); b.textContent = m <= 0 ? 'сейчас' : m + ' мин'; mn.append(b, ' · ' + hhmm(at));
-    li.append(rt, hd, mn); ol.append(li);
-  }
-}
-// by the railway station: the next trains out of it
-function trainBoard(el) {
-  const list = trainDepartures(TX.sec, TX.day, 6), now = TX.sec, ol = $('boardList');
-  el.hidden = false; $('boardName').textContent = 'Вокзал Daugavpils · поезда'; ol.textContent = '';
-  if (!list.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = 'Поездов в ближайшие сутки нет'; ol.append(li); return; }
-  for (const d of list) {
-    const li = document.createElement('li'), rt = document.createElement('span'), hd = document.createElement('span'), mn = document.createElement('span');
-    rt.className = 'rt train'; rt.textContent = 'Поезд'; hd.className = 'hd'; hd.textContent = d.dest; hd.title = d.name;
-    const m = Math.ceil((d.at - now) / 60), b = document.createElement('b'); mn.className = 'mn';
-    b.textContent = m <= 0 ? 'сейчас' : m < 120 ? m + ' мин' : Math.floor(m / 60) + ' ч ' + (m % 60) + ' мин'; mn.append(b, ' · ' + hhmm(d.at));
-    li.append(rt, hd, mn); ol.append(li);
-  }
-}
-function setClock(sec, live) { TX.sec = sec; TX.live = live; while (TX.sec >= 86400) { TX.sec -= 86400; TX.day++; } while (TX.sec < 0) { TX.sec += 86400; TX.day--; } TX.scan = 0; updateClockUI(); updateBoard(); }
+function setClock(sec, live) { TX.sec = sec; TX.live = live; while (TX.sec >= 86400) { TX.sec -= 86400; TX.day++; } while (TX.sec < 0) { TX.sec += 86400; TX.day--; } TX.scan = 0; }
 function drawVehicles(ctx, ox, oz, ppm, w, h, r) {
   if (!TX.ok) return;
   for (const v of TX.placed) {
@@ -410,4 +339,4 @@ function drawVehicles(ctx, ox, oz, ppm, w, h, r) {
   }
 }
 
-export { CARROAD, SPEEDS, TRAMGRID, TX, buildTransit, drawVehicles, rigaNow, setClock, updateBoard, updateClockUI, updateTags, updateTransit };
+export { CARROAD, TRAMGRID, TX, buildTransit, drawVehicles, rigaNow, setClock, updateTags, updateTransit };
