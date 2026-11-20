@@ -11,9 +11,9 @@ export function carAt(x, y, z) {
 }
 
 // how far a bullet flies from o along d before it meets a car, or len if it does not: the coarse 0.75 m scan is bisected to ~3 mm.
-// v (m/s), when given, follows the bullet's falling arc (combat.mjs bulletDrop) instead of the straight line
-export function carPath(o, d, len, v) {
-  const hit = t => !!carAt(o[0] + d[0] * t, o[1] + d[1] * t - (v ? bulletDrop(t, v) : 0), o[2] + d[2] * t);
+// v (m/s) and k (drag), when given, follow the bullet's falling arc (combat.mjs bulletDrop) instead of the straight line
+export function carPath(o, d, len, v, k = 0) {
+  const hit = t => !!carAt(o[0] + d[0] * t, o[1] + d[1] * t - (v ? bulletDrop(t, v, k) : 0), o[2] + d[2] * t);
   for (let t = 0.75; t < len; t += 0.75) {
     if (!hit(t)) continue;
     let lo = t - 0.75, hi = t;

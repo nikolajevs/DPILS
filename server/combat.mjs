@@ -4,19 +4,25 @@ export const RULES = {
   maxPlayers: 16, hp: 100, bodyDmg: 22, headDmg: 40, range: 160, fireGapMs: 85, respawnMs: 3000, protectMs: 2500,
   runSpeed: 11, tickHz: 15,
 };
-// the weapons (keep src/game/mp.js in step): pellets per shot, damage of a pellet to the body and to the head, range, how
-// much of the damage is lost over the range (falloff 0.6: 40 % left at the end), the least time between shots, and vel —
-// the muzzle velocity in m/s: the bullet really flies (server/game.mjs steps it), so the hit lands when it arrives, not at
-// the click. The page draws its tracers at the same speeds (src/game/impacts.js reads vel from here).
+// the weapons (keep src/game/mp.js in step): pellets per shot, damage of a pellet to the body and to the head, range,
+// the least time between shots, and vel — the muzzle velocity in m/s: the bullet really flies (server/game.mjs steps it),
+// so the hit lands when it arrives, not at the click. The page draws its tracers at the same speeds (src/game/impacts.js
+// reads vel from here).
+// drag: the air brakes the bullet, v(t) = v0/(1 + drag·v0·t) — one coefficient per cartridge, the same in the server's
+// flight, the page's tracer and the bots' aim. In distance it reads v(s) = v0·e^(−drag·s), and the damage goes as v²/v0²
+// (the old linear falloff is gone): the shotgun keeps ~40 % at 45 m, the pistol ~70 % at 90 m, the machine gun ~75 % at
+// 140 m as before, the rifle now loses ~30 % by 160 m and the sniper ~10 % by 400 m — distance costs damage, not only arc.
+// pen: the penetration budget in metres of wall chord (physics.mjs shotPath): a corner clip or a thin shed is punched
+// through and the bullet flies on at v·(1 − chord/pen); a twelve-metre panel house stays solid. The shotgun punches nothing.
 // The bullet falls while it flies: BULLET_G below, the same arc on the server, in the page's tracer and in the bots' aim.
-// Real gravity: a 7.62 (820 m/s) at 400 m is 0.49 s in the air and sinks ~1.17 m — long shots need holdover, and the
-// scope's lower marks are calibrated against exactly this arc (src/game/mp.js).
+// Real gravity with the drag's longer flight time: a 7.62 (820 m/s) at 400 m is ~0.50 s in the air and sinks ~1.23 m —
+// long shots need holdover, and the scope's lower marks are calibrated against exactly this arc (src/game/mp.js).
 export const WEAPONS = [
-  { name: 'Автомат', mag: 30, gapMs: 85, pellets: 1, dmg: 22, head: 40, range: 160, falloff: 0, vel: 560 },
-  { name: 'Дробовик', mag: 6, gapMs: 750, pellets: 8, dmg: 9, head: 16, range: 45, falloff: 0.6, vel: 380 },
-  { name: 'Снайперская', mag: 5, gapMs: 1300, pellets: 1, dmg: 70, head: 100, range: 400, falloff: 0, vel: 820 },
-  { name: 'Пистолет', mag: 12, gapMs: 150, pellets: 1, dmg: 20, head: 42, range: 90, falloff: 0.3, vel: 430 },
-  { name: 'Пулемёт', mag: 100, gapMs: 60, pellets: 1, dmg: 16, head: 28, range: 140, falloff: 0.25, vel: 560 },
+  { name: 'Автомат', mag: 30, gapMs: 85, pellets: 1, dmg: 22, head: 40, range: 160, vel: 560, drag: 0.0012, pen: 0.45 },
+  { name: 'Дробовик', mag: 6, gapMs: 750, pellets: 8, dmg: 9, head: 16, range: 45, vel: 380, drag: 0.01, pen: 0 },
+  { name: 'Снайперская', mag: 5, gapMs: 1300, pellets: 1, dmg: 70, head: 100, range: 400, vel: 820, drag: 0.00013, pen: 1.2 },
+  { name: 'Пистолет', mag: 12, gapMs: 150, pellets: 1, dmg: 20, head: 42, range: 90, vel: 430, drag: 0.002, pen: 0.2 },
+  { name: 'Пулемёт', mag: 100, gapMs: 60, pellets: 1, dmg: 16, head: 28, range: 140, vel: 560, drag: 0.001, pen: 0.6 },
 ];   // mag: the magazine size (keep src/game/mp.js in step); the reserve and the reload time are below
 // the grenade (keep src/game/nades.js in step): thrown along the aim lifted by `loft`, falls with `g`, bounces on the
 // ground, off walls and off players (bodyR + r is the capsule it meets), goes off after `fuseMs`; damage falls linearly
@@ -46,19 +52,24 @@ export const ITEMS = {
   optic: { name: 'Оптика 8x', respawnMs: 60000 },   // the long scope: strong zoom with its overlay, on any weapon
 };
 export const INV = { nadeMax: 3, medMax: 2, reserveCap: 2, itemCount: 18, pickR: 1.7, medGapMs: 800, sightMax: 1, opticMax: 1 };   // reserveCap: reserve up to RESERVE × this; sightMax/opticMax: loose + mounted of each kind
-// ---- the ballistics of a flying bullet: gravity, no drag. The path is parameterised by the distance s along the
-// initial (unit) direction d: s metres take s/v seconds at the muzzle velocity v, so the bullet sinks ½·g·(s/v)² below
-// the straight line. The server steps the hit along this arc (game.mjs), the page draws its tracer and its impact marks
-// on the same one (impacts.js), and the bots aim above the target by the same drop (bots.mjs) — one formula, three places.
+// ---- the ballistics of a flying bullet: gravity and air drag. The path is parameterised by the distance s along the
+// initial (unit) direction d. The drag v(t) = v0/(1 + k·v0·t) integrates to s(t) = ln(1 + k·v0·t)/k, so in distance the
+// speed reads v(s) = v0·e^(−k·s) and the time to reach s is t(s) = (e^(k·s) − 1)/(k·v0); the bullet sinks ½·g·t(s)²
+// below the straight line. k = 0 gives the old no-drag arc (s/v seconds, ½·g·(s/v)²). The server steps the hit along
+// this arc (game.mjs), the page draws its tracer and its impact marks on the same one (impacts.js), and the bots aim
+// above the target by the same drop (bots.mjs) — one formula, three places. The damage goes as v(s)²/v0² = e^(−2k·s).
 export const BULLET_G = 9.81;
-export const bulletDrop = (s, v) => 0.5 * BULLET_G * (s / v) * (s / v);
+export const dragTime = (s, v, k) => (k > 0 ? (Math.exp(k * s) - 1) / (k * v) : s / v);   // seconds to fly s metres
+export const dragDist = (t, v, k) => (k > 0 ? Math.log(1 + k * v * t) / k : v * t);   // metres flown in t seconds
+export const dragVel = (s, v, k) => v * Math.exp(-k * s);   // the speed left after s metres
+export const bulletDrop = (s, v, k = 0) => { const t = dragTime(s, v, k); return 0.5 * BULLET_G * t * t; };
 // the point of the arc s metres along d from o (out, when given, is filled and returned)
-export function bulletAt(o, d, s, v, out = [0, 0, 0]) {
-  out[0] = o[0] + d[0] * s; out[1] = o[1] + d[1] * s - bulletDrop(s, v); out[2] = o[2] + d[2] * s; return out;
+export function bulletAt(o, d, s, v, k = 0, out = [0, 0, 0]) {
+  out[0] = o[0] + d[0] * s; out[1] = o[1] + d[1] * s - bulletDrop(s, v, k); out[2] = o[2] + d[2] * s; return out;
 }
-// the unit tangent of the arc at s: the initial direction bent down by g·s/v² (the way the bullet is going there)
-export function bulletDir(d, s, v, out = [0, 0, 0]) {
-  const x = d[0], y = d[1] - BULLET_G * s / (v * v), z = d[2], l = Math.hypot(x, y, z);
+// the unit tangent of the arc at s: the initial direction bent down by g·t(s)/v(s) (the way the bullet is going there)
+export function bulletDir(d, s, v, k = 0, out = [0, 0, 0]) {
+  const x = d[0], y = d[1] - BULLET_G * dragTime(s, v, k) * Math.exp(k * s) / v, z = d[2], l = Math.hypot(x, y, z);
   out[0] = x / l; out[1] = y / l; out[2] = z / l; return out;
 }
 // closest distance between the ray (o + t·d, 0 ≤ t ≤ len, |d| = 1) and the segment a–b; returns { dist, t }

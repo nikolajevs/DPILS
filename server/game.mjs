@@ -8,13 +8,31 @@
    (WEAPONS.vel) and the damage lands when the bullet arrives, not at the click. The hit is still judged against the target
    as the shooter saw it at the click (the position rewound by the shooter's lag, frozen for the flight), so “shoot where
    you see” holds while the bullet takes its time to get there. */
-import { FALL, HIT, INV, ITEMS, NADE, RELOAD_MS, RESERVE, RULES as R, WEAPONS, W_FALL, W_NADE, bulletAt, bulletDir, rayHit, rayToSegment } from './combat.mjs';
+import { FALL, HIT, INV, ITEMS, NADE, RELOAD_MS, RESERVE, RULES as R, WEAPONS, W_FALL, W_NADE, bulletAt, bulletDir, dragDist, dragTime, rayHit, rayToSegment } from './combat.mjs';
 import { LEVELS, botName, createBrain } from './bots.mjs';
 
 const TEAMS = ['Красные', 'Синие'], HX = 5200, HY = 4200;   // bounds a bit wider than the city
 const num = (v, lim) => (typeof v === 'number' && isFinite(v) ? Math.max(-lim, Math.min(lim, v)) : 0);
 const okWeapon = w => Number.isInteger(w) && w >= 0 && w < WEAPONS.length;
 export const MUZZLE = 0.6;   // the barrel stands this far along the ray from the eye; a wall nearer rests the muzzle on it (keep src/game/mp.js in step)
+// the metres a bullet covers in dt seconds of flight from the geometric distance s0: the drag slows it (v(s) = v0·e^(−k·s),
+// combat.mjs), and every punched wall cuts the speed by its factor at the exit face (the chord spent of the budget).
+// Most shots punch nothing: then it is one closed form, dragDist from the time already flown.
+function flightSeg(b, s0, dt) {
+  const k = b.k, v0 = b.speed;
+  if (!k && !b.walls.length) return v0 * dt;
+  let s = s0, rem = dt, f = 1, i = 0;
+  for (; i < b.walls.length; i++) { if (b.walls[i].at <= s0 + 1e-9) f = b.walls[i].f; else break; }
+  let va = v0 * Math.exp(-k * s0) * f;
+  while (rem > 1e-9) {
+    const w = b.walls[i], lim = w ? w.at : Infinity;
+    const dc = dragDist(rem, va, k);
+    if (s + dc <= lim) { s += dc; break; }
+    rem -= dragTime(Math.max(0, lim - s), va, k);
+    s = lim; va = v0 * Math.exp(-k * s) * w.f; i++;
+  }
+  return s - s0;
+}
 
 export function createGame(opts) {
   const world = opts.world, FFA = opts.mode === 'ffa', MODE = FFA ? 'ffa' : 'team', WIN = opts.win || (FFA ? 20 : 30), NAME = opts.name || 'Даугавпилс', MAX = opts.maxPlayers || R.maxPlayers;
@@ -79,13 +97,14 @@ export function createGame(opts) {
   }
   // damage dmg from attacker p to v (weapon w; zone 1 head, 0 torso, 2 legs; from = where it came from): the hit and
   // the hurt messages, and the kill
-  function hurt(p, v, dmg, zone, w, from) {
+  const r3 = a => a && [+a[0].toFixed(3), +a[1].toFixed(3), +a[2].toFixed(3)];
+  function hurt(p, v, dmg, zone, w, from, bd, vf) {
     if (!v.alive || dmg <= 0) return; const t0 = now(), head = zone === 1;
-    v.hp -= dmg; if (p !== v) { const d = dmg + Math.min(0, v.hp); p.st.dmg += d; if (p.prof) p.prof.add('dmg', d); } send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: from[0] - v.x, dz: from[2] - v.z, fall: w === W_FALL ? 1 : undefined }); if (p !== v) send(p, { t: 'hit', id: v.id, head, zone, kill: v.hp <= 0, dmg: Math.min(dmg, dmg + Math.min(0, v.hp)) });
+    v.hp -= dmg; if (p !== v) { const d = dmg + Math.min(0, v.hp); p.st.dmg += d; if (p.prof) p.prof.add('dmg', d); } send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: from[0] - v.x, dz: from[2] - v.z, bd: r3(bd), vf: vf == null ? undefined : +vf.toFixed(3), fall: w === W_FALL ? 1 : undefined }); if (p !== v) send(p, { t: 'hit', id: v.id, head, zone, kill: v.hp <= 0, dmg: Math.min(dmg, dmg + Math.min(0, v.hp)) });
     if (v.hp > 0) return;
     v.alive = false; v.deaths++; v.diedAt = t0; v.streak = 0; if (v.prof) v.prof.add('deaths');
     if (p !== v) { p.kills++; if (!FFA) teamScore[p.team]++; if (head) p.st.heads++; if (p.prof) { p.prof.add('kills'); if (head) p.prof.add('heads'); p.streak = (p.streak || 0) + 1; p.prof.max('best', p.streak); } }
-    all({ t: 'kill', killer: p.id, victim: v.id, kn: p.name, vn: v.name, kt: p.team, vt: v.team, head, w, dx: +(from[0] - v.x).toFixed(2), dz: +(from[2] - v.z).toFixed(2) }); sendBoard();   // dx/dz: where the blow came from — the body falls away from it (ragdoll.js)
+    all({ t: 'kill', killer: p.id, victim: v.id, kn: p.name, vn: v.name, kt: p.team, vt: v.team, head, w, zone: bd ? zone : undefined, bd: r3(bd), vf: vf == null ? undefined : +vf.toFixed(3), dx: +(from[0] - v.x).toFixed(2), dz: +(from[2] - v.z).toFixed(2) }); sendBoard();   // dx/dz: where the blow came from; bd: the bullet's own way at the hit — the body falls along it (ragdoll.js)
     if (p !== v && (FFA ? p.kills : teamScore[p.team]) >= WIN) endRound(p.team, p);
   }
   // a fall from above the safe height hurts (FALL): the client reports the height it landed from — it knows the true
@@ -102,12 +121,15 @@ export function createGame(opts) {
   function explode(n) {
     nades.delete(n.id); all({ t: 'boom', id: n.id, x: n.p[0], y: n.p[1], z: n.p[2] });
     if (roundOver) return; const thrower = players.get(n.by);
+    const blocked = (o, pt) => { const bx = pt[0] - o[0], by = pt[1] - o[1], bz = pt[2] - o[2], l = Math.hypot(bx, by, bz); return l > 0.6 && world.freePath(o, [bx / l, by / l, bz / l], l) < l - 0.7; };
     for (const v of players.values()) {
       if (!v.alive || !thrower) continue; if (v.team === thrower.team && v !== thrower) continue;
       const c = [v.x, v.y - 0.41 * v.eye, v.z], o = [n.p[0], n.p[1] + 0.3, n.p[2]], dx = c[0] - o[0], dy = c[1] - o[1], dz = c[2] - o[2], d = Math.hypot(dx, dy, dz);
       if (d >= NADE.radius || (v !== thrower && now() <= v.protectUntil)) continue;
-      if (d > 0.6 && world.freePath(o, [dx / d, dy / d, dz / d], d) < d - 0.7) continue;   // a wall between the blast and the player
-      const k = 1 - d / NADE.radius, self = v === thrower ? NADE.self : 1;
+      // two rays, chest and head: a corner that hides one leaves the other half the blow; only both closed is a bunker
+      const cover = (blocked(o, c) ? 1 : 0) + (blocked(o, [v.x, v.y - HIT.headDrop, v.z]) ? 1 : 0);
+      if (cover === 2) continue;
+      const k = (1 - d / NADE.radius) * (cover ? 0.5 : 1), self = v === thrower ? NADE.self : 1;
       hurt(thrower, v, Math.round(NADE.dmg * k * self), 0, W_NADE, n.p);
       if (!v.alive) continue;   // the dead stay where they fell
       // the blast throws too: a velocity away from the blast, fading with the damage, plus a kick up (NADE.push).
@@ -159,9 +181,9 @@ export function createGame(opts) {
       const W = WEAPONS[b.w];
       let t = b.last, dist = b.dist, gone = false;
       while (t < to - 1e-4 && !gone) {   // the 1e-4 ms slack eats the float residual of the last substep, so it is not mistaken for the wall
-        const nt = Math.min(to, t + 1000 / 60), seg = b.speed * (nt - t) / 1000, reach = Math.min(seg, b.max - dist);
+        const nt = Math.min(to, t + 1000 / 60), seg = flightSeg(b, dist, (nt - t) / 1000), reach = Math.min(seg, b.max - dist);
         if (reach <= 1e-6) { gone = true; break; }
-        const o = bulletAt(b.o, b.d, dist, b.speed), dir = bulletDir(b.d, dist, b.speed);   // where the arc is now, and the way it goes
+        const o = bulletAt(b.o, b.d, dist, b.speed, b.k), dir = bulletDir(b.d, dist, b.speed, b.k);   // where the arc is now, and the way it goes
         let best = null;
         if (!roundOver) {
           for (const { v, pose } of b.shot.poses) {   // the poses the shooter saw at the click, frozen
@@ -178,7 +200,7 @@ export function createGame(opts) {
           }
         }
         if (best && best.nade) {
-          const total = dist + best.t, at = bulletAt(b.o, b.d, total, b.speed), s = b.shot;
+          const total = dist + best.t, at = bulletAt(b.o, b.d, total, b.speed, b.k), s = b.shot;
           if (!s.hit) { s.hit = true; shooter.st.hitShots++; if (shooter.prof) shooter.prof.add('hits'); }
           all({ t: 'nshot', bid: b.bid, by: b.by, id: best.nade.id, d: +total.toFixed(2), at });   // the page cuts the tracer here and strikes sparks
           send(shooter, { t: 'hit', id: 0, head: false, zone: 0, kill: false, dmg: 0, nade: true });   // the shooter's hitmarker: the grenade is down
@@ -186,13 +208,15 @@ export function createGame(opts) {
           explode(best.nade);   // the blast stays the thrower's: the bullet only lit the fuse early
           gone = true;
         } else if (best) {
-          const total = dist + best.t, k = 1 - W.falloff * Math.min(1, total / W.range);
-          const dmg = (best.zone === 1 ? W.head : best.zone === 2 ? W.dmg * HIT.legMul : W.dmg) * k;
-          const at = bulletAt(b.o, b.d, total, b.speed), s = b.shot;
+          const total = dist + best.t;
+          let f = 1; for (const w of b.walls) if (w.at <= total + 1e-6) f = w.f;   // the walls punched before this body
+          const vf = Math.exp(-b.k * total) * f;   // the speed fraction left: the air and the stone; damage goes as its square
+          const dmg = (best.zone === 1 ? W.head : best.zone === 2 ? W.dmg * HIT.legMul : W.dmg) * vf * vf;
+          const at = bulletAt(b.o, b.d, total, b.speed, b.k), bd = bulletDir(b.d, total, b.speed, b.k), s = b.shot;
           if (!s.hit) { s.hit = true; shooter.st.hitShots++; if (shooter.prof) shooter.prof.add('hits'); }
-          const h = s.hits.get(best.v.id) || { v: best.v, dmg: 0, head: false, zone: 0, top: 0 };
-          h.dmg += dmg; h.head = h.head || best.zone === 1; if (dmg > h.top) { h.top = dmg; h.zone = best.zone; } s.hits.set(best.v.id, h);
-          all({ t: 'bhit', bid: b.bid, by: b.by, d: +total.toFixed(2), v: best.v.id, zone: best.zone, at });   // the page cuts the tracer here and shows the blood
+          const h = s.hits.get(best.v.id) || { v: best.v, dmg: 0, head: false, zone: 0, top: 0, bd: null, vf: 1 };
+          h.dmg += dmg; h.head = h.head || best.zone === 1; if (dmg > h.top) { h.top = dmg; h.zone = best.zone; h.bd = bd; h.vf = vf; } s.hits.set(best.v.id, h);
+          all({ t: 'bhit', bid: b.bid, by: b.by, d: +total.toFixed(2), v: best.v.id, zone: best.zone, at, bd: [+bd[0].toFixed(3), +bd[1].toFixed(3), +bd[2].toFixed(3)], vf: +vf.toFixed(3) });   // the page cuts the tracer here, shows the blood and flinches the body along bd
           gone = true;
         } else { dist += seg; if (dist >= b.max) gone = true; }
         t = nt;
@@ -201,7 +225,7 @@ export function createGame(opts) {
     }
     for (const s of touched) if (s.pending <= 0 && s.hits.size) {   // every pellet of the shot has landed: report the summed blow
       const shooter = players.get(s.by);
-      if (shooter) for (const { v, dmg, zone } of s.hits.values()) hurt(shooter, v, Math.round(dmg), zone, s.w, s.o);
+      if (shooter) for (const { v, dmg, zone, bd, vf } of s.hits.values()) hurt(shooter, v, Math.round(dmg), zone, s.w, s.o, bd, vf);
       s.hits.clear();
     }
   }
@@ -225,12 +249,14 @@ export function createGame(opts) {
     for (const ray of rays.slice(0, W.pellets)) {   // a rifle shot is one ray, a shotgun shot is up to eight pellets
       if (!Array.isArray(ray)) continue;
       const d = [num(ray[0], 1), num(ray[1], 1), num(ray[2], 1)], l = Math.hypot(...d); if (l < 0.5) continue; d.forEach((x, i) => d[i] = x / l);
-      const wallEye = world.freePath(eye, d, W.range, W.vel || 560), mz = Math.min(MUZZLE, wallEye);   // the wall along the falling arc; pressed to a wall the barrel rests on it, the flight is zero
+      const sp = world.shotPath(eye, d, W.range, W.vel || 560, W.drag || 0, W.pen || 0);   // the wall along the falling arc, thin walls punched by the budget; pressed to a wall the barrel rests on it, the flight is zero
+      const wallEye = sp.dist, mz = Math.min(MUZZLE, wallEye);
       const o = [eye[0] + d[0] * mz, eye[1] + d[1] * mz, eye[2] + d[2] * mz], wall = wallEye - mz, bid = nextBid++;
+      const walls = sp.walls.map(w => ({ at: w.at - mz, f: w.f }));   // the exit faces from the barrel, and the speed left after each
       // the grenade's copy on the page flies without the interpolation buffer the bodies have, so it is seen a whole rtt
       // in the past: lagMs is 120 + rtt/2, and 2·(lagMs − 120) gives that rtt back (0 for a bot, which sees the live world)
       const nadeLag = lagMs > 0 ? Math.min(600, Math.max(0, 2 * (lagMs - 120))) : 0;
-      bullets.set(bid, { bid, by: p.id, w: wi, o, d, speed: W.vel || 560, last: t0, dist: 0, max: wall, shot, nadeLag });
+      bullets.set(bid, { bid, by: p.id, w: wi, o, d, speed: W.vel || 560, k: W.drag || 0, walls, last: t0, dist: 0, max: wall, shot, nadeLag });
       shot.pending++;
       out.push([+d[0].toFixed(4), +d[1].toFixed(4), +d[2].toFixed(4), +wall.toFixed(1), bid]);
     }
@@ -380,7 +406,7 @@ export function createGame(opts) {
   function stepBots(dt) { for (const p of [...players.values()]) if (p.bot) brain.think(p, dt); }
   timers.push(setInterval(() => { const t = now(), dt = Math.min(0.2, (t - last) / 1000); last = t; stepBots(dt); }, 50));
   return {
-    attach, addBot, removeBot, players, arena, mode: MODE,
+    attach, addBot, removeBot, players, arena, world, mode: MODE,   // world: the city's physics (freePath, shotPath, stepNade) — the tools and the headless checks probe it
     stepBullets: () => advanceBullets(now()),   // the tests drive the flight by their own clock
     stepNades,   // the tests drive the fuse by their own clock too
     stepBots,   // and the bots' think by the test clock, for the fall test

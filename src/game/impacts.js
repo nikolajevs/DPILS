@@ -4,13 +4,13 @@ import { terrainH } from '../world/terrain.js';
 import { camera, scene } from '../render/renderer.js';
 import { worldSpace } from '../render/world-space.js';
 import { carAt } from '../world/car-hit.js';
-import { WEAPONS, bulletAt, bulletDir, bulletDrop } from '../../server/combat.mjs';
+import { WEAPONS, bulletAt, bulletDir, bulletDrop, dragDist } from '../../server/combat.mjs';
 
 /* ---------- realistic shots: flying tracers, bullet marks, dust, sparks, shells ----------
    The game (mp.js) knows where every bullet stops: a wall, the ground or a body. This module draws the consequences.
-   A tracer is a short bright streak that really flies at the weapon's muzzle velocity (the same vel the server steps the
-   bullet by, server/combat.mjs) along the same falling arc (bulletAt: gravity sinks the bullet ½·g·t², ~1.17 m at 400 m
-   with the sniper), so the streak and the hit arrive together; the server's 'bhit' cuts it short at a body;
+   A tracer is a short bright streak that really flies at the weapon's muzzle velocity, braked by the same drag
+   (dragDist: the server's v(t) = v0/(1+k·v0·t), server/combat.mjs) along the same falling arc (bulletAt: gravity sinks
+   the bullet ½·g·t(s)², ~1.23 m at 400 m with the sniper), so the streak and the hit arrive together; the server's 'bhit' cuts it short at a body;
    when its head reaches the end of the path, the mark appears: a bullet hole on the surface, a puff of dust, sparks
    off stone, a wisp of smoke. The hole is oriented by the true surface normal (the nearest wall edge of the building
    outline, the slope of the terrain), so it lies on the wall instead of floating in front of it. Marks live half a
@@ -107,16 +107,16 @@ function dmgFloat(x, y, z, text, cls) {
    freePath's coarse step is up to 1.5 m, so its answer can sit inside the wall: bisect the last step down to ~3 mm.
    A point-blank mark (len near 0, the muzzle resting on the face) bisects from 0 and lands on the face itself.
    The point rides the bullet's falling arc (bulletAt at the weapon's velocity), the same one the server flew. */
-function refine(o, d, len, v) {
+function refine(o, d, len, v, k) {
   const block = t => {
-    const x = o[0] + d[0] * t, y = o[1] + d[1] * t - bulletDrop(t, v), z = o[2] + d[2] * t, g = terrainH(x, z);
+    const x = o[0] + d[0] * t, y = o[1] + d[1] * t - bulletDrop(t, v, k), z = o[2] + d[2] * t, g = terrainH(x, z);
     if (y < g) return 1;
     const b = buildingAt(x, z); return b && y < g + (b.top || 12) ? 2 : carAt(x, y, z) ? 3 : 0;
   };
   let lo = Math.max(0, len - 1.6), hi = len;
   if (!block(hi)) hi = len; else for (let i = 0; i < 9; i++) { const mid = (lo + hi) / 2; if (block(mid)) hi = mid; else lo = mid; }
-  const [x, y, z] = bulletAt(o, d, hi, v), g = terrainH(x, z), b = buildingAt(x, z);
-  d = bulletDir(d, hi, v);   // the way the bullet was going when it met the surface: the roof and the wall face read it
+  const [x, y, z] = bulletAt(o, d, hi, v, k), g = terrainH(x, z), b = buildingAt(x, z);
+  d = bulletDir(d, hi, v, k);   // the way the bullet was going when it met the surface: the roof and the wall face read it
   const car = carAt(x, y, z);
   if (car && !b) {   // a car: from above the roof, else the side facing away from the axis
     if (y > car.top - 0.25) return { x, y, z, n: [0, 1, 0], kind: 'car' };
@@ -140,7 +140,7 @@ function refine(o, d, len, v) {
 }
 const HOLE_SIZE = [0.1, 0.055, 0.14, 0.08, 0.1];   // by weapon: the sniper leaves a bigger mark, a pellet a small one
 function surfaceImpact(o, d, len, w) {
-  const s = refine(o, d, len, SPEED[w] ?? 560), ground = s.kind === 'ground';
+  const s = refine(o, d, len, SPEED[w] ?? 560, DRAG[w] ?? 0), ground = s.kind === 'ground';
   const car = s.kind === 'car';
   addDecal(s.x, s.y, s.z, s.n, HOLE_SIZE[w] ?? 0.1, ground ? 0x9a8f7a : car ? 0x6a6a70 : 0xc9c5bc);
   const n = s.n;
@@ -151,20 +151,20 @@ function surfaceImpact(o, d, len, w) {
   puff(s.x + n[0] * 0.1, s.y + n[1] * 0.1 + 0.03, s.z + n[2] * 0.1, n[0] * 0.3 + rnd(-0.15, 0.15), 0.45, n[2] * 0.3 + rnd(-0.15, 0.15), 0.8, 0.12, 0.55, 0x9a9a9a, 0.28, 0.2);   // a wisp of smoke
 }
 function bodyImpact(o, d, len, w) {
-  const [x, y, z] = bulletAt(o, d, len, SPEED[w] ?? 560);
+  const [x, y, z] = bulletAt(o, d, len, SPEED[w] ?? 560, DRAG[w] ?? 0);
   for (let i = 0; i < 5; i++) puff(x, y, z, rnd(-1.2, 1.2) + d[0] * 0.6, rnd(-0.4, 1.2), rnd(-1.2, 1.2) + d[2] * 0.6, rnd(0.18, 0.3), 0.05, rnd(0.12, 0.2), 0x7a1f1f, 0.7, -3);
 }
 // the bullet met a grenade in the air ('nshot'): a strike of sparks and olive fragments where they crossed — no decal,
 // there is no surface; the blast itself follows at once (the server's 'boom')
 function nadeImpact(o, d, len, w) {
-  const [x, y, z] = bulletAt(o, d, len, SPEED[w] ?? 560);
+  const [x, y, z] = bulletAt(o, d, len, SPEED[w] ?? 560, DRAG[w] ?? 0);
   for (let i = 0; i < 8; i++) puff(x, y, z, rnd(-3, 3) + d[0] * 1.5, rnd(-1, 3), rnd(-3, 3) + d[2] * 1.5, rnd(0.1, 0.25), 0.03, 0.008, 0xffc873, 0.95, -9);
   for (let i = 0; i < 4; i++) puff(x, y, z, rnd(-2, 2), rnd(0, 2.5), rnd(-2, 2), rnd(0.15, 0.3), 0.04, 0.01, 0x3d5a2a, 0.8, -6);
   puff(x, y, z, 0, 0.5, 0, 0.5, 0.1, 0.4, 0x9a9a9a, 0.3, 0.2);
 }
 
 /* ---------- tracers that fly ---------- */
-const tracers = [], SPEED = WEAPONS.map(w => w.vel ?? 560);   // m/s by weapon — the server's own muzzle velocities, so the eye and the hit agree
+const tracers = [], SPEED = WEAPONS.map(w => w.vel ?? 560), DRAG = WEAPONS.map(w => w.drag ?? 0);   // m/s and the drag by weapon — the server's own ballistics, so the eye and the hit agree
 const byBid = new Map();   // the server's bullet id → its tracer, so 'bhit' can cut the right streak at the body
 const tracerMat = color => worldSpace(new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85, fog: false }));
 function dropTracer(tr) { scene.remove(tr.l); tr.l.geometry.dispose(); tr.l.material.dispose(); if (tr.bid) byBid.delete(tr.bid); }
@@ -173,7 +173,7 @@ function tracerShot(o, d, len, w, kind, color, onArrive) {
   const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
   const l = new THREE.Line(g, tracerMat(color));
   l.frustumCulled = false; l.userData.noProbe = true; scene.add(l);
-  const tr = { l, o, d, len, w, kind, onArrive, t: 0, speed: SPEED[w] ?? 560, trail: w === 1 ? 2.5 : 7, start: 0.9, done: false, fade: 0, bid: 0 };
+  const tr = { l, o, d, len, w, kind, onArrive, t: 0, speed: SPEED[w] ?? 560, k: DRAG[w] ?? 0, trail: w === 1 ? 2.5 : 7, start: 0.9, done: false, fade: 0, bid: 0 };
   tracers.push(tr); return tr;
 }
 function bindTracer(bid, tr) { if (bid && tr) { tr.bid = bid; byBid.set(bid, tr); } }
@@ -185,7 +185,7 @@ function hitTracer(bid, dist, body) {
   tr.len = Math.min(tr.len, dist);
   if (body === 'nade') tr.kind = 'nade'; else if (body) tr.kind = 'body';
   const impact = () => { if (tr.kind === 'surface') surfaceImpact(tr.o, tr.d, tr.len, tr.w); else if (tr.kind === 'body') bodyImpact(tr.o, tr.d, tr.len, tr.w); else if (tr.kind === 'nade') nadeImpact(tr.o, tr.d, tr.len, tr.w); };
-  if (tr.done || tr.start + tr.t * tr.speed >= tr.len) {   // already there or past: the impact now, not on a later frame
+  if (tr.done || tr.start + dragDist(tr.t, tr.speed, tr.k) >= tr.len) {   // already there or past: the impact now, not on a later frame
     if (!tr.done) { tr.done = true; impact(); if (tr.onArrive) tr.onArrive(); }
     else if (body === 'nade') nadeImpact(tr.o, tr.d, tr.len, tr.w);
     else if (body) bodyImpact(tr.o, tr.d, tr.len, tr.w);
@@ -210,7 +210,7 @@ function muzzleSmoke(x, y, z, d) { puff(x, y, z, d[0] * 0.7 + rnd(-0.1, 0.1), 0.
 function tickFx(dt) {
   for (let i = tracers.length - 1; i >= 0; i--) {
     const tr = tracers[i]; tr.t += dt;
-    const head = Math.min(tr.len, tr.start + tr.t * tr.speed), tail = Math.max(Math.min(tr.start, head), head - tr.trail);
+    const head = Math.min(tr.len, tr.start + dragDist(tr.t, tr.speed, tr.k)), tail = Math.max(Math.min(tr.start, head), head - tr.trail);   // the drag brakes the streak as it brakes the bullet
     if (!tr.done && head >= tr.len) {
       tr.done = true;
       if (tr.kind === 'surface') surfaceImpact(tr.o, tr.d, tr.len, tr.w);
@@ -219,7 +219,7 @@ function tickFx(dt) {
       if (tr.onArrive) tr.onArrive();
     }
     if (tr.done) { tr.fade += dt; tr.l.material.opacity = Math.max(0, 0.85 - tr.fade * 14); if (tr.fade > 0.07) { dropTracer(tr); tracers.splice(i, 1); } continue; }
-    const p = tr.l.geometry.attributes.position, tp = bulletAt(tr.o, tr.d, tail, tr.speed), hp = bulletAt(tr.o, tr.d, head, tr.speed);
+    const p = tr.l.geometry.attributes.position, tp = bulletAt(tr.o, tr.d, tail, tr.speed, tr.k), hp = bulletAt(tr.o, tr.d, head, tr.speed, tr.k);
     p.setXYZ(0, tp[0], tp[1] - 0.05, tp[2]);
     p.setXYZ(1, hp[0], hp[1], hp[2]);
     p.needsUpdate = true;
