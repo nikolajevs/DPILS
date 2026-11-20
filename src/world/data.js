@@ -81,9 +81,9 @@ function shorePush(x, z, r) {
 
 let matFac, matRoof, matPlain, matGold, matBank, M_LAND, M_PAVE, M_DIRT, M_BALLAST, M_ASPH, M_MARK;   // the water's material: src/world/water.js
 async function makeMaterials() {
-  [STATE.facTex, STATE.facMask] = facadeAtlas(await brickPhotos()); await rest(); STATE.roofTex = roofAtlas(); await rest();
+  [STATE.facTex, STATE.facMask, STATE.facPbr] = facadeAtlas(await brickPhotos()); await rest(); STATE.roofTex = roofAtlas(); await rest();
   const dGrass = detailTex(0), dAsph = detailTex(1), dPave = detailTex(2), dGravel = detailTex(3); await rest();
-  matFac = facadeMaterial(); matRoof = roofMaterial(); [STATE.serTex, STATE.serMask] = seriesAtlas(); await rest(); STATE.matSer = seriesMaterial();
+  matFac = facadeMaterial(); matRoof = roofMaterial(); [STATE.serTex, STATE.serMask, STATE.serPbr] = seriesAtlas(); await rest(); STATE.matSer = seriesMaterial();
   matPlain = std({ vertexColors: true, roughness: 0.85, metalness: 0 }, 'plain');
   matGold = hook(new THREE.MeshStandardMaterial({ color: lin('#e0b048'), metalness: 1, roughness: 0.25 }));
   matBank = std({ vertexColors: true, roughness: 1, metalness: 0, side: THREE.DoubleSide }, 'bank');

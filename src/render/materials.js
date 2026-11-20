@@ -27,14 +27,14 @@ function std(opts, key, patch) {
   allMats.push(m); return m;
 }
 
-const FACADE_RELIEF = 3.0;   // strength of the facade relief (slope per unit of atlas grey difference)
+const FACADE_RELIEF = 4.5;   // strength of the facade relief (slope per unit of the PBR height difference)
 function facadeMaterial() {
   const m = std({ roughness: 0.9, metalness: 0 }, 'facade', s => {
-    s.uniforms.uAtlas = { value: STATE.facTex }; s.uniforms.uMask = { value: STATE.facMask }; s.uniforms.uNight = U.night; s.uniforms.uLit = U.lit; s.uniforms.uTime = U.time;
+    s.uniforms.uAtlas = { value: STATE.facTex }; s.uniforms.uMask = { value: STATE.facMask }; s.uniforms.uPbr = { value: STATE.facPbr }; s.uniforms.uNight = U.night; s.uniforms.uLit = U.lit; s.uniforms.uTime = U.time;
     Object.assign(s.uniforms, PU);   // the city cubes: the glass mirrors the street, not the filtered sky
     s.vertexShader = 'attribute vec2 aUv; attribute vec3 aInfo; attribute vec3 aTint;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint; varying float vWy;\n' +
       s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvCellUv = aUv; vInfo = aInfo; vTint = pow(aTint, vec3(2.2)); vWy = (modelMatrix * vec4(transformed, 1.0)).y;');
-    s.fragmentShader = 'uniform sampler2D uAtlas; uniform sampler2D uMask; uniform float uNight; uniform float uLit; uniform float uTime;\nuniform samplerCube uProbeA; uniform samplerCube uProbeB; uniform float uProbeMix; uniform float uProbeOn;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint; varying float vWy;\n' + SAMPLE_GLSL +
+    s.fragmentShader = 'uniform sampler2D uAtlas; uniform sampler2D uMask; uniform sampler2D uPbr; uniform float uNight; uniform float uLit; uniform float uTime;\nuniform samplerCube uProbeA; uniform samplerCube uProbeB; uniform float uProbeMix; uniform float uProbeOn;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint; varying float vWy;\n' + SAMPLE_GLSL +
       s.fragmentShader.replace('#include <map_fragment>', `
         vec2 dX = dFdx(vCellUv), dY = dFdy(vCellUv);
         float row = vInfo.x, sd = vInfo.y / 255.0, fl = vInfo.z;
@@ -61,11 +61,13 @@ function facadeMaterial() {
         vec2 gx = dX * sc * vec2(0.25, 0.125), gy = dY * sc * vec2(0.25, 0.125);
         vec3 tcol = pow(ATLAS(uAtlas, auv, gx, gy).rgb, vec3(2.2));
         vec4 fm = ATLAS(uMask, auv, gx, gy);
+        vec4 pb = ATLAS(uPbr, auv, gx, gy);   // R roughness, G metalness, B height, A occlusion (src/render/textures.js)
         float hc2 = h12(cell * 1.7 + sd * 31.0 + 3.0);
         tcol = mix(tcol, tcol * (0.7 + 0.6 * hc2) + vec3(0.02, 0.015, 0.0) * step(0.7, hc2), fm.g);
         diffuseColor.rgb = tcol * mix(vec3(1.0), vTint, fm.r);
         diffuseColor.rgb *= mix(0.55, 1.0, smoothstep(0.0, 2.4, vWy));
-      `).replace('#include <roughnessmap_fragment>', 'float roughnessFactor = mix(roughness, 0.06, fm.g);')
+      `).replace('#include <roughnessmap_fragment>', 'float roughnessFactor = mix(pb.r, 0.06, fm.g);')
+        .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = pb.g * (1.0 - fm.g);')
         .replace('#include <lights_fragment_maps>', THREE.ShaderChunk.lights_fragment_maps.replace('radiance += iblRadiance;', 'radiance += iblRadiance * (1.0 - fm.g * uProbeOn);') + `
 #if defined( USE_ENVMAP ) && defined( RE_IndirectSpecular )
         if (uProbeOn > 0.01 && fm.g > 0.01) {   // where the probes reach, the glass takes its mirror from the city cubes
@@ -76,12 +78,12 @@ function facadeMaterial() {
         }
 #endif`)
         .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-        {   // relief from the atlas itself: the grey of the colour atlas is the height (mortar, joints, frames and trim sit lower), the slope is
-            // the difference of two atlas samples, laid on a tangent frame taken from the wall's uv; none on glass, fading out with distance
+        {   // relief from the height channel of the PBR atlas (mortar, panel seams, plank grooves sit lower, frames and
+            // trim higher): the slope is the difference of two atlas samples, laid on a tangent frame taken from the
+            // wall's uv; none on glass, fading out with distance
           vec2 ae = vec2(1.5 / 1024.0, 1.5 / 2048.0);
-          vec3 lw = vec3(0.299, 0.587, 0.114);
-          float hu = dot(ATLAS(uAtlas, auv + vec2(ae.x, 0.0), gx, gy).rgb - ATLAS(uAtlas, auv - vec2(ae.x, 0.0), gx, gy).rgb, lw);
-          float hv = dot(ATLAS(uAtlas, auv + vec2(0.0, ae.y), gx, gy).rgb - ATLAS(uAtlas, auv - vec2(0.0, ae.y), gx, gy).rgb, lw);
+          float hu = ATLAS(uPbr, auv + vec2(ae.x, 0.0), gx, gy).b - ATLAS(uPbr, auv - vec2(ae.x, 0.0), gx, gy).b;
+          float hv = ATLAS(uPbr, auv + vec2(0.0, ae.y), gx, gy).b - ATLAS(uPbr, auv - vec2(0.0, ae.y), gx, gy).b;
           vec3 pp = -vViewPosition, dp1 = dFdx(pp), dp2 = dFdy(pp); vec2 du1 = dFdx(vCellUv), du2 = dFdy(vCellUv);
           vec3 p2 = cross(dp2, normal), p1 = cross(normal, dp1);
           vec3 tT = p2 * du1.x + p1 * du2.x, tB = p2 * du1.y + p1 * du2.y;
@@ -107,6 +109,13 @@ function facadeMaterial() {
         vec3 emit = lc * bright * lit + vec3(0.5, 0.68, 1.0) * tv * flick * 1.6;
         emit += lc * 0.25 * smoothstep(1.0 - p - 0.1, 1.0 - p, hw) * (1.0 - lit);   // a dim glow behind a drawn curtain
         totalEmissiveRadiance += fm.g * uNight * emit;
+      `).replace('#include <aomap_fragment>', `
+        float aoF = mix(1.0, pb.a, 0.9);   // the crevices baked from the height take less indirect light
+        reflectedLight.indirectDiffuse *= aoF;
+#if defined( USE_ENVMAP ) && defined( STANDARD )
+        float dotNVao = saturate( dot( geometryNormal, geometryViewDir ) );
+        reflectedLight.indirectSpecular *= computeSpecularOcclusion( dotNVao, aoF, material.roughness );
+#endif
       `);
   });
   m.extensions = { derivatives: true }; return m;
