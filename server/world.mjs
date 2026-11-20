@@ -19,7 +19,7 @@ export function loadWorld() {
     const a = rec.slice(7).find(r => r && r.length >= 6); if (!a) continue;
     const ring = new Float32Array(a.length); let x = 0, z = 0; for (let i = 0; i < a.length; i += 2) { x += a[i]; z += a[i + 1]; ring[i] = x / 10; ring[i + 1] = z / 10; }
     let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9; for (let i = 0; i < ring.length; i += 2) { x0 = Math.min(x0, ring[i]); x1 = Math.max(x1, ring[i]); z0 = Math.min(z0, ring[i + 1]); z1 = Math.max(z1, ring[i + 1]); }
-    const b = { ring, bb: [x0, z0, x1, z1], top: rec[1] / 10 }; B.push(b);
+    const top = rec[1] / 10, b = { ring, bb: [x0, z0, x1, z1], top, base: rec[0] === 12 ? Math.max(0, top - 0.25) : 0 }; B.push(b);   // style 12: a canopy on posts, open at the ground
     for (let i = Math.floor(x0 / 60); i <= Math.floor(x1 / 60); i++) for (let j = Math.floor(z0 / 60); j <= Math.floor(z1 / 60); j++) { const k = (i + 2000) * 4096 + j + 2000; let l = grid.get(k); if (!l) grid.set(k, l = []); l.push(b); }
   }
   const ts = read('terrain.js'), head = JSON.parse(ts.match(/window\.TERRAIN\s*=\s*(\{.*?\});/)[1]), hs = ts.match(/window\.TERRAIN\.h\s*=\s*'([^']*)'/)[1];
@@ -30,7 +30,7 @@ export function loadWorld() {
     return ((a + (b - a) * fx) * (1 - fz) + (c + (d - c) * fx) * fz) * 0.1;
   };
   const ref = raw(-1487, 1263), ground = (x, z) => raw(x, z) - ref;
-  function buildingAt(x, z) { const l = grid.get(cell(x, z)); if (!l) return null; for (const b of l) { const bb = b.bb; if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && pip(x, z, b.ring)) return b; } return null; }
+  function buildingAt(x, z, y = 1) { const l = grid.get(cell(x, z)); if (!l) return null; for (const b of l) { const bb = b.bb; if (x >= bb[0] && x <= bb[2] && z >= bb[1] && z <= bb[3] && y >= (b.base || 0) && pip(x, z, b.ring)) return b; } return null; }
   const phys = makePhysics(buildingAt, ground);
   console.log(`world: ${B.length} buildings, ${q.length} ground points, ${Date.now() - t0} ms`);
   return { ...phys, ground, buildingAt, count: B.length };

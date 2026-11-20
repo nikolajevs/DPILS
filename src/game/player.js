@@ -1,5 +1,5 @@
 import { STATE } from '../core/state.js';
-import { COL, inBuilding, inWater, onRoad } from '../world/data.js';
+import { COL, inBuilding, inWater, onRoad, shorePush } from '../world/data.js';
 import { terrainH, walkLift } from '../world/terrain.js';
 import { upLow } from '../world/underpass.js';
 import { rbLow } from '../world/bridge-railway.js';
@@ -20,6 +20,7 @@ const JUMP = { v: 6.4, g: 21, eyeStand: 1.7, eyeCrouch: 1.1, crouchSpeed: 1.8 };
 // decel — the brake when the keys are released (a ~0.3 m slide from the jog, ~1.1 m from the sprint),
 // air — the little authority over the jump: the momentum carries, no friction aloft
 const MOVE = { accel: 40, decel: 55, air: 10 };
+const STEP = 0.4;   // the tallest rise the walk climbs as a step (a kerb 0.13, a tread 0.18, a platform 0.35); taller is a wall
 const FALL = { safe: 3 };   // keep in step with server/combat.mjs: a landing from above 3 m is reported to the server (it deals the damage)
 const keys = new Set(); const touch = { mx: 0, mz: 0 };
 STATE.started = false; STATE.night = false; STATE.locked = false; STATE.introT = 0;
@@ -40,7 +41,8 @@ function collide(feet) {   // feet: the height the walker stands at; under the d
   for (let it = 0; it < 2; it++) { const low = upLow(P.x, P.z, feet), rlow = rbLow(P.x, P.z, feet); COL.near(P.x, P.z, 0.45, (id, d, px, pz) => {
     const tg = COL.s[id * 6 + 5]; if (tg === 1 && low || tg === 2 && !low || tg === 3 && !rlow) return;   // tag 3: the walls under the ends of the railway bridge
     const Rr = 0.45 + COL.s[id * 6 + 4]; if (d >= Rr || d < 1e-5) return; const k = (Rr - d) / d; P.x += (P.x - px) * k; P.z += (P.z - pz) * k;
-  }); parkedPush(P); staticCarPush(P); }   // and the cars parked at this time of day and the standing ones
+  }); parkedPush(P); staticCarPush(P);   // and the cars parked at this time of day and the standing ones
+  const [sx, sz] = shorePush(P.x, P.z, 0.45); P.x = sx; P.z = sz; }   // deep water holds its bank: slide along it, no revert
 }
 function step(dt) {
   let f = 0, s = 0;
@@ -66,21 +68,26 @@ function step(dt) {
     if (!air && l <= 0.01 && Math.hypot(P.vx, P.vz) < 0.05) P.vx = P.vz = 0;
     let dx = P.vx * dt, dz = P.vz * dt;
     if (dx || dz) {
-      const feet = P.y - P.eye - P.up;   // where the feet stood at the last frame
+      let feet = P.y - P.eye - P.up;   // where the feet stood at the last frame
       const n = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.3)); dx /= n; dz /= n;
       for (let i = 0; i < n; i++) {
         const ox = P.x, oz = P.z; P.x += dx; P.z += dz; collide(feet);
-        if (inWater(P.x, P.z) && !onRoad(P.x, P.z, 1.2) && !(inWater(ox, oz) && !onRoad(ox, oz, 1.2))) { P.x = ox; P.z = oz; P.vx = P.vz = 0; break; }
+        const gNew = walkLift(P.x, P.z, feet);
+        if (!air && gNew - feet > STEP) { P.x = ox; P.z = oz; P.vx = P.vz = 0; break; }   // a rise too tall to step: a wall
+        feet = gNew;   // a kerb or a tread: the feet follow the slab up
       }
     }
     P.walked += Math.hypot(P.vx, P.vz) * dt;
   }
   if (!P.fly && (P.kx || P.kz)) {   // the blast knockback: a decaying slide with the same collisions as the walk, even when standing still
     let dx = P.kx * dt, dz = P.kz * dt;
-    const feet = P.y - P.eye - P.up, n = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.3)); dx /= n; dz /= n;
+    let feet = P.y - P.eye - P.up; const n = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.3)); dx /= n; dz /= n;
+    const air = P.up > 0.001 || P.vy > 0;
     for (let i = 0; i < n; i++) {
       const ox = P.x, oz = P.z; P.x += dx; P.z += dz; collide(feet);
-      if (inWater(P.x, P.z) && !onRoad(P.x, P.z, 1.2) && !(inWater(ox, oz) && !onRoad(ox, oz, 1.2))) { P.x = ox; P.z = oz; P.kx = P.kz = 0; break; }
+      const gNew = walkLift(P.x, P.z, feet);
+      if (!air && gNew - feet > STEP) { P.x = ox; P.z = oz; P.kx = P.kz = 0; break; }
+      feet = gNew;
     }
     const kd = Math.exp(-5 * dt); P.kx *= kd; P.kz *= kd;
     if (Math.hypot(P.kx, P.kz) < 0.05) P.kx = P.kz = 0;

@@ -11,9 +11,9 @@ export function makePhysics(buildingAt, ground) {
   // arc the bullet flies, so a long shot meets the ground sooner than the straight line would. Sight lines pass no v.
   function freePath(o, d, len, v) {
     const block = t => {
-      const x = o[0] + d[0] * t, y = o[1] + d[1] * t - (v ? bulletDrop(t, v) : 0), z = o[2] + d[2] * t, gr = ground(x, z);
+      const x = o[0] + d[0] * t, y = o[1] + d[1] * t - (v ? bulletDrop(t, v) : 0), z = o[2] + d[2] * t, gr = ground(x, z, y);
       if (y < gr) return true;   // the ground itself, a hill slope included
-      const b = buildingAt(x, z);
+      const b = buildingAt(x, z, y);   // solid at this height: a canopy on posts is open at the ground, its roof still stops
       return !!(b && y < gr + (b.top || 12) - 1);
     };
     if (block(0)) return 0;
@@ -35,7 +35,7 @@ export function makePhysics(buildingAt, ground) {
   function stepNade(n, dt, g, bodies) {
     const [px, py, pz] = n.p; n.v[1] -= g * dt;
     let x = px + n.v[0] * dt, y = py + n.v[1] * dt, z = pz + n.v[2] * dt;
-    const b = buildingAt(x, z), gr = ground(x, z);
+    const b = buildingAt(x, z, y), gr = ground(x, z, y);
     n.bounce = null;
     if (b) {
       const top = gr + (b.top || 12);
@@ -46,8 +46,8 @@ export function makePhysics(buildingAt, ground) {
         }
       } else {   // hits a wall: the axis that leads into the house is turned back
         let sp;
-        if (!buildingAt(px, z)) { x = px; sp = Math.abs(n.v[0]); n.v[0] *= -0.4; }
-        else if (!buildingAt(x, pz)) { z = pz; sp = Math.abs(n.v[2]); n.v[2] *= -0.4; }
+        if (!buildingAt(px, z, y)) { x = px; sp = Math.abs(n.v[0]); n.v[0] *= -0.4; }
+        else if (!buildingAt(x, pz, y)) { z = pz; sp = Math.abs(n.v[2]); n.v[2] *= -0.4; }
         else { x = px; z = pz; sp = Math.hypot(n.v[0], n.v[2]); n.v[0] *= -0.4; n.v[2] *= -0.4; }
         if (sp > 1.2) n.bounce = { sp, kind: 'wall' };
       }
@@ -90,6 +90,6 @@ export function makePhysics(buildingAt, ground) {
     n.p = [x, y, z];
   }
   // where a person can stand: no house, not in the river, a pond or a moat (the ground more than two metres under the square)
-  const walkable = (x, z) => !buildingAt(x, z) && ground(x, z) > -2;
+  const walkable = (x, z) => !buildingAt(x, z, 1) && ground(x, z) > -2;   // a standing body: open canopies and passages are walkable
   return { freePath, stepNade, walkable };
 }

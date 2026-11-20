@@ -33,9 +33,9 @@ async function buildBuildings(from, to) {
     if (TERR.on) { let lo = 1e9, hi = -1e9; for (let i = 0; i < outer.length; i += 2) { const t = terrainH(outer[i], outer[i + 1]); lo = Math.min(lo, t); hi = Math.max(hi, t); }
       const base = Math.min(hi - 0.15, lo + 2.5); STATE.GBC = (x, y, z) => { const t = terrainH(x, z); return y <= 0.05 ? Math.min(base, t) - 0.25 - t - y : base - t; }; }
     const name = rec[3] >= 0 ? NAMES[rec[3]] : '';
-    BLD.push({ ring: outer, bb, kind: style, top: h }); const bid = BLD.length - 1;
+    BLD.push({ ring: outer, bb, kind: style, top: h, base: style === 12 ? Math.max(0, h - 0.25) : 0, holes: rings.slice(1) }); const bid = BLD.length - 1;   // style 12: a canopy on posts, open at the ground
     for (let i = Math.floor(bb[0] / 60); i <= Math.floor(bb[2] / 60); i++) for (let j = Math.floor(bb[1] / 60); j <= Math.floor(bb[3] / 60); j++) { const k = (i + 2000) * 4096 + j + 2000; let l = BGRID.get(k); if (!l) BGRID.set(k, l = []); l.push(bid); }
-    if (mh < 2.2 && style !== 12) for (const r of rings) { const n = r.length >> 1; for (let i = 0; i < n; i++) { const j = (i + 1) % n; COL.add(r[2 * i], r[2 * i + 1], r[2 * j], r[2 * j + 1], 0, 0); } }
+    if (style !== 12) for (const r of rings) { const n = r.length >> 1; for (let i = 0; i < n; i++) { const j = (i + 1) % n; COL.add(r[2 * i], r[2 * i + 1], r[2 * j], r[2 * j + 1], 0, 0); } }   // the body collides with the same outline the bullet tests (a tall podium is solid too)
     if (lmOwns(outer, bb)) { LM_OWNED.push({ ring: outer, bb }); continue; }   // drawn by buildLandmarks
     if (schClaim(id, rec, rings, outer, bb)) continue;   // a school: its roof is drawn now, its walls by lmSchools
     if (shopClaim(id, rec, rings, outer, bb)) continue;   // a supermarket or a part of Ditton nams or Solo: drawn by lmShops

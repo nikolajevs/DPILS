@@ -5,6 +5,7 @@ import { LMT, lr } from './tiles.js';
 import { LMF, LMWHITE, lmW } from './core.js';
 import { flatPlain } from '../buildings/walls.js';
 import { COL } from '../world/data.js';
+import { walkSlab } from '../world/walkgrid.js';
 import { polyA } from '../core/geometry.js';
 import { area2, hb, pip, reversed, sh } from '../core/util.js';
 
@@ -130,8 +131,9 @@ function lmDUMain(K) {
   for (const [u, v, w, h] of [[8, 20, 3, 1.2], [24, 6, 2.4, 1.6], [24, 70, 2.4, 1.6], [9, 60, 3.6, 1.0]]) lmBoxL(G, f, u - w / 2, u + w / 2, v - w / 2, v + w / 2, 22.1, 22.1 + h, hb('#8d9091'));
   // granite steps and landing in front of the three doors, cheek walls
   const GS = K.stone, v0 = 29.2, v1 = 47.5;
-  lmBoxL(GS, f, -2.6, 0.4, v0, v1, 0, 1.08, STEP, false);
-  for (let k = 0; k < 6; k++) lmBoxL(GS, f, -2.6 - 0.35 * (6 - k), -2.58, v0, v1, k * 0.18, (k + 1) * 0.18, sh(STEP, 0.96 + (k % 2) * 0.05), false);
+  const rect = (u0, u1, a, b) => Float32Array.from([lmW(f, u0, a), lmW(f, u1, a), lmW(f, u1, b), lmW(f, u0, b)].flat());
+  lmBoxL(GS, f, -2.6, 0.4, v0, v1, 0, 1.08, STEP, false); walkSlab(rect(-2.6, 0.4, v0, v1), 1.08);   // the landing
+  for (let k = 0; k < 6; k++) { lmBoxL(GS, f, -2.6 - 0.35 * (6 - k), -2.58, v0, v1, k * 0.18, (k + 1) * 0.18, sh(STEP, 0.96 + (k % 2) * 0.05), false); walkSlab(rect(-2.6 - 0.35 * (6 - k), -2.58, v0, v1), (k + 1) * 0.18); }   // each tread a step
   for (const [a, b] of [[v0 - 0.5, v0], [v1, v1 + 0.5]]) lmBoxL(GS, f, -4.9, 0.4, a, b, 0, 1.35, GRAN);
   { const s0 = lmW(f, -4.9, v0 - 0.5), s1 = lmW(f, -4.9, v1 + 0.5), s2 = lmW(f, 0, v0 - 0.5), s3 = lmW(f, 0, v1 + 0.5);
     COL.add(s0[0], s0[1], s1[0], s1[1], 0, 0); COL.add(s0[0], s0[1], s2[0], s2[1], 0, 0); COL.add(s1[0], s1[1], s3[0], s3[1], 0, 0); }
