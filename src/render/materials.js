@@ -148,17 +148,20 @@ function groundMaterial(tex, scale, amt, key, extra = '') {   // extra: GLSL tha
       diffuseColor.rgb *= mix(1.0, dt, ${amt.toFixed(3)}) * mix(1.0, dt2, ${(amt * 0.6).toFixed(3)}) * (1.0 - 0.3 * wetP);${extra}`)
       .replace('#include <roughnessmap_fragment>', `float roughnessFactor = roughness * (0.9 + 0.1 * dt); roughnessFactor = mix(roughnessFactor, 0.28, wetP);`)
       .replace('#include <emissivemap_fragment>', wet > 0 ? `#include <emissivemap_fragment>
-      {   // the wet patch mirrors the lamps and the evening sky as a streak stretched along the view: one term, no SSR.
-          // The noise runs across the view azimuth (soft bands a few metres wide, long along it), broken by a slower noise
-          // into lamp-like streaks; it lives only at a grazing look and fades out far off, where the haze takes over
+      {   // the wet patch mirrors the lamps and the evening sky as a sheen stretched along the view: one term, no SSR.
+          // The noise runs across the view azimuth (soft bands several metres wide, long along it), broken by a slower
+          // noise into lamp-like streaks; it lives only at a grazing look. The bands converge to the vanishing point and
+          // alias into a vertical comb far off: the sheen fades with the pixel footprint of the band coordinate and dies
+          // out well before the haze takes over
         vec3 Vw = normalize(cameraPosition - vec3(vWxz.x, vGy, vWxz.y));
         float graz = pow(1.0 - clamp(Vw.y, 0.0, 1.0), 5.0) * smoothstep(0.30, 0.10, Vw.y);   // a sheen of the grazing look only, not from above
         vec2 va = Vw.xz / max(length(Vw.xz), 1e-3);
         float across = dot(vWxz, vec2(-va.y, va.x)), along = dot(vWxz, va);
-        float st = smoothstep(0.58, 0.9, gnoise(vec2(across * 0.28, along * 0.05)))
-          * (0.35 + 0.65 * gnoise(vec2(across * 0.07 + 7.3, along * 0.011)));   // broken into lamp-like streaks, not corduroy
-        float far = 1.0 - smoothstep(250.0, 700.0, length(vViewPosition));
-        totalEmissiveRadiance += wetP * uNight * graz * st * far * (vec3(1.0, 0.72, 0.4) * 0.45 + uFogGlow * 0.18);
+        float st = smoothstep(0.50, 0.85, gnoise(vec2(across * 0.12, along * 0.025)))
+          * (0.35 + 0.65 * gnoise(vec2(across * 0.04 + 7.3, along * 0.008)));   // broken into lamp-like streaks, not corduroy
+        float aa = 1.0 - smoothstep(0.02, 0.08, fwidth(across) * 0.12);   // bands thinner than a pixel dissolve instead of combing
+        float far = 1.0 - smoothstep(60.0, 160.0, length(vViewPosition));
+        totalEmissiveRadiance += wetP * uNight * graz * st * aa * far * (vec3(1.0, 0.72, 0.4) * 0.32 + uFogGlow * 0.12);
       }` : '#include <emissivemap_fragment>')
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
       #if ${amt > 0 ? 1 : 0}
