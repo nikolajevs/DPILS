@@ -61,7 +61,7 @@ function dropBody(body) {
 onProps(() => { for (const r of items.values()) { dropBody(r.group.userData.body); fillBody(r.group.userData.body, r.kind); } });
 function addItem(it) {
   const group = makeMesh(it.kind), baseY = terrainH(it.x, it.z);
-  group.position.set(it.x, baseY, it.z); scene.add(group);
+  group.position.set(it.x, baseY, it.z); group.userData.noProbe = true; scene.add(group);
   items.set(it.id, { kind: it.kind, group, baseY, active: true });
 }
 function setItems(list) { clearItems(); for (const it of list || []) addItem(it); }

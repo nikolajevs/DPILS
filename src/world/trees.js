@@ -400,7 +400,7 @@ async function buildTrees() {
       M.compose(new THREE.Vector3(l[6 * i] - cx, fortTreeY(l[6 * i], l[6 * i + 1]), l[6 * i + 1] - cz), q0, new THREE.Vector3(sc * H / 2, sy * H, 1)); L.setMatrixAt(i, M); L.setColorAt(i, tint(v));
     }
     fg.setAttribute('aType', new THREE.InstancedBufferAttribute(types, 1));
-    L.position.set(cx, 0, cz); L.instanceMatrix.needsUpdate = true; L.instanceColor.needsUpdate = true; L.onBeforeRender = a2cOn; L.onAfterRender = a2cOff; scene.add(L); t.lo.push(L);
+    L.position.set(cx, 0, cz); L.instanceMatrix.needsUpdate = true; L.instanceColor.needsUpdate = true; L.onBeforeRender = a2cOn; L.onAfterRender = a2cOff; L.userData.noProbe = true; scene.add(L); t.lo.push(L);
     for (let type = 0; type < 4; type++) {
       const idx = []; for (let i = 0; i < n; i++) if (l[6 * i + 2] === type) idx.push(i); if (!idx.length) continue;
       const Hm = new THREE.InstancedMesh(hi[type], matTree, idx.length); Hm.boundingSphere = ts;
@@ -409,7 +409,7 @@ async function buildTrees() {
         M.compose(new THREE.Vector3(l[6 * i] - cx, fortTreeY(l[6 * i], l[6 * i + 1]), l[6 * i + 1] - cz), q, new THREE.Vector3(sc, sy, sc)); Hm.setMatrixAt(k, M); Hm.setColorAt(k, tint(v));
       });
       Hm.position.set(cx, 0, cz); Hm.instanceMatrix.needsUpdate = true; Hm.instanceColor.needsUpdate = true; Hm.customDepthMaterial = matTreeDepth;
-      Hm.castShadow = true; Hm.receiveShadow = true; Hm.visible = false; Hm.onBeforeRender = a2cOn; Hm.onAfterRender = a2cOff; scene.add(Hm); t.hi.push(Hm);
+      Hm.castShadow = true; Hm.receiveShadow = true; Hm.visible = false; Hm.onBeforeRender = a2cOn; Hm.onAfterRender = a2cOff; Hm.userData.noProbe = true; scene.add(Hm); t.hi.push(Hm);
     }
   }
   return count;

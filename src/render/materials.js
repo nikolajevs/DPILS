@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { STATE } from '../core/state.js';
 import { U, hook } from './renderer.js';
+import { PU } from './cityprobe.js';
 
 /* ---------- materials ---------- */
 // vertex colours are given in sRGB: they are made linear as they are read. Since three.js r15x vColor is a vec4 and
@@ -30,9 +31,10 @@ const FACADE_RELIEF = 3.0;   // strength of the facade relief (slope per unit of
 function facadeMaterial() {
   const m = std({ roughness: 0.9, metalness: 0 }, 'facade', s => {
     s.uniforms.uAtlas = { value: STATE.facTex }; s.uniforms.uMask = { value: STATE.facMask }; s.uniforms.uNight = U.night; s.uniforms.uLit = U.lit; s.uniforms.uTime = U.time;
+    Object.assign(s.uniforms, PU);   // the city cubes: the glass mirrors the street, not the filtered sky
     s.vertexShader = 'attribute vec2 aUv; attribute vec3 aInfo; attribute vec3 aTint;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint; varying float vWy;\n' +
       s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvCellUv = aUv; vInfo = aInfo; vTint = pow(aTint, vec3(2.2)); vWy = (modelMatrix * vec4(transformed, 1.0)).y;');
-    s.fragmentShader = 'uniform sampler2D uAtlas; uniform sampler2D uMask; uniform float uNight; uniform float uLit; uniform float uTime;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint; varying float vWy;\n' + SAMPLE_GLSL +
+    s.fragmentShader = 'uniform sampler2D uAtlas; uniform sampler2D uMask; uniform float uNight; uniform float uLit; uniform float uTime;\nuniform samplerCube uProbeA; uniform samplerCube uProbeB; uniform float uProbeMix; uniform float uProbeOn;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint; varying float vWy;\n' + SAMPLE_GLSL +
       s.fragmentShader.replace('#include <map_fragment>', `
         vec2 dX = dFdx(vCellUv), dY = dFdy(vCellUv);
         float row = vInfo.x, sd = vInfo.y / 255.0, fl = vInfo.z;
@@ -64,6 +66,15 @@ function facadeMaterial() {
         diffuseColor.rgb = tcol * mix(vec3(1.0), vTint, fm.r);
         diffuseColor.rgb *= mix(0.55, 1.0, smoothstep(0.0, 2.4, vWy));
       `).replace('#include <roughnessmap_fragment>', 'float roughnessFactor = mix(roughness, 0.06, fm.g);')
+        .replace('#include <lights_fragment_maps>', THREE.ShaderChunk.lights_fragment_maps.replace('radiance += iblRadiance;', 'radiance += iblRadiance * (1.0 - fm.g * uProbeOn);') + `
+#if defined( USE_ENVMAP ) && defined( RE_IndirectSpecular )
+        if (uProbeOn > 0.01 && fm.g > 0.01) {   // where the probes reach, the glass takes its mirror from the city cubes
+          vec3 wn = normalize(geometryNormal * mat3(viewMatrix));
+          vec3 wp = cameraPosition - vViewPosition * mat3(viewMatrix);
+          vec3 Rw = reflect(normalize(wp - cameraPosition), wn);
+          radiance += mix(textureCube(uProbeA, Rw).rgb, textureCube(uProbeB, Rw).rgb, uProbeMix) * fm.g * uProbeOn;
+        }
+#endif`)
         .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         {   // relief from the atlas itself: the grey of the colour atlas is the height (mortar, joints, frames and trim sit lower), the slope is
             // the difference of two atlas samples, laid on a tangent frame taken from the wall's uv; none on glass, fading out with distance

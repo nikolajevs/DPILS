@@ -63,7 +63,7 @@ const trails = Array.from({ length: TR_MAX }, () => {
   geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TR_N * 6), 3).setUsage(THREE.DynamicDrawUsage));
   geo.setAttribute('aT', new THREE.BufferAttribute(new Float32Array(TR_N * 6), 3).setUsage(THREE.DynamicDrawUsage));
   for (let i = 0; i < TR_N - 1; i++) { const a = i * 2; ix.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } geo.setIndex(ix);
-  const mesh = new THREE.Mesh(geo, trailMat); mesh.frustumCulled = false; mesh.visible = false; mesh.renderOrder = 1; scene.add(mesh);
+  const mesh = new THREE.Mesh(geo, trailMat); mesh.frustumCulled = false; mesh.visible = false; mesh.renderOrder = 1; mesh.userData.noProbe = true; scene.add(mesh);
   return { mesh, geo, used: false };
 });
 function freeTrail(t) { if (t) { t.used = false; t.mesh.visible = false; } }
@@ -94,7 +94,7 @@ const SPOON_MAX = 6, spoonMat = worldSpace(new THREE.MeshLambertMaterial({ color
 const spoonLong = new THREE.BoxGeometry(0.016, 0.075, 0.0022).translate(0, -0.0375, 0), spoonHead = new THREE.BoxGeometry(0.016, 0.024, 0.0022).translate(0, 0.012, 0);
 const spoons = Array.from({ length: SPOON_MAX }, () => {
   const g = new THREE.Group(), a = new THREE.Mesh(spoonLong, spoonMat), b = new THREE.Mesh(spoonHead, spoonMat);
-  b.rotation.x = 1.25; g.add(a, b); g.visible = false; scene.add(g);
+  b.rotation.x = 1.25; g.add(a, b); g.visible = false; g.userData.noProbe = true; scene.add(g);
   return { g, on: false, p: [0, 0, 0], v: [0, 0, 0], ax: new THREE.Vector3(), w: 0, t: 0, rest: false };
 });
 function popSpoon(p, v) {
@@ -126,7 +126,7 @@ function tickSpoons(dt) {
 function addNade(m, from = null) {
   const model = flyNade();
   const mesh = model || new THREE.Mesh(GEO, MAT); if (!model) mesh.scale.setScalar(FLY_S); mesh.position.set(m.p[0], m.p[1], m.p[2]);
-  mesh.quaternion.setFromAxisAngle(V.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize(), rnd(0, 6.283)); scene.add(mesh);
+  mesh.quaternion.setFromAxisAngle(V.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize(), rnd(0, 6.283)); mesh.userData.noProbe = true; scene.add(mesh);
   const trail = trails.find(t => !t.used) || null; if (trail) trail.used = true;
   list.set(m.id, { mesh, model: !!model, p: m.p.slice(), v: m.v.slice(), age: 0, w: rnd(10, 15), trail, hist: [], ta: 0, fz: 0, by: m.by, off: from ? [from.x - m.p[0], from.y - m.p[1], from.z - m.p[2]] : null });
   popSpoon(from ? [from.x, from.y, from.z] : m.p, m.v);
@@ -217,7 +217,7 @@ function cloud(geo, mat, max, order) {
   const aP = new THREE.InstancedBufferAttribute(new Float32Array(max * 4), 4); aP.setUsage(THREE.DynamicDrawUsage); geo.setAttribute('aP', aP);
   const mesh = new THREE.InstancedMesh(geo, mat, max); mesh.count = 0; mesh.frustumCulled = false; mesh.renderOrder = order;
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); mesh.setColorAt(0, new THREE.Color(1, 1, 1)); mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);   // allocates the colours
-  scene.add(mesh);
+  mesh.userData.noProbe = true; scene.add(mesh);
   return { mesh, aP, list: [], free: Array.from({ length: max }, () => ({})) };
 }
 const smokeMat = particleMat(new THREE.MeshLambertMaterial({ map: SMOKE_TEX, transparent: true, depthWrite: false }), 'nade-smoke');
@@ -518,7 +518,7 @@ beam.renderOrder = 5;
 const touch = new THREE.Mesh(new THREE.RingGeometry(0.17, 0.24, 28).rotateX(-Math.PI / 2), worldSpace(new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.85, depthWrite: false, fog: false })));
 touch.renderOrder = 4;
 const aimGroup = new THREE.Group(); aimGroup.add(arcGhost, arcLine, disc, beam, touch); aimGroup.visible = false;
-aimGroup.traverse(o => { o.frustumCulled = false; }); scene.add(aimGroup);
+aimGroup.traverse(o => { o.frustumCulled = false; }); aimGroup.userData.noProbe = true; scene.add(aimGroup);
 const AIM_COLD = new THREE.Color(1, 0.66, 0.2), AIM_HOT = new THREE.Color(1, 0.34, 0.07);
 let discAt = [1e9, 0, 0];
 // p, v: where the grenade leaves the hand and how fast (as the server will fly it); power 0…1 warms the colour; from: where

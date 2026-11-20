@@ -5,6 +5,7 @@ import { lampsOn } from '../world/lamps.js';
 import { lmNight } from '../landmarks/index.js';
 import { matGold } from '../world/data.js';
 import { allMats } from './materials.js';
+import { probeQuality, probeTime } from './cityprobe.js';
 import { envScene, envSky, pmrem, sky } from '../world/terrain.js';
 import { LIGHTDIR, MAXTEX, U, WEAK_GPU, hemi, renderer, scene, sun } from './renderer.js';
 import { lin } from '../core/util.js';
@@ -39,6 +40,7 @@ function setTime(i) {
   hemi.intensity = T.hemi * Math.PI;
   renderer.toneMappingExposure = T.exp;
   U.night.value = i === 2 ? 1 : i === 1 ? 0.8 : 0; U.lit.value = T.lit; lmNight(U.night.value);
+  probeTime(i);   // the city cubes of this time of day, shot once the city stands (src/render/cityprobe.js)
   // the environment of each time of day is filtered once (the GGX filter of three.js is costly on weak GPUs) and kept
   if (!ENV[i]) ENV[i] = pmrem.fromScene(envScene, 0, 0.1, 100);
   STATE.envRT = ENV[i]; scene.environment = STATE.envRT.texture;
@@ -82,6 +84,7 @@ function setQuality(i) {
   if (renderer.shadowMap.enabled !== want || sun.castShadow !== want) { renderer.shadowMap.enabled = want; sun.castShadow = want; for (const m of allMats) m.needsUpdate = true; matGold && (matGold.needsUpdate = true); }
   try { localStorage.setItem('dpils-quality2', String(i)); } catch (e) {}
   resize(); STATE.lodTimer = 0; STATE.shadowDirty = true;
+  probeQuality(i);   // the probes live on «высокая» and «средняя» only
   for (const f of qWatch) f();
 }
 function setQualityMode(m) {   // 'auto' or the index of a fixed level, 0…QUALITY.length−1
