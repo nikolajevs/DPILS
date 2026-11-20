@@ -3,27 +3,73 @@
 import { NADE, bulletDrop, segToSegment } from './combat.mjs';
 export function makePhysics(buildingAt, ground) {
   // how far from o along d (unit) a shot flies before the ground, a hill slope or a roof line stops it; len if it does
-  // not. The scan starts at 0.3 m and steps 0.5 m through the first three metres, so a wall the shooter leans on stops
-  // the shot too (a 2 m start let point-blank walls and corner clips through); beyond that the step widens to 1.5 m.
-  // Once a step is blocked, the wall is bisected to ~2 cm, so a hit just in front of the wall counts and one just behind
-  // it does not (the grace is HIT.grace in combat.mjs). An origin already inside stone returns 0: the shot dies there.
-  // v (m/s), when given, bends the path down by the bullet's gravity (combat.mjs bulletDrop): the scan follows the same
-  // arc the bullet flies, so a long shot meets the ground sooner than the straight line would. Sight lines pass no v.
-  function freePath(o, d, len, v) {
+  // not. The scan steps 0.2 m all the way (the old 1.5 m coarse step jumped clean over a half-metre shed at distance,
+  // and a wall the shooter leans on must stop the shot too); 0.2 m is the smallest penetration budget, so no punchable
+  // wall is skipped. Once a step is blocked, the face is bisected to ~3 mm, so a hit just in front of the wall counts
+  // and one just behind it does not (the grace is HIT.grace in combat.mjs). An origin already inside stone returns 0:
+  // the shot dies there. The samples are grid lookups (world.mjs), so the fine step costs little.
+  // v (m/s), when given, bends the path down by the bullet's gravity and drag (combat.mjs bulletDrop): the scan follows
+  // the same arc the bullet flies, so a long shot meets the ground sooner than the straight line would. Sight lines and
+  // blast rays pass no v and no budget: for them any wall is solid.
+  // pen (m, shotPath only): the weapon's penetration budget. A building is not a solid column — the chord the arc cuts
+  // through its outline is measured (walk the contour until buildingAt lets go), and a chord under the budget is punched
+  // through: the bullet flies on, its speed cut by (1 − chords/pen). Too thick a chord dies at the entry face; the ground
+  // always stops. Returns { dist, spent, walls: [{ at, f }] } — at: the exit face, f: the speed factor left after it.
+  function scan(o, d, len, v, k, pen) {
+    const walls = []; let spent = 0, budget = pen || 0;
     const block = t => {
-      const x = o[0] + d[0] * t, y = o[1] + d[1] * t - (v ? bulletDrop(t, v) : 0), z = o[2] + d[2] * t, gr = ground(x, z);
-      if (y < gr) return true;   // the ground itself, a hill slope included
+      const x = o[0] + d[0] * t, y = o[1] + d[1] * t - (v ? bulletDrop(t, v, k) : 0), z = o[2] + d[2] * t, gr = ground(x, z);
+      if (y < gr) return 1;   // the ground itself, a hill slope included
       const b = buildingAt(x, z);
-      return !!(b && y < gr + (b.top || 12) - 1);
+      return (b && y < gr + (b.top || 12) - 1) ? 2 : 0;
     };
-    if (block(0)) return 0;
-    for (let t = 0.3, step = 0.5; t < len; t += step) {
-      if (!block(t)) { if (t >= 3) step = 1.5; continue; }
-      let lo = Math.max(0, t - step), hi = t;
+    if (block(0)) return { dist: 0, spent, walls };
+    let prev = 0, t = 0.2;
+    while (t < len) {
+      const bl = block(t);
+      if (!bl) { prev = t; t += 0.2; continue; }
+      let lo = prev, hi = t;
       for (let i = 0; i < 6; i++) { const m = (lo + hi) / 2; if (block(m)) hi = m; else lo = m; }
-      return hi;
+      if (bl === 1 || !budget) return { dist: hi, spent, walls };   // the ground, or no budget: dies at the face
+      // the chord: walk the arc through the outline until it lets go (a touching neighbour is one thick wall)
+      let exit = -1, gHit = -1;
+      for (let s = hi + 0.25; s < len; s += 0.25) {
+        const b2 = block(s);
+        if (b2 === 1) { gHit = s; break; }
+        if (!b2) { exit = s; break; }
+      }
+      if (gHit >= 0) {   // the ground catches the arc inside the outline
+        let lo2 = gHit - 0.25, hi2 = gHit;
+        for (let i = 0; i < 6; i++) { const m = (lo2 + hi2) / 2; if (block(m) === 1) hi2 = m; else lo2 = m; }
+        return { dist: hi2, spent, walls };
+      }
+      if (exit < 0) return { dist: hi, spent, walls };   // the outline holds past the range: no confirmed exit, no punch
+      let lo2 = exit - 0.25, hi2 = exit;
+      for (let i = 0; i < 6; i++) { const m = (lo2 + hi2) / 2; if (block(m)) lo2 = m; else hi2 = m; }
+      const chord = hi2 - hi;
+      if (chord >= budget - 1e-6) return { dist: hi, spent, walls };   // too thick: the bullet dies at the entry face
+      spent += chord; budget -= chord;
+      walls.push({ at: hi2, f: 1 - spent / pen });
+      prev = hi2; t = hi2 + 0.2;   // out of the wall: scan on, the budget carries to the next house
     }
-    return len;
+    return { dist: len, spent, walls };
+  }
+  const freePath = (o, d, len, v) => scan(o, d, len, v, 0, 0).dist;
+  const shotPath = (o, d, len, v, k, pen) => scan(o, d, len, v, k || 0, pen || 0);
+  // the first edge of the outline r the segment a→b crosses: { t, x, z, nx, nz } (the normal faces the motion), or null
+  function ringHit(r, ax, az, bx, bz) {
+    const dx = bx - ax, dz = bz - az; let best = null;
+    for (let i = 0, j = r.length - 2; i < r.length; j = i, i += 2) {
+      const cx = r[j], cz = r[j + 1], ex = r[i] - cx, ez = r[i + 1] - cz;
+      const den = dx * ez - dz * ex; if (Math.abs(den) < 1e-9) continue;
+      const wx = cx - ax, wz = cz - az;
+      const t = (wx * ez - wz * ex) / den, s = (wx * dz - wz * dx) / den;
+      if (t < 0 || t > 1 || s < 0 || s > 1 || (best && t >= best.t)) continue;
+      const L = Math.hypot(ex, ez); let nx = ez / L, nz = -ex / L;
+      if (nx * dx + nz * dz > 0) { nx = -nx; nz = -nz; }
+      best = { t, x: ax + dx * t, z: az + dz * t, nx, nz };
+    }
+    return best;
   }
   // one step of a grenade n = { p: [x, y, z], v: [vx, vy, vz] }: gravity, bounces on the ground, the roofs and the walls of
   // houses. On a slope the bounce reflects about the ground's normal and the settled grenade rolls downhill, so a rampart
@@ -44,11 +90,23 @@ export function makePhysics(buildingAt, ground) {
           y = top + 0.1;
           if (n.v[1] < 0) { const sp = -n.v[1]; n.v[1] *= -0.35; n.v[0] *= 0.8; n.v[2] *= 0.8; if (sp > 1.2) n.bounce = { sp, kind: 'roof' }; if (Math.abs(n.v[1]) < 0.8) n.v[1] = 0; }
         }
-      } else {   // hits a wall: the axis that leads into the house is turned back
-        let sp;
-        if (!buildingAt(px, z)) { x = px; sp = Math.abs(n.v[0]); n.v[0] *= -0.4; }
-        else if (!buildingAt(x, pz)) { z = pz; sp = Math.abs(n.v[2]); n.v[2] *= -0.4; }
-        else { x = px; z = pz; sp = Math.hypot(n.v[0], n.v[2]); n.v[0] *= -0.4; n.v[2] *= -0.4; }
+      } else {   // hits a wall: reflect about the normal of the edge actually crossed (the bastion, the diagonal street),
+        // not about the world axes — the normal takes 0.4, the slide along the face keeps 0.7, as the ground bounce does
+        let sp = 0;
+        const h = b.ring && !buildingAt(px, pz) ? ringHit(b.ring, px, pz, x, z) : null;
+        if (h) {
+          const vn = n.v[0] * h.nx + n.v[2] * h.nz;
+          if (vn < 0) {
+            sp = -vn;
+            const tx = n.v[0] - vn * h.nx, tz = n.v[2] - vn * h.nz;
+            n.v[0] = tx * 0.7 - 0.4 * vn * h.nx; n.v[2] = tz * 0.7 - 0.4 * vn * h.nz;
+            x = h.x + h.nx * 0.03; z = h.z + h.nz * 0.03;   // stand it just off the face, outside
+          } else { x = px; z = pz; sp = Math.hypot(n.v[0], n.v[2]); n.v[0] *= -0.4; n.v[2] *= -0.4; }
+        } else {   // already inside (a fast step jumped the face) or a vertex graze: the old axis turn
+          if (!buildingAt(px, z)) { x = px; sp = Math.abs(n.v[0]); n.v[0] *= -0.4; }
+          else if (!buildingAt(x, pz)) { z = pz; sp = Math.abs(n.v[2]); n.v[2] *= -0.4; }
+          else { x = px; z = pz; sp = Math.hypot(n.v[0], n.v[2]); n.v[0] *= -0.4; n.v[2] *= -0.4; }
+        }
         if (sp > 1.2) n.bounce = { sp, kind: 'wall' };
       }
     } else if (y < gr + 0.12) {
@@ -91,5 +149,5 @@ export function makePhysics(buildingAt, ground) {
   }
   // where a person can stand: no house, not in the river, a pond or a moat (the ground more than two metres under the square)
   const walkable = (x, z) => !buildingAt(x, z) && ground(x, z) > -2;
-  return { freePath, stepNade, walkable };
+  return { freePath, shotPath, stepNade, walkable };
 }

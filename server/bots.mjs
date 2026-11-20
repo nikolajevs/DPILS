@@ -100,7 +100,7 @@ export function createBrain(g) {
     let aimYaw = p.yaw, aimPitch = 0, dist = 0;
     if (q && b.target) {
       b.path = null;   // after the fight a new route from the new place
-      const dx = q.x - p.x, dz = q.z - p.z; dist = Math.hypot(dx, dz); aimYaw = Math.atan2(-dx, -dz); aimPitch = Math.atan2((q.y - 0.4) - p.y + bulletDrop(dist, (g.WEAPONS[p.wep] || {}).vel || 560), dist);   // the barrel looks above the target by the bullet's drop
+      const dx = q.x - p.x, dz = q.z - p.z; dist = Math.hypot(dx, dz); aimYaw = Math.atan2(-dx, -dz); aimPitch = Math.atan2((q.y - 0.4) - p.y + bulletDrop(dist, (g.WEAPONS[p.wep] || {}).vel || 560, (g.WEAPONS[p.wep] || {}).drag || 0), dist);   // the barrel looks above the target by the bullet's drop
       if (b.retreatUntil > now) { walk(p, p.x - dx, p.z - dz, speed, dt); }   // away from the enemy
       else {
         const want = p.wep === 1 ? 8 : p.wep === 2 ? 90 : 28;   // the distance the weapon likes
@@ -140,7 +140,7 @@ export function createBrain(g) {
     if (now < b.pauseUntil || now < b.nextShot) return;
     const W = g.WEAPONS[w], aimY = q.y - (Math.random() < L.head ? HIT.headDrop : 0.56 * (q.eye / 1.7));   // the head centre, otherwise the chest (lower on a crouched target)
     const dx = q.x - p.x, dz = q.z - p.z, dy2 = aimY - p.y, d3 = Math.hypot(dx, dy2, dz), sig = L.sigma * (b.moving ? 1.3 : 1) * (w === 2 ? 0.5 : 1) * (1 + dist / 150);   // the hit is judged at the click (the bullet only delays the damage), so no lead is needed — but the bullet falls, so the aim is lifted by its drop
-    const hold = bulletDrop(d3, W.vel || 560);   // the same arc the server flies (combat.mjs): aim this much above the target
+    const hold = bulletDrop(d3, W.vel || 560, W.drag || 0);   // the same arc the server flies (combat.mjs, drag included): aim this much above the target
     const rays = [];
     for (let i = 0; i < W.pellets; i++) {
       const e1 = gauss() * sig + (W.pellets > 1 ? gauss() * 0.03 : 0), e2 = gauss() * sig + (W.pellets > 1 ? gauss() * 0.03 : 0);

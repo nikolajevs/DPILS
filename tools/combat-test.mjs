@@ -11,15 +11,22 @@
    2e. The fall damage: the client reports the height it landed from, the server caps it by the drop it saw itself;
       a jump is free, a long fall kills, the spawn protection does not shield from one's own fall; a bot walks off
       an edge and falls for real (g.stepBots drives its think by the test clock), a slope is walked without damage.
+   2f. The wall chord (shotPath): a thin shed is punched through by the weapon's budget, the speed cut by the chord
+      spent; a thick wall stays solid; the budget carries across houses; the kill carries the bullet's own vector.
+   2g. The grenade bounces about the normal of the outline edge it crossed (a 45° bastion face), not the world axes.
+   2h. The blast judges two rays, chest and head: one hidden is half the blow, both hidden is a bunker.
+   2i. The drag: v(s) = v0·e^(−k·s), damage as v²/v0², the longer flight time, one formula for server, page and bots.
    3. A real bot fight on a flat arena (12 s of real time): with the small hitboxes the bots must still see,
       shoot and kill each other. */
-import { BULLET_G, FALL, HIT, WEAPONS, NADE, W_FALL, bulletAt, bulletDir, bulletDrop, rayHit } from '../server/combat.mjs';
+import { BULLET_G, FALL, HIT, WEAPONS, NADE, W_FALL, bulletAt, bulletDir, bulletDrop, dragDist, dragTime, dragVel, rayHit } from '../server/combat.mjs';
 import { createGame, MUZZLE } from '../server/game.mjs';
 import { makePhysics } from '../server/physics.mjs';
 
 let pass = 0, fail = 0;
 const ok = (cond, name, extra = '') => { if (cond) { pass++; console.log('  ok   ' + name); } else { fail++; console.log('  FAIL ' + name + (extra ? ' вЂ” ' + extra : '')); } };
 const near = (a, b, eps) => Math.abs(a - b) <= eps;
+// one pellet's damage at s metres from the barrel: the drag takes v²/v0² = e^(−2k·s), a punched wall its factor squared
+const dmgAt = (w, s, zone = 0, f = 1) => Math.round((zone === 1 ? WEAPONS[w].head : zone === 2 ? WEAPONS[w].dmg * HIT.legMul : WEAPONS[w].dmg) * Math.exp(-2 * (WEAPONS[w].drag || 0) * s) * f * f);
 
 /* ---------- 1. the geometry ---------- */
 console.log('hitbox geometry (rayHit):');
@@ -74,14 +81,17 @@ console.log('server rules (createGame, controlled clock):');
   const shootAt = (tx, ty, tz, w = 0) => { const n = A.all('hit').length; msg(A, { t: 'shoot', w, rays: [aim(tx, ty, tz)] }); clock += 120; g.stepBullets(); const h = A.all('hit'); return h.length > n ? h[h.length - 1] : null; };
   const hp = () => B.handle.player.hp;
 
+  const s20 = 20 - MUZZLE, dH = dmgAt(0, s20, 1), dB = dmgAt(0, s20), dL = dmgAt(0, s20, 2);
   let h = shootAt(0, 1.6, -20);
-  ok(h && h.head && h.zone === 1 && h.dmg === WEAPONS[0].head && hp() === 100 - WEAPONS[0].head, 'head shot: 40 damage', JSON.stringify(h));
+  ok(h && h.head && h.zone === 1 && h.dmg === dH && hp() === 100 - dH, 'head shot: 40 at the muzzle, the drag takes its share at 20 m', JSON.stringify(h));
   h = shootAt(0, 1.1, -20);
-  ok(h && !h.head && h.dmg === WEAPONS[0].dmg && hp() === 100 - 40 - 22, 'torso shot: 22 damage', JSON.stringify(h));
+  ok(h && !h.head && h.dmg === dB && hp() === 100 - dH - dB, 'torso shot: 22 at the muzzle, less downrange', JSON.stringify(h));
   h = shootAt(HIT.legOff, 0.4, -20);
-  ok(h && h.zone === 2 && h.dmg === Math.round(WEAPONS[0].dmg * HIT.legMul) && hp() === 100 - 40 - 22 - 17, 'leg shot: 75 % of the body damage', JSON.stringify(h));
-  ok(shootAt(0.45, 1.1, -20) === null && hp() === 21, '0.45 m beside the body misses');
+  ok(h && h.zone === 2 && h.dmg === dL && hp() === 100 - dH - dB - dL, 'leg shot: 75 % of the body damage', JSON.stringify(h));
+  ok(shootAt(0.45, 1.1, -20) === null && hp() === 100 - dH - dB - dL, '0.45 m beside the body misses');
   ok(shootAt(0, 0.4, -20) === null, 'between the legs misses');
+  h = shootAt(0, 1.1, -20);
+  ok(h && !h.kill && hp() === 100 - dH - 2 * dB - dL, 'the drag made the rifle one blow weaker at 20 m: the fourth leaves hp');
   h = shootAt(0, 1.1, -20);
   ok(h && h.kill, 'the killing blow is marked');
   ok(B.all('kill').some(m => m.victim === bid && !m.head), 'the kill went to everybody, not a headshot');
@@ -213,7 +223,8 @@ console.log('server rules (createGame, controlled clock):');
   msg(B, { t: 'state', x: 3, y: 1.7, z: -20, yaw: 0, pitch: 0 });
   clock = t0 + 200;   // the shot looks back to t0 + 50: the target stood at x = 1.5
   let h = two(aim(1.5, 1.1, -20), aim(3, 1.1, -20));
-  ok(h && h.dmg === WEAPONS[0].dmg && B.handle.player.hp === 100 - WEAPONS[0].dmg, 'only the ray at the rewound position hits, the one at the current position misses', JSON.stringify(h));
+  const dLag = dmgAt(0, Math.hypot(1.5, 0.6, 20) - MUZZLE);
+  ok(h && h.dmg === dLag && B.handle.player.hp === 100 - dLag, 'only the ray at the rewound position hits, the one at the current position misses', JSON.stringify(h));
   // the eye height is rewound too: the target crouched back then, stands now
   const t1 = clock;
   msg(B, { t: 'state', x: 3, y: 1.1, z: -20, h: 1.1, yaw: 0, pitch: 0 });
@@ -221,7 +232,7 @@ console.log('server rules (createGame, controlled clock):');
   msg(B, { t: 'state', x: 3, y: 1.7, z: -20, h: 1.7, yaw: 0, pitch: 0 });
   clock = t1 + 200;   // back then the eye was at ~1.4: the head centre at ~1.3
   h = two(aim(3, 1.3, -20), aim(3, 1.6, -20));
-  ok(h && h.head && h.dmg === WEAPONS[0].head, 'the crouch of 150 ms ago is honoured: the head at 1.3 m hits, the standing head height of now misses', JSON.stringify(h));
+  ok(h && h.head && h.dmg === dmgAt(0, Math.hypot(3, 0.4, 20) - MUZZLE, 1), 'the crouch of 150 ms ago is honoured: the head at 1.3 m hits, the standing head height of now misses', JSON.stringify(h));
   g.stop();
 }
 {
@@ -239,8 +250,8 @@ console.log('server rules (createGame, controlled clock):');
   msg(A, { t: 'shoot', w: 1, rays: Array.from({ length: W.pellets }, () => [d[0], d[1], d[2], +l.toFixed(2), bid]) });
   clock += 120; g.stepBullets();   // let the pellets fly the 20 m and land
   const h = A.last('hit');
-  const want = Math.round(W.pellets * W.dmg * (1 - W.falloff * l / W.range));
-  ok(h && h.dmg === want && B.handle.player.hp === 100 - want, `eight pellets at 20 m: ${want} damage`, JSON.stringify(h));
+  const want = Math.round(W.pellets * W.dmg * Math.exp(-2 * W.drag * (l - MUZZLE)));
+  ok(h && h.dmg === want && B.handle.player.hp === 100 - want, `eight pellets at 20 m: ${want} damage (the drag replaces the linear falloff)`, JSON.stringify(h));
   g.stop();
 }
 {
@@ -260,7 +271,8 @@ console.log('server rules (createGame, controlled clock):');
   ok(A.all('hit').length === 0 && A.all('bhit').length === 0, 'halfway (50 ms) the bullet is still in the air');
   clock += 60; g.stepBullets();   // past the 100 ms of flight
   const h = A.last('hit'), b = A.last('bhit');
-  ok(h && h.dmg === WEAPONS[0].dmg && B.handle.player.hp === 100 - WEAPONS[0].dmg, 'the damage lands when the bullet arrives', JSON.stringify(h));
+  const dFly = dmgAt(0, L - MUZZLE);
+  ok(h && h.dmg === dFly && B.handle.player.hp === 100 - dFly, 'the damage lands when the bullet arrives, weakened by the drag', JSON.stringify(h));
   ok(b && near(b.d, 56 - MUZZLE, 0.5) && b.v === B.handle.player.id, 'bhit reports the body at ~55.4 m from the barrel', JSON.stringify(b));
   g.stop();
 }
@@ -296,7 +308,7 @@ console.log('bullet drop (gravity, holdover, determinism):');
   const b = fly(aim(0, 1.1 + hold, -400), 2, 600);
   ok(b && b.v === bid && near(b.d, 400, 1) && near(b.at[1], 1.1, 0.06), 'the holdover aim hits the chest at 400 m', JSON.stringify(b));
   const h = A.last('hit');
-  ok(h && h.dmg === WEAPONS[2].dmg, 'the damage is the sniper body damage', JSON.stringify(h));
+  ok(h && h.dmg === dmgAt(2, 400 - MUZZLE), 'the sniper body damage at 400 m: ~90 % left after the drag', JSON.stringify(h));
   clock += 1400;
   const hb = fly(aim(0, 1.6 + bulletDrop(400, 820), -400), 2, 600);
   ok(hb && hb.zone === 1 && A.last('hit').kill, 'the head holdover at 400 m kills', JSON.stringify(hb));
@@ -316,7 +328,7 @@ console.log('bullet drop (gravity, holdover, determinism):');
   const pitch = Math.asin((dy2 + hold) / d3), cp = Math.cos(pitch);
   msg(A, { t: 'shoot', w: 2, rays: [[0, Math.sin(pitch), -cp]] });
   clock += 300; g.stepBullets();
-  ok(A.last('hit') && A.last('hit').dmg === WEAPONS[2].dmg, 'the bots\' holdover formula lands the 130 m chest shot', JSON.stringify(A.last('hit')));
+  ok(A.last('hit') && A.last('hit').dmg === dmgAt(2, d3 - MUZZLE), 'the bots\' holdover formula (drag included) lands the 130 m chest shot', JSON.stringify(A.last('hit')));
   g.stop();
 }
 {
@@ -664,6 +676,140 @@ console.log('fall damage (fall):');
   bot.bot.path = [[6, 0]]; bot.bot.pi = 0; bot.bot.wpAt = clock;
   for (let i = 0; i < 60; i++) { clock += 50; g.stepBots(0.05); }
   ok(bot.hp === 100, 'a slope is walked down without fall damage', String(bot.hp));
+  g.stop();
+}
+
+/* ---------- 2f. the wall chord: thin walls are punched through, thick ones stay solid ---------- */
+console.log('wall chord (shotPath penetration):');
+{
+  // a 0.3 m shed at z −10…−10.3: the rifle (budget 0.45) punches it, the shotgun (0) does not, the sniper (1.2) spends less
+  const shed = (x, z) => (Math.abs(x) < 3 && z > -10.3 && z < -10) ? { top: 12 } : null;
+  const P = makePhysics(shed, () => 0);
+  const sp = P.shotPath([0, 1.7, 0], [0, 0, -1], 160, 560, 0.0012, 0.45);
+  ok(sp.dist === 160 && sp.walls.length === 1 && near(sp.walls[0].f, 1 - 0.3 / 0.45, 0.03), 'the rifle punches the 0.3 m shed: the chord is spent, the factor left', JSON.stringify(sp.walls));
+  ok(near(sp.walls[0].at, 10.3, 0.05), 'the exit face is the far side of the shed', String(sp.walls[0] && sp.walls[0].at));
+  const sp0 = P.shotPath([0, 1.7, 0], [0, 0, -1], 160, 380, 0.01, 0);
+  ok(near(sp0.dist, 10, 0.05) && !sp0.walls.length, 'the shotgun (budget 0) dies at the entry face', String(sp0.dist));
+  const sp2 = P.shotPath([0, 1.7, 0], [0, 0, -1], 160, 820, 0.00013, 1.2);
+  ok(sp2.dist === 160 && near(sp2.walls[0].f, 1 - 0.3 / 1.2, 0.03), 'the sniper spends less of its bigger budget', JSON.stringify(sp2.walls));
+  ok(near(P.freePath([0, 1.7, 0], [0, 0, -1], 160), 10, 0.05), 'the sight line (no budget) still sees a solid wall');
+  // a 0.6 m wall is past the rifle budget, 0.7 m past the machine gun's — both die at the face; 0.5 m the MG punches
+  const thick = (x, z) => (Math.abs(x) < 3 && z > -10.6 && z < -10) ? { top: 12 } : null;
+  ok(near(makePhysics(thick, () => 0).shotPath([0, 1.7, 0], [0, 0, -1], 160, 560, 0.0012, 0.45).dist, 10, 0.05), 'a 0.6 m wall is past the rifle budget: dies at the face');
+  const over = (x, z) => (Math.abs(x) < 3 && z > -10.7 && z < -10) ? { top: 12 } : null;
+  ok(near(makePhysics(over, () => 0).shotPath([0, 1.7, 0], [0, 0, -1], 140, 560, 0.001, 0.6).dist, 10, 0.05), 'a 0.7 m wall is past the machine gun budget too');
+  const half = (x, z) => (Math.abs(x) < 3 && z > -10.5 && z < -10) ? { top: 12 } : null;
+  const spm = makePhysics(half, () => 0).shotPath([0, 1.7, 0], [0, 0, -1], 140, 560, 0.001, 0.6);
+  ok(spm.dist === 140 && near(spm.walls[0].f, 1 - 0.5 / 0.6, 0.03), 'the machine gun punches 0.5 m of its 0.6 budget', JSON.stringify(spm.walls));
+  // the budget carries across two sheds: 0.2 + 0.2 = 0.4 of 0.45 — through both, barely; a third stops the bullet
+  const two = (x, z) => ((Math.abs(x) < 3 && z > -8.2 && z < -8) || (Math.abs(x) < 3 && z > -12.2 && z < -12)) ? { top: 12 } : null;
+  const spt = makePhysics(two, () => 0).shotPath([0, 1.7, 0], [0, 0, -1], 160, 560, 0.0012, 0.45);
+  ok(spt.dist === 160 && spt.walls.length === 2 && near(spt.walls[1].f, 1 - 0.4 / 0.45, 0.04), 'two thin sheds: the budget carries, the factors multiply down', JSON.stringify(spt.walls));
+}
+{
+  // the game: a target behind the shed is hit, weakly and later; the kill carries the bullet's own vector
+  let clock = 1e6;
+  const shed = (x, z) => (Math.abs(x) < 3 && z > -10.3 && z < -10) ? { top: 12 } : null;
+  const g = createGame({ world: flatWorld(shed), area: { cx: 0, cz: 0 }, now: () => clock, name: 'chord' });
+  const A = seat(g, conn()), B = seat(g, conn());
+  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -20, yaw: 0 });
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(B, { t: 'state', x: 0, y: 1.7, z: -20, yaw: 0, pitch: 0 });
+  const L = Math.hypot(0.6, 20), d = [0, -0.6 / L, -20 / L];
+  msg(A, { t: 'shoot', w: 0, rays: [d] });
+  const len = A.last('shot').rays[0][3];
+  ok(len > 30, 'the tracer flies through the shed: the downward aim ends on the ground far beyond, not at the shed face', String(len));
+  clock += 50; g.stepBullets();
+  ok(A.all('bhit').length === 0, 'at 50 ms the punched bullet is still in the air (the wall cut its speed)');
+  clock += 100; g.stepBullets();
+  const f = 1 - 0.3 / 0.45, want = dmgAt(0, 20 - MUZZLE, 0, f);
+  const h = A.last('hit'), bh = A.last('bhit');
+  ok(h && h.dmg === want && want > 0 && want < dmgAt(0, 20 - MUZZLE), `the target behind the shed takes the punched damage (${want})`, JSON.stringify(h));
+  ok(bh && bh.bd && near(Math.hypot(...bh.bd), 1, 0.01) && bh.bd[2] < -0.9, 'bhit carries the bullet tangent at the hit', JSON.stringify(bh && bh.bd));
+  ok(bh && bh.vf < 0.4 && bh.vf > 0.2, 'bhit carries the speed fraction left after drag and stone', String(bh && bh.vf));
+  const hu = B.last('hurt');
+  ok(hu && hu.bd && hu.vf != null, 'the hurt tells the victim the blow\'s vector too', JSON.stringify(hu && hu.bd));
+  // the kill: pre-damage the target, one sniper shot through the shed finishes it — the kill feed carries bd and zone
+  B.handle.player.hp = 5;
+  clock += 1400;
+  msg(A, { t: 'shoot', w: 2, rays: [d] });
+  clock += 300; g.stepBullets();
+  const kill = A.all('kill').find(m => m.victim === B.handle.player.id);
+  ok(kill && kill.bd && kill.zone === 0 && near(Math.hypot(...kill.bd), 1, 0.01), 'the kill carries the bullet vector and the zone for the ragdoll', JSON.stringify(kill && kill.bd));
+  g.stop();
+}
+
+/* ---------- 2g. the grenade bounces about the crossed edge's normal, not the world axes ---------- */
+console.log('grenade: the edge normal bounce:');
+{
+  // a 45° face: the diamond |x−2| + |z| < 1; a grenade along +x at z 0.2 meets the face (1,0)→(2,1)
+  const ring = new Float32Array([2, -1, 3, 0, 2, 1, 1, 0]);
+  const dia = (x, z) => (Math.abs(x - 2) + Math.abs(z) < 1) ? { top: 12, ring } : null;
+  const P = makePhysics(dia, () => 0);
+  const n = { p: [0, 1, 0.2], v: [10, 0, 0] };
+  let ev = null;
+  for (let i = 0; i < 30 && !ev; i++) { P.stepNade(n, 1 / 30, 18); if (n.bounce) ev = n.bounce; }
+  ok(ev && ev.kind === 'wall', 'the diagonal face reports a wall bounce', JSON.stringify(ev));
+  ok(n.v[2] > 2 && n.v[0] > 0, 'the bounce slides along the 45° face (+z), not back along −x', JSON.stringify(n.v));
+  ok(!dia(n.p[0], n.p[2]), 'the grenade stands outside the outline after the bounce', JSON.stringify(n.p));
+  // the normal takes 0.4, the tangent keeps 0.7: |v'| = sqrt((0.7·vt)² + (0.4·vn)²) of the 45° hit
+  ok(near(Math.hypot(n.v[0], n.v[2]), Math.hypot(0.7 * 7.071, 0.4 * 7.071), 0.35), 'the bounce keeps the agreed numbers (0.4 normal, 0.7 tangent)', String(Math.hypot(n.v[0], n.v[2])));
+}
+
+/* ---------- 2h. the blast judges two rays: chest and head ---------- */
+console.log('blast: two rays, chest and head:');
+{
+  // a low wall hides the chest but not the head: half the blow and half the push, not a bunker
+  let clock = 1e6;
+  const low = (x, z) => (Math.abs(x) < 4 && z > -5.5 && z < -5) ? { top: 2.2 } : null;   // solid under gr + 1.2 m: the chest ray (0.91…0.96 m there) is hidden, the head ray (1.40…1.50 m) passes over
+  const g = createGame({ world: flatWorld(low), area: { cx: 0, cz: 0 }, now: () => clock, name: 'cover' });
+  const A = seat(g, conn()), B = seat(g, conn());
+  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -6, yaw: 0 });
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(B, { t: 'state', x: 0, y: 1.7, z: -6, yaw: 0, pitch: 0 });
+  msg(A, { t: 'throw', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });
+  for (let i = 0; i < 90; i++) { clock += 1000 / 30; g.stepNades(); }
+  const d = Math.hypot(1.7 - 0.41 * 1.7 - 0.42, 6), want = Math.round(NADE.dmg * (1 - d / NADE.radius) * 0.5);
+  const hu = B.last('hurt');
+  ok(hu && hu.hp === 100 - want, `the corner hides the chest only: half the damage (${want})`, JSON.stringify(hu));
+  ok(B.last('push'), 'the half-covered target is still pushed');
+  g.stop();
+}
+
+/* ---------- 2i. the drag: v²/v0² damage, longer flight, one formula ---------- */
+console.log('bullet drag (v(s), damage, flight time):');
+{
+  ok(near(dragVel(160, 560, 0.0012), 560 * Math.exp(-0.0012 * 160), 1e-9), 'v(s) = v0·e^(−k·s) — the integral of v0/(1+k·v0·t)');
+  ok(near(dragDist(dragTime(100, 560, 0.0012), 560, 0.0012), 100, 1e-6), 'dragDist and dragTime are inverses');
+  ok(near(bulletDrop(20, 560), bulletDrop(20, 560, 0), 1e-12) && near(bulletDrop(20, 560, 0), 0.5 * BULLET_G * (20 / 560) ** 2, 1e-12), 'k = 0 keeps the old no-drag arc');
+  ok(bulletDrop(400, 820, 0.00013) > bulletDrop(400, 820), 'the drag lengthens the flight and deepens the drop');
+  const t = bulletDir([0, 0, -1], 400, 820, 0.00013);
+  ok(t[1] < -0.006 && near(Math.hypot(...t), 1, 1e-9), 'the tangent bends down by g·t(s)/v(s) and stays unit', JSON.stringify(t));
+  ok(near(Math.exp(-2 * WEAPONS[0].drag * 160), 0.68, 0.02), 'the rifle keeps ~68 % damage at its 160 m range');
+  ok(near(Math.exp(-2 * WEAPONS[1].drag * 45), 0.4, 0.02), 'the shotgun keeps ~40 % at 45 m, as the old falloff did');
+  ok(near(Math.exp(-2 * WEAPONS[3].drag * 90), 0.7, 0.02), 'the pistol keeps ~70 % at 90 m');
+  ok(near(Math.exp(-2 * WEAPONS[4].drag * 140), 0.75, 0.02), 'the machine gun keeps ~75 % at 140 m');
+}
+{
+  // the flight time: the 56 m rifle shot lands after ~102 ms now, not the 99 ms of the constant speed
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'dragtime' });
+  const A = seat(g, conn()), B = seat(g, conn());
+  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -56, yaw: 0 });
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(B, { t: 'state', x: 0, y: 1.7, z: -56, yaw: 0, pitch: 0 });
+  const L = Math.hypot(0.6, 56), d = [0, -0.6 / L, -56 / L];
+  msg(A, { t: 'shoot', w: 0, rays: [d] });
+  clock += 90; g.stepBullets();
+  ok(A.all('bhit').length === 0, 'at 90 ms the dragged bullet has not reached 56 m yet');
+  clock += 30; g.stepBullets();
+  ok(A.all('bhit').length === 1, 'by 120 ms it has');
   g.stop();
 }
 
