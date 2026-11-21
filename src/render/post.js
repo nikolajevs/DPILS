@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { STATE } from '../core/state.js';
 import { clock } from '../game/loop.js';
-import { QUALITY, TIMES, qi, timeI } from './lighting.js';
+import { QUALITY, TOD, qi, timeI } from './lighting.js';
 import { P } from '../game/player.js';
 import { treeTiles } from '../world/trees.js';
 import { tiles } from '../buildings/walls.js';
@@ -285,7 +285,7 @@ function renderFrame() {
   renderer.info.reset();
   updateProbes(camera.position.x, camera.position.z);   // the two nearest city cubes for the water and the glass
   if (!POST) { renderer.render(scene, camera); return; }
-  const q = QUALITY[qi], T = TIMES[timeI];
+  const q = QUALITY[qi], T = TOD;   // the light of this moment: a fixed time or the running day (lighting.js)
   renderer.getDrawingBufferSize(PXV); ppTargets(PXV.x, PXV.y, q.msaa);
   renderer.setRenderTarget(PP.rt); renderer.render(scene, camera);
   const th = Math.tan(camera.fov * Math.PI / 360); PROJ.set(camera.near, camera.far, th * camera.aspect, th);

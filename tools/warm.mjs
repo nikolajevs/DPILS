@@ -7,7 +7,7 @@
    loads the page, enters the free camera view (PERF.dyn off, P.fly on, HUD hidden) and answers on the same port:
 
      GET  /__warm/status          {ready, renderer, errs} — shots.js probes this and uses the warm page when ready
-     GET  /__warm/shot?t=0&x=..&z=..&h=..&tx=..&tz=..&th=..&fov=60[&w=1100&vh=700]   → JPEG of the view
+     GET  /__warm/shot?t=0|1|2|h<hour>&x=..&z=..&h=..&tx=..&tz=..&th=..&fov=60[&w=1100&vh=700]   → JPEG of the view
      GET  /__warm/errs            collected console errors/warnings since the last call (and clears them)
      POST /__warm/reload          reload the page (after changed data/src) and enter the free camera view again
      POST /__warm/eval            body: JS expression evaluated in the page, JSON result (for custom checks)
@@ -37,12 +37,12 @@ const waitCity = () => page.waitForFunction(() => window.__city, null, { timeout
 
 async function shot(q) {
   const n = k => +(q.get(k) || 0);
-  const t = n('t'), x = n('x'), z = n('z'), h = n('h'), tx = n('tx'), tz = n('tz'), th = n('th'), fov = n('fov') || 60;
+  const t = q.get('t') || '0', x = n('x'), z = n('z'), h = n('h'), tx = n('tx'), tz = n('tz'), th = n('th'), fov = n('fov') || 60;
   const w = n('w') || VW, vh = n('vh') || VH;
   await page.setViewportSize({ width: w, height: vh });
   await page.evaluate(([t, x, z, h, tx, tz, th, fov]) => {
     const c = window.__city, P = c.P, g = c.terrainH(tx, tz);
-    c.setTime(t); P.x = x; P.z = z; P.y = g + h; P.fly = true;
+    c.showTime(t); P.x = x; P.z = z; P.y = g + h; P.fly = true;
     const dx = tx - x, dz = tz - z;
     P.yaw = Math.atan2(-dx, -dz); P.pitch = Math.atan2(g + th - P.y, Math.hypot(dx, dz));
     c.camera.fov = fov; c.camera.updateProjectionMatrix();

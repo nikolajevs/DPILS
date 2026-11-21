@@ -17,6 +17,7 @@ import { addNade, blastGlow, boomNade, clearBlasts, clearNades, nadeSamples, tic
 import { KINDS, SLOT_SVG, bindInv, setItems, itemBack, itemTook, tickItems, renderInv, invTick, closeInv, toggleInv } from './inventory.js';
 import { terrainH } from '../world/terrain.js';
 import { camera, canvas, renderer, scene } from '../render/renderer.js';
+import { setCycle, setTime } from '../render/lighting.js';
 import { CH, addLine, openChat } from './chat.js';
 import { createVoice } from './voice.js';
 import { openLocal } from './local.js';
@@ -647,7 +648,7 @@ function respawn() {
 /* ---------- messages from the server ---------- */
 function onMsg(m) {
   switch (m.t) {
-    case 'hello': MP.ffa = m.mode === 'ffa'; document.body.classList.toggle('ffa', MP.ffa); if (MP.ffa) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team, e.char); document.body.dataset.team = m.team;
+    case 'hello': dayOf(m); MP.ffa = m.mode === 'ffa'; document.body.classList.toggle('ffa', MP.ffa); if (MP.ffa) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team, e.char); document.body.dataset.team = m.team;
       MP.arena = m.arena || null; clearFx(); clearBlasts(); setItems(m.items);
       for (const [id, a] of Object.entries(m.attach || {})) { const r = remotes.get(+id); if (r && Array.isArray(a)) { r.attach = a; if (r.av) a.forEach((k, w) => r.av.setAttach(w, k)); } } if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
       if (MP.local) feed('Тренировка с ботами: ' + MP.board.filter(e => e.bot).length + ', уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || '') + '»', 'sys'); break;
@@ -744,7 +745,13 @@ function showGame() {
   STATE.mp = true; MP.on = true; STATE.started = true; P.fly = false; document.body.classList.add('mp');
   $('start').hidden = true; $('hud').hidden = false; el('mpHud').hidden = false; $('cross').hidden = false; STATE.lodTimer = 0;
 }
-function join(local) {   // local: { bots, level, mode, arena } for the game against bots in the page, with no server
+/* The time of day of the game: the day of the server (hello.day — the share of it gone and its length, server/daycycle.mjs),
+   the same day in the training's «авто», or the fixed time of the training. A server without a clock leaves the sky as it is. */
+function dayOf(m) {
+  if (m.day && m.day.len > 0) setCycle(m.day.f, m.day.len);
+  else if (MP.local && MP.local.time != null && MP.local.time !== 'auto') setTime(+MP.local.time);
+}
+function join(local) {   // local: { bots, level, mode, arena, time } for the game against bots in the page, with no server
   if (!account()) { requireAccount(); return; }   // an account is mandatory for any game, the gate is already over the card
   const name = el('mpName').value.trim(), url = local ? 'local:' : serverUrl(), msg = el('mpMsg');
   try { localStorage.setItem('dpils.mp', JSON.stringify({ name, spawn: el('mpSpawn').value, team: el('mpTeam').value, char: el('mpChar').value })); } catch (e) {}
@@ -770,7 +777,7 @@ function initUi() {   // the fields of the player and of the training: once, whe
   if (!el('mpName').value) el('mpName').value = el('mpName').placeholder;
   const rs = el('mpRespawnAt'); rs.textContent = ''; for (const [v, t] of [['mate', 'Рядом с товарищем'], ['rand', 'Случайное место']].concat(PLACES.map((p, i) => [i, p[0]]))) { const o = document.createElement('option'); o.value = v; o.textContent = t; rs.append(o); }
   el('mpNoBoard').checked = !boardOn(); el('mpNoBoard').onchange = () => setBoardOn(!el('mpNoBoard').checked); initLeaders(() => (MP.on ? (MP.local ? '' : MP.url) : serverUrl()));
-  el('goPlay').onclick = () => join(); el('goTrain').onclick = () => { const o = { bots: +el('trBots').value, level: el('trLevel').value, mode: el('trMode').value, arena: el('trArena').value }; try { localStorage.setItem('dpils.train', JSON.stringify(o)); } catch (e) {} join(o); };
+  el('goPlay').onclick = () => join(); el('goTrain').onclick = () => { const o = { bots: +el('trBots').value, level: el('trLevel').value, mode: el('trMode').value, arena: el('trArena').value }; try { localStorage.setItem('dpils.train', JSON.stringify(o)); } catch (e) {} join({ ...o, time: el('trTime').value }); };   // the time of day is kept apart (lighting.js timePref)
   try { const t = JSON.parse(localStorage.getItem('dpils.train') || '{}'); for (const [k, id] of [['bots', 'trBots'], ['level', 'trLevel'], ['mode', 'trMode'], ['arena', 'trArena']]) if (t[k] != null && [...el(id).options].some(o => o.value === String(t[k]))) el(id).value = t[k]; } catch (e) {} el('mpRespawn').onclick = respawn; el('mpSpecCam').onclick = specCam; specCamUi(); el('mpLeave').onclick = () => location.reload(); el('mpOverBtn').onclick = () => location.reload();
   el('bLeave').onclick = () => location.reload();
 }

@@ -603,15 +603,12 @@ body.mp .bar { background: var(--glass); border-color: var(--glass-line); color:
 .choice.main span, .choice.main::after { color: inherit; opacity: .85; }
 .choice:disabled { cursor: progress; opacity: .55; }
 .choice.main:disabled { background: var(--line); color: var(--muted); box-shadow: none; opacity: 1; }
-.time-pick { display: flex; align-items: center; justify-content: space-between; gap: 12px; font: 500 13px/1.2 var(--f-body); color: var(--muted); }
 /* The Firefox browser hint on the start card (src/ui/start.js): quiet, dismissible for good */
 .browser-hint { display: flex; align-items: flex-start; gap: 8px; margin: 2px 0 0; padding: 8px 10px; border: 1px solid var(--line); border-left: 3px solid var(--brick); border-radius: 6px; background: var(--panel); font: 400 12.5px/1.45 var(--f-body); color: var(--muted); }
 .browser-hint[hidden] { display: none; }   /* display:flex would override the hidden attribute */
 .browser-hint b { color: var(--ink); font-weight: 600; }
 .browser-hint .bh-x { flex: none; margin: -2px -4px 0 0; padding: 2px 7px; border: 0; border-radius: 5px; background: none; color: var(--muted); font: 600 15px/1.2 var(--f-body); cursor: pointer; }
 .browser-hint .bh-x:hover { background: var(--line); color: var(--ink); }
-.time-pick select { font: 500 14px/1.3 var(--f-body); padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-solid); color: var(--ink); min-width: 132px; }
-.time-pick select:focus { outline: 2px solid var(--brick); outline-offset: 0; border-color: transparent; }
 .keys-box summary { cursor: pointer; font: 600 13px/1.4 var(--f-body); color: var(--ink); width: max-content; max-width: 100%; }
 .keys-box[open] .keys { margin-top: 10px; }
 .play { margin-top: 0; padding-top: 0; border-top: 0; gap: 12px; }
@@ -782,6 +779,7 @@ body.mp:not(:has(#view.locked)) .mp-sys { bottom: 64px; }   /* above the returne
 .lb-l { font: inherit; color: inherit; }
 .lb-2col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); gap: 10px; align-items: end; }
 .lobby input:not([type="checkbox"]), .lobby select { font: 500 14px/1.3 var(--f-body); padding: 9px 10px; border: 1px solid rgba(255, 255, 255, .16); border-radius: 8px; background: rgba(255, 255, 255, .07); color: #fff; min-width: 0; width: 100%; box-sizing: border-box; }
+.lobby select.sr-only { width: 1px; padding: 0; border: 0; }   /* the hidden selects under the segment buttons: not 100% wide, or they push the card sideways */
 .lobby select option { background: #141a1f; color: #fff; }
 .lobby input:focus, .lobby select:focus { outline: 2px solid var(--warn); outline-offset: 0; border-color: transparent; }
 .lobby input::placeholder { color: rgba(255, 255, 255, .35); }

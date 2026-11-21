@@ -16,7 +16,7 @@ import './ui/map.js';
 import { PP, renderFrame, warmUp } from './render/post.js';
 import { captureProbes, probeState } from './render/cityprobe.js';
 import { splitBigMeshes } from './render/chunks.js';
-import { QUALITY, TIMES, qi, qAuto, setQuality, setQualityMode, setTime, timeI } from './render/lighting.js';
+import { QUALITY, TIMES, dayInfo, qi, qAuto, relight, setCycle, setQuality, setQualityMode, setTime, setTimePref, timePref } from './render/lighting.js';
 import { P } from './game/player.js';
 import './ui/places.js';
 import { TX, buildTransit, setClock } from './transit/transit.js';
@@ -91,10 +91,8 @@ const step = (text, w, reported) => {
     let modelsF = 0, modelsStep = false;
     const models = loadModels(f => { modelsF = f; if (modelsStep) loading.part(f); });
     await step('Рисую фасады и крыши…', W.materials); await makeMaterials(); STATE.goldGB = new GB(false); await rest();
-    // time of day: the choice of the start card is kept in the browser; the first visit follows the theme of the page
-    let t0 = matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme !== 'light' || document.documentElement.dataset.theme === 'dark' ? 2 : 0;
-    try { const s = localStorage.getItem('dpils-time'); if (s != null) { const v = +s; if (Number.isInteger(v) && v >= 0 && v < TIMES.length) t0 = v; } } catch (e) {}
-    setTime(t0); await rest();
+    // time of day: the choice of the training, kept in the browser; «авто» (and the first visit) — the day of the server's clock
+    setTimePref(timePref(), true); await rest();
     setQuality(qi);
     await terrainInit();
     await step('Заливаю Даугаву и озёра…', W.ground); await buildGround();
@@ -105,7 +103,7 @@ const step = (text, w, reported) => {
     await step('Строю Дом Единства, «Латголу», университет и школы…', W.landmarks); await buildLandmarks();
     await step('Насыпаю валы и копаю рвы крепости…', W.fortress); await buildFortress();
     await groundDepth();   // the depth grids under the ground layers, now that all of them are drawn (src/world/ground.js)
-    await rest(); const lamps = await buildLamps(); setTime(timeI);
+    await rest(); const lamps = await buildLamps(); relight();
     await step('Сажаю деревья…', W.trees); const trees = await buildTrees();
     await step('Сажаю цветы в парках…', W.flora); await plantFlora();   // their files were asked for with the parks
     await step('Выпускаю трамваи и автобусы на линии…', W.transit); const tripsN = await buildTransit();
@@ -125,6 +123,6 @@ const step = (text, w, reported) => {
     loading.done('Готово: ' + BLD.length.toLocaleString('ru') + ' зданий, ' + LINES.length.toLocaleString('ru') + ' улиц и дорожек, ' + trees.toLocaleString('ru') + ' деревьев, ' + lamps.toLocaleString('ru') + ' фонарей' + (tripsN ? ', ' + tripsN.toLocaleString('ru') + ' рейсов в расписании' : '') + '.');
     $('view').classList.add('shown');
     enablePlay(); $('chTrain').focus();
-    window.__city = { PERF, ambProbe, ambStatus, statEvent, statsOf, MP, STATE, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, P, setTime, fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, setQualityMode, qualityMode: () => (qAuto ? 'auto' : qi), scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU, probeState };
+    window.__city = { PERF, ambProbe, ambStatus, statEvent, statsOf, MP, STATE, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, P, setTime, setCycle, dayInfo, showTime: t => (/^h/i.test(String(t)) ? setCycle(+String(t).slice(1) / 24, Infinity) : setTime(+t)), fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, setQualityMode, qualityMode: () => (qAuto ? 'auto' : qi), scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU, probeState };
   } catch (e) { console.error(e); loading.fail('Ошибка при сборке города: ' + e.message); }
 })();

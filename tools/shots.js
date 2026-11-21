@@ -3,7 +3,8 @@
    errors or warnings: the check of a change "in the browser" when no screen is at hand (a cloud session).
 
    Usage: node tools/shots.js <out dir> <time> <view> [<view> …]
-     time  0 day, 1 evening, 2 night (the time of day chosen on the start card)
+     time  0 day, 1 evening, 2 night (the fixed times of the training), or h<hour> — the server's day stopped at that
+           hour (0…24, e.g. h5.2 the dawn, h19 the sunset, h20.3 the blue dusk; src/render/lighting.js)
      view  name:x,z,h:tx,tz,th[:fov]
            x, z    the camera in the frame of the city (metres, x east, z south, Vienības laukums ≈ −1487, 1263);
            tx, tz  the point it looks at;
@@ -49,16 +50,16 @@ async function warmRun(out, t, views) {
 
 (async () => {
   const [out, t, ...views] = process.argv.slice(2);
-  if (!out || t === undefined || !views.length) { console.error('usage: node tools/shots.js <out dir> <time 0|1|2> name:x,z,h:tx,tz,th[:fov] …'); process.exit(1); }
+  if (!out || t === undefined || !views.length) { console.error('usage: node tools/shots.js <out dir> <time 0|1|2|h<hour>> name:x,z,h:tx,tz,th[:fov] …'); process.exit(1); }
   require('fs').mkdirSync(out, { recursive: true });
-  if (await warmRun(out, +t, views)) return;
+  if (await warmRun(out, t, views)) return;
   const { browser: b } = await launchBrowser();
   const p = await b.newPage({ viewport: { width: +(process.env.VW || 1100), height: +(process.env.VH || 700) } });
   const errs = []; p.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') errs.push(m.type() + ': ' + m.text().slice(0, 300)); }); p.on('pageerror', e => errs.push('PAGEERROR ' + String(e.stack || e).slice(0, 600)));
   await p.addInitScript(() => { try { localStorage.setItem('dpils-quality2', '1'); } catch (e) {} });   // the high quality setting
   await p.goto(URL, { waitUntil: 'load' });
   try { await p.waitForFunction(() => window.__city, null, { timeout: 600000, polling: 500 }); } catch (e) { console.log('LOAD FAIL\n' + errs.join('\n')); await b.close(); process.exit(2); }
-  await p.evaluate(t => { document.getElementById('start').hidden = true; document.getElementById('auth').hidden = true; const c = window.__city; c.STATE.started = true; c.PERF.dyn = false; c.setTime(t); c.P.fly = true; document.getElementById('hud').hidden = true; }, +t);   // the free camera of the tools: P.fly, no game
+  await p.evaluate(t => { document.getElementById('start').hidden = true; document.getElementById('auth').hidden = true; const c = window.__city; c.STATE.started = true; c.PERF.dyn = false; c.showTime(t); c.P.fly = true; document.getElementById('hud').hidden = true; }, t);   // the free camera of the tools: P.fly, no game
   for (const v of views) {
     const [name, pos, tgt, fov] = v.split(':'), [x, z, h] = pos.split(',').map(Number), [tx, tz, th] = tgt.split(',').map(Number);
     await p.evaluate(([x, z, h, tx, tz, th, fov]) => { const c = window.__city, P = c.P, g = c.terrainH(tx, tz); P.x = x; P.z = z; P.y = g + h; const dx = tx - x, dz = tz - z;

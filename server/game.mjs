@@ -10,6 +10,7 @@
    you see” holds while the bullet takes its time to get there. */
 import { FALL, HIT, INV, ITEMS, LOADOUT, NADE, PACK, RELOAD_MS, RESERVE, RULES as R, WEAPONS, W_FALL, W_NADE, bulletAt, bulletDir, dragDist, dragTime, rayHit, rayToSegment } from './combat.mjs';
 import { LEVELS, botName, createBrain } from './bots.mjs';
+import { DAY_MS, dayPhase } from './daycycle.mjs';
 
 const TEAMS = ['Красные', 'Синие'], HX = 5200, HY = 4200;   // bounds a bit wider than the city
 const num = (v, lim) => (typeof v === 'number' && isFinite(v) ? Math.max(-lim, Math.min(lim, v)) : 0);
@@ -37,6 +38,9 @@ function flightSeg(b, s0, dt) {
 export function createGame(opts) {
   const world = opts.world, FFA = opts.mode === 'ffa', MODE = FFA ? 'ffa' : 'team', WIN = opts.win || (FFA ? 20 : 30), NAME = opts.name || 'Даугавпилс', MAX = opts.maxPlayers || R.maxPlayers;
   const now = opts.now || (() => Date.now()), teamScore = [0, 0], players = new Map();
+  // the day of the game (daycycle.mjs): its length; null — no clock, the page keeps the time of day it has
+  const DAY = opts.day ? { len: Math.max(60000, +opts.day.len || DAY_MS) } : null;
+  const dayNow = () => DAY && { f: +dayPhase(now(), DAY.len).toFixed(6), len: DAY.len };
   let nextId = 1, roundOver = false, nextNade = 1, nextBid = 1;
   const nades = new Map(), bullets = new Map(), timers = [];
   // the arena: its bases stood on something walkable; without an arena bots roam round the square
@@ -330,7 +334,7 @@ export function createGame(opts) {
           if (players.size >= MAX && !removeBot()) { send(p, { t: 'full' }); conn.close(); return; }
           if (lb && m.board !== false && validKey(m.key) && ![...players.values()].some(q => q.key === m.key)) { p.key = m.key; const r = lb.identify(m.key, nameBase(m.name), n => !taken(n)); p.name = r.name; p.prof = r.prof; } else p.name = cleanName(m.name);
           p.team = pickTeam(m.team, p.id); p.char = cleanChar(m.char); p.joined = true; players.set(p.id, p);
-          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])) });
+          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, day: dayNow() || undefined, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])) });
           spawn(p, m.x, m.z, m.yaw); sendBoard(); all({ t: 'chat', text: p.name + (FFA ? ' в игре' : ' в игре, ' + TEAMS[p.team]) });
           return;
         }
@@ -439,7 +443,7 @@ export function createGame(opts) {
     stepBots,   // and the bots' think by the test clock, for the fall test
     stepItems: () => tickItems(now()),   // and the pickups and reload completion, for the bot-tactics tests
     stop() { for (const t of timers) { clearInterval(t); clearTimeout(t); } timers.length = 0; },
-    health() { return { ok: true, mode: MODE, name: NAME, players: humans().length, bots: players.size - humans().length, max: MAX, score: teamScore, win: WIN, teams: TEAMS, round: roundOver ? 'end' : 'play', arena: arena ? arena.name : null, leaderboard: !!lb }; },
+    health() { return { ok: true, mode: MODE, name: NAME, players: humans().length, bots: players.size - humans().length, max: MAX, score: teamScore, win: WIN, teams: TEAMS, round: roundOver ? 'end' : 'play', arena: arena ? arena.name : null, leaderboard: !!lb, day: dayNow() }; },
   };
 }
 export { LEVELS };

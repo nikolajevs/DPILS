@@ -56,11 +56,6 @@
         <button class="choice" id="chOnline" type="button" disabled><b>Играть онлайн</b><span>команды или каждый сам за себя на сервере</span></button>
       </div>
       <div class="acct"><span id="acctState">Аккаунт обязателен: создайте его или войдите, чтобы играть.</span><button class="btn" id="bAuth" type="button">Войти / регистрация</button></div>
-      <label class="time-pick" id="timeRow">Время суток
-        <select id="startTime" title="Выбирается до начала игры; в игре время суток не меняется">
-          <option value="0">День</option><option value="1">Вечер</option><option value="2">Ночь</option>
-        </select>
-      </label>
       <p class="browser-hint" id="browserHint" hidden><span>В <b>Chrome</b> или <b>Edge</b> город заметно плавнее: WebGL в Firefox медленнее на том же компьютере. Графика уже подстроена под Firefox автоматически.</span><button class="bh-x" id="browserHintX" type="button" title="Больше не показывать" aria-label="Закрыть подсказку">×</button></p>
       <div class="sec-btns">
         <button class="btn" id="bSetStart" type="button">Настройки</button>
@@ -79,7 +74,7 @@
       <dt>После смерти</dt><dd>свободная камера: W A S D — лететь, пробел / E — выше, Q — ниже, Shift — быстрее; возрождение — пробел (в свободной камере — Enter)</dd>
       <dt>F3</dt><dd>счётчик производительности: кадры/с, вызовы отрисовки, время CPU и GPU</dd>
       <dt>M</dt><dd>карта города</dd>
-      <dt>Время суток</dt><dd>день, вечер или ночь — выбирается в этом меню до начала игры</dd>
+      <dt>Время суток</dt><dd>онлайн — сутки сервера: 45 минут с рассветом и закатом; в тренировке — авто (те же сутки), день, вечер или ночь</dd>
       <dt>На телефоне</dt><dd>левая половина экрана — идти, правая — смотреть</dd>
     </dl>
       </details>
@@ -128,6 +123,12 @@
                 <div class="seg" id="trLevelSeg" role="group" aria-label="Сложность ботов">
                   <button type="button" data-v="easy">Лёгкая</button><button type="button" data-v="normal">Средняя</button><button type="button" data-v="hard">Трудная</button>
                 </div>
+              </div>
+            </div>
+            <div class="lb-field"><span class="lb-l">Время суток</span>
+              <select id="trTime" class="sr-only"><option value="auto" selected>авто</option><option value="0">день</option><option value="1">вечер</option><option value="2">ночь</option></select>
+              <div class="seg" id="trTimeSeg" role="group" aria-label="Время суток">
+                <button type="button" data-v="auto" title="Время идёт само: сутки за 45 минут, с рассветом и закатом — как на сервере">Авто</button><button type="button" data-v="0">День</button><button type="button" data-v="1">Вечер</button><button type="button" data-v="2">Ночь</button>
               </div>
             </div>
           </div>

@@ -10,7 +10,7 @@ import { $, reduceMotion } from '../core/env.js';
    over the city's, created only when the lobby first opens and paused whenever the card is away. The figure turns
    by itself, the pointer turns it by hand, the wheel brings it closer. The four characters are chosen on cards under
    the stage; each card carries a portrait rendered once from its own model (a 2× supersampled shot of the same
-   scene), so the choice is a face, not a name in a list. The hidden selects (#mpChar, #trMode, #trLevel, #mpTeam)
+   scene), so the choice is a face, not a name in a list. The hidden selects (#mpChar, #trMode, #trLevel, #trTime, #mpTeam)
    stay the source of truth: the cards and the segment buttons write them and fire 'change', exactly as the old form
    did — src/game/mp.js reads them on join without knowing the lobby exists. The pedestal ring and the chip over the
    stage take the team's colour (amber while the team is not chosen or everyone fights for himself).
@@ -228,6 +228,7 @@ function bindSeg(segId, selId) {
 }
 bindSeg('trModeSeg', 'trMode');
 bindSeg('trLevelSeg', 'trLevel');
+bindSeg('trTimeSeg', 'trTime');
 bindSeg('mpTeamSeg', 'mpTeam');
 $('mpChar').addEventListener('change', refresh);
 $('mpTeam').addEventListener('change', updateTeam);
