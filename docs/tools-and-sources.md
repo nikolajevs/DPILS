@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Claude | claude/sun-and-lamp-shadows-79288e | Тени от фонарей (карты глубины ближних фонарей) и тени движущегося от солнца | src/render/lamp-shadows.js, src/world/lamp-light.js, src/render/lighting.js, src/render/renderer.js |
 
 ## Автономный цикл улучшений
 

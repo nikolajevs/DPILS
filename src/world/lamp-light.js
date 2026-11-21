@@ -12,11 +12,13 @@ import { terrainH } from './terrain.js';
    so the lamps live in one integer data texture (tLamp, RGBA32UI: one sampler, as the facades already use most of the
    16 a GPU gives a shader) and the shader finds its own (a 2-D "clustered" lookup). Its sections, in texels:
    - the lamps: per lamp its head in the world (terrain included, float bits) and its kind, the angle of its arm and
-     its height over what it stands on;
+     its height over what it stands on (bits 0–1, 2–17, 18–27); bits 28–31 — the slot + 1 of its depth map, if it is
+     one of the nearest lamps that have one (src/render/lamp-shadows.js; set by lampSlot);
    - the walls: per lamp 32 directions round it (8 per texel, 16 bits each), each the distance to the first house wall
      that way and how far the top of that wall lies under the lamp. A point behind the wall is in the shadow of the
      house unless the ray from the lamp passes over the roof, so a courtyard behind a row of houses stays dark while a
-     low shed, its roof and the wall facing the lamp are lit. Passages and canopies on posts let the light through;
+     low shed, its roof and the wall facing the lamp are lit. Passages and canopies on posts let the light through.
+     The nearest lamps have a real depth map instead, with the trees, the poles and what moves (lamp-shadows.js);
    - the lists: per cell the lamps that reach it, nearest to the cell first (4 indices per texel);
    - the cells: a grid of 24 m cells over the city, each where its list starts and how long it is (4 per texel).
    The kinds: 0 — a street lamp on its arm (8 m, the light thrown down and wide along the road, cut off at the horizon,
@@ -132,7 +134,7 @@ async function buildLampLight() {
   for (let c = 0; c < cells.length; c++) { const l = cells[c]; if (!l) continue; T[4 * C0 + c] = (at << 5) | l.length; for (const j of l) T[4 * L0 + at++] = j; }
   const tex = new THREE.DataTexture(T, TW, rows, THREE.RGBAIntegerFormat, THREE.UnsignedIntType);
   tex.internalFormat = 'RGBA32UI'; tex.magFilter = tex.minFilter = THREE.NearestFilter; tex.generateMipmaps = false; tex.needsUpdate = true;
-  U.tLamp.value = tex;
+  U.tLamp.value = tex; TAB = { n, T, F, tex };
   U.uLampGrid.value.set(x0, z0, 1 / CS, nx); U.uLampOn.value.z = nz; U.uLampSec.value.set(O0, L0, C0, 0);
   Object.assign(STAT, { lights: n, cells: used, entries: total, maxPerCell: most, texels: size, ms: Math.round(performance.now() - t0) });
   return STAT;
@@ -140,6 +142,15 @@ async function buildLampLight() {
 // strength: 0 off (by day), 1 at night; most: the most lamps a point takes (the cheaper quality levels take fewer)
 function lampLight(strength) { U.uLampOn.value.x = strength; }
 function lampMost(most) { U.uLampOn.value.y = most; }
+/* The lamps as the shaders have them, for the shadow maps of the nearest ones (src/render/lamp-shadows.js): per lamp j
+   its head in the world at F[4j…4j+2] and its kind, arm and foot in T[4j+3]; null until the city is built. */
+let TAB = null;
+const lampTable = () => TAB;
+// lamp j draws its shadow from map slot s of the atlas (-1: from the walls alone): the top four bits of its meta
+function lampSlot(j, s) {
+  const k = 4 * j + 3; TAB.T[k] = ((TAB.T[k] & 0x0fffffff) | ((s + 1) << 28)) >>> 0;
+  TAB.tex.addUpdateRange(k, 1); TAB.tex.needsUpdate = true;
+}
 
 U.tLamp = { value: null };
 U.uLampGrid = { value: new THREE.Vector4(0, 0, 1 / CS, 0) };   // x0, z0 of the grid, 1 / the cell, cells across
@@ -176,6 +187,7 @@ THREE.ShaderChunk.lights_fragment_begin += `
 #if defined( RE_Direct )
 if ( uLampOn.x > 0.0 ) {
   vec3 lwP = cameraPosition - vViewPosition * mat3( viewMatrix );   // the point in the world
+  vec3 lwN = inverseTransformDirection( geometryNormal, viewMatrix );   // and its normal
   vec2 lcg = ( lwP.xz - uLampGrid.xy ) * uLampGrid.z;
   if ( lcg.x >= 0.0 && lcg.y >= 0.0 && lcg.x < uLampGrid.w && lcg.y < uLampOn.z ) {
     ivec2 lci = ivec2( lcg ); uint lcell = lampU( int( uLampSec.z ) * 4 + lci.y * int( uLampGrid.w ) + lci.x );
@@ -207,7 +219,15 @@ if ( uLampOn.x > 0.0 ) {
       if ( lI < 1e-3 ) continue;
       float lfoot = float( ( lt.w >> 18u ) & 1023u ) * 0.1;
       lI *= smoothstep( - lfoot - 4.0, - lfoot - 2.5, - ld.y );   // nothing far under its own deck or ground (slopes keep a margin)
-      lI *= lampVis( li, - ld.xz, - ld.y );
+      // the shadow: one of the nearest lamps has a depth map (src/render/lamp-shadows.js) — trees, poles, fences,
+      // players and vehicles; elsewhere, and where the map fades out, the walls round the lamp
+      float lvis = 1.0, lmap = 0.0;
+      #ifdef USE_SHADOWMAP
+      int lslot = int( lt.w >> 28u ) - 1;
+      if ( lslot >= 0 && receiveShadow ) lvis = lampMap( lslot, uintBitsToFloat( lt.xyz ), lwP, lwN, lfoot, lmap );
+      #endif
+      if ( lmap < 1.0 ) lvis = mix( lampVis( li, - ld.xz, - ld.y ), lvis, lmap );
+      lI *= lvis;
       lampL.color = lcol * ( lI * uLampOn.x );
       lampL.direction = mat3( viewMatrix ) * lw;
       RE_Direct( lampL, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
@@ -219,4 +239,4 @@ if ( uLampOn.x > 0.0 ) {
 #endif
 `;
 
-export { STAT as LAMP_LIGHT, addLight, buildLampLight, lampLight, lampMost };
+export { STAT as LAMP_LIGHT, REACH as LAMP_REACH, addLight, buildLampLight, lampLight, lampMost, lampSlot, lampTable };

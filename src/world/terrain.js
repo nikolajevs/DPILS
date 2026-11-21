@@ -66,7 +66,7 @@ THREE.ShaderChunk.worldpos_vertex = `#if defined( USE_ENVMAP ) || defined( DISTA
 // draws to filter the environment (its materials draw through project_vertex since three.js r18x): lifted by the
 // terrain they would miss the camera and leave the environment black
 const TERR_OFF = { value: new THREE.Vector4(0, 0, 0, 0) };
-THREE.Material.prototype.onBeforeCompile = function (s) { terrUniforms(s); if (/^PMREM/.test(this.name) || this.userData.noTerr) s.uniforms.uTerrA = TERR_OFF; };
+THREE.Material.prototype.onBeforeCompile = function (s, r) { terrUniforms(s, r); if (/^PMREM/.test(this.name) || this.userData.noTerr) s.uniforms.uTerrA = TERR_OFF; };
 // the same bilinear height as the shaders, from the same decimetres
 function terrainH(x, z) {
   if (!TERR.on) return 0;

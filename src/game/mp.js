@@ -5,6 +5,7 @@ import { PLACES } from '../ui/places.js';
 import { buildingAt, onRoad } from '../world/data.js';
 import { PERF } from './perf.js';
 import { worldSpace } from '../render/world-space.js';
+import { addMover } from '../render/lamp-shadows.js';
 import { CHARS, CHAR_KEYS, gunModel, gunSource, loadAvatar, makeAvatar, parseChar } from './avatar.js';
 import { drawOver, loadAK, makeViewmodel } from './viewmodel.js';
 import { onProps, prop } from './props.js';
@@ -147,7 +148,7 @@ function makeFigure(hue) {
 }
 function addRemote(id, name, team, char) {
   if (remotes.has(id) || id === MP.id) return remotes.get(id);
-  const hue = MP.ffa ? (id * 0.381966) % 1 : (HUE[team] ?? 0.3), group = makeFigure(hue), tag = document.createElement('div'); tag.className = 'mp-tag ' + (MP.ffa ? 'tf' : 't' + team); if (MP.ffa) tag.style.background = 'hsla(' + Math.round(hue * 360) + ', 55%, 32%, .78)'; tag.textContent = name || '…'; group.visible = false; group.userData.noProbe = true; scene.add(group); $('mpTags').append(tag);
+  const hue = MP.ffa ? (id * 0.381966) % 1 : (HUE[team] ?? 0.3), group = makeFigure(hue), tag = document.createElement('div'); tag.className = 'mp-tag ' + (MP.ffa ? 'tf' : 't' + team); if (MP.ffa) tag.style.background = 'hsla(' + Math.round(hue * 360) + ', 55%, 32%, .78)'; tag.textContent = name || '…'; group.visible = false; group.userData.noProbe = true; scene.add(group); addMover(group); $('mpTags').append(tag);
   const r = { id, name, team, hue, group, buf: [], tag, char: parseChar(char), figHead: group.userData.head, figArm: group.userData.arm }; remotes.set(id, r); attachAvatar(r); return r;
 }
 /* ---------- the models of the game, loaded with the city ----------

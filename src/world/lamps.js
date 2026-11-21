@@ -82,7 +82,7 @@ async function buildLamps() {
     });
     const sphere = bx.getBoundingSphere(new THREE.Sphere());
     for (const m of [poles, heads, lenses, halos]) { m.position.set(cx, 0, cz); m.boundingSphere = sphere; m.instanceMatrix.needsUpdate = true; scene.add(m); }
-    poles.castShadow = true; halos.visible = false; halos.renderOrder = 5; halos.userData.noProbe = true;
+    poles.castShadow = heads.castShadow = true; halos.visible = false; halos.renderOrder = 5; halos.userData.noProbe = true;
     lampLens.push(lenses); lampHalos.push(halos);
   }
   await buildLampLight();   // the park lamps and the lamps of the landmarks are registered by now (buildLandmarks)

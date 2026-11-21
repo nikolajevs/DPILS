@@ -11,6 +11,7 @@ import { buildNet, dDir, laneRoute, matchShape, nearOn, routeAt } from './route-
 import { TRN, buildTrains, updateTrains } from './trains.js';
 import { AO } from '../landmarks/autoosta.js';
 import { std } from '../render/materials.js';
+import { addMoverInstances } from '../render/lamp-shadows.js';
 import { mkCanvas, toTex } from '../render/textures.js';
 import { bridgeY, terrainH, vbLift } from '../world/terrain.js';
 import { walkH } from '../world/walkgrid.js';
@@ -210,6 +211,7 @@ async function buildTransit() {
     const b = new THREE.InstancedMesh(bg, bodyMat, VCAP[kind]), g = new THREE.InstancedMesh(gg, glowMat, VCAP[kind]), s = new THREE.InstancedMesh(blobGeo, blobMat, VCAP[kind]);
     for (const m of [b, g, s]) { m.count = 0; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.userData.noProbe = true; scene.add(m); }
     b.receiveShadow = true; s.renderOrder = 3; TX.glow.push(g);
+    addMoverInstances(b, 24, 9);   // the ones near the eye cast shadows from the sun and the lamps (src/render/lamp-shadows.js)
     return { b, g, s };
   });
   await rest(); TX.trainTrips = buildTrains(); TX.glow.push(...TRN.glow);   // the passenger trains through the station (trains.js)
