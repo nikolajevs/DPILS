@@ -64,6 +64,8 @@ function conn() {
 }
 const msg = (c, m) => c.handle.message(JSON.stringify(m));
 const seat = (g, c) => { c.handle = g.attach(c); return c; };
+// equip a gun for the test: only two weapons ride on the player (loadout), the rest in the pack — swap the wanted one in
+const arm = (c, w, slot = 0) => { if (!c.handle.player.loadout.includes(w)) msg(c, { t: 'swap', w, slot }); };
 const base = (cx, cz, r) => [[cx - r, cz - r], [cx + r, cz - r], [cx + r, cz + r], [cx - r, cz + r]];
 
 /* ---------- 2. the server rules ---------- */
@@ -249,6 +251,7 @@ console.log('server rules (createGame, controlled clock):');
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(B, { t: 'state', x: 0, y: 1.7, z: -20, yaw: 0, pitch: 0 });
   const W = WEAPONS[1], l = Math.hypot(0.6, 20), d = [0, -0.6 / l, -20 / l];
+  arm(A, 1);   // the shotgun rides in the pack by default: equip it first
   msg(A, { t: 'shoot', w: 1, rays: Array.from({ length: W.pellets }, () => [d[0], d[1], d[2], +l.toFixed(2), bid]) });
   clock += 120; g.stepBullets();   // let the pellets fly the 20 m and land
   const h = A.last('hit');
@@ -301,7 +304,7 @@ console.log('bullet drop (gravity, holdover, determinism):');
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(B, { t: 'state', x: 0, y: 1.7, z: -400, yaw: 0, pitch: 0 });
   const aim = (tx, ty, tz) => { const dx = tx, dy = ty - 1.7, dz = tz, l = Math.hypot(dx, dy, dz); return [dx / l, dy / l, dz / l]; };
-  const fly = (ray, w, ms) => { const n = A.all('bhit').length; msg(A, { t: 'shoot', w, rays: [ray] }); clock += ms; g.stepBullets(); const b = A.all('bhit'); return b.length > n ? b[b.length - 1] : null; };
+  const fly = (ray, w, ms) => { arm(A, w); const n = A.all('bhit').length; msg(A, { t: 'shoot', w, rays: [ray] }); clock += ms; g.stepBullets(); const b = A.all('bhit'); return b.length > n ? b[b.length - 1] : null; };
   ok(fly(aim(0, 1.1, -400), 2, 600) === null, 'a flat sniper aim at 400 m misses: the bullet is ~1.17 m low');
   const wall = A.last('shot').rays[0][3];
   ok(wall < 400, 'the fallen bullet meets the ground before 400 m', String(wall));
@@ -328,6 +331,7 @@ console.log('bullet drop (gravity, holdover, determinism):');
   msg(B, { t: 'state', x: 0, y: 1.7, z: -130, yaw: 0, pitch: 0 });
   const aimY = 1.7 - 0.56, dy2 = aimY - 1.7, d3 = Math.hypot(130, dy2), hold = bulletDrop(d3, 820, WEAPONS[2].drag);
   const pitch = Math.asin((dy2 + hold) / d3), cp = Math.cos(pitch);
+  arm(A, 2);
   msg(A, { t: 'shoot', w: 2, rays: [[0, Math.sin(pitch), -cp]] });
   clock += 300; g.stepBullets();
   ok(A.last('hit') && A.last('hit').dmg === dmgAt(2, d3 - MUZZLE), 'the bots\' holdover formula (drag included) lands the 130 m chest shot', JSON.stringify(A.last('hit')));
@@ -353,6 +357,7 @@ console.log('bullet drop (gravity, holdover, determinism):');
     msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
     msg(B, { t: 'state', x: 2, y: 1.7, z: -300, yaw: 0.4, pitch: 0 });
     const ty = 1.2 + bulletDrop(300, 820, WEAPONS[2].drag), l = Math.hypot(2, ty - 1.7, 300);
+    arm(A, 2);
     msg(A, { t: 'shoot', w: 2, rays: [[2 / l, (ty - 1.7) / l, -300 / l]] });
     for (let i = 0; i < 12; i++) { clock += 50; g.stepBullets(); }   // the same 30 Hz-ish stepping both times
     const b = A.last('bhit'); g.stop(); return b && JSON.stringify(b);
@@ -599,6 +604,7 @@ console.log('grenade: the body bounce and the shot-down:');
   let gy = 1.5, gv = NADE.loft * 15, gz = -0.6;
   for (let i = 0; i < 9; i++) { clock += 1000 / 30; g.stepNades(); gv -= NADE.g / 30; gy += gv / 30; gz -= 15 / 30; }
   const L = Math.hypot(gy - 1.7, gz), dir = [0, (gy - 1.7) / L, gz / L];
+  arm(A, 1);
   msg(A, { t: 'shoot', w: 1, rays: Array.from({ length: 8 }, () => dir) });
   clock += 60; g.stepBullets();
   ok(A.all('nshot').length === 1 && A.all('boom').length === 1, 'one pellet detonates it, the rest fly on');
@@ -752,6 +758,7 @@ console.log('wall chord (shotPath penetration):');
   // the kill: pre-damage the target, one sniper shot through the shed finishes it — the kill feed carries bd and zone
   B.handle.player.hp = 5;
   clock += 1400;
+  arm(A, 2);
   msg(A, { t: 'shoot', w: 2, rays: [d] });
   clock += 300; g.stepBullets();
   const kill = A.all('kill').find(m => m.victim === B.handle.player.id);
@@ -828,6 +835,38 @@ console.log('bullet drag (v(s), damage, flight time):');
   ok(A.all('bhit').length === 0, 'at 90 ms the dragged bullet has not reached 56 m yet');
   clock += 30; g.stepBullets();
   ok(A.all('bhit').length === 1, 'by 120 ms it has');
+  g.stop();
+}
+
+/* ---------- 2k. the loadout: two equipped guns, a ten-slot backpack, swapping ---------- */
+console.log('the loadout (two guns + the backpack):');
+{
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'loadout' });
+  const A = seat(g, conn());
+  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  const p = A.handle.player;
+  ok(p.loadout.length === 2 && p.loadout.join() === '0,3', 'the player spawns with two guns equipped (rifle + pistol)', p.loadout.join());
+  ok(p.pack.length === 10 && p.pack.filter(w => w !== null).length === 3 && p.pack.filter(w => w === null).length === 7, 'the backpack has ten cells: three guns and seven empty', JSON.stringify(p.pack));
+  const sp = A.last('spawn');
+  ok(sp && Array.isArray(sp.loadout) && Array.isArray(sp.pack), 'the spawn message carries the loadout and the pack');
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, w: 1 });
+  ok(p.wep === p.loadout[0], 'a state claiming a pack gun falls back to an equipped one', String(p.wep));
+  // swap the shotgun (pack) into slot 0: the rifle drops into the cell the shotgun left
+  msg(A, { t: 'swap', w: 1, slot: 0 });
+  ok(p.loadout[0] === 1 && p.pack.includes(0) && !p.pack.includes(1), 'the swap exchanges the pack gun with the equipped slot', p.loadout.join() + ' / ' + JSON.stringify(p.pack));
+  ok(A.last('inv') && A.last('inv').loadout[0] === 1, 'the swap is reported in the inv message');
+  ok(new Set([...p.loadout, ...p.pack.filter(w => w !== null)]).size === 5, 'every gun lives in exactly one place after the swap');
+  msg(A, { t: 'swap', w: 1, slot: 1 });   // already equipped: ignored
+  ok(p.loadout[1] === 3, 'swapping an already-equipped gun does nothing', p.loadout.join());
+  msg(A, { t: 'swap', w: 9, slot: 0 });   // not a weapon: ignored
+  ok(p.loadout[0] === 1, 'swapping an unknown index does nothing');
+  // the loadout survives a death: die, respawn, still the swapped guns
+  p.hp = 0; p.alive = false; p.diedAt = clock;
+  clock += 3100;
+  msg(A, { t: 'respawn' });
+  ok(p.alive && p.loadout[0] === 1 && p.pack.includes(0), 'the loadout and the pack survive the respawn', p.loadout.join());
   g.stop();
 }
 

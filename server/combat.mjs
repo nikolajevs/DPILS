@@ -44,6 +44,12 @@ export const NADE = { count: 2, speed: 15, minSpeed: 6, maxSpeed: 24, loft: 0.17
 // of its reload, and the items that lie on the map and are picked up by walking over them
 export const RESERVE = [90, 24, 15, 36, 200];
 export const RELOAD_MS = [1800, 2600, 2800, 1400, 4500];
+// the loadout (keep src/game/mp.js in step): only two weapons are equipped on the player at a time — the rifle and the
+// pistol by default. The other three ride in the backpack (PACK): ten loot slots, three filled at the start and seven
+// empty. A weapon index lives in exactly one place — a loadout slot or a pack cell — never both. Swapping exchanges a
+// pack cell with a loadout slot (server/game.mjs swapWeapon); the magazines and the reserve stay per weapon type.
+export const LOADOUT = [0, 3];
+export const PACK = [1, 2, 4, null, null, null, null, null, null, null];
 export const ITEMS = {
   ammo: { name: 'Патроны', respawnMs: 25000, give: [30, 8, 5, 12, 50] },   // reserve added per weapon
   nade: { name: 'Граната', respawnMs: 30000 },
@@ -51,7 +57,7 @@ export const ITEMS = {
   sight: { name: 'Коллиматор', respawnMs: 45000 },   // the red dot: fast aim, tighter spread, on any weapon
   optic: { name: 'Оптика 8x', respawnMs: 60000 },   // the long scope: strong zoom with its overlay, on any weapon
 };
-export const INV = { nadeMax: 3, medMax: 2, reserveCap: 2, itemCount: 18, pickR: 1.7, medGapMs: 800, sightMax: 1, opticMax: 1 };   // reserveCap: reserve up to RESERVE × this; sightMax/opticMax: loose + mounted of each kind
+export const INV = { nadeMax: 3, medMax: 2, reserveCap: 2, itemCount: 18, pickR: 1.7, medGapMs: 800, sightMax: 1, opticMax: 1, weaponSlots: 2, packSlots: 10 };   // reserveCap: reserve up to RESERVE × this; sightMax/opticMax: loose + mounted of each kind; weaponSlots: equipped guns; packSlots: the backpack
 // ---- the ballistics of a flying bullet: gravity and air drag. The path is parameterised by the distance s along the
 // initial (unit) direction d. The drag v(t) = v0/(1 + k·v0·t) integrates to s(t) = ln(1 + k·v0·t)/k, so in distance the
 // speed reads v(s) = v0·e^(−k·s) and the time to reach s is t(s) = (e^(k·s) − 1)/(k·v0); the bullet sinks ½·g·t(s)²
