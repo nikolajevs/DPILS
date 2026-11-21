@@ -356,7 +356,7 @@ function openInv() {
   keys.clear();
   build(); builtLoadout = (data.weapons || []).map(w => w.i).join(','); paint();
   box.hidden = false;
-  box.querySelector('.panel').focus({ preventScroll: true });
+  body.focus({ preventScroll: true });   // the scroller takes the focus: wheel, touch and the arrow keys scroll the panel
 }
 function closeInv() { if (!open) return; open = false; box.hidden = true; }
 const toggleInv = () => (open ? closeInv() : openInv());

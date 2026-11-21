@@ -420,7 +420,8 @@ label.chk { display: flex; align-items: center; gap: 8px; font-size: 13px; color
 .inv-me .dot.t1 { background: var(--blue); box-shadow: 0 0 8px rgba(59, 134, 232, .8); }
 .inv-me b { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inv-me .kd { color: rgba(255, 255, 255, .6); font-variant-numeric: tabular-nums; border-left: 1px solid var(--glass-line); padding-left: 8px; }
-#mpInvBody { display: grid; gap: 16px; padding-top: 14px; }
+#mpInvBody { display: grid; gap: 16px; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 6px 4px 2px; }   /* the panel clips (overflow hidden): the body is the scroller, as #mpSetBody in the settings; the header stays put */
+#mpInvBody:focus { outline: none; }
 .inv-sec { display: grid; gap: 8px; min-width: 0; }
 .inv-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .inv-sec h3 { margin: 0; font: 600 11px/1 var(--f-body); letter-spacing: .18em; text-transform: uppercase; color: var(--warn); }
