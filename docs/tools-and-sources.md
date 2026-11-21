@@ -10,6 +10,7 @@
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
 | Claude | claude/dark-spots-house-foundations-fd97ab | Тёмные пятна SSAO у оснований домов | src/render/post.js |
+| Claude | claude/wet-asphalt-reflections-331189 | Убрать мокрые пятна и их отражения на земле | src/render/materials.js, src/render/post.js |
 
 ## Автономный цикл улучшений
 
