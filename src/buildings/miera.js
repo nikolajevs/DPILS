@@ -1,8 +1,8 @@
 import { SER, serFiller, serQuad, serWing, wallStrip } from './series.js';
 import { flatRoof } from './walls.js';
-import { BLD } from '../world/data.js';
 import { box, polyA } from '../core/geometry.js';
 import { hb, pick, sh } from '../core/util.js';
+import { MIERA_BRIDGES as BRIDGES, UX, UZ, VX, VZ, W, mieraOf } from './passage-holes.mjs';
 
 /* ---------- Miera iela 143: the five-storey block with two passages through it ----------
    OpenStreetMap maps two covered ways (tunnel=building_passage) through the house: a driveway for cars at the
@@ -15,25 +15,12 @@ import { hb, pick, sh } from '../core/util.js';
    under them. The bridges are drawn here: the upper four storeys one window wide, the ground storey a wall with the
    opening, a ceiling and walls inside the passage, a lamp, and the bollards of the pedestrian one. The wings are the
    grey pebble-finish panel walls with cream brick stair towers over the doors (Mapillary 2020), the entrances on the side of the service road (north-west), balconies towards the yard. */
-const UX = 0.684, UZ = -0.7295, VX = -UZ, VZ = UX, OX = 905, OZ = -247;
-const W = (u, v) => [OX + UX * u + VX * v, OZ + UZ * u + VZ * v];
+// the frame of the house, the bridges over the passages and the passage openings live in passage-holes.mjs: the game
+// server reads them too, so a shot and a bot pass the passage online where the model opens the wall
 const FL = 5, FH = 2.8, YB = 1.0, H = YB + FL * FH, PASS_H = 3.1;
-// wings: [u0, u1, v0, v1]; the bridges: [u0, u1, v0, v1, the centre and the width of the opening]
+// wings: [u0, u1, v0, v1]
 const WINGS = [[-80.45, -48, 0.5, 13.2], [-42.25, 22.85, 0.6, 13.5], [28.85, 61.6, 0.7, 13.8]];
-const BRIDGES = [{ r: [-48, -42.25, 1.9, 11.5], c: -45.5, w: 3.8, cars: true }, { r: [22.85, 28.85, 2.1, 11.9], c: 25.95, w: 2.6, cars: false }];
 const CROSS = [60.1, 73.3, -19.4, -2.5], STUB = [60.1, 61.6, -2.5, 0.7];
-
-function mieraOf(outer) {
-  const n = outer.length >> 1; let x = 0, z = 0; for (let i = 0; i < n; i++) { x += outer[2 * i] / n; z += outer[2 * i + 1] / n; }
-  return n >= 29 && n <= 33 && Math.hypot(x - 910, z + 246) < 8;
-}
-// the passage openings as footprint holes (the same rectangles the bridges leave open below). Shared with the
-// collision (passages.js): the body must walk through exactly where the model opens the wall.
-function mieraHoles() {
-  const holes = [];
-  for (const { r: [, , v0, v1], c, w } of BRIDGES) { const hw = w / 2; const h = [W(c - hw, v0 + 0.01), W(c + hw, v0 + 0.01), W(c + hw, v1 - 0.01), W(c - hw, v1 - 0.01)]; holes.push(new Float32Array(h.flat())); }
-  return holes;
-}
 
 function rect(u0, u1, v0, v1, alongV) {   // a rectangle of the frame as the o of serWing: a the half along its long axis
   const [cx, cz] = W((u0 + u1) / 2, (v0 + v1) / 2);
@@ -56,8 +43,7 @@ function mieraBuild(T, id, seed) {
       for (let f = 1; f < FL; f++) box(D.plain, cx + nx * 0.45, cz + nz * 0.45, o.ux, o.uz, 0.3, 0.02, YB + f * FH + 0.6, YB + f * FH + 1.6, WIN); }
   }
   serFiller(T, rect(...STUB, true), FL, tint, id, seed);
-  // the bridges
-  const holes = mieraHoles();
+  // the bridges (their openings are already holes of this house in BLD: buildings.js asks passage-holes.mjs)
   for (const { r: [u0, u1, v0, v1], c, w, cars } of BRIDGES) {
     const hw = w / 2, wallH = YB + FH;
     for (const sv of [-1, 1]) {   // a face: the ground storey a wall with the opening, the four above in the series window cell
@@ -83,9 +69,8 @@ function mieraBuild(T, id, seed) {
     for (const sv of [-1, 1]) { const vf = sv < 0 ? v0 : v1, a = W(u0, vf), b = W(u1, vf);
       wallStrip(G.plain, [a[0], 0, a[1]], [b[0], 0, b[1]], H, H + 0.45, pc, VX * sv, VZ * sv); }
   }
-  const b = BLD[BLD.length - 1]; if (b) b.holes = holes;
   void PLINTH;
   return true;
 }
 
-export { mieraBuild, mieraHoles, mieraOf };
+export { mieraBuild, mieraOf };
