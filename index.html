@@ -119,7 +119,7 @@
       <button class="auth-tab" id="authTabReg" type="button" aria-pressed="false">Регистрация</button>
     </div>
     <p class="hint" id="authHint">Аккаунт обязателен для игры: войдите или создайте его.</p>
-    <form class="auth-form" id="authForm">
+    <form class="auth-form" id="authForm" onsubmit="return false">
       <label>Ник<input id="authName" maxlength="16" autocomplete="username" spellcheck="false"></label>
       <label>Пароль<input id="authPass" type="password" maxlength="128" autocomplete="current-password"></label>
       <label id="authPass2Row" hidden>Повторите пароль<input id="authPass2" type="password" maxlength="128" autocomplete="new-password"></label>
@@ -173,6 +173,21 @@
 <div class="mp-dead" id="mpOver" hidden><div class="panel"><h2>Соединение с сервером потеряно</h2><button class="go" id="mpOverBtn">Начать заново</button></div></div>
 <div class="joy" id="joy" hidden><i id="joyKnob"></i></div>
 
+<script>
+/* Вход — первый этап: пока в браузере нет аккаунта, стартовая карточка (загрузка города и кнопки «Играть») скрыта
+   с первого кадра, а экран входа показан сразу, не дожидаясь загрузки данных города. src/ui/auth.js (его грузит
+   src/boot.js до данных) затем включает нужный режим — вход или регистрацию — и оживляет форму. Проверка аккаунта
+   повторяет identity.js: имя, адрес сервера и 32-значный шестнадцатеричный ключ. onsubmit="return false" у формы
+   не даёт ей отправиться самой до того, как auth.js подключит обработчик. */
+try {
+  var a = JSON.parse(localStorage.getItem('dpils.account') || 'null');
+  if (!(a && typeof a.name === 'string' && typeof a.url === 'string' && typeof a.key === 'string' && /^[0-9a-f]{32}$/.test(a.key))) {
+    document.getElementById('start').hidden = true;
+    document.getElementById('auth').hidden = false;
+    document.getElementById('authBtns').hidden = true;
+  }
+} catch (e) {}
+</script>
 <!-- three.js for the unbundled page (legacy static hosting à la GitHub Pages); the production VPS serves the Vite build from dist/ instead -->
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/" } }</script>
 <script type="module" src="./src/boot.js"></script>
