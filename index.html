@@ -44,40 +44,25 @@
 
 <div class="start" id="start">
   <div class="panel card" id="startCard" data-step="home">
-    <h1>Даугавпилс в 3D</h1>
+    <div class="card-top"><span class="eyebrow">Онлайн-арена в реальном городе</span><span class="coords">55.87° N · 26.54° E</span></div>
+    <h1>Даугавпилс <em>в 3D</em></h1>
     <div class="load" id="load" role="status" aria-live="polite">
       <div class="load-row"><span class="progress" id="progress">Загружаю город…</span><b class="load-pct" id="loadPct">0&#8239;%</b></div>
       <div class="load-bar" aria-hidden="true"><i id="loadFill"></i></div>
     </div>
     <div class="step-home" id="stepHome">
       <div class="choices">
-        <button class="choice main" id="go" hidden><b>Вернуться в игру</b><span>бой продолжится с того же места</span></button>
-        <button class="choice main" id="chTrain" type="button" disabled><b>Тренировка с ботами</b><span>бой прямо в браузере, без сервера</span></button>
-        <button class="choice" id="chOnline" type="button" disabled><b>Играть онлайн</b><span>команды или каждый сам за себя на сервере</span></button>
+        <button class="choice main" id="go" hidden><i class="ch-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="currentColor" stroke="none"/></svg></i><b>Вернуться в игру</b><span>бой продолжится с того же места</span></button>
+        <button class="choice main" id="chTrain" type="button" disabled><i class="ch-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg></i><b>Тренировка с ботами</b><span>бой прямо в браузере, без сервера</span><i class="ch-num" aria-hidden="true">01</i></button>
+        <button class="choice" id="chOnline" type="button" disabled><i class="ch-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3.5 3.8 3.5 14.2 0 18M12 3c-3.5 3.8-3.5 14.2 0 18"/></svg></i><b>Играть онлайн</b><span>команды или каждый сам за себя на сервере</span><i class="ch-num" aria-hidden="true">02</i></button>
       </div>
-      <div class="acct"><span id="acctState">Аккаунт обязателен: создайте его или войдите, чтобы играть.</span><button class="btn" id="bAuth" type="button">Войти / регистрация</button></div>
+      <div class="acct"><i class="acct-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 5-5.5 8-5.5s6.5 1.5 8 5.5"/></svg></i><span id="acctState">Аккаунт обязателен: создайте его или войдите, чтобы играть.</span><button class="btn" id="bAuth" type="button">Войти / регистрация</button></div>
       <p class="browser-hint" id="browserHint" hidden><span>В <b>Chrome</b> или <b>Edge</b> город заметно плавнее: WebGL в Firefox медленнее на том же компьютере. Графика уже подстроена под Firefox автоматически.</span><button class="bh-x" id="browserHintX" type="button" title="Больше не показывать" aria-label="Закрыть подсказку">×</button></p>
       <div class="sec-btns">
-        <button class="btn" id="bSetStart" type="button">Настройки</button>
-        <button class="btn" id="bStatsStart" type="button">Моя статистика</button>
-        <button class="btn" id="bLeadersStart" type="button">Таблица лидеров</button>
+        <button class="btn" id="bSetStart" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9.6M18.4 7H20M4 17h3.6M12.4 17H20"/><circle cx="16" cy="7" r="2.4"/><circle cx="10" cy="17" r="2.4"/></svg>Настройки</button>
+        <button class="btn" id="bStatsStart" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16M7 20v-6M12 20V9M17 20v-9"/></svg>Моя статистика</button>
+        <button class="btn" id="bLeadersStart" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v5a4 4 0 0 1-8 0zM8 5H5c0 3 1.5 4.5 3 4.5M16 5h3c0 3-1.5 4.5-3 4.5M12 13v4M8 20h8l-1-3h-6z"/></svg>Таблица лидеров</button>
       </div>
-      <details class="keys-box" id="keysBox"><summary>Управление</summary>
-      <dl class="keys">
-      <dt>W A S D / стрелки</dt><dd>идти, Shift — бегом</dd>
-      <dt>Мышь</dt><dd>смотреть по сторонам (Esc — отпустить курсор)</dd>
-      <dt>1 – 5 · колесо</dt><dd>автомат · дробовик · снайперская (правая кнопка мыши — прицел) · пистолет · пулемёт</dd>
-      <dt>G · O</dt><dd>граната (две за жизнь) · настройки: мышь, звук, клавиши</dd>
-      <dt>Y · U · V</dt><dd>чат всем · чат команде · рация (удерживать)</dd>
-      <dt>Пробел · C</dt><dd>прыжок · присесть (удерживать)</dd>
-      <dt>F</dt><dd>после смерти: камера — от первого лица · из-за спины · свободный полёт</dd>
-      <dt>После смерти</dt><dd>свободная камера: W A S D — лететь, пробел / E — выше, Q — ниже, Shift — быстрее; возрождение — пробел (в свободной камере — Enter)</dd>
-      <dt>F3</dt><dd>счётчик производительности: кадры/с, вызовы отрисовки, время CPU и GPU</dd>
-      <dt>M</dt><dd>карта города</dd>
-      <dt>Время суток</dt><dd>онлайн — сутки сервера: 45 минут с рассветом и закатом; в тренировке — авто (те же сутки), день, вечер или ночь</dd>
-      <dt>На телефоне</dt><dd>левая половина экрана — идти, правая — смотреть</dd>
-    </dl>
-      </details>
     </div>
     <form class="play lobby" id="play" onsubmit="return false" hidden>
       <div class="step-head"><button class="btn back" id="stepBack" type="button" aria-label="Назад к выбору">← Назад</button><h2 id="stepTitle" tabindex="-1"></h2></div>
@@ -150,6 +135,15 @@
         </section>
       </div>
     </form>
+    <div class="start-foot">
+      <button class="foot-link" id="bCredits" type="button">© Данные и авторы</button>
+      <span class="foot-note">сделано в Латгале</span>
+    </div>
+  </div>
+</div>
+<div class="credits" id="credits" hidden>
+  <div class="panel credits-card" role="dialog" aria-modal="true" aria-labelledby="creditsTitle">
+    <header><h2 id="creditsTitle">Данные и авторы</h2><button class="btn" id="creditsClose" type="button">Закрыть</button></header>
     <div class="credit">Карта © участники <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>. Здания: кадастр Государственной земельной службы Латвии (<a href="https://data.gov.lv/dati/lv/dataset/kadastra-informacijas-sistemas-atvertie-dati">data.gov.lv</a>, CC BY 4.0). Расписание: GTFS <a href="https://satiksme.daugavpils.lv/">Daugavpils satiksme</a>. Фасады нарисованы по материалу стен и году постройки, это не фотографии; Дом Единства, «Латгола» и храмы Церковной горки смоделированы по снимкам с Wikimedia Commons, visitdaugavpils.lv, celotajs.lv и militaryheritagetourism.info. АК-47 и руки в игре: «<a href="https://sketchfab.com/3d-models/fps-character-animation-pack-ak-47-b95778a564094fc3a49d1d6a3b6a30ab">FPS Character Animation Pack Ak-47</a>», Cristian David Duque Camacho (CC BY 4.0).</div>
   </div>
 </div>
