@@ -10,7 +10,8 @@ import { openLobby, closeLobby } from './lobby.js';
    that choice, with a way back; and within them, a setting shows only when it means something: the team not in a
    training where everyone is for himself, the place to appear only in the open city (in an arena you appear on your
    base). There is one server — the page's own address (src/game/server.js) — so there is nothing to choose.
-   The keys are folded under «Управление». The time of day is a setting of the training (авто, день, вечер, ночь),
+   The keys live in the fight («Клавиши», F1), not on the start card; the card's footer link opens the credits
+   modal with the data sources and licences. The time of day is a setting of the training (авто, день, вечер, ночь),
    kept in localStorage; online the server's day runs (server/daycycle.mjs) and there is nothing to choose. */
 const card = $('startCard'), home = $('stepHome'), form = $('play');
 const STEPS = {
@@ -51,13 +52,23 @@ if (/firefox/i.test(navigator.userAgent)) {
   if (!dismissed) $('browserHint').hidden = false;
   $('browserHintX').onclick = () => { $('browserHint').hidden = true; try { localStorage.setItem('dpils-browser-hint', 'off'); } catch (e) {} };
 }
-window.addEventListener('keydown', e => { if (e.code === 'Escape' && !$('start').hidden && card.dataset.step !== 'home' && form.contains(document.activeElement)) { e.preventDefault(); showStep('home'); } });
-// the "?" button: the card again, on its first step, with the keys unfolded
+// the credits: the quiet link at the bottom of the card opens a modal with the data sources and licences
+const credits = $('credits');
+const closeCredits = () => { credits.hidden = true; $('bCredits').focus(); };
+$('bCredits').onclick = () => { credits.hidden = false; $('creditsClose').focus(); };
+$('creditsClose').onclick = closeCredits;
+credits.addEventListener('click', e => { if (e.target === credits) closeCredits(); });
+window.addEventListener('keydown', e => {
+  if (e.code !== 'Escape') return;
+  if (!credits.hidden) { e.preventDefault(); closeCredits(); return; }
+  if (!$('start').hidden && card.dataset.step !== 'home' && form.contains(document.activeElement)) { e.preventDefault(); showStep('home'); }
+});
+// the "?" button: the card again, on its first step
 $('bHelp').onclick = () => {
   if (document.pointerLockElement) document.exitPointerLock();
   $('go').hidden = !STATE.started;   // «Вернуться в игру» — только когда бой уже идёт
   $('chTrain').hidden = $('chOnline').hidden = !!STATE.mp;   // in a game, not another game
-  showStep('home'); $('keysBox').open = true; $('start').hidden = false; (STATE.started ? $('go') : $('chTrain')).focus();
+  showStep('home'); $('start').hidden = false; (STATE.started ? $('go') : $('chTrain')).focus();
 };
 
 export { showStep };
