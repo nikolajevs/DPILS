@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/start-grid-fx | Интерактивная сетка фона стартового экрана + город скрыт до боя | src/ui/startfx.js, src/boot.js, src/main.js, src/style.css, README.md |
 
 ## Автономный цикл улучшений
 

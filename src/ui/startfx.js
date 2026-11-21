@@ -132,6 +132,7 @@ function draw(t) {
   for (let i = ripples.length - 1; i >= 0; i--) {
     const r = ripples[i], age = t - r.t0;
     if (age > LIFE) { ripples.splice(i, 1); continue; }
+    if (age < 0) continue;   // the rAF timestamp can lag the click's performance.now() by a few ms on the first frame
     const a = 1 - age / LIFE;
     ctx.strokeStyle = rgba(brick, 0.45 * a); ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.arc(r.x, r.y, age * SPEED, 0, Math.PI * 2); ctx.stroke();
