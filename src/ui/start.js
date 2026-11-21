@@ -1,6 +1,6 @@
 import { STATE } from '../core/state.js';
 import { prepareUi } from '../game/mp.js';
-import { setTime } from '../render/lighting.js';
+import { setTimePref, timePref } from '../render/lighting.js';
 import { $ } from '../core/env.js';
 import { openLobby, closeLobby } from './lobby.js';
 
@@ -10,8 +10,8 @@ import { openLobby, closeLobby } from './lobby.js';
    that choice, with a way back; and within them, a setting shows only when it means something: the team not in a
    training where everyone is for himself, the place to appear only in the open city (in an arena you appear on your
    base). There is one server — the page's own address (src/game/server.js) — so there is nothing to choose.
-   The keys are folded under «Управление». The time of day is chosen on the first step,
-   before any game, and kept in localStorage; mid-game (the card reopened by «?») its row is hidden. */
+   The keys are folded under «Управление». The time of day is a setting of the training (авто, день, вечер, ночь),
+   kept in localStorage; online the server's day runs (server/daycycle.mjs) and there is nothing to choose. */
 const card = $('startCard'), home = $('stepHome'), form = $('play');
 const STEPS = {
   train: { title: 'Тренировка с ботами', hint: 'Бой против ботов прямо в браузере, по правилам сервера. Выберите карту, режим и соперников.' },
@@ -23,7 +23,7 @@ function showStep(step) {
   home.hidden = step !== 'home'; form.hidden = step === 'home';
   for (const el of form.querySelectorAll('[data-for]')) el.hidden = !el.dataset.for.split(' ').includes(step);
   $('mpMsg').textContent = '';
-  if (step === 'home') { closeLobby(); $('timeRow').hidden = STATE.started; if (came) came.focus(); return; }
+  if (step === 'home') { closeLobby(); if (came) came.focus(); return; }
   prepareUi(); came = step === 'train' ? $('chTrain') : $('chOnline');
   $('stepTitle').textContent = STEPS[step].title; $('stepHint').textContent = STEPS[step].hint;
   follow();
@@ -38,9 +38,10 @@ function follow() {
 }
 $('trMode').addEventListener('change', follow); $('trArena').addEventListener('change', follow);
 $('chTrain').onclick = () => showStep('train'); $('chOnline').onclick = () => showStep('online'); $('stepBack').onclick = () => showStep('home');
-// the time of day: a choice of the start card, remembered for the next visit; in a game it does not change
-const timeSel = $('startTime');
-timeSel.onchange = () => { setTime(+timeSel.value); try { localStorage.setItem('dpils-time', timeSel.value); } catch (e) {} };
+// the time of day of the training: remembered for the next visit and shown at once on the city behind the card
+const timeSel = $('trTime');
+timeSel.value = timePref();
+timeSel.onchange = () => setTimePref(timeSel.value);
 $('chTrain').disabled = $('chOnline').disabled = false;   // the code is here: the settings can be chosen while the city is still being built
 /* The browser hint: Firefox's WebGL draws the city markedly slower than Chromium's on the same GPU (measured 20–28
    vs 60–80 fps on an RTX 3050), and auto quality already starts Firefox lower (src/render/lighting.js). Tell the

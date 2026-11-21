@@ -2,7 +2,7 @@ import { STATE } from '../core/state.js';
 import { updateHud } from '../ui/hud.js';
 import { big, drawMini, mapFrame } from '../ui/map.js';
 import { renderFrame, updateLod, updateSun } from '../render/post.js';
-import { QUALITY, qi } from '../render/lighting.js';
+import { QUALITY, dayTick, qi } from '../render/lighting.js';
 import { P, step } from './player.js';
 import { MP, mpLabels, mpTick, aimPunch } from './mp.js';
 import { camShake } from './nades.js';
@@ -35,7 +35,7 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); perfTick(Math.min(5, (now - last) / 1000)); last = now; clock += dt;
   if (STATE.started) { if ($('start').hidden && big.hidden && !(MP.on && MP.dead)) step(dt); }
   else { STATE.introT += reduceMotion ? 0 : dt; P.yaw = 0.6 + STATE.introT * 0.05; P.x = -1350 + Math.sin(P.yaw) * 420; P.z = 1250 + Math.cos(P.yaw) * 420; P.y = 150 + terrainH(P.x, P.z); P.pitch = -0.33; }
-  mpTick(dt); updateTransit(dt); lmTick();
+  mpTick(dt); updateTransit(dt); lmTick(); dayTick();   // dayTick: the sun and the light of the running day (lighting.js)
   if (!reduceMotion) U.time.value = clock;
   // the full map covers the city: outside the game the 3D picture is not drawn while it is open (the last frame stays)
   if (!big.hidden) { mapFrame(); if (!STATE.mp) return; }

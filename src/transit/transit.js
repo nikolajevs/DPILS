@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { STATE } from '../core/state.js';
 import { due, pause, rest } from '../core/pause.js';
-import { TIMES, timeI } from '../render/lighting.js';
+import { TOD } from '../render/lighting.js';
 import { P } from '../game/player.js';
 import { vbGround } from '../world/bridge-vienibas.js';
 import { upUnder } from '../world/underpass.js';
@@ -213,7 +213,7 @@ async function buildTransit() {
     return { b, g, s };
   });
   await rest(); TX.trainTrips = buildTrains(); TX.glow.push(...TRN.glow);   // the passenger trains through the station (trains.js)
-  for (const g of TX.glow) g.visible = TIMES[timeI].lamps;
+  for (const g of TX.glow) g.visible = TOD.lamps > 0;
   await rest(); buildStops(); await rest();
   scanActive();
   return TR.trips.length + TX.trainTrips;
