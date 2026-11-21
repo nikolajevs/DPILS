@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Claude | claude/lantern-lighting-60482e | Свет от фонарей: настоящее освещение улиц, стен и машин вместо плоских пятен | src/world/lamps.js, src/world/lamp-light.js, src/landmarks/parks.js |
 
 ## Автономный цикл улучшений
 
