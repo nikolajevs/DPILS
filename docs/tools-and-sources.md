@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/inventory-slots | Инвентарь: 2 слота оружия + рюкзак на 10 слотов, смена оружия | src/game/inventory.js, src/game/mp.js, src/style.css, server/game.mjs, server/combat.mjs, server/bots.mjs |
 
 ## Автономный цикл улучшений
 

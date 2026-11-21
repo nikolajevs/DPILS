@@ -110,7 +110,7 @@ const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 const kbd = key => mk('kbd', '', key);
 
 const box = $('mpInv'), body = $('mpInvBody'), meChip = $('mpInvMe');
-let open = false, data = null, refs = null;
+let open = false, data = null, refs = null, builtLoadout = '';
 
 function build() {
   if (!data) return;
@@ -305,7 +305,13 @@ function paint() {
   meChip.append(mk('i', 'dot ' + (data.ffa ? 'tf' : 't' + data.team)), mk('b', '', data.name || 'Вы'), mk('span', 'kd', data.kills + ' · ' + data.deaths));
 }
 
-function renderInv(d) { data = d; if (open) paint(); }
+function renderInv(d) {
+  data = d;
+  if (!open) return;
+  const sig = (d.weapons || []).map(w => w.i).join(',');
+  if (sig !== builtLoadout) { build(); builtLoadout = sig; }   // a swap changed the equipped guns: rebuild the cards
+  paint();
+}
 // the reload bar of the gun that is reloading, every frame while the panel is open
 function invTick(now) {
   if (!open || !data || !refs || data.reloadW < 0) return;
@@ -321,7 +327,7 @@ function openInv() {
   open = true;
   if (document.pointerLockElement) document.exitPointerLock();
   keys.clear();
-  build(); paint();
+  build(); builtLoadout = (data.weapons || []).map(w => w.i).join(','); paint();
   box.hidden = false;
   box.querySelector('.panel').focus({ preventScroll: true });
 }
