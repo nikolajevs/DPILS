@@ -8,6 +8,10 @@ import { PHASE, loading } from './ui/loading.js';
 // auth.js needs no city data (it does not import core/env.js), so it can run this early; main.js imports it too, but
 // the module is evaluated once — the gate it opens here stays until the login succeeds.
 import './ui/auth.js';
+// the start screen's living backdrop: the interactive grid behind the card, and the rule that the 3D city
+// stays hidden until a fight is running (src/ui/startfx.js). Like auth.js it needs no city data, so it runs
+// this early — the grid is alive while the data are still downloading.
+import './ui/startfx.js';
 
 // the files and their sizes, used for the bar only until the server tells the real size (it does not when it
 // compresses them on the fly, as GitHub Pages does)
