@@ -18,9 +18,12 @@
    2i. The drag: v(s) = v0·e^(−k·s), damage as v²/v0², the longer flight time, one formula for server, page and bots.
    2j. The player cap: 64 places, bot names stay unique past the name list, a human steps a bot out of a full
       server, and with no bots left the join is refused.
+   2l. The ready belt and the backpack stores: three kits and two grenades of a kind are ready, the surplus rides
+      in the pack and refills the belt as it is spent (also on respawn); the sights live in the pack — mounting
+      frees the cell, a swap returns the old sight to it, a full pack refuses the take-off.
    3. A real bot fight on a flat arena (12 s of real time): with the small hitboxes the bots must still see,
       shoot and kill each other. */
-import { BULLET_G, FALL, HIT, WEAPONS, NADE, W_FALL, bulletAt, bulletDir, bulletDrop, dragDist, dragTime, dragVel, rayHit } from '../server/combat.mjs';
+import { BULLET_G, FALL, HIT, INV, WEAPONS, NADE, W_FALL, bulletAt, bulletDir, bulletDrop, dragDist, dragTime, dragVel, rayHit } from '../server/combat.mjs';
 import { createGame, MUZZLE } from '../server/game.mjs';
 import { makePhysics } from '../server/physics.mjs';
 
@@ -867,6 +870,67 @@ console.log('the loadout (two guns + the backpack):');
   clock += 3100;
   msg(A, { t: 'respawn' });
   ok(p.alive && p.loadout[0] === 1 && p.pack.includes(0), 'the loadout and the pack survive the respawn', p.loadout.join());
+  g.stop();
+}
+
+/* ---------- 2l. the ready belt and the backpack stores ---------- */
+console.log('the ready belt and the backpack stores:');
+{
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'belt' });
+  const A = seat(g, conn());
+  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  const p = A.handle.player;
+  clock += 3000;
+  ok(INV.medMax === 3 && INV.nadeMax === 2, 'the belt caps: three kits, two grenades of a kind');
+  ok(p.nades === 2 && p.meds === 0, 'the spawn belt: two grenades ready, no kits', p.nades + '/' + p.meds);
+  // place an item at the player's feet and let the pickup tick take it
+  const pick = kind => { const it = [...g.items.values()].find(i => i.kind === kind); it.x = p.x; it.z = p.z; it.active = true; g.stepItems(); return it; };
+  pick('med'); pick('med'); pick('med');
+  ok(p.meds === 3, 'three kits are ready (the belt cap)', String(p.meds));
+  pick('med'); pick('med');
+  ok(p.meds === 3 && p.pack.filter(k => k === 'med').length === 2, 'the surplus kits ride in the pack', JSON.stringify(p.pack));
+  ok(A.all('took').some(m => m.kind === 'med' && m.where === 'pack'), 'a stored pickup is reported as going to the pack');
+  p.hp = 40;
+  msg(A, { t: 'use', kind: 'med' });
+  ok(p.hp === 90 && p.meds === 3 && p.pack.filter(k => k === 'med').length === 1, 'a spent kit is replaced from the pack at once', p.hp + '/' + p.meds);
+  pick('nade'); pick('nade');   // the belt is full: both go to the pack
+  ok(p.nades === 2 && p.pack.filter(k => k === 'nade').length === 2, 'the surplus grenades ride in the pack', JSON.stringify(p.pack));
+  msg(A, { t: 'throw', dx: 0, dy: 0.3, dz: -1 });
+  ok(p.nades === 2 && p.pack.filter(k => k === 'nade').length === 1, 'a thrown grenade is replaced from the pack', p.nades + ' / ' + JSON.stringify(p.pack));
+  ok(A.last('inv') && A.last('inv').nades === 2 && A.last('inv').pack.filter(k => k === 'nade').length === 1, 'the throw reports the refilled belt and the pack');
+  // the sights ride in the pack: mounting frees the cell, taking off returns the sight
+  const free0 = p.pack.filter(k => k === null).length;
+  pick('sight');
+  ok(p.pack.includes('sight') && p.attach[0] === null, 'the picked sight rides in the pack');
+  ok(A.last('inv').sights.sight === 1, 'the inv message counts the loose sight from the pack');
+  msg(A, { t: 'attach', w: 0, kind: 'sight' });
+  ok(p.attach[0] === 'sight' && !p.pack.includes('sight') && p.pack.filter(k => k === null).length === free0, 'mounting takes the sight out of the pack and frees the cell');
+  msg(A, { t: 'attach', w: 0, kind: null });
+  ok(p.attach[0] === null && p.pack.includes('sight'), 'taking off returns the sight to the pack');
+  msg(A, { t: 'attach', w: 0, kind: 'sight' });
+  pick('optic');
+  msg(A, { t: 'attach', w: 0, kind: 'optic' });
+  ok(p.attach[0] === 'optic' && p.pack.includes('sight') && !p.pack.includes('optic'), 'swapping the sight returns the old one to the cell the new one left');
+  const sIt = pick('sight');   // one of a kind is owned (in the pack): the second is refused
+  ok(sIt.active && p.pack.filter(k => k === 'sight').length === 1, 'a second collimator is refused while one is owned');
+  // a full pack refuses the take-off
+  let guard = 0;
+  while (p.pack.includes(null) && guard++ < 12) pick('med');
+  ok(!p.pack.includes(null), 'the pack is full of stored kits', JSON.stringify(p.pack));
+  msg(A, { t: 'attach', w: 0, kind: null });
+  ok(p.attach[0] === 'optic' && A.last('chat') && /Рюкзак полон/.test(A.last('chat').text), 'a full pack refuses the take-off with a notice');
+  // the ready message takes a stored item when the belt has room
+  const mBefore = p.pack.filter(k => k === 'med').length;
+  p.meds = 1;
+  msg(A, { t: 'ready', kind: 'med' });
+  ok(p.meds === 2 && p.pack.filter(k => k === 'med').length === mBefore - 1, 'the ready message moves a stored kit to the belt');
+  // the respawn tops the belt up from the pack
+  p.hp = 0; p.alive = false; p.diedAt = clock;
+  clock += 3100;
+  msg(A, { t: 'respawn' });
+  ok(p.alive && p.meds === 3 && p.nades === 2, 'the respawn tops the belt up from the pack', p.meds + '/' + p.nades);
+  ok(p.attach[0] === 'optic' && p.pack.includes('sight'), 'the mounted sight and the stored one survive the death');
   g.stop();
 }
 

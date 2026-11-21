@@ -48,6 +48,9 @@ export const RELOAD_MS = [1800, 2600, 2800, 1400, 4500];
 // pistol by default. The other three ride in the backpack (PACK): ten loot slots, three filled at the start and seven
 // empty. A weapon index lives in exactly one place — a loadout slot or a pack cell — never both. Swapping exchanges a
 // pack cell with a loadout slot (server/game.mjs swapWeapon); the magazines and the reserve stay per weapon type.
+// A pack cell holds a weapon index or an item kind string ('sight', 'optic', 'med', 'nade'): the sights live in the pack
+// until mounted (mounting frees the cell, taking off returns the sight to a free cell), and the med kits and grenades
+// beyond the ready belt (INV.medMax / INV.nadeMax) are stored here — the belt refills from the pack as it is spent.
 export const LOADOUT = [0, 3];
 export const PACK = [1, 2, 4, null, null, null, null, null, null, null];
 export const ITEMS = {
@@ -57,7 +60,7 @@ export const ITEMS = {
   sight: { name: 'Коллиматор', respawnMs: 45000 },   // the red dot: fast aim, tighter spread, on any weapon
   optic: { name: 'Оптика 8x', respawnMs: 60000 },   // the long scope: strong zoom with its overlay, on any weapon
 };
-export const INV = { nadeMax: 3, medMax: 2, reserveCap: 2, itemCount: 18, pickR: 1.7, medGapMs: 800, sightMax: 1, opticMax: 1, weaponSlots: 2, packSlots: 10 };   // reserveCap: reserve up to RESERVE × this; sightMax/opticMax: loose + mounted of each kind; weaponSlots: equipped guns; packSlots: the backpack
+export const INV = { nadeMax: 2, medMax: 3, reserveCap: 2, itemCount: 18, pickR: 1.7, medGapMs: 800, sightMax: 1, opticMax: 1, weaponSlots: 2, packSlots: 10 };   // reserveCap: reserve up to RESERVE × this; nadeMax/medMax: the ready belt (grenades of one kind / med kits) — the surplus rides in the pack and refills the belt as it is spent; sightMax/opticMax: owned of each kind, in the pack + mounted; weaponSlots: equipped guns; packSlots: the backpack
 // ---- the ballistics of a flying bullet: gravity and air drag. The path is parameterised by the distance s along the
 // initial (unit) direction d. The drag v(t) = v0/(1 + k·v0·t) integrates to s(t) = ln(1 + k·v0·t)/k, so in distance the
 // speed reads v(s) = v0·e^(−k·s) and the time to reach s is t(s) = (e^(k·s) − 1)/(k·v0); the bullet sinks ½·g·t(s)²

@@ -15,13 +15,13 @@ import { prop, onProps } from './props.js';
    while, and the server says so ('item' / 'took' messages). */
 const KINDS = {
   ammo: { name: 'Патроны', color: 0x9aa85a, hint: 'запас патронов ко всему оружию' },
-  nade: { name: 'Граната', color: 0x6d8a44, hint: 'ещё одна граната' },
-  med: { name: 'Аптечка', color: 0xf2f2f2, hint: 'лечит 50 HP' },
-  sight: { name: 'Коллиматор', color: 0xff5040, hint: 'быстрый прицел с красной точкой — на любое оружие' },
-  optic: { name: 'Оптика 8x', color: 0x7fb2ff, hint: 'дальний зум с сеткой — на любое оружие' },
+  nade: { name: 'Граната', color: 0x6d8a44, hint: 'до 2 готовы к броску, излишки — в рюкзак' },
+  med: { name: 'Аптечка', color: 0xf2f2f2, hint: 'лечит 50 HP · до 3 готовы, излишки — в рюкзак' },
+  sight: { name: 'Коллиматор', color: 0xff5040, hint: 'быстрый прицел с красной точкой — хранится в рюкзаке, ставится на оружие' },
+  optic: { name: 'Оптика 8x', color: 0x7fb2ff, hint: 'дальний зум с сеткой — хранится в рюкзаке, ставится на оружие' },
 };
 const items = new Map();   // id → { kind, group, baseY, active }
-let cb = { useMed: () => {}, switchWeapon: () => {}, attach: () => {}, beep: () => {} };
+let cb = { useMed: () => {}, switchWeapon: () => {}, ready: () => {}, attach: () => {}, beep: () => {} };
 const bindInv = f => { cb = f; };
 
 /* ---------- the items on the map ---------- */
@@ -105,6 +105,7 @@ const NADE_INFO = 'до 100 урона · радиус 8 м · задержка 
 const AMMO_GIVE = [30, 8, 5, 12, 50];   // keep server/combat.mjs INV ammo.give in step
 const SIGHT_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18h14v2H5zM6 8h2v10H6zM16 8h2v10h-2zM6 6h12v2H6z"/><circle cx="12" cy="12" r="1.6"/></svg>';
 const OPTIC_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="9" width="18" height="5" rx="2.5"/><rect x="6" y="14" width="3" height="5"/><rect x="15" y="14" width="3" height="5"/><rect x="10" y="6" width="4" height="3"/></svg>';
+const ITEM_SVG = { nade: NADE_SVG, med: MED_SVG, sight: SIGHT_SVG, optic: OPTIC_SVG };   // a stored item in a pack cell (stroke icons, unlike the gun silhouettes)
 const gunTag = w => (w.pellets > 1 ? w.pellets + ' дробин за выстрел' : w.scope ? 'встроенная оптика' : w.auto ? 'автоматический огонь' : 'одиночный огонь');
 const fmt1 = x => (Math.round(x * 10) / 10).toString().replace('.', ',');
 const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -160,11 +161,12 @@ function build() {
     R.guns.push({ c, ammo, magN, resN, pips, fill, rlFill, rlText, attS, attO });
   });
   wsec.append(guns);
-  // the backpack: ten loot slots. A filled cell is a gun — the click swaps it into the active equipped slot; an empty
-  // cell waits for loot. The three guns not equipped start here, seven cells are empty.
+  // the backpack: ten loot slots. A filled cell is a gun (the click swaps it into the active equipped slot) or a stored
+  // item (a med kit / grenade goes to the ready belt, a sight mounts on the gun in hand); an empty cell waits for loot.
+  // The three guns not equipped start here, seven cells are empty.
   const psec = mk('section', 'inv-sec');
   const phead = mk('div', 'inv-head');
-  phead.append(mk('h3', '', 'Рюкзак · 10 слотов'), mk('small', '', 'щелчок по оружию — поменять с активным слотом · пустые слоты для лута'));
+  phead.append(mk('h3', '', 'Рюкзак · 10 слотов'), mk('small', '', 'оружие — поменять с активным слотом · предмет — в готовность или на оружие в руках'));
   psec.append(phead);
   const packGrid = mk('div', 'inv-pack');
   for (let s = 0; s < 10; s++) {
@@ -175,8 +177,14 @@ function build() {
     const kb = mk('kbd', 'inv-pack-key');
     const empty = mk('span', 'inv-pack-empty', 'пусто');
     cell.append(sil, nm, am, kb, empty);
-    cell.onclick = () => { const w = data.pack && data.pack[s]; if (w) cb.switchWeapon(w.i); };
-    cell.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { const w = data.pack && data.pack[s]; if (w) { e.preventDefault(); cb.switchWeapon(w.i); } } };
+    const act = () => {
+      const it = data.pack && data.pack[s]; if (!it) return;
+      if (typeof it.i === 'number') cb.switchWeapon(it.i);
+      else if (it.kind === 'med' || it.kind === 'nade') cb.ready(it.kind);
+      else { const held = (data.weapons || []).find(w => w.on); if (held) cb.attach(held.i, it.kind); }
+    };
+    cell.onclick = act;
+    cell.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } };
     packGrid.append(cell);
     R.pack.push({ cell, sil, nm, am, kb });
   }
@@ -194,22 +202,24 @@ function build() {
     card.append(top, pips);
     return { card, cnt, pips };
   };
-  const nade = itemCard(NADE_SVG, 'Гранаты');
+  const nade = itemCard(NADE_SVG, 'Гранаты · готовы');
   for (let k = 0; k < data.nadeMax; k++) nade.pips.append(mk('i'));
-  nade.card.append(mk('small', '', data.nadeKey + ' — прицельный бросок: мышь целится, ЛКМ заряжает силу'), mk('small', 'inv-dim', NADE_INFO));
-  R.nade = nade;
-  const med = itemCard(MED_SVG, 'Аптечки');
+  const nPack = mk('small', 'inv-dim', '');
+  nade.card.append(mk('small', '', data.nadeKey + ' — прицельный бросок: мышь целится, ЛКМ заряжает силу'), mk('small', 'inv-dim', NADE_INFO), nPack);
+  R.nade = { ...nade, pack: nPack };
+  const med = itemCard(MED_SVG, 'Аптечки · готовы');
   for (let k = 0; k < data.medMax; k++) med.pips.append(mk('i'));
   const use = mk('button', 'btn inv-use'); use.type = 'button'; use.append(document.createTextNode('Использовать '), kbd(data.medKey));
   use.onclick = () => { cb.useMed(); cb.beep('med'); };
   const mnote = mk('small', 'inv-dim', 'лечит 50 HP');
-  med.card.append(use, mnote);
-  R.med = { ...med, use, note: mnote };
-  const sight = itemCard(SIGHT_SVG, 'Коллиматоры'); sight.pips.append(mk('i'));
+  const mPack = mk('small', 'inv-dim', '');
+  med.card.append(use, mnote, mPack);
+  R.med = { ...med, use, note: mnote, pack: mPack };
+  const sight = itemCard(SIGHT_SVG, 'Коллиматоры · рюкзак'); sight.pips.append(mk('i'));
   const sNote = mk('small', 'inv-dim', '');
   sight.card.append(mk('small', '', 'ПКМ — быстрый прицел с красной точкой, разброс уже'), sNote);
   R.sight = { ...sight, note: sNote };
-  const optic = itemCard(OPTIC_SVG, 'Оптика 8×'); optic.pips.append(mk('i'));
+  const optic = itemCard(OPTIC_SVG, 'Оптика 8× · рюкзак'); optic.pips.append(mk('i'));
   const oNote = mk('small', 'inv-dim', '');
   optic.card.append(mk('small', '', 'ПКМ — сильный зум с сеткой, руки прячутся'), oNote);
   R.optic = { ...optic, note: oNote };
@@ -231,7 +241,7 @@ function build() {
   ssec.append(state);
   low.append(isec, ssec);
   const note = mk('small', 'inv-note');
-  note.textContent = 'На игроке только два ствола — остальные лежат в рюкзаке (10 слотов, 7 пустых для лута). Щелчок по оружию в рюкзаке меняет его с активным слотом; клавиши 1–5 берут ствол в руки или достают из рюкзака, колесо мыши переключает два экипированных. Снаряжение переживает смерть. Предметы на карте подбираются автоматически — просто пройдите мимо. Ящик патронов даёт +' + AMMO_GIVE.join(' / +') + ' к запасу каждого ствола и возвращается через 25 с, граната — через 30 с, аптечка — через 35 с, коллиматор — через 45 с, оптика — через 60 с. Прицел из кармана ставится на любое оружие кнопками на его карточке. Бой продолжается, пока панель открыта.';
+  note.textContent = 'На игроке только два ствола — остальные лежат в рюкзаке (10 слотов, 7 пустых для лута). Щелчок по оружию в рюкзаке меняет его с активным слотом; клавиши 1–5 берут ствол в руки или достают из рюкзака, колесо мыши переключает два экипированных. Прицелы хранятся в рюкзаке: установка на оружие освобождает слот, снятие возвращает прицел в свободный слот. К использованию готовы до ' + data.medMax + ' аптечек и до ' + data.nadeMax + ' гранат одного типа; излишки лежат в рюкзаке и сами пополняют готовность после использования (щелчок по предмету в рюкзаке тоже берёт его в готовность, прицел — ставит на оружие в руках). Снаряжение переживает смерть. Предметы на карте подбираются автоматически — просто пройдите мимо. Ящик патронов даёт +' + AMMO_GIVE.join(' / +') + ' к запасу каждого ствола и возвращается через 25 с, граната — через 30 с, аптечка — через 35 с, коллиматор — через 45 с, оптика — через 60 с. Бой продолжается, пока панель открыта.';
   body.append(wsec, psec, low, note);
   refs = R;
 }
@@ -256,16 +266,18 @@ function paint() {
       const on = w.attach === k;
       b.classList.toggle('on', on);
       b.disabled = !on && loose[k] <= 0;
-      b.title = on ? 'Снять прицел — вернётся в карман' : loose[k] > 0 ? 'Установить на это оружие' : 'Нет в кармане — подберите на карте';
+      b.title = on ? 'Снять прицел — вернётся в рюкзак' : loose[k] > 0 ? 'Установить на это оружие' : 'Нет в рюкзаке — подберите на карте';
     }
   });
-  // the backpack cells: a gun shows its silhouette, name, rounds and key (the click swaps it in); an empty cell waits
+  // the backpack cells: a gun shows its silhouette, name, rounds and key (the click swaps it in); a stored item shows
+  // its icon and what the click does (to the ready belt, or onto the gun in hand); an empty cell waits
   const pk = data.pack || [];
   R.pack.forEach((r, s) => {
     const w = pk[s];
     r.cell.classList.toggle('filled', !!w);
     r.cell.classList.toggle('empty', !w);
-    if (w) {
+    r.cell.classList.toggle('item', !!w && typeof w.i !== 'number');
+    if (w && typeof w.i === 'number') {
       r.cell.setAttribute('role', 'button'); r.cell.tabIndex = 0;
       r.cell.title = 'Взять в руки — поменять с активным слотом (' + w.key + ')';
       r.sil.innerHTML = SLOT_SVG[w.i];
@@ -273,6 +285,15 @@ function paint() {
       r.am.textContent = w.mag + ' / ' + w.reserve;
       r.am.dataset.empty = w.mag === 0 ? 1 : 0;
       r.kb.textContent = w.key;
+    } else if (w) {
+      r.cell.setAttribute('role', 'button'); r.cell.tabIndex = 0;
+      const belt = w.kind === 'med' || w.kind === 'nade';
+      r.cell.title = belt ? w.name + ' — щелчок: в готовность (если есть место)' : w.name + ' — щелчок: установить на оружие в руках';
+      r.sil.innerHTML = ITEM_SVG[w.kind];
+      r.nm.textContent = w.name;
+      r.am.textContent = belt ? 'в готовность' : 'на оружие';
+      delete r.am.dataset.empty;
+      r.kb.textContent = '';
     } else {
       r.cell.removeAttribute('role'); r.cell.tabIndex = -1;
       r.cell.title = 'Пустой слот рюкзака';
@@ -285,14 +306,19 @@ function paint() {
     r.card.dataset.empty = loose[k] > 0 ? 0 : 1;
     [...r.pips.children].forEach((p, j) => p.classList.toggle('full', j < loose[k]));
     const on = data.weapons.filter(w => w.attach === k).map(w => w.name);
-    r.note.textContent = on.length ? 'стоит на: ' + on.join(', ') : loose[k] > 0 ? 'в кармане — выберите оружие выше' : 'нет — ищите на карте';
+    r.note.textContent = on.length ? 'стоит на: ' + on.join(', ') : loose[k] > 0 ? 'в рюкзаке — выберите оружие выше' : 'нет — ищите на карте';
   }
+  const packN = k => (data.pack || []).filter(it => it && it.kind === k).length;
   R.nade.cnt.textContent = '×' + data.nades + ' / ' + data.nadeMax;
   R.nade.card.dataset.empty = data.nades > 0 ? 0 : 1;
   [...R.nade.pips.children].forEach((p, k) => p.classList.toggle('full', k < data.nades));
+  const nPack = packN('nade');
+  R.nade.pack.textContent = nPack ? 'в рюкзаке ещё ' + nPack + ' — сами пополняют готовность после броска' : 'готовы до ' + data.nadeMax + ' одного типа · излишки хранятся в рюкзаке';
   R.med.cnt.textContent = '×' + data.meds + ' / ' + data.medMax;
   R.med.card.dataset.empty = data.meds > 0 ? 0 : 1;
   [...R.med.pips.children].forEach((p, k) => p.classList.toggle('full', k < data.meds));
+  const mPack = packN('med');
+  R.med.pack.textContent = mPack ? 'в рюкзаке ещё ' + mPack + ' — сами пополняют готовность после использования' : 'готовы до ' + data.medMax + ' · излишки хранятся в рюкзаке';
   const none = data.meds <= 0, full = data.hp >= 100;
   R.med.use.disabled = none || full;
   R.med.note.textContent = none ? 'нет аптечек — ищите белые ящики на карте' : full ? 'здоровье полное — беречь не нужно' : 'лечит 50 HP';

@@ -436,6 +436,8 @@ label.chk { display: flex; align-items: center; gap: 8px; font-size: 13px; color
 .inv-pack-sil { display: block; height: 30px; width: 100%; }
 .inv-pack-sil svg { width: 100%; height: 100%; fill: rgba(255, 255, 255, .62); }
 .inv-pack-cell.filled:hover .inv-pack-sil svg { fill: var(--warn); }
+.inv-pack-cell.item .inv-pack-sil svg { fill: none; stroke: rgba(255, 255, 255, .62); stroke-width: 1.7; }   /* stored items: stroke icons, not the filled gun silhouettes */
+.inv-pack-cell.item.filled:hover .inv-pack-sil svg { fill: none; stroke: var(--warn); }
 .inv-pack-name { font: 600 12px/1.1 var(--f-body); }
 .inv-pack-ammo { font: 600 11px/1 var(--f-body); font-variant-numeric: tabular-nums; color: rgba(255, 255, 255, .55); }
 .inv-pack-ammo[data-empty="1"] { color: #ff7a6b; }
