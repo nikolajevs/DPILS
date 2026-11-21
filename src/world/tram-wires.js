@@ -13,6 +13,7 @@ import { scene } from '../render/renderer.js';
 import { GB, SegGrid, box, polyA } from '../core/geometry.js';
 import { hb, sh } from '../core/util.js';
 import { WL } from '../core/env.js';
+import { addLight } from './lamp-light.js';
 
 /* ---------- the overhead line of the trams ----------
    The tram lines are electrified (600 V): a contact wire 5.8 m over every track, and a support every 32 m. Where the
@@ -155,6 +156,7 @@ function lmVienibas(K) {
     lmLathe(G, x, z, yb, [[0.16, 0], [0.16, 0.35], [0.11, 0.42], [0.075, 9.4], [0.05, 9.6], [0, 9.65]], 8, LAMPC);
     lmBar(G, q(0, 9.3), q(1.9, 9.85), 0.08, LAMPC); lmBar(G, q(1.6, 9.82), q(2.4, 9.88), 0.3, hb('#8c9093'));
     const [lx, , lz] = q(2.0, 0); lmLathe(K.globe, lx, lz, yb + 9.62, [[0, 0], [0.2, 0.03], [0.2, 0.12], [0, 0.16]], 8, hb('#f4efe2'));
+    addLight(lx, yb + 9.58, lz, 0, Math.atan2(lz - z, lx - x), 9.9);   // its light over the road (src/world/lamp-light.js)
     const lyre = (w, sgn) => { for (let k = 0; k < 10; k++) { const t0 = k / 10, t1 = (k + 1) / 10, o = t => 0.12 + w * Math.sin(Math.PI * t) * (1 + sgn * 0.3 * Math.sin(2 * Math.PI * t)); lmBar(G, q(o(t0), 5.4 + 3.4 * t0), q(o(t1), 5.4 + 3.4 * t1), 0.035, LAMPC); } };
     lyre(0.55, 1); lyre(0.3, -1); for (const t of [0.25, 0.5, 0.75]) lmBar(G, q(0.12, 5.4 + 3.4 * t), q(0.12 + 0.55 * Math.sin(Math.PI * t), 5.4 + 3.4 * t + 0.25), 0.03, LAMPC);
   }

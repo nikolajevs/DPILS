@@ -7,6 +7,7 @@ import { LMT } from './tiles.js';
 import { LMF, LMWHITE, lmW } from './core.js';
 import { TERR, terrainH } from '../world/terrain.js';
 import { hb, sh } from '../core/util.js';
+import { addLight } from '../world/lamp-light.js';
 
 /* ---- Heat plant No. 1 (siltumcentrāle Nr. 1), 18. novembra iela 2 ----
    The city's first power station, "Elektriskā spēkstacija", built by a Berlin electricity company and switched on at
@@ -105,6 +106,7 @@ function lmSC(K) {
 
 function lmCandelabrum(G, Gl, x, z, y0, rot) {
   const IRON = hb('#262b2f'), GLOBE = hb('#f4f1e8');
+  addLight(x, y0 + 3.33, z, 1);   // the four globes light as one (src/world/lamp-light.js)
   lmLathe(G, x, z, y0, [[0.36, 0], [0.36, 0.1], [0.3, 0.16], [0.3, 0.5], [0.24, 0.62], [0.26, 0.7], [0.17, 0.86], [0.14, 1.0]], 12, IRON);
   lmLathe(G, x, z, y0 + 1.0, [[0.14, 0], [0.12, 2.2], [0.16, 2.28], [0.16, 2.36], [0.1, 2.42], [0.08, 2.5], [0.07, 3.6]], 12, IRON);
   for (let k = 0; k < 4; k++) {

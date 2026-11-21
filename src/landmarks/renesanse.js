@@ -4,6 +4,7 @@ import { lmBar, lmBlock, lmBoxL, lmLit, lmOp } from './helpers.js';
 import { LMF, lmW } from './core.js';
 import { polyA } from '../core/geometry.js';
 import { hb, sh } from '../core/util.js';
+import { addLight } from '../world/lamp-light.js';
 
 /* ---- Former cinema "Oktobris" (1978), later "Renesanse", Vienības iela 30; Daugavpils Innovation Centre since 2022 ----
    OpenStreetMap maps the building in building:part relations, which the data build did not download, so its outline
@@ -51,7 +52,7 @@ function lmRenesanse(K) {
     for (let k = 0; k < 10; k++) { const a0 = Math.PI / 2 + k / 10 * Math.PI, a1 = Math.PI / 2 + (k + 1) / 10 * Math.PI, am = (a0 + a1) / 2, P = (a, v) => at(u0 + r * Math.cos(a), v, yc + r * Math.sin(a));
       polyA(G, [P(a0, v0), P(a1, v0), P(a1, v1), P(a0, v1)], sh(CANOPY, 0.95 + 0.1 * Math.sin(am)), f[2] * Math.cos(am), Math.sin(am), f[3] * Math.cos(am));
       for (const [v, s] of [[v0, -1], [v1, 1]]) polyA(G, [at(u0, v, yc), P(a0, v), P(a1, v)], CANOPY, -f[3] * s, 0, f[2] * s); }
-    for (let v = 28; v < v1 - 0.5; v += 2.4) for (const u of [-9.0, -6.6]) lmDisc(K.globe, at(u, v, y0 - 0.01), 0.09, [f[2], 0, f[3]], [-f[3], 0, f[2]], hb('#fff6e6'), [0, -1, 0]); }
+    for (let v = 28; v < v1 - 0.5; v += 2.4) for (const u of [-9.0, -6.6]) { lmDisc(K.globe, at(u, v, y0 - 0.01), 0.09, [f[2], 0, f[3]], [-f[3], 0, f[2]], hb('#fff6e6'), [0, -1, 0]); const p = at(u, v, y0 - 0.06); addLight(p[0], p[1], p[2], 2); } }
   // forecourt: a granite terrace at the lobby floor, steps at its west end, a ramp with steel railings along the front
   { const ut = -13.4; lmBoxL(GS, f, ut, UG, V0 - 0.9, CV1 + 0.7, 0, 0.9, CONC, false);
     for (let k = 0; k < 6; k++) lmBoxL(GS, f, ut - 0.32 * (6 - k), ut + 0.02, V0 - 0.8, V0 + 3.2, k * 0.15, (k + 1) * 0.15, sh(CONC, 0.95 + (k % 2) * 0.06), false);
