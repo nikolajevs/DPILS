@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/inv-ready-limits | Инвентарь: прицелы в рюкзаке, готовность аптечек (до 3) и гранат (до 2), излишки в рюкзаке | server/combat.mjs, server/game.mjs, server/bots.mjs, src/game/mp.js, src/game/inventory.js, src/game/help.js, src/style.css, tools/combat-test.mjs, README.md |
 
 ## Автономный цикл улучшений
 
