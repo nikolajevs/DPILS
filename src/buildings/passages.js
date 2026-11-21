@@ -1,22 +1,18 @@
-import { mieraHoles, mieraOf } from './miera.js';
+import { passageHolesOf } from './passage-holes.mjs';
 
 /* ---------- through-passages (проезды): the collision stays open where a model opens the wall ----------
    A block drawn with a covered way through it (Miera iela 143, src/buildings/miera.js) leaves each opening as a hole
    in its footprint: buildingAt / inBuilding already treat the hole as open, so bullets, grenades, bots and tree
-   planting pass through. But the walking collision (COL) is built from the raw cadastre outline, and the outline's
-   recess notch still has a back wall across the mouth — the body was stopped at the passage although the wall was
-   drawn open. Here the very same holes clip the outline collision, and the two jamb walls of each opening are added,
-   so the body walks (and drives) through exactly where the model opens the wall, between the piers it leaves standing.
+   planting pass through — in the page and on the game server alike (both take the holes from passage-holes.mjs).
+   But the walking collision (COL) is built from the raw cadastre outline, and the outline's recess notch still has a
+   back wall across the mouth — the body was stopped at the passage although the wall was drawn open. Here the very
+   same holes clip the outline collision, and the two jamb walls of each opening are added, so the body walks (and
+   drives) through exactly where the model opens the wall, between the piers it leaves standing.
 
    RULE: every through-passage in a building must be passable — see README «Проезды сквозь здания» and CLAUDE.md. The
-   model cuts the opening and registers it as a footprint hole; passageHolesOf returns those holes and addHoledCollision
-   opens the collision to match. When a new block with a passage is modelled, register its holes in passageHolesOf. */
-
-// the footprint holes of the through-passages of a building (empty if it has none)
-function passageHolesOf(id, outer) {
-  if (mieraOf(outer)) return mieraHoles();
-  return [];
-}
+   model cuts the opening; passageHolesOf (passage-holes.mjs) returns it as footprint holes, buildings.js puts them
+   into BLD and addHoledCollision opens the collision to match. When a new block with a passage is modelled, register
+   its holes in passageHolesOf. */
 
 // frame of a rectangular hole: centre, width axis (ex,ez) with half hw, depth axis (fx,fz) with half hd
 function holeFrame(h) {
@@ -35,10 +31,10 @@ function insideRect(ua, va, du, dv, hw, hd) {
   return [t0, t1];
 }
 // collision: the outline edges clipped around every opening, plus the two jamb walls of each opening at the width the
-// model draws them. The clip rectangle is grown a little along the depth so it also clears the recess back wall of the
-// cadastre notch, which sits a hand's breadth mouth-side of the hole (the hole is inset 0.01 m from the bridge face).
-// COL is passed in so this module does not import world/data.js.
-const GROW_D = 0.7, GROW_W = 0.4;
+// model draws them. The clip rectangle is grown along the depth so it also clears the recess back wall of the cadastre
+// notch, and the jambs reach as far: 0.69 m past the bridge face. The hole itself already reaches 0.2 m past the face
+// (MIERA_MOUTH in passage-holes.mjs), so the growth adds the rest. COL is passed in so this module does not import world/data.js.
+const GROW_D = 0.49, GROW_W = 0.4;
 function addHoledCollision(rings, holes, COL) {
   const frames = holes.map(holeFrame);
   for (const r of rings) {

@@ -20,7 +20,7 @@ const BROWSER = new Set(['window', 'AbortController', 'HTMLInputElement', 'HTMLS
   'devicePixelRatio', 'location', 'innerWidth', 'innerHeight', 'ResizeObserver', 'screen', 'history', 'alert', 'Event', 'KeyboardEvent', 'PointerEvent']);
 const GLOBALS = new Set([...Object.getOwnPropertyNames(globalThis), ...BROWSER]);
 
-const files = []; (function rec(d) { for (const f of fs.readdirSync(d)) { const p = path.join(d, f); if (fs.statSync(p).isDirectory()) rec(p); else if (p.endsWith('.js')) files.push(p); } })(SRC);
+const files = []; (function rec(d) { for (const f of fs.readdirSync(d)) { const p = path.join(d, f); if (fs.statSync(p).isDirectory()) rec(p); else if (p.endsWith('.js') || p.endsWith('.mjs')) files.push(p); } })(SRC);   // .mjs: a module of src/ the game server imports too (buildings/passage-holes.mjs)
 const M = new Map();   // file → { ast, scope, imports: Map(local → [file, name]), exports: Map(exported → local), decl: Map(local → node info) }
 const problems = [];
 for (const file of files) {

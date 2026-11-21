@@ -11,6 +11,7 @@ import { band, church, flatPlain, flatRoof, roofFace, tileOf, tiles, vband, wall
 import { lidarOf } from './lidar.js';
 import { serBuild } from './series.js';
 import { addHoledCollision, passageHolesOf } from './passages.js';
+import { footprintHoles } from './passage-holes.mjs';
 import { ovDrops } from '../world/overpass.js';
 import { rbDrops } from '../world/bridge-railway.js';
 import { BGRID, BLD, COL, matFac, matGold, matPlain, matRoof } from '../world/data.js';
@@ -48,7 +49,8 @@ async function buildBuildings(from, to) {
     if (TERR.on) { let lo = 1e9, hi = -1e9; for (let i = 0; i < outer.length; i += 2) { const t = terrainH(outer[i], outer[i + 1]); lo = Math.min(lo, t); hi = Math.max(hi, t); }
       const base = Math.min(hi - 0.15, lo + 2.5); STATE.GBC = (x, y, z) => { const t = terrainH(x, z); return y <= 0.05 ? Math.min(base, t) - 0.25 - t - y : base - t; }; }
     const name = rec[3] >= 0 ? NAMES[rec[3]] : '';
-    BLD.push({ ring: outer, bb, kind: style, top: h, base: style === 12 ? Math.max(0, h - 0.25) : 0, holes: rings.slice(1) }); const bid = BLD.length - 1;   // style 12: a canopy on posts, open at the ground
+    // the holes: closed courtyards (the inner rings) and through-passages — the same list the game server builds (server/world.mjs)
+    BLD.push({ ring: outer, bb, kind: style, top: h, base: style === 12 ? Math.max(0, h - 0.25) : 0, holes: footprintHoles(id, rings) }); const bid = BLD.length - 1;   // style 12: a canopy on posts, open at the ground
     for (let i = Math.floor(bb[0] / 60); i <= Math.floor(bb[2] / 60); i++) for (let j = Math.floor(bb[1] / 60); j <= Math.floor(bb[3] / 60); j++) { const k = (i + 2000) * 4096 + j + 2000; let l = BGRID.get(k); if (!l) BGRID.set(k, l = []); l.push(bid); }
     const ph = passageHolesOf(id, outer);   // through-passages (проезды): the openings their model cuts in the footprint
     if (style !== 12) { if (ph.length) addHoledCollision(rings, ph, COL); else for (const r of rings) { const n = r.length >> 1; for (let i = 0; i < n; i++) { const j = (i + 1) % n; COL.add(r[2 * i], r[2 * i + 1], r[2 * j], r[2 * j + 1], 0, 0); } } }   // the body collides with the same outline the bullet tests (a tall podium is solid too); a passage opens a walkable tunnel

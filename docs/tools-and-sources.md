@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Claude | claude/training-server-graphics-5737c9 | Сервер видит дворы и проезды, как тренировка | server/world.mjs, src/buildings/miera.js |
 
 ## Автономный цикл улучшений
 
