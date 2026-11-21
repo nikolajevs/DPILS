@@ -60,11 +60,19 @@ THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
 #endif`;
 // every fogged material gets the two extra fog uniforms; patch may edit the shader further
 function hook(m, key, patch) {
-  m.onBeforeCompile = s => { terrUniforms(s); s.uniforms.uFogGlow = U.fogGlow; s.uniforms.uFogSun = U.sunDir; if (patch) patch(s); };
+  m.onBeforeCompile = (s, r) => { terrUniforms(s, r); s.uniforms.uFogGlow = U.fogGlow; s.uniforms.uFogSun = U.sunDir; if (patch) patch(s); };
   if (key) m.customProgramCacheKey = () => key;
   return m;
 }
 
-function terrUniforms(s) { s.uniforms.tTerr = U.tTerr; s.uniforms.uTerrA = U.uTerrA; s.uniforms.uTerrB = U.uTerrB; for (const k in U) if (/^(tPatch|uPatch|tLamp|uLamp)/.test(k)) s.uniforms[k] = U[k]; }   // with the fine patches of the terrain (src/world/terrain.js) and the light of the lamps (src/world/lamp-light.js)
+// with the fine patches of the terrain (src/world/terrain.js), the light of the lamps (src/world/lamp-light.js) and the
+// shadow maps of the lamps and of what moves (src/render/lamp-shadows.js). r: the renderer compiling it; another one
+// than the city's (the lobby's podium, src/ui/lobby.js) cannot sample the city's atlas — it gets none (three's empty one)
+const SH_NONE = { value: null };
+function terrUniforms(s, r) {
+  s.uniforms.tTerr = U.tTerr; s.uniforms.uTerrA = U.uTerrA; s.uniforms.uTerrB = U.uTerrB;
+  for (const k in U) if (/^(tPatch|uPatch|tLamp|uLamp|tSh|uSh)/.test(k)) s.uniforms[k] = U[k];
+  if (r && r !== renderer) s.uniforms.tShAtlas = SH_NONE;
+}
 
 export { ANISO, GPU, LIGHTDIR, MAXTEX, POST, U, WEAK_GPU, camera, canvas, hemi, hook, renderer, scene, sun, terrUniforms };

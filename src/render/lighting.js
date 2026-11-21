@@ -4,6 +4,7 @@ import { resize } from '../game/loop.js';
 import { TX } from '../transit/transit.js';
 import { lampsOn } from '../world/lamps.js';
 import { lampMost } from '../world/lamp-light.js';
+import { setLampShadows } from './lamp-shadows.js';
 import { lmNight } from '../landmarks/index.js';
 import { matGold } from '../world/data.js';
 import { allMats } from './materials.js';
@@ -186,12 +187,13 @@ function setTimePref(v, keep) {
   if (v === 'auto') setCycle(dayPhase(Date.now())); else setTime(Math.max(0, Math.min(2, Math.round(+v) || 0)));
 }
 
-// shadow: the map size of EACH sun cascade (the two cascades share one atlas twice as wide, hence the MAXTEX/2 cap)
+// shadow: the map size of EACH sun cascade (the two cascades share one atlas twice as wide, hence the MAXTEX/2 cap);
+// lampSh: how many of the nearest lamps throw shadows from a depth map of their own (src/render/lamp-shadows.js)
 const QUALITY = [
-  { name: 'высокая', shadow: Math.min(4096, MAXTEX >> 1), pr: 2, tree: 300, det: 700, far: 4200, msaa: 4, ao: 1, bloom: 1, ssr: 1, lamps: 16 },
-  { name: 'средняя', shadow: Math.min(2048, MAXTEX >> 1), pr: 1.25, tree: 170, det: 520, far: 3000, msaa: 4, ao: 1, bloom: 1, ssr: 1, lamps: 12 },
-  { name: 'низкая', shadow: 0, pr: 1, tree: 100, det: 360, far: 2400, msaa: 0, ao: 0, bloom: 0, ssr: 0, lamps: 8 },
-  { name: 'минимум', shadow: 0, pr: 0.7, tree: 50, det: 200, far: 1500, msaa: 0, ao: 0, bloom: 0, ssr: 0, lamps: 4 }   // for weak machines: a smaller picture, near houses only
+  { name: 'высокая', shadow: Math.min(4096, MAXTEX >> 1), pr: 2, tree: 300, det: 700, far: 4200, msaa: 4, ao: 1, bloom: 1, ssr: 1, lamps: 16, lampSh: 12 },
+  { name: 'средняя', shadow: Math.min(2048, MAXTEX >> 1), pr: 1.25, tree: 170, det: 520, far: 3000, msaa: 4, ao: 1, bloom: 1, ssr: 1, lamps: 12, lampSh: 6 },
+  { name: 'низкая', shadow: 0, pr: 1, tree: 100, det: 360, far: 2400, msaa: 0, ao: 0, bloom: 0, ssr: 0, lamps: 8, lampSh: 0 },
+  { name: 'минимум', shadow: 0, pr: 0.7, tree: 50, det: 200, far: 1500, msaa: 0, ao: 0, bloom: 0, ssr: 0, lamps: 4, lampSh: 0 }   // for weak machines: a smaller picture, near houses only
 ];
 /* Quality mode: 'auto' — the page adapts by itself (dynamic resolution and the level, in the city and the game alike,
    see game/perf.js); a fixed level is the player's choice and stays. Both are remembered. */
@@ -219,6 +221,7 @@ function setQuality(i) {
   qualityBtn();
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.pr));
   lampMost(q.lamps);   // the most street lamps one point takes, nearest first (src/world/lamp-light.js)
+  setLampShadows(q.lampSh);   // how many of the nearest lamps have a shadow map (src/render/lamp-shadows.js)
   const want = q.shadow > 0;
   if (want) { if (sun.shadow.map && sun.shadow.mapSize.x !== q.shadow) { sun.shadow.map.dispose(); sun.shadow.map = null; } sun.shadow.mapSize.set(q.shadow, q.shadow); }
   if (renderer.shadowMap.enabled !== want || sun.castShadow !== want) { renderer.shadowMap.enabled = want; sun.castShadow = want; for (const m of allMats) m.needsUpdate = true; matGold && (matGold.needsUpdate = true); }

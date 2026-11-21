@@ -4,6 +4,7 @@ import { P, keys } from './player.js';
 import { terrainH } from '../world/terrain.js';
 import { scene } from '../render/renderer.js';
 import { worldSpace } from '../render/world-space.js';
+import { addMover } from '../render/lamp-shadows.js';
 import { $ } from '../core/env.js';
 import { prop, onProps } from './props.js';
 
@@ -61,7 +62,7 @@ function dropBody(body) {
 onProps(() => { for (const r of items.values()) { dropBody(r.group.userData.body); fillBody(r.group.userData.body, r.kind); } });
 function addItem(it) {
   const group = makeMesh(it.kind), baseY = terrainH(it.x, it.z);
-  group.position.set(it.x, baseY, it.z); group.userData.noProbe = true; scene.add(group);
+  group.position.set(it.x, baseY, it.z); group.userData.noProbe = true; scene.add(group); addMover(group, 0.6);
   items.set(it.id, { kind: it.kind, group, baseY, active: true });
 }
 function setItems(list) { clearItems(); for (const it of list || []) addItem(it); }

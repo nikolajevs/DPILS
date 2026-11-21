@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { LINES, matPlain } from '../world/data.js';
 import { std } from '../render/materials.js';
+import { addMoverInstances } from '../render/lamp-shadows.js';
 import { bridgeY } from '../world/terrain.js';
 import { hook, scene } from '../render/renderer.js';
 import { GB, box } from '../core/geometry.js';
@@ -75,7 +76,7 @@ function buildTrains() {
   const bodyMat = std({ vertexColors: true, roughness: 0.45, metalness: 0.15 }, 'train');
   const glowMat = hook(new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(1.15, 1.15, 1.15), toneMapped: true }), 'train-glow');
   for (let type = 0; type < 3; type++) { const [bg, gg] = carModel(type), b = new THREE.InstancedMesh(bg, bodyMat, 4), g = new THREE.InstancedMesh(gg, glowMat, 4);
-    for (const m of [b, g]) { m.count = 0; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.userData.noProbe = true; scene.add(m); } b.receiveShadow = true; TRN.mesh.push(b); TRN.glow.push(g); }
+    for (const m of [b, g]) { m.count = 0; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.userData.noProbe = true; scene.add(m); } b.receiveShadow = true; addMoverInstances(b, 4, 14); TRN.mesh.push(b); TRN.glow.push(g); }
   TRN.ok = true; return TRN.trips.length;
 }
 // where a trip is at the given second of its day: { s (the middle of the train along the path), dir (+1 towards larger s) } or null
