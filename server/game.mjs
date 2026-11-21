@@ -100,6 +100,7 @@ export function createGame(opts) {
   const r3 = a => a && [+a[0].toFixed(3), +a[1].toFixed(3), +a[2].toFixed(3)];
   function hurt(p, v, dmg, zone, w, from, bd, vf) {
     if (!v.alive || dmg <= 0) return; const t0 = now(), head = zone === 1;
+    if (v.bot && p !== v) v.bot.hurtFrom = { x: p.x, z: p.z, at: t0, id: p.id };   // the bot turns on an attacker it cannot see (think in bots.mjs)
     v.hp -= dmg; if (p !== v) { const d = dmg + Math.min(0, v.hp); p.st.dmg += d; if (p.prof) p.prof.add('dmg', d); } send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: from[0] - v.x, dz: from[2] - v.z, bd: r3(bd), vf: vf == null ? undefined : +vf.toFixed(3), fall: w === W_FALL ? 1 : undefined }); if (p !== v) send(p, { t: 'hit', id: v.id, head, zone, kill: v.hp <= 0, dmg: Math.min(dmg, dmg + Math.min(0, v.hp)) });
     if (v.hp > 0) return;
     v.alive = false; v.deaths++; v.diedAt = t0; v.streak = 0; if (v.prof) v.prof.add('deaths');
@@ -281,7 +282,7 @@ export function createGame(opts) {
   }
   // ---- bots
   const enemyBase = p => (arena ? (FFA ? arena.bases.flat()[Math.floor(Math.random() * arena.bases.flat().length)] : arena.bases[p.team === 1 ? 0 : 1][Math.floor(Math.random() * arena.bases[p.team === 1 ? 0 : 1].length)]) : null);
-  const brain = createBrain({ players, now, world, area, FFA, WEAPONS, R, shoot, throwNade, spawn, fall, roundOver: () => roundOver, enemyBase });
+  const brain = createBrain({ players, now, world, area, FFA, WEAPONS, R, shoot, throwNade, spawn, fall, roundOver: () => roundOver, enemyBase, reload: beginReload, get items() { return items; } });   // items is declared below: a getter reads it once the game is built
   let botN = 0;
   function addBot(level) {
     if (players.size >= MAX) return null;
@@ -410,6 +411,7 @@ export function createGame(opts) {
     stepBullets: () => advanceBullets(now()),   // the tests drive the flight by their own clock
     stepNades,   // the tests drive the fuse by their own clock too
     stepBots,   // and the bots' think by the test clock, for the fall test
+    stepItems: () => tickItems(now()),   // and the pickups and reload completion, for the bot-tactics tests
     stop() { for (const t of timers) { clearInterval(t); clearTimeout(t); } timers.length = 0; },
     health() { return { ok: true, mode: MODE, name: NAME, players: humans().length, bots: players.size - humans().length, max: MAX, score: teamScore, win: WIN, teams: TEAMS, round: roundOver ? 'end' : 'play', arena: arena ? arena.name : null, leaderboard: !!lb }; },
   };

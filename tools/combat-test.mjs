@@ -871,5 +871,83 @@ console.log('bot fight (8 hard bots, 12 s of real time):');
   ok(kills.length >= 2, 'the bots kill with the small hitboxes', String(kills.length));
 }
 
+/* ---------- 3b. bot tactics: roles, weapons, footwork, cover, reaction (controlled clock) ---------- */
+console.log('bot tactics (roles, weapons, footwork, cover, reaction):');
+{
+  // roles: a squad is born with different favourite guns, each in hand from the first step
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, arena: { cx: 0, cz: 0, r: 80, bases: [base(0, -40, 5), base(0, 40, 5)] }, mode: 'team', now: () => clock, name: 'roles' });
+  const bots = []; for (let i = 0; i < 24; i++) bots.push(g.addBot(i % 2 ? 'hard' : 'normal'));
+  const roles = new Set(bots.map(b => b.bot.role));
+  ok(roles.size >= 3, 'a squad carries at least three different favourite guns', [...roles].join(','));
+  ok(bots.every(b => b.wep === b.bot.role), 'every bot spawns holding its favourite gun');
+  g.stop();
+}
+{
+  // every role fights with its own gun (forced roles, free-for-all so all distances occur), and the footwork shows
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, arena: { cx: 0, cz: 0, r: 80, bases: [[[0, -60]], [[0, 60]]] }, mode: 'ffa', now: () => clock, name: 'guns' });
+  const S = seat(g, conn()); msg(S, { t: 'join', name: 'Р—СЂРёС‚РµР»СЊ', team: 0, x: 0, z: 0, yaw: 0 });
+  const bots = [];
+  for (let role = 0; role < 5; role++) { const b = g.addBot('hard'); b.bot.role = role; b.wep = role; b.bot.switchAt = 0; const a = role / 5 * 6.283; b.x = Math.cos(a) * 30; b.z = Math.sin(a) * 30; b.y = 1.7; bots.push(b); }
+  clock += 3000;
+  const shots = bots.map(() => [0, 0, 0, 0, 0]); let idx = 0, air = 0, crouch = 0, reloads = 0; const lastReload = bots.map(() => 0);
+  for (let i = 0; i < 50 * 20; i++) {
+    clock += 50; g.stepBots(0.05); g.stepBullets(); g.stepNades(); g.stepItems();
+    const sm = S.all('shot'); for (; idx < sm.length; idx++) { const bi = bots.findIndex(b => b.id === sm[idx].id); if (bi >= 0) shots[bi][sm[idx].w]++; }
+    bots.forEach((b, bi) => { if (!b.alive) return; if (b.y - (b.eye || 1.7) > 0.3) air++; if ((b.eye || 1.7) < 1.5) crouch++; if (b.reloadDone > lastReload[bi]) { reloads++; lastReload[bi] = b.reloadDone; } });
+  }
+  // a safe tactical reload, deterministic: a bot parked out of everyone's sight with a nearly empty magazine
+  const rb = bots[0]; rb.alive = true; rb.hp = 100; rb.x = 200; rb.z = 200; rb.y = 1.7;
+  rb.bot.target = 0; rb.bot.look = 5; rb.bot.alert = null; rb.bot.retreatUntil = 0; rb.bot.lastSeen = null;
+  rb.wep = rb.bot.role; rb.mag[rb.bot.role] = 1; rb.reserve[rb.bot.role] = 50; rb.reloadDone = 0;
+  for (let i = 0; i < 4; i++) { clock += 50; g.stepBots(0.05); g.stepItems(); }
+  const safeReloaded = rb.reloadDone > clock;
+  g.stop();
+  bots.forEach((b, i) => ok(shots[i][b.bot.role] > 0, `the ${['rifle', 'shotgun', 'sniper', 'pistol', 'machine gun'][i]} role fires its own gun`, shots[i].join('/')));
+  ok(air > 0, 'a bot dodge-hops in a fight (air time)', String(air));
+  ok(crouch > 0, 'a bot crouches to steady a long gun', String(crouch));
+  ok(safeReloaded, 'a bot reloads when safe with a nearly empty magazine', `natural reloads in the fight: ${reloads}`);
+}
+{
+  // an unseen attacker: a bot shot from beyond its sight remembers the blow, turns on it and is alerted
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'alert' });
+  const S = seat(g, conn()); msg(S, { t: 'join', name: 'Р—СЂРёС‚РµР»СЊ', team: 0, x: 300, z: 300, yaw: 0 });   // the spectator stands aside, out of the line of fire
+  const B = seat(g, conn()); msg(B, { t: 'join', name: 'РЎС‚СЂРµР»РѕРє', team: 1, x: 0, z: 140, yaw: 0 });
+  const bot = g.addBot('hard'); bot.team = 0; bot.x = 0; bot.z = 0; bot.y = 1.7; bot.yaw = 0;   // looks toward -z; the shooter is behind at +z, 140 m > sight 130
+  clock += 3000;
+  for (let i = 0; i < 4; i++) { clock += 50; g.stepBots(0.05); }   // let the bot settle and take its full hp into lastHp before the blow
+  msg(B, { t: 'state', x: 0, y: 1.7, z: 140, yaw: 0, pitch: 0 });
+  const bid = bot.id, L = 140;
+  msg(B, { t: 'shoot', w: 0, rays: [[0, (1.1 - 1.7) / L, -140 / L, L, bid]] });
+  for (let i = 0; i < 12; i++) { clock += 50; g.stepBullets(); }   // the bullet flies the 140 m (~0.25 s)
+  ok(bot.bot.hurtFrom && bot.bot.hurtFrom.id === B.handle.player.id, 'the bot remembers who hit it');
+  ok(bot.hp < 100, 'the unseen shot lands', String(bot.hp));
+  const yaw0 = bot.yaw;
+  for (let i = 0; i < 30; i++) { clock += 50; g.stepBots(0.05); }   // 1.5 s: the bot turns on the alert
+  ok(bot.bot.alert, 'the bot is alerted by the unseen attacker');
+  ok(Math.abs(bot.yaw - yaw0) > 0.5, 'the bot turns toward the blow', `${yaw0.toFixed(2)} -> ${bot.yaw.toFixed(2)}`);
+  g.stop();
+}
+{
+  // reloading a slow gun with the enemy close: the bot falls back behind the nearest wall and crouches there
+  let clock = 1e6;
+  const house = (x, z) => (x > 2 && x < 10 && z > -3 && z < 3) ? { top: 9 } : null;   // a wall to the side: the bot can step behind it straight on
+  const g = createGame({ world: flatWorld(house), arena: { cx: 0, cz: 0, r: 60, bases: [base(0, -25, 4), base(0, 25, 4)] }, mode: 'team', now: () => clock, name: 'cover' });
+  const S = seat(g, conn()); msg(S, { t: 'join', name: 'Р—СЂРёС‚РµР»СЊ', team: 0, x: 0, z: 0, yaw: 0 });
+  const E = seat(g, conn()); msg(E, { t: 'join', name: 'Р’СЂР°Рі', team: 1, x: 0, z: -20, yaw: 0 });
+  const bot = g.addBot('hard'); bot.team = 0; bot.x = 0; bot.z = 0; bot.y = 1.7; bot.wep = 4; bot.bot.role = 4; bot.reloadW = 4; bot.mag[4] = 1;
+  clock += 3000;
+  msg(E, { t: 'state', x: 0, y: 1.7, z: -20, yaw: 0, pitch: 0 });
+  bot.bot.target = E.handle.player.id; bot.bot.react = 0; bot.bot.look = 1;   // engaged at once: the gun fires its last round and reloads under the enemy's nose
+  let retreated = false, covered = false, crouched = false;
+  for (let i = 0; i < 80; i++) { clock += 50; g.stepBots(0.05); g.stepItems(); if (bot.bot.retreatUntil > clock) retreated = true; if (bot.bot.cover) covered = true; if ((bot.eye || 1.7) < 1.5) crouched = true; }
+  ok(retreated, 'the bot falls back while its slow gun reloads with the enemy close');
+  ok(covered, 'the bot finds a wall to hide behind');
+  ok(crouched, 'the bot crouches behind the cover');
+  g.stop();
+}
+
 console.log(fail ? `\n${fail} FAILED, ${pass} passed` : `\nall ${pass} tests passed`);
 process.exit(fail ? 1 : 0);
