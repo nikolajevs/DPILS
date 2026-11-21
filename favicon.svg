@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Даугавпилс в 3D: силуэт крепости (главный символ города) кирпичного цвета сайта на кремовом фоне панелей -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b0503c"/>
+      <stop offset="1" stop-color="#8f3a29"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <path fill="#f7f4ec" fill-rule="evenodd" d="M8 53V24h4v5h1v-5h4v5h1v-5h4V13h5v6h2.5v-6h5v6H37v-6h5v11h4v5h1v-5h4v5h1v-5h4v29Z
+    M27 53v-10a5 5 0 0 1 10 0v10Z
+    M30.5 34v-5.5a1.5 1.5 0 0 1 3 0V34Z
+    M13.5 43v-5.5a1.5 1.5 0 0 1 3 0V43Z
+    M47.5 43v-5.5a1.5 1.5 0 0 1 3 0V43Z"/>
+</svg>

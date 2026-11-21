@@ -2,6 +2,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="claude:viewport-fit-sides" content="cover">
 <title>Даугавпилс 3D</title>
+<link rel="icon" href="./favicon.ico" sizes="32x32">
+<link rel="icon" type="image/svg+xml" href="./favicon.svg">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<meta name="theme-color" content="#a4432f">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=Unbounded:wght@500;700&family=PT+Sans+Narrow:wght@700&display=swap">
 <link rel="stylesheet" href="./src/style.css">
 
@@ -51,6 +55,7 @@
         <button class="choice main" id="chTrain" type="button" disabled><b>Тренировка с ботами</b><span>бой прямо в браузере, без сервера</span></button>
         <button class="choice" id="chOnline" type="button" disabled><b>Играть онлайн</b><span>команды или каждый сам за себя на сервере</span></button>
       </div>
+      <div class="acct"><span id="acctState">Аккаунт обязателен: создайте его или войдите, чтобы играть.</span><button class="btn" id="bAuth" type="button">Войти / регистрация</button></div>
       <label class="time-pick" id="timeRow">Время суток
         <select id="startTime" title="Выбирается до начала игры; в игре время суток не меняется">
           <option value="0">День</option><option value="1">Вечер</option><option value="2">Ночь</option>
@@ -90,9 +95,6 @@
         <label>Сложность<select id="trLevel"><option value="easy">лёгкая</option><option value="normal" selected>средняя</option><option value="hard">трудная</option></select></label>
       </div>
       </div>
-      <div class="step-part" data-for="online">
-        <div class="acct"><span id="acctState">Аккаунт обязателен: создайте его или войдите, чтобы играть.</span><button class="btn" id="bAuth" type="button">Войти / регистрация</button></div>
-      </div>
       <fieldset class="player step-part" data-for="train online">
         <legend>Игрок</legend>
         <label>Ник<input id="mpName" maxlength="16" autocomplete="off"></label>
@@ -117,7 +119,7 @@
       <button class="auth-tab" id="authTabReg" type="button" aria-pressed="false">Регистрация</button>
     </div>
     <p class="hint" id="authHint">Аккаунт обязателен для игры: войдите или создайте его.</p>
-    <form class="auth-form" id="authForm">
+    <form class="auth-form" id="authForm" onsubmit="return false">
       <label>Ник<input id="authName" maxlength="16" autocomplete="username" spellcheck="false"></label>
       <label>Пароль<input id="authPass" type="password" maxlength="128" autocomplete="current-password"></label>
       <label id="authPass2Row" hidden>Повторите пароль<input id="authPass2" type="password" maxlength="128" autocomplete="new-password"></label>
@@ -171,6 +173,21 @@
 <div class="mp-dead" id="mpOver" hidden><div class="panel"><h2>Соединение с сервером потеряно</h2><button class="go" id="mpOverBtn">Начать заново</button></div></div>
 <div class="joy" id="joy" hidden><i id="joyKnob"></i></div>
 
+<script>
+/* Вход — первый этап: пока в браузере нет аккаунта, стартовая карточка (загрузка города и кнопки «Играть») скрыта
+   с первого кадра, а экран входа показан сразу, не дожидаясь загрузки данных города. src/ui/auth.js (его грузит
+   src/boot.js до данных) затем включает нужный режим — вход или регистрацию — и оживляет форму. Проверка аккаунта
+   повторяет identity.js: имя, адрес сервера и 32-значный шестнадцатеричный ключ. onsubmit="return false" у формы
+   не даёт ей отправиться самой до того, как auth.js подключит обработчик. */
+try {
+  var a = JSON.parse(localStorage.getItem('dpils.account') || 'null');
+  if (!(a && typeof a.name === 'string' && typeof a.url === 'string' && typeof a.key === 'string' && /^[0-9a-f]{32}$/.test(a.key))) {
+    document.getElementById('start').hidden = true;
+    document.getElementById('auth').hidden = false;
+    document.getElementById('authBtns').hidden = true;
+  }
+} catch (e) {}
+</script>
 <!-- three.js for the unbundled page (legacy static hosting à la GitHub Pages); the production VPS serves the Vite build from dist/ instead -->
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/" } }</script>
 <script type="module" src="./src/boot.js"></script>

@@ -3,6 +3,11 @@
    downloaded first, with the megabytes shown on the loading bar, run in their old order, and only then are the modules
    that build the city loaded: they read the data while they are evaluated. */
 import { PHASE, loading } from './ui/loading.js';
+// the login gate is the first stage of the page: it opens here, before the city data are downloaded, so a new visitor
+// sees the login screen first and the start card (loading bar, «Играть» buttons) only after a successful login.
+// auth.js needs no city data (it does not import core/env.js), so it can run this early; main.js imports it too, but
+// the module is evaluated once — the gate it opens here stays until the login succeeds.
+import './ui/auth.js';
 
 // the files and their sizes, used for the bar only until the server tells the real size (it does not when it
 // compresses them on the fly, as GitHub Pages does)

@@ -85,6 +85,31 @@ void main() {
   }
   gl_FragColor = vec4(ao, P.z, contact, 1.0);
 }`;
+/* The AO is noisy by design: a dozen taps a pixel, their spiral turned anew from pixel to pixel. The 3×3 of the final
+   pass hid it on open ground, but where a wall meets the pavement every column caught the crease differently and the
+   foot of the plinths stood in a comb of dark teeth. A separable bilateral blur at the AO resolution (9 taps a pass,
+   σ 2 texels) averages the turns away. Its depth weight follows the plane of the centre: the tap is compared with the
+   depth that plane would have there — linear in 1/z on screen, the slope taken from the centre's nearer neighbour —
+   so the blur runs along a wall seen at a grazing angle, where the depth changes fast, and stops at silhouettes. The
+   contact term (b) is tight: it takes only the inner 5 taps. g carries the depth of the centre unchanged. */
+const AO_BLUR_FRAG = `uniform sampler2D tSrc; uniform vec2 uDir; varying vec2 vUv;
+void main() {
+  vec4 c = textureLod(tSrc, vUv, 0.0);
+  if (!(c.g < 6e4)) { gl_FragColor = c; return; }   // the sky (1e5 overflows the half float to infinity)
+  float q0 = 1.0 / c.g, ql = 1.0 / textureLod(tSrc, vUv - uDir, 0.0).g, qr = 1.0 / textureLod(tSrc, vUv + uDir, 0.0).g;
+  float sq = abs(qr - q0) < abs(q0 - ql) ? qr - q0 : q0 - ql, tol = 0.015 * c.g + 0.03;
+  float a = c.r, w = 1.0, k5 = c.b, w5 = 1.0;
+  for (int i = -4; i <= 4; i++) {
+    if (i == 0) continue;
+    float fi = float(i);
+    vec4 t = textureLod(tSrc, vUv + uDir * fi, 0.0);
+    float qe = q0 + sq * fi;
+    float k = qe > 0.0 && t.g < 6e4 ? exp(-fi * fi / 8.0) * max(0.0, 1.0 - abs(t.g - 1.0 / qe) / tol) : 0.0;
+    a += t.r * k; w += k;
+    if (abs(i) <= 2) { k5 += t.b * k; w5 += k; }
+  }
+  gl_FragColor = vec4(a / w, c.g, k5 / w5, 1.0);
+}`;
 /* Screen-space reflections for the water. No extra geometry pass: the mask is rebuilt from the depth buffer alone —
    a flat normal near the terrain where the shore field says water stands. The ripples are the very normal map of the
    water (src/world/water.js), so the mirror agrees with what the surface already shows. The ray marches the depth of
@@ -233,11 +258,12 @@ const fsMat = (frag, uniforms) => new THREE.ShaderMaterial({ vertexShader: FS_VE
 const PROJ = new THREE.Vector4(), PXV = new THREE.Vector2();
 // scale: the share of the drawing buffer the scene is drawn at (set by the frame rate, see src/game/perf.js); the
 // last pass draws it up to the full canvas
-const PP = { rt: null, ao: null, ssr: null, bl: [], w: 0, h: 0, msaa: -1, scale: 1 };
-let matAO, matSSR, matBright, matDown, matFinal;
+const PP = { rt: null, ao: null, ao2: null, ssr: null, bl: [], w: 0, h: 0, msaa: -1, scale: 1 };
+let matAO, matAoBlur, matSSR, matBright, matDown, matFinal;
 if (POST) {
   const t = () => ({ value: null }), v2 = () => ({ value: new THREE.Vector2() });
   matAO = fsMat(AO_FRAG, { tDepth: t(), uProj: { value: PROJ }, uPx: v2(), uAoRes: { value: 1 } });
+  matAoBlur = fsMat(AO_BLUR_FRAG, { tSrc: t(), uDir: v2() });
   matSSR = fsMat(SSR_FRAG, Object.assign({ tDepth: t(), tScene: t(), uProj: { value: PROJ }, uPx: v2(), uSsrPx: v2(), uShore: t(), uShoreA: { value: new THREE.Vector4() }, uNormal: t(), uTime: U.time }, PU));
   matBright = fsMat(BRIGHT_FRAG, { tSrc: t(), uPx: v2(), uThresh: { value: 2 }, uExposure: { value: 1 } });
   matDown = fsMat(DOWN_FRAG, { tSrc: t(), uPx: v2() });
@@ -246,13 +272,13 @@ if (POST) {
 function ppTargets(w, h, msaa) {
   w = Math.max(1, Math.round(w * PP.scale)); h = Math.max(1, Math.round(h * PP.scale));
   if (PP.rt && PP.w === w && PP.h === h && PP.msaa === msaa) return;
-  for (const t of [PP.rt, PP.ao, PP.ssr, ...PP.bl]) if (t) t.dispose();
+  for (const t of [PP.rt, PP.ao, PP.ao2, PP.ssr, ...PP.bl]) if (t) t.dispose();
   PP.w = w; PP.h = h; PP.msaa = msaa;
   const o = { type: THREE.HalfFloatType, format: THREE.RGBAFormat, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, stencilBuffer: false };
   PP.rt = new THREE.WebGLRenderTarget(w, h, Object.assign({ samples: Math.max(0, msaa) }, o));
   PP.rt.depthTexture = new THREE.DepthTexture(w, h, THREE.UnsignedIntType);
   const small = k => new THREE.WebGLRenderTarget(Math.max(1, w >> k), Math.max(1, h >> k), Object.assign({ depthBuffer: false }, o));
-  PP.ao = small(1); PP.ssr = small(1); PP.bl = [1, 2, 3, 4].map(small);
+  PP.ao = small(1); PP.ao2 = small(1); PP.ssr = small(1); PP.bl = [1, 2, 3, 4].map(small);
 }
 function fsPass(mat, target) { fsQuad.material = mat; renderer.setRenderTarget(target); renderer.render(fsScene, fsCam); }
 function renderFrame() {
@@ -263,7 +289,12 @@ function renderFrame() {
   renderer.getDrawingBufferSize(PXV); ppTargets(PXV.x, PXV.y, q.msaa);
   renderer.setRenderTarget(PP.rt); renderer.render(scene, camera);
   const th = Math.tan(camera.fov * Math.PI / 360); PROJ.set(camera.near, camera.far, th * camera.aspect, th);
-  if (q.ao) { const u = matAO.uniforms; u.tDepth.value = PP.rt.depthTexture; u.uPx.value.set(1 / PP.w, 1 / PP.h); u.uAoRes.value = PP.ao.height; fsPass(matAO, PP.ao); }
+  if (q.ao) {
+    const u = matAO.uniforms; u.tDepth.value = PP.rt.depthTexture; u.uPx.value.set(1 / PP.w, 1 / PP.h); u.uAoRes.value = PP.ao.height; fsPass(matAO, PP.ao);
+    const b = matAoBlur.uniforms;   // the noise of the spiral turns blurred away: across, then down, back into PP.ao
+    b.tSrc.value = PP.ao.texture; b.uDir.value.set(1 / PP.ao.width, 0); fsPass(matAoBlur, PP.ao2);
+    b.tSrc.value = PP.ao2.texture; b.uDir.value.set(0, 1 / PP.ao.height); fsPass(matAoBlur, PP.ao);
+  }
   let ssrOn = false;
   if (q.ssr) {
     const wu = waterSsr();   // the shore field and the ripple map appear while the city is built; till then, no mirror
@@ -312,7 +343,7 @@ async function warmUp(report, nextFrame) {
   // the passes after the scene, each into the kind of target it draws into (the output encoding is part of a program),
   // one a frame
   if (POST) { target(); renderer.setRenderTarget(null);
-    for (const [m, t] of [[matAO, PP.ao], [matSSR, PP.ssr], [matBright, PP.bl[0]], [matDown, PP.bl[1]], [matFinal, null]]) { fsQuad.material = m; renderer.setRenderTarget(t); renderer.compile(fsScene, fsCam); renderer.setRenderTarget(null); await nextFrame(); } }
+    for (const [m, t] of [[matAO, PP.ao], [matAoBlur, PP.ao2], [matSSR, PP.ssr], [matBright, PP.bl[0]], [matDown, PP.bl[1]], [matFinal, null]]) { fsQuad.material = m; renderer.setRenderTarget(t); renderer.compile(fsScene, fsCam); renderer.setRenderTarget(null); await nextFrame(); } }
 }
 const SUNV = new THREE.Vector3(), RAYF = new THREE.Vector3();
 /* The sun shadow is redrawn only when a coarse cell of the camera state changes: the cascades snap their centres to

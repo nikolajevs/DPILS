@@ -1,8 +1,7 @@
-import { $ } from '../core/env.js';
 import { account, setAccount, clearAccount } from '../game/identity.js';
 import { serverUrl, serverHttp } from '../game/server.js';
 
-/* ---------- the login and registration page ----------
+/* ---------- the login and registration page: the first stage of the page ----------
    A full-screen card over the city, in the style of the start card. It opens from the start card («Войти /
    регистрация» in the online section) or straight by the address of the page: #login or #register. The accounts live
    on the game server (server/accounts.mjs): the page asks /auth/login or /auth/register with the nick and the
@@ -10,7 +9,14 @@ import { serverUrl, serverHttp } from '../game/server.js';
    by (identity.js), so the results follow the account to any browser. An account is mandatory: without one the page
    opens this card as a gate — no guest button, no close, no Escape — and every game starts only after a login or a
    registration; the server too refuses a join whose key is not an account key (server/game.mjs). There is one server,
-   the page's own address (src/game/server.js): registration and login always go to it, there is no server field. */
+   the page's own address (src/game/server.js): registration and login always go to it, there is no server field.
+
+   The login is the first stage, not a popup over the start card: src/boot.js loads this module before the city data,
+   so a new visitor sees the login screen immediately while the city downloads and builds behind it. The start card
+   (the loading bar and the «Играть» buttons) is hidden for as long as this card is open and is shown only after a
+   successful login or registration (or right away for a visitor who already has an account). To run this early the
+   module does not import core/env.js — that one needs the city data and three.js — so its only helper, $, is local. */
+const $ = id => document.getElementById(id);
 const overlay = $('auth'), form = $('authForm'), msg = $('authMsg'), title = $('authTitle'), hint = $('authHint'), goBtn = $('authGo');
 const nameIn = $('authName'), passIn = $('authPass'), pass2In = $('authPass2'), pass2Row = $('authPass2Row');
 const tabLogin = $('authTabLogin'), tabReg = $('authTabReg');
@@ -49,12 +55,14 @@ function open(m, force) {
   if (!nameIn.value) nameIn.value = (a && a.name) || $('mpName').value || '';
   passIn.value = ''; pass2In.value = '';
   overlay.hidden = false;
+  $('start').hidden = true;   // the login is a stage of its own: the start card waits behind it until the login succeeds
   try { history.replaceState(null, '', '#' + mode); } catch (e) {}
   (nameIn.value ? passIn : nameIn).focus();
 }
 function close() {
   if (mandatory) return;   // the gate has no way out except a successful login or registration
   overlay.hidden = true;
+  $('start').hidden = false;   // the login succeeded: now the choice interface (and the loading bar) may be shown
   try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
 }
 
