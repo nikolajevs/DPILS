@@ -1,6 +1,5 @@
 import { STATE } from '../core/state.js';
 import { prepareUi } from '../game/mp.js';
-import { refreshServers } from './servers.js';
 import { setTime } from '../render/lighting.js';
 import { $ } from '../core/env.js';
 
@@ -9,13 +8,13 @@ import { $ } from '../core/env.js';
    the fight). Only then the settings of
    that choice, with a way back; and within them, a setting shows only when it means something: the team not in a
    training where everyone is for himself, the place to appear only in the open city (in an arena you appear on your
-   base), the field for another server only when the list does not
-   have it (src/ui/servers.js). The keys are folded under «Управление». The time of day is chosen on the first step,
+   base). There is one server — the page's own address (src/game/server.js) — so there is nothing to choose.
+   The keys are folded under «Управление». The time of day is chosen on the first step,
    before any game, and kept in localStorage; mid-game (the card reopened by «?») its row is hidden. */
 const card = $('startCard'), home = $('stepHome'), form = $('play');
 const STEPS = {
   train: { title: 'Тренировка с ботами', hint: 'Бой против ботов прямо в браузере, по правилам сервера. Выберите карту, режим и соперников.' },
-  online: { title: 'Играть онлайн', hint: 'Командный бой или каждый сам за себя — режим выбирает сервер. Выберите сервер из списка.' }
+  online: { title: 'Играть онлайн', hint: 'Командный бой или каждый сам за себя — режим выбирает сервер.' }
 };
 let came = null;   // the choice the card came back from, to put the focus on it again
 function showStep(step) {
@@ -27,7 +26,6 @@ function showStep(step) {
   prepareUi(); came = step === 'train' ? $('chTrain') : $('chOnline');
   $('stepTitle').textContent = STEPS[step].title; $('stepHint').textContent = STEPS[step].hint;
   follow();
-  if (step === 'online') refreshServers();
   $('stepTitle').focus({ preventScroll: true }); $('start').scrollTop = 0;
 }
 // the settings that depend on others
