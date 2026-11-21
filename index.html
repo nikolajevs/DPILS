@@ -84,28 +84,70 @@
     </dl>
       </details>
     </div>
-    <form class="play" id="play" onsubmit="return false" hidden>
+    <form class="play lobby" id="play" onsubmit="return false" hidden>
       <div class="step-head"><button class="btn back" id="stepBack" type="button" aria-label="Назад к выбору">← Назад</button><h2 id="stepTitle" tabindex="-1"></h2></div>
       <p class="hint" id="stepHint"></p>
-      <div class="step-part" data-for="train">
-        <div class="train">
-        <label>Карта<select id="trArena"><option value="">открытый город</option><option value="center" selected>арена: Центр города</option><option value="fortress">арена: крепость</option><option value="station">арена: вокзал</option><option value="park">арена: Центральный парк</option><option value="church">арена: Церковная горка</option><option value="pond">арена: Пороховка (пруд)</option><option value="speedway">арена: спидвей</option><option value="culture">арена: Дворец культуры</option><option value="griva">арена: Грива, левый берег</option></select></label>
-        <label>Режим<select id="trMode"><option value="team" selected>команды</option><option value="ffa">каждый сам за себя</option></select></label>
-        <label>Ботов<select id="trBots"><option>2</option><option>4</option><option selected>6</option><option>8</option><option>12</option><option>16</option><option>24</option><option>32</option><option>48</option><option>63</option></select></label>
-        <label>Сложность<select id="trLevel"><option value="easy">лёгкая</option><option value="normal" selected>средняя</option><option value="hard">трудная</option></select></label>
+      <div class="lobby-grid">
+        <section class="lobby-stage" aria-label="Выбор персонажа">
+          <div class="stage-view" id="lobbyStageView">
+            <canvas id="lobbyView" aria-label="Предпросмотр выбранного персонажа"></canvas>
+            <div class="stage-fallback" id="lobbyFallback">
+              <svg viewBox="0 0 64 96" aria-hidden="true"><circle cx="32" cy="15" r="11"/><path d="M21 29h22l7 31h-8l-3 33h-7l-2-25h-4l-2 25h-7l-3-33h-8z"/></svg>
+              <span id="lobbyFallbackNote">Загружаю модели персонажей…</span>
+            </div>
+            <div class="stage-top">
+              <span class="stage-team" id="lobbyTeamChip"><i></i><b>Команды</b></span>
+              <span class="stage-count" id="lobbyCount">01 / 04</span>
+            </div>
+            <button class="stage-nav prev" id="lobbyPrev" type="button" aria-label="Предыдущий персонаж">‹</button>
+            <button class="stage-nav next" id="lobbyNext" type="button" aria-label="Следующий персонаж">›</button>
+            <span class="stage-hint" id="lobbyDragHint">потяните, чтобы повернуть · колесо — масштаб</span>
+          </div>
+          <div class="stage-id">
+            <div class="stage-name" id="lobbyCharName"></div>
+            <div class="stage-desc" id="lobbyCharDesc"></div>
+            <div class="stage-meta" id="lobbyCharMeta"></div>
+          </div>
+          <div class="char-cards" id="lobbyChars" role="radiogroup" aria-label="Персонаж"></div>
+          <label class="sr-only">Персонаж<select id="mpChar"></select></label>
+        </section>
+        <section class="lobby-side">
+          <div class="step-part lobby-sec" data-for="train">
+            <h3>Параметры боя</h3>
+            <label class="lb-field">Карта<select id="trArena"><option value="">открытый город</option><option value="center" selected>арена: Центр города</option><option value="fortress">арена: крепость</option><option value="station">арена: вокзал</option><option value="park">арена: Центральный парк</option><option value="church">арена: Церковная горка</option><option value="pond">арена: Пороховка (пруд)</option><option value="speedway">арена: спидвей</option><option value="culture">арена: Дворец культуры</option><option value="griva">арена: Грива, левый берег</option></select></label>
+            <div class="lb-field"><span class="lb-l">Режим</span>
+              <select id="trMode" class="sr-only"><option value="team" selected>команды</option><option value="ffa">каждый сам за себя</option></select>
+              <div class="seg" id="trModeSeg" role="group" aria-label="Режим боя">
+                <button type="button" data-v="team">Команды</button><button type="button" data-v="ffa">Каждый сам за себя</button>
+              </div>
+            </div>
+            <div class="lb-2col">
+              <label class="lb-field">Ботов<select id="trBots"><option>2</option><option>4</option><option selected>6</option><option>8</option><option>12</option><option>16</option><option>24</option><option>32</option><option>48</option><option>63</option></select></label>
+              <div class="lb-field"><span class="lb-l">Сложность</span>
+                <select id="trLevel" class="sr-only"><option value="easy">лёгкая</option><option value="normal" selected>средняя</option><option value="hard">трудная</option></select>
+                <div class="seg" id="trLevelSeg" role="group" aria-label="Сложность ботов">
+                  <button type="button" data-v="easy">Лёгкая</button><button type="button" data-v="normal">Средняя</button><button type="button" data-v="hard">Трудная</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <fieldset class="player step-part lobby-sec" data-for="train online">
+            <legend>Игрок</legend>
+            <label class="lb-field">Ник<input id="mpName" maxlength="16" autocomplete="off"></label>
+            <div class="lb-field" id="mpTeamRow"><span class="lb-l">Команда</span>
+              <select id="mpTeam" class="sr-only"><option value="-1">Любая (по балансу)</option><option value="0">Красные</option><option value="1">Синие</option></select>
+              <div class="seg seg-team" id="mpTeamSeg" role="group" aria-label="Команда">
+                <button type="button" data-v="-1"><i class="dot any"></i>По балансу</button><button type="button" data-v="0"><i class="dot t0"></i>Красные</button><button type="button" data-v="1"><i class="dot t1"></i>Синие</button>
+              </div>
+            </div>
+            <label class="lb-field" id="mpSpawnRow">Где появиться<select id="mpSpawn"></select></label>
+          </fieldset>
+          <div class="step-part" data-for="online"><label class="chk"><input type="checkbox" id="mpNoBoard"> Не участвовать в таблице лидеров</label></div>
+          <button class="go step-part" id="goTrain" data-for="train" disabled>Тренироваться</button>
+          <button class="go step-part" id="goPlay" data-for="online" disabled>Играть</button>
+          <div class="mp-msg" id="mpMsg" role="status"></div>
+        </section>
       </div>
-      </div>
-      <fieldset class="player step-part" data-for="train online">
-        <legend>Игрок</legend>
-        <label>Ник<input id="mpName" maxlength="16" autocomplete="off"></label>
-        <label id="mpTeamRow">Команда<select id="mpTeam"><option value="-1">Любая (по балансу)</option><option value="0">Красные</option><option value="1">Синие</option></select></label>
-        <label>Персонаж<select id="mpChar"></select></label>
-        <label id="mpSpawnRow">Где появиться<select id="mpSpawn"></select></label>
-      </fieldset>
-      <button class="go step-part" id="goTrain" data-for="train" disabled>Тренироваться</button>
-      <button class="go step-part" id="goPlay" data-for="online" disabled>Играть</button>
-      <div class="step-part" data-for="online"><label class="chk"><input type="checkbox" id="mpNoBoard"> Не участвовать в таблице лидеров</label></div>
-      <div class="mp-msg" id="mpMsg" role="status"></div>
     </form>
     <div class="credit">Карта © участники <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>. Здания: кадастр Государственной земельной службы Латвии (<a href="https://data.gov.lv/dati/lv/dataset/kadastra-informacijas-sistemas-atvertie-dati">data.gov.lv</a>, CC BY 4.0). Расписание: GTFS <a href="https://satiksme.daugavpils.lv/">Daugavpils satiksme</a>. Фасады нарисованы по материалу стен и году постройки, это не фотографии; Дом Единства, «Латгола» и храмы Церковной горки смоделированы по снимкам с Wikimedia Commons, visitdaugavpils.lv, celotajs.lv и militaryheritagetourism.info. АК-47 и руки в игре: «<a href="https://sketchfab.com/3d-models/fps-character-animation-pack-ak-47-b95778a564094fc3a49d1d6a3b6a30ab">FPS Character Animation Pack Ak-47</a>», Cristian David Duque Camacho (CC BY 4.0).</div>
   </div>

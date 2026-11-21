@@ -2,6 +2,7 @@ import { STATE } from '../core/state.js';
 import { prepareUi } from '../game/mp.js';
 import { setTime } from '../render/lighting.js';
 import { $ } from '../core/env.js';
+import { openLobby, closeLobby } from './lobby.js';
 
 /* ---------- the start card, in steps ----------
    First a choice: a training against bots or a game on a server (the city walk was removed — the city is the arena of
@@ -22,10 +23,11 @@ function showStep(step) {
   home.hidden = step !== 'home'; form.hidden = step === 'home';
   for (const el of form.querySelectorAll('[data-for]')) el.hidden = !el.dataset.for.split(' ').includes(step);
   $('mpMsg').textContent = '';
-  if (step === 'home') { $('timeRow').hidden = STATE.started; if (came) came.focus(); return; }
+  if (step === 'home') { closeLobby(); $('timeRow').hidden = STATE.started; if (came) came.focus(); return; }
   prepareUi(); came = step === 'train' ? $('chTrain') : $('chOnline');
   $('stepTitle').textContent = STEPS[step].title; $('stepHint').textContent = STEPS[step].hint;
   follow();
+  openLobby(step);
   $('stepTitle').focus({ preventScroll: true }); $('start').scrollTop = 0;
 }
 // the settings that depend on others
