@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Claude | claude/wet-asphalt-reflections-331189 | Убрать мокрые пятна и их отражения на земле | src/render/materials.js, src/render/post.js |
 
 ## Автономный цикл улучшений
 

@@ -8,7 +8,6 @@ import { tiles } from '../buildings/walls.js';
 import { terrainH } from '../world/terrain.js';
 import { LIGHTDIR, POST, U, camera, renderer, scene, sun } from './renderer.js';
 import { PU, updateProbes } from './cityprobe.js';
-import { SSR_ON } from './materials.js';
 import { waterSsr } from '../world/water.js';
 import { TILE, TTILE, reduceMotion } from '../core/env.js';
 
@@ -86,14 +85,13 @@ void main() {
   }
   gl_FragColor = vec4(ao, P.z, contact, 1.0);
 }`;
-/* Screen-space reflections for the wet ground and the water. No extra geometry pass: the mask is rebuilt from the
-   depth buffer alone — a flat normal near the terrain is street or square, the shore field says where water stands.
-   The wet patches are the very noise of the ground shader (src/render/materials.js), the ripples the very normal map
-   of the water (src/world/water.js), so the mirror agrees with what the surface already shows. The ray marches the
-   depth of the scene (28 growing steps, 5 of bisection); where it finds geometry, its colour replaces what the
-   surface mirrored before: on water the static city cube gives way to the true buildings (the delta keeps the probe
-   as the fallback where the ray leaves the screen), on asphalt the reflection is added over the sky sheen. Half the
-   resolution, faded at the screen edge and with the ray's distance; «низкая»/«минимум» skip it (QUALITY.ssr). */
+/* Screen-space reflections for the water. No extra geometry pass: the mask is rebuilt from the depth buffer alone —
+   a flat normal near the terrain where the shore field says water stands. The ripples are the very normal map of the
+   water (src/world/water.js), so the mirror agrees with what the surface already shows. The ray marches the depth of
+   the scene (28 growing steps, 5 of bisection); where it finds geometry, the static city cube gives way to the true
+   buildings (the delta keeps the probe as the fallback where the ray leaves the screen). The ground does not mirror:
+   the damp-asphalt puddles shimmered at eye level and hid the far players. Half the resolution, faded at the screen
+   edge and with the ray's distance; «низкая»/«минимум» skip it (QUALITY.ssr). */
 const SSR_FRAG = `${DEPTH_GLSL}
 #include <common>
 uniform sampler2D tScene; uniform sampler2D uShore; uniform sampler2D uNormal;
@@ -101,9 +99,6 @@ uniform vec4 uShoreA; uniform vec2 uPx; uniform vec2 uSsrPx; uniform float uTime
 uniform samplerCube uProbeA; uniform samplerCube uProbeB; uniform float uProbeMix; uniform float uProbeOn;
 varying vec2 vUv;
 float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
-float h12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
-float gnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(h12(i), h12(i + vec2(1.0, 0.0)), f.x), mix(h12(i + vec2(0.0, 1.0)), h12(i + vec2(1.0, 1.0)), f.x), f.y); }
 vec3 viewN(vec3 P) {
   vec3 l = posAt(vUv - vec2(uPx.x, 0.0)), r = posAt(vUv + vec2(uPx.x, 0.0)), dn = posAt(vUv - vec2(0.0, uPx.y)), up = posAt(vUv + vec2(0.0, uPx.y));
   vec3 dx = abs(l.z - P.z) < abs(r.z - P.z) ? P - l : r - P, dy = abs(dn.z - P.z) < abs(up.z - P.z) ? P - dn : up - P;
@@ -136,7 +131,7 @@ vec3 march(vec3 P, vec3 R, float maxD, float blur, out float conf) {
   vec3 Q = P + R * t; uv = Q.xy / (Q.z * uProj.zw) * 0.5 + 0.5;
   float edge = smoothstep(0.0, 0.10, uv.x) * smoothstep(1.0, 0.90, uv.x) * smoothstep(0.0, 0.10, uv.y) * smoothstep(1.0, 0.90, uv.y);
   conf = edge * (1.0 - smoothstep(maxD * 0.55, maxD, t));
-  vec2 e = uSsrPx * blur * (1.0 + t * 0.012);   // the wet asphalt is rougher than water: a wider tap, wider still far off
+  vec2 e = uSsrPx * blur * (1.0 + t * 0.012);   // a cross tap for the ripple's roughness, wider far off
   return textureLod(tScene, uv, 0.0).rgb * 0.4
     + (textureLod(tScene, uv + vec2(e.x, 0.0), 0.0).rgb + textureLod(tScene, uv - vec2(e.x, 0.0), 0.0).rgb
     + textureLod(tScene, uv + vec2(0.0, e.y), 0.0).rgb + textureLod(tScene, uv - vec2(0.0, e.y), 0.0).rgb) * 0.15;
@@ -147,13 +142,13 @@ void main() {
   vec3 P = posAt(vUv);
   vec3 n = viewN(P);
   vec3 nw = normalize(vec3(n.x, n.y, -n.z) * mat3(viewMatrix));
-  if (nw.y < 0.6) return;   // mirrors lie flat: streets, squares, water — not walls, roofs or cars
+  if (nw.y < 0.6) return;   // the mirror lies flat: water, not walls, roofs or boats' sides
   vec3 w = cameraPosition + vec3(P.x, P.y, -P.z) * mat3(viewMatrix);
   float th = terrainH(w.xz);
   float shore = texture2D(uShore, (w.xz - uShoreA.xy) * uShoreA.zw).r;
   vec3 Vw = normalize(cameraPosition - w);
   vec3 col = vec3(0.0); float conf = 0.0;
-  if (shore > 0.02 && w.y - th < 1.2) {   // water (the depth under it is the bed, a hand's breadth below the surface)
+  if (shore > 0.02 && w.y - th < 1.2) {   // water (the depth under it is the bed, a hand's breadth below the surface); dry ground mirrors nothing
     vec3 n1 = texture2D(uNormal, w.xz / 34.0 + uTime * vec2(0.010, 0.006)).xyz * 2.0 - 1.0;
     vec3 n2 = texture2D(uNormal, w.xz / 13.0 + uTime * vec2(-0.012, 0.018)).xyz * 2.0 - 1.0;
     vec3 wn = normalize(vec3(n1.x + n2.x, n1.z * n2.z, n1.y + n2.y));   // the map's z up, as in the water shader
@@ -166,12 +161,6 @@ void main() {
     vec3 Rp = normalize(vec3(Rw.x, max(Rw.y, 0.02), Rw.z));
     vec3 pc = mix(textureCube(uProbeA, Rp).rgb, textureCube(uProbeB, Rp).rgb, uProbeMix) * uProbeOn;
     col = F * conf * (hit - pc);   // the cube keeps the mirror where the ray found nothing
-  } else if (w.y - th < 2.2) {   // wet ground: the same patches the ground shader darkens and smooths
-    float wetP = smoothstep(0.62, 0.82, gnoise(w.xz * 0.045) * 0.65 + gnoise(w.xz * 0.16) * 0.35) * 0.5;
-    if (wetP < 0.01) return;
-    float F = 0.04 + 0.96 * pow(1.0 - max(dot(nw, Vw), 0.0), 5.0);
-    vec3 hit = march(P, reflect(normalize(P), n), 160.0, 1.0, conf);
-    col = F * conf * hit * (0.2 + 2.8 * wetP);   // the core of a patch mirrors like a puddle, its rim only hints
   }
   gl_FragColor = vec4(col, P.z);
 }`;
@@ -286,7 +275,6 @@ function renderFrame() {
       fsPass(matSSR, PP.ssr); ssrOn = true;
     }
   }
-  SSR_ON.value = ssrOn ? 1 : 0;   // the ground sheen steps back where the true mirror runs
   if (q.bloom) {
     let u = matBright.uniforms; u.tSrc.value = PP.rt.texture; u.uPx.value.set(1 / PP.w, 1 / PP.h); u.uThresh.value = T.thresh; u.uExposure.value = T.exp; fsPass(matBright, PP.bl[0]);
     u = matDown.uniforms; for (let k = 1; k < 4; k++) { u.tSrc.value = PP.bl[k - 1].texture; u.uPx.value.set(1 / PP.bl[k - 1].width, 1 / PP.bl[k - 1].height); fsPass(matDown, PP.bl[k]); }
