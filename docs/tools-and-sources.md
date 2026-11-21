@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Claude | claude/day-cycle-transitions-auto-17f098 | Сутки 45 мин с движением солнца на сервере, выбор времени суток в тренировке (+авто) | src/render/lighting.js, src/render/cityprobe.js, src/ui/start.js, src/game/mp.js, server/game.mjs, index.html |
 
 ## Автономный цикл улучшений
 
