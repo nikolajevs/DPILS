@@ -17,42 +17,55 @@ const FS_VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(pos
 const DEPTH_GLSL = `uniform sampler2D tDepth; uniform vec4 uProj;
 float zAt(vec2 uv) { return uProj.x * uProj.y / (uProj.y - textureLod(tDepth, uv, 0.0).x * (uProj.y - uProj.x)); }
 vec3 posAt(vec2 uv) { float z = zAt(uv); return vec3((uv * 2.0 - 1.0) * uProj.zw * z, z); }`;
-// Scalable ambient obscurance (McGuire et al.): a spiral of depth taps around the pixel, normal rebuilt from depth
+/* Scalable ambient obscurance (McGuire et al.): a spiral of depth taps around the pixel, normal rebuilt from depth.
+   The pass runs at half resolution, so the centre of its pixel falls on the border of two depth texels, and so do
+   its ±1 px neighbours: the nearest fetch picked either side, a neighbour could read the very texel of the centre and
+   the rebuilt normal tilted — on walls seen at a grazing angle every other column shaded itself into dark stripes.
+   The centre is therefore pinned to one texel of its 2×2 block (uv0) and every tap rebuilds its position from the
+   centre of the texel it actually reads (posT). */
 const AO_FRAG = `${DEPTH_GLSL}
 uniform vec2 uPx; uniform float uAoRes; varying vec2 vUv;
 #define NS 12
 float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
+vec3 posT(vec2 uv) { return posAt((floor(uv / uPx) + 0.5) * uPx); }
 void main() {
-  if (textureLod(tDepth, vUv, 0.0).x >= 0.999999) { gl_FragColor = vec4(1.0, 1e5, 1.0, 1.0); return; }
-  vec3 P = posAt(vUv);
-  vec3 l = posAt(vUv - vec2(uPx.x, 0.0)), r = posAt(vUv + vec2(uPx.x, 0.0)), dn = posAt(vUv - vec2(0.0, uPx.y)), up = posAt(vUv + vec2(0.0, uPx.y));
+  vec2 uv0 = (floor(vUv / uPx - 0.5 + 1e-3) + 0.5) * uPx;
+  if (textureLod(tDepth, uv0, 0.0).x >= 0.999999) { gl_FragColor = vec4(1.0, 1e5, 1.0, 1.0); return; }
+  vec3 P = posAt(uv0);
+  vec3 l = posAt(uv0 - vec2(uPx.x, 0.0)), r = posAt(uv0 + vec2(uPx.x, 0.0)), dn = posAt(uv0 - vec2(0.0, uPx.y)), up = posAt(uv0 + vec2(0.0, uPx.y));
   vec3 dx = abs(l.z - P.z) < abs(r.z - P.z) ? P - l : r - P, dy = abs(dn.z - P.z) < abs(up.z - P.z) ? P - dn : up - P;
   vec3 cn = cross(dy, dx); float cl = length(cn); vec3 n = cl > 1e-12 ? cn / cl : vec3(0.0, 0.0, -1.0);
+  // The tap term (v·n)/|v|² is in 1/m, so a crease shades in proportion to 1/R: tuned for the far 18 m spiral, the
+  // 1.5 m one near the eye turned the foot of every wall black over a metre-wide band. The R / 18 keeps the far look
+  // and makes the darkening of a crease the same at any distance.
   float R = clamp(P.z * 0.10, 1.5, 18.0), rPix = min(R / (P.z * uProj.w) * 0.5 * uAoRes, 0.14 * uAoRes), ao = 1.0;
   if (rPix > 1.5) {
     float phi = ign(gl_FragCoord.xy) * 6.2831853, sum = 0.0;
     for (int i = 0; i < NS; i++) {
       float a = (float(i) + 0.5) / float(NS), ang = float(i) * 2.3999632 + phi;
-      vec3 v = posAt(vUv + vec2(cos(ang), sin(ang)) * (sqrt(a) * rPix) * uPx * 2.0) - P;
+      vec3 v = posT(uv0 + vec2(cos(ang), sin(ang)) * (sqrt(a) * rPix) * uPx * 2.0) - P;
       float vv = dot(v, v), f = max(R * R - vv, 0.0);
       sum += f * f * f * max((dot(v, n) - 0.004 * P.z - 0.015) / (vv + 0.02), 0.0);
     }
-    ao = max(0.0, 1.0 - sum * 5.0 / (float(NS) * R * R * R * R * R * R));
+    ao = max(0.0, 1.0 - sum * 5.0 * (R / 18.0) / (float(NS) * R * R * R * R * R * R));
   }
   if (isnan(ao) || isinf(ao) || !(ao >= 0.0)) ao = 1.0;   // recessed windows can leave a degenerate depth stencil
   // the middle scale (3 m): courtyards enclosed by walls, porches and canopies over the pavement — occluders too big
-  // for the contact spiral and too near for the large one, which reaches whole buildings at a distance
+  // for the contact spiral and too near for the large one, which reaches whole buildings at a distance. Its tap term
+  // is the cosine of the tap over the surface (≤ 1), not cos/|v|: taps a few centimetres up the wall no longer drive
+  // it to its floor, the foot of a wall settles near 0.5 (a right-angled crease hides half the sky) and fades out
+  // over a metre or two.
   float aoM = 1.0, Rm = 3.0;
   float rPixM = min(Rm / (P.z * uProj.w) * 0.5 * uAoRes, 0.10 * uAoRes);
   if (rPixM > 1.0) {
     float phiM = ign(gl_FragCoord.xy + 31.0) * 6.2831853, sumM = 0.0;
     for (int i = 0; i < 8; i++) {
       float a = (float(i) + 0.5) / 8.0, ang = float(i) * 2.3999632 + phiM;
-      vec3 v = posAt(vUv + vec2(cos(ang), sin(ang)) * (sqrt(a) * rPixM) * uPx * 2.0) - P;
+      vec3 v = posT(uv0 + vec2(cos(ang), sin(ang)) * (sqrt(a) * rPixM) * uPx * 2.0) - P;
       float vv = dot(v, v), f = max(Rm * Rm - vv, 0.0);
-      sumM += f * f * f * max((dot(v, n) - 0.003 * P.z - 0.01) / (vv + 0.01), 0.0);
+      sumM += f * f * f * max((dot(v, n) - 0.003 * P.z - 0.01) / sqrt(vv + 0.01), 0.0);
     }
-    aoM = max(0.0, 1.0 - sumM * 5.5 / (8.0 * Rm * Rm * Rm * Rm * Rm * Rm));
+    aoM = max(0.0, 1.0 - sumM * 2.0 / (8.0 * Rm * Rm * Rm * Rm * Rm * Rm));
     if (isnan(aoM) || isinf(aoM) || !(aoM >= 0.0)) aoM = 1.0;
   }
   ao *= 0.25 + 0.75 * aoM;
@@ -64,7 +77,7 @@ void main() {
     float phiC = ign(gl_FragCoord.xy + 17.0) * 6.2831853, sumC = 0.0;
     for (int i = 0; i < 8; i++) {
       float a = (float(i) + 0.5) / 8.0, ang = float(i) * 2.3999632 + phiC;
-      vec3 v = posAt(vUv + vec2(cos(ang), sin(ang)) * (sqrt(a) * rPixC) * uPx * 2.0) - P;
+      vec3 v = posT(uv0 + vec2(cos(ang), sin(ang)) * (sqrt(a) * rPixC) * uPx * 2.0) - P;
       float vv = dot(v, v), f = max(Rc * Rc - vv, 0.0);
       sumC += f * f * f * max((dot(v, n) - 0.002 * P.z - 0.006) / (vv + 0.005), 0.0);
     }
