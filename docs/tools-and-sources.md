@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/single-server | Один сервер: убрать выбор сервера и servers.json, аккаунт и игра всегда на сервере страницы | src/ui/auth.js, src/ui/start.js, src/game/mp.js, src/game/server.js, index.html, src/style.css, vite.config.mjs |
 | Claude | claude/training-server-graphics-5737c9 | Сервер видит дворы и проезды, как тренировка | server/world.mjs, src/buildings/miera.js |
 
 ## Автономный цикл улучшений
