@@ -762,7 +762,7 @@ function join(local) {   // local: { bots, level, mode, arena } for the game aga
   ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, team: MP.wantTeam, char: el('mpChar').value || undefined, key: local ? undefined : playerKey() || undefined, board: local ? undefined : boardOn(), ...s })); };
   ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (err) { console.error(err); } };
   ws.onerror = () => { if (!MP.started) msg.textContent = 'Не удалось подключиться к ' + url; };
-  ws.onclose = () => { nadeCancel(); el('nadeWarn').hidden = true; if (MP.started) { el('mpDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; if (!msg.textContent.startsWith('На сервере') && !msg.textContent.startsWith('Не удалось')) msg.textContent = 'Соединение закрыто.'; } };
+  ws.onclose = () => { nadeCancel(); el('nadeWarn').hidden = true; if (MP.started) { el('mpDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; if (!msg.textContent.startsWith('На сервере') && !msg.textContent.startsWith('Не удалось') && !msg.textContent.startsWith('Сервер пускает')) msg.textContent = 'Соединение закрыто.'; } };
 }
 let uiReady = false;
 function initUi() {   // the fields of the player and of the training: once, when the start card first needs them (or when the city is ready)

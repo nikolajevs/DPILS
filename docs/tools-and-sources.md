@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/mandatory-account | Обязательный аккаунт: карточка входа без гостевого режима, сервер отклоняет join без ключа аккаунта | src/ui/auth.js, src/game/mp.js, src/game/identity.js, index.html, server/game.mjs, server/index.mjs, tools/shots.js |
 
 ## Автономный цикл улучшений
 
