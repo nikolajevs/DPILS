@@ -892,16 +892,22 @@ console.log('bot tactics (roles, weapons, footwork, cover, reaction):');
   for (let role = 0; role < 5; role++) { const b = g.addBot('hard'); b.bot.role = role; b.wep = role; b.bot.switchAt = 0; const a = role / 5 * 6.283; b.x = Math.cos(a) * 30; b.z = Math.sin(a) * 30; b.y = 1.7; bots.push(b); }
   clock += 3000;
   const shots = bots.map(() => [0, 0, 0, 0, 0]); let idx = 0, air = 0, crouch = 0, reloads = 0; const lastReload = bots.map(() => 0);
-  for (let i = 0; i < 40 * 20; i++) {
+  for (let i = 0; i < 50 * 20; i++) {
     clock += 50; g.stepBots(0.05); g.stepBullets(); g.stepNades(); g.stepItems();
     const sm = S.all('shot'); for (; idx < sm.length; idx++) { const bi = bots.findIndex(b => b.id === sm[idx].id); if (bi >= 0) shots[bi][sm[idx].w]++; }
     bots.forEach((b, bi) => { if (!b.alive) return; if (b.y - (b.eye || 1.7) > 0.3) air++; if ((b.eye || 1.7) < 1.5) crouch++; if (b.reloadDone > lastReload[bi]) { reloads++; lastReload[bi] = b.reloadDone; } });
   }
+  // a safe tactical reload, deterministic: a bot parked out of everyone's sight with a nearly empty magazine
+  const rb = bots[0]; rb.alive = true; rb.hp = 100; rb.x = 200; rb.z = 200; rb.y = 1.7;
+  rb.bot.target = 0; rb.bot.look = 5; rb.bot.alert = null; rb.bot.retreatUntil = 0; rb.bot.lastSeen = null;
+  rb.wep = rb.bot.role; rb.mag[rb.bot.role] = 1; rb.reserve[rb.bot.role] = 50; rb.reloadDone = 0;
+  for (let i = 0; i < 4; i++) { clock += 50; g.stepBots(0.05); g.stepItems(); }
+  const safeReloaded = rb.reloadDone > clock;
   g.stop();
   bots.forEach((b, i) => ok(shots[i][b.bot.role] > 0, `the ${['rifle', 'shotgun', 'sniper', 'pistol', 'machine gun'][i]} role fires its own gun`, shots[i].join('/')));
   ok(air > 0, 'a bot dodge-hops in a fight (air time)', String(air));
   ok(crouch > 0, 'a bot crouches to steady a long gun', String(crouch));
-  ok(reloads > 0, 'a bot reloads', String(reloads));
+  ok(safeReloaded, 'a bot reloads when safe with a nearly empty magazine', `natural reloads in the fight: ${reloads}`);
 }
 {
   // an unseen attacker: a bot shot from beyond its sight remembers the blow, turns on it and is alerted
