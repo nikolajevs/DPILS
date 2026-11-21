@@ -4,6 +4,9 @@
    by the motion delta from each skeleton's own rest pose (works for Mixamo bodies directly and
    for other humanoid rigs through a bone-name table). The avatar (src/game/avatar.js) holds the
    weapons with two-bone IK and freezes the arms in the Carry clip's first frame.
+   After a build here run tools/char-clips.mjs: it retargets the body clips again (all but Carry) from the bind pose of
+   the skin — the node poses this script measures from are a frame of the file's own animation, not a T-pose — and adds
+   the strafes, the steps back and the crouch that src/game/avatar.js blends.
 
    Characters (Sketchfab, CC-BY; token in sketchfab.token at the repo root, gitignored):
      swat    S.W.A.T. Operator   9e82fabf26194896b5ad4a364d864eab  SpatialNeglect  -> Soldier.glb
