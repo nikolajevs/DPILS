@@ -48,4 +48,4 @@ function alignHand(hand, fingers, w, m, i, k) {
   turnBy(hand, QA.setFromRotationMatrix(MB.multiply(MA.transpose())));   // a frame's transpose is its inverse
 }
 
-export { alignHand, at, reach, relMatrix, setFrame, turnBy, turnOf };
+export { alignHand, at, moveBy, reach, relMatrix, setFrame, turnBy, turnOf };

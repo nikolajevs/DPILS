@@ -13,7 +13,8 @@
    the source's is: the feet stand on the ground in every frame, whatever the length of the legs.
 
      Idle             standing with a rifle             "Rifle Idle"                     fauze             d9ed346ee92c4606baca727b0ad6ed7b
-     Walk, Run        forwards                          "ST Pistol Walk" / "ST Pistol Run" fauze           94486ec326714092aec96746e3315c3c / c2985913ff7a4988b34374af1ee13d28
+     Walk             walking forwards                  "ST Pistol Walk"                 fauze             94486ec326714092aec96746e3315c3c
+     Run              running forwards                  "Synth Running Forward 2.0"      vadimfedenko      6826f3a868fc4071aac3de237bb3f577
      Jump, Death                                        "Jumping" / "Falling Back Death(1)" fauze          9d8127cec9f04c3db3287cab301b4529 / 61732876c5ad4d548c433252be7f2d25
      WalkL, WalkR     side-steps at a walk              "Walk Left" / "Walk Right"       fauze             78cb1d884e43412e9f3ed7a73ae5424f / 9a272afe0d3f442e886d2c1a2b1ba1d5
      WalkB            walking backwards                 "Walking Backwards"              Appsbypaulhamilton 244e1a6443bd43019243e13713ebbf58
@@ -23,7 +24,7 @@
      CrouchF          crouched walk forwards            "Crouched Walking"               merks11           a06d785a52184d7e86f77debcbc18e51
      CrouchL, CrouchR crouched side-steps (R mirrored)  "Crouched Sneaking Left"         roffa             f2f87e2623c547b489d761cff0948d81
    all CC BY 4.0 on Sketchfab (credits in models/README.md). Download each with tools/sf-dl.mjs into one folder under the
-   file name of SRC below (rifle-idle.glb, pistol-walk.glb, …).
+   file name of SRC below (rifle-idle.glb, pistol-walk.glb, synth-fwd.glb, …).
 
    The step clips get glTF extras, which three.js hands to clip.userData:
      speed  the ground speed of the clip as it plays, in units of the file's scene per second (the page multiplies by the
@@ -57,7 +58,7 @@ const FILES = which.length ? which : ['Soldier', 'Spartan', 'Alien', '2B'];
 const SRC = [
   { name: 'Idle', src: 'rifle-idle' },
   { name: 'Walk', src: 'pistol-walk', dir: [0, 1], strip: true },
-  { name: 'Run', src: 'pistol-run', dir: [0, 1], strip: true },
+  { name: 'Run', src: 'synth-fwd', dir: [0, 1], strip: true },   // the forward run of the same set as the strafes and the run back: one cadence, so they blend
   { name: 'Jump', src: 'jumping', strip: true, jump: true },
   { name: 'Death', src: 'death-falling' },
   { name: 'WalkL', src: 'walk-left', dir: [1, 0], strip: true },

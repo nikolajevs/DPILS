@@ -959,8 +959,8 @@ function mpTick(dt) {
     const p = pose(r, t); if (!p) { g.visible = false; continue; }
     remoteSteps(r, p, now);
     const fk = flinchK(now, r.flinchT), side = fk ? (r.flinchDX || 0) * Math.cos(p.yaw) - (r.flinchDZ || 0) * Math.sin(p.yaw) : 0;   // the body jolts away from the bullet's path
-    if (r.av) { if (r.gunW !== p.w) { r.gunW = p.w; r.av.setGun(p.w); } r.av.update(dt, { speed: r.speed || 0, air: !!r.air, dead: false, shotAt: r.shotAt || 0, throwAt: r.throwAt || 0, flinch: fk ? { k: fk, zone: r.flinchZone, side } : null }); }
-    g.visible = true; g.position.set(p.x, p.y - p.h - 0.05 * fk * (r.flinchZone === 2 ? 1 : 0.3), p.z); g.scale.y = p.h / 1.7;
+    if (r.av) { if (r.gunW !== p.w) { r.gunW = p.w; r.av.setGun(p.w); } r.av.update(dt, { speed: r.speed || 0, vx: r.vx || 0, vz: r.vz || 0, yaw: p.yaw, pitch: p.pitch, h: p.h, air: !!r.air, vy: r.vy || 0, dead: false, shotAt: r.shotAt || 0, throwAt: r.throwAt || 0, flinch: fk ? { k: fk, zone: r.flinchZone, side } : null, lod: Math.hypot(p.x - P.x, p.z - P.z) > 70 }); }
+    g.visible = true; g.position.set(p.x, p.y - p.h - 0.05 * fk * (r.flinchZone === 2 ? 1 : 0.3), p.z); g.scale.y = r.av ? 1 : p.h / 1.7;   // the model crouches by its pose (avatar.js), only the simple figure is squashed
     g.rotation.y = p.yaw; g.rotation.x = 0.075 * fk * (r.flinchZone === 1 ? 1.35 : r.flinchZone === 2 ? 0.55 : 1); g.rotation.z = -side * 0.07 * fk;   // the flinch: the torso snaps back, a leg hit buckles the knees
     g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
     if (!r.av && r.figHead) r.figHead.rotation.x = p.pitch - 0.35 * fk;   // the simple figure's head snaps back too
@@ -1036,8 +1036,14 @@ function ownSteps(dt) {
 // the steps of the others, by the distance they walk: heard up to 40 m (muffled behind a house), quiet when they crouch
 function remoteSteps(r, p, now) {
   if (r.sx === undefined) { r.sx = p.x; r.sz = p.z; r.stride = 0; r.st = now; return; }
-  const moved = Math.hypot(p.x - r.sx, p.z - r.sz), secs = Math.max(0.001, (now - r.st) / 1000); r.sx = p.x; r.sz = p.z; r.st = now;
-  const inst = moved / secs; r.speed = inst > 25 ? 0 : (r.speed || 0) + (inst - (r.speed || 0)) * 0.35; r.air = Math.abs(p.y - (r.sy ?? p.y)) / secs > 1.5;   // for the animation of the model
+  const moved = Math.hypot(p.x - r.sx, p.z - r.sz), secs = Math.max(0.001, (now - r.st) / 1000), mx = p.x - r.sx, mz = p.z - r.sz; r.sx = p.x; r.sz = p.z; r.st = now;
+  // for the animation of the model: the velocity over the ground (its direction picks the steps: forward, aside, back)
+  // and the vertical speed of the feet (the eyes drop 0.6 m in a crouch: that is not a fall), smoothed over ~0.08 s
+  const inst = moved / secs, k = 1 - Math.exp(-secs / 0.08), feet = p.y - (p.h || 1.7), warp = inst > 25;
+  r.speed = warp ? 0 : (r.speed || 0) + (inst - (r.speed || 0)) * 0.35;
+  r.vx = warp ? 0 : (r.vx || 0) + (mx / secs - (r.vx || 0)) * k; r.vz = warp ? 0 : (r.vz || 0) + (mz / secs - (r.vz || 0)) * k;
+  const vy = r.fy === undefined || warp ? 0 : (feet - r.fy) / secs; r.fy = feet;
+  r.vy = (r.vy || 0) + (vy - (r.vy || 0)) * k; r.air = Math.abs(r.vy) > 2;
   if (moved / secs > 20 || moved < 0.002 || (p.h || 1.7) < 1.5 || Math.abs(p.y - (r.sy ?? p.y)) > 0.15) { r.sy = p.y; return; }   // a jump, a crouch, a teleport or standing still: no steps
   r.sy = p.y; const run = moved / secs > 8; r.stride += moved; if (r.stride < (run ? 3 : 2.1)) return; r.stride = 0;   // the run threshold sits between the jog (6) and the sprint (11)
   const dx = p.x - P.x, dz = p.z - P.z, d = Math.hypot(dx, dz); if (d > 40) return;
