@@ -8,7 +8,7 @@
    cover when hurt or reloading a slow gun, crouches behind the wall and peeks out, chases an enemy that broke the line
    of sight to where it was last seen, turns on an unseen attacker that hit it, picks up the kits and ammo it needs,
    reloads when safe, throws a grenade at a cluster and comes back after the death by itself. */
-import { FALL, HIT, NADE, bulletDrop } from './combat.mjs';
+import { FALL, HIT, INV, NADE, bulletDrop } from './combat.mjs';
 const NAMES = ['Андрис', 'Янис', 'Артур', 'Лиена', 'Виктор', 'Ольга', 'Эдгар', 'Дайна', 'Максим', 'Илзе', 'Роман', 'Кристап', 'Анна', 'Игорь', 'Мартиньш', 'Светлана'];
 // sigma: the aim error in radians — tuned for the small hitboxes (a torso half a metre wide, a head 0.36 m), so the
 // error is about half of what it was against the old metre-wide capsule; head: the share of shots aimed at the head
@@ -84,12 +84,13 @@ export function createBrain(g) {
     return out;
   }
   const lowAmmo = p => p.reserve[p.wep] <= 0 || p.reserve.reduce((a, b) => a + b, 0) < 40;
-  // a pickup the bot wants and can reach: a kit when hurt, ammo when dry, a grenade when out. The nearest within 45 m.
+  // a pickup the bot wants and can reach: a kit when hurt and the belt not full, ammo when dry, a grenade when the belt
+  // is short. The nearest within 45 m.
   function needItem(p) {
     if (!g.items) return null; let best = null, bd = 1e9;
     for (const it of g.items.values()) {
       if (!it.active) continue;
-      const want = (it.kind === 'med' && p.hp < 65 && p.meds < 2) || (it.kind === 'ammo' && lowAmmo(p)) || (it.kind === 'nade' && p.nades < 1);
+      const want = (it.kind === 'med' && p.hp < 65 && p.meds < INV.medMax) || (it.kind === 'ammo' && lowAmmo(p)) || (it.kind === 'nade' && p.nades < INV.nadeMax);
       if (!want) continue;
       const d = Math.hypot(it.x - p.x, it.z - p.z);
       if (d < 45 && d < bd && inArea(it.x, it.z) && world.walkable(it.x, it.z)) { bd = d; best = [it.x, it.z]; }
