@@ -176,7 +176,7 @@ function placeSun(cx, cy, cz, R) {
 const sm = renderer.shadowMap, orig = sm.render, NOOP = () => {};
 const V4 = new THREE.Vector4(), BOX = new THREE.Box2(), V2 = new THREE.Vector2(), FACES = [];
 const STAT = { slots: 0, still: 0, stillMs: 0, moving: 0, movers: 0 };
-let last = 0, sunDyn = false;
+let last = 0, sunDyn = false, stillGap = false;
 function draw(L, faces, root) {
   L.shadow.faces = faces; L.shadow.map = L === STILL ? RT_S : RT_W;
   const clr = renderer.clear; renderer.clear = NOOP; sm.needsUpdate = true;   // three clears the whole map before its first viewport: the tiles are cleared here instead
@@ -197,7 +197,7 @@ function frameShadows(scene) {
   const prev = renderer.getRenderTarget(), face = renderer.getActiveCubeFace(), mip = renderer.getActiveMipmapLevel();
   const fx = -Math.sin(camera.rotation.y), fz = -Math.cos(camera.rotation.y);   // the eye looks along (fx, fz) (rotation order YXZ)
   const R = Math.min(140, 45 + alt * 0.6), sunOn = sstep(260, 160, alt);
-  gather(cx + fx * R * 0.35, cz + fz * R * 0.35, R + 160);
+  gather(cx + fx * R * 0.35, cz + fz * R * 0.35, R + PICK + 50);   // round the sun's map, and every lamp that may have a slot
   STAT.movers = ROOT.children.length;
   // the lamps: on while they shine and the eye is low enough to see their pools
   const tab = lampTable(), lampOn = K > 0 && tab && U.uLampOn.value.x > 0 && alt < 90;
@@ -205,8 +205,8 @@ function frameShadows(scene) {
   if (!lampOn) { if (slotOf) freeAll(); }
   else {
     pick(tab, cx, cy, cz, fx, fz);
-    // what stands still: one lamp a frame, the nearest waiting one
-    let w = -1; for (let s = 0; s < K; s++) if (slots[s].lamp >= 0 && !slots[s].drawn && (w < 0 || slots[s].score < slots[w].score)) w = s;
+    // what stands still: one lamp every other frame (a pass of ~300 draw calls), the nearest waiting one
+    let w = -1; if (!(stillGap = !stillGap)) for (let s = 0; s < K; s++) if (slots[s].lamp >= 0 && !slots[s].drawn && (w < 0 || slots[s].score < slots[w].score)) w = s;
     if (w >= 0) {
       const t0 = performance.now(), sl = slots[w], [i, j] = tileOf(w);
       clearRect(RT_S, i * TILE, j * TILE, TILE, TILE);
