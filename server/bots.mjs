@@ -128,13 +128,21 @@ export function createBrain(g) {
   // is dropped at once for one that has rounds.
   function selectWeapon(p, dist, now) {
     const b = p.bot, ammo = w => p.mag[w] > 0 || p.reserve[w] > 0;
+    // the gun in hand must be one of the two equipped: if a role or a test put a pack gun there, pull it into a slot first
+    if (!p.loadout.includes(p.wep)) g.equip(p, p.wep);
     let best = -1, bs = -1;
     for (let w = 0; w < g.WEAPONS.length; w++) {
       if (!ammo(w)) continue;
       const s = fit(w, dist) * (w === b.role ? 2 : 1) * (w === p.wep ? 1.2 : 1);
       if (s > bs) { bs = s; best = w; }
     }
-    if (best >= 0 && best !== p.wep && now >= b.switchAt) { const dry = !ammo(p.wep); p.wep = best; b.switchAt = now + (dry ? 250 : 420 + rnd(0, 180)); }   // a dry gun is dropped quicker
+    if (best >= 0 && best !== p.wep && now >= b.switchAt) {
+      const dry = !ammo(p.wep);
+      if (!p.loadout.includes(best)) {   // the better gun rides in the pack: exchange it with the slot the current gun holds
+        const slot = p.loadout.indexOf(p.wep); if (slot >= 0) g.equip(p, best);   // equip drops the old gun into the pack cell best left
+      }
+      p.wep = best; b.switchAt = now + (dry ? 250 : 420 + rnd(0, 180));   // a dry gun is dropped quicker
+    }
   }
   // a step towards (hx, hz) at speed v: the heading is turned aside until the point ahead can be stood on. Bodies pressed
   // against the bot nudge it apart so a squad does not stack into one man; the wider offsets let it slip round a corner.
@@ -162,7 +170,7 @@ export function createBrain(g) {
   function think(p, dt) {
     const b = p.bot, L = b0(p), now = g.now();
     if (!p.alive) {   // back to the game after the respawn time, the favourite gun in hand again
-      if (!g.roundOver() && now - p.diedAt >= g.R.respawnMs + b.respawnExtra) { g.spawn(p); b.target = 0; b.path = null; b.cover = null; b.lastSeen = null; b.alert = null; p.wep = b.role; b.switchAt = now + 400; b.lastHp = p.hp; b.respawnExtra = rnd(0, 2500); }
+      if (!g.roundOver() && now - p.diedAt >= g.R.respawnMs + b.respawnExtra) { g.spawn(p); b.target = 0; b.path = null; b.cover = null; b.lastSeen = null; b.alert = null; g.equip(p, b.role); p.wep = b.role; b.switchAt = now + 400; b.lastHp = p.hp; b.respawnExtra = rnd(0, 2500); }
       return;
     }
     if (g.roundOver()) return;
@@ -324,7 +332,7 @@ export function createBrain(g) {
   }
   const make = (level, p) => {
     const lv = LEVELS[level] ? level : 'normal', role = pickRole(lv);
-    p.wep = role;   // born with the favourite gun in hand, so the variety shows from the first step
+    g.equip(p, role); p.wep = role;   // born with the favourite gun equipped and in hand, so the variety shows from the first step
     p.bot = { level: lv, role, target: 0, react: 0, look: rnd(0, 0.25), nextShot: 0, pauseUntil: 0, burstLeft: 3, path: null, pi: 0, wpAt: 0, strafe: Math.random() < 0.5 ? 1 : -1, strafeT: 1, dance: 0, danceT: rnd(0.2, 1), stuckT: 1.5, sx: 0, sz: 0, moving: false, retreatUntil: 0, retreatAt: 0, respawnExtra: rnd(0, 2000), kx: 0, kz: 0, vy: 0, fallTop: 0, crouch: false, cover: null, alertCover: null, lastSeen: null, alert: null, hurtFrom: null, hurtAt: -1e9, lastHp: null, threatAt: -1e9, jumpAt: 0, flankSide: Math.random() < 0.5 ? 1 : -1, flankT: rnd(1, 4), switchAt: 0 };
   };
   return { think, make, route };

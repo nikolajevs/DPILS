@@ -8,7 +8,7 @@
    (WEAPONS.vel) and the damage lands when the bullet arrives, not at the click. The hit is still judged against the target
    as the shooter saw it at the click (the position rewound by the shooter's lag, frozen for the flight), so “shoot where
    you see” holds while the bullet takes its time to get there. */
-import { FALL, HIT, INV, ITEMS, NADE, RELOAD_MS, RESERVE, RULES as R, WEAPONS, W_FALL, W_NADE, bulletAt, bulletDir, dragDist, dragTime, rayHit, rayToSegment } from './combat.mjs';
+import { FALL, HIT, INV, ITEMS, LOADOUT, NADE, PACK, RELOAD_MS, RESERVE, RULES as R, WEAPONS, W_FALL, W_NADE, bulletAt, bulletDir, dragDist, dragTime, rayHit, rayToSegment } from './combat.mjs';
 import { LEVELS, botName, createBrain } from './bots.mjs';
 
 const TEAMS = ['Красные', 'Синие'], HX = 5200, HY = 4200;   // bounds a bit wider than the city
@@ -66,7 +66,8 @@ export function createGame(opts) {
   }
   const newPlayer = () => ({ id: nextId++, conn: null, bot: null, name: '', char: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, st: { shots: 0, hitShots: 0, dmg: 0, heads: 0 }, wep: 0, lastShot: 0, lastNade: 0, nades: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(),
     mag: WEAPONS.map(w => w.mag), reserve: RESERVE.slice(), meds: 0, reloadDone: 0, reloadW: 0, lastMed: 0,
-    sights: { sight: 0, optic: 0 }, attach: WEAPONS.map(() => null) });   // loose sights in the pocket and the one mounted on each weapon
+    sights: { sight: 0, optic: 0 }, attach: WEAPONS.map(() => null),
+    loadout: LOADOUT.slice(), pack: PACK.slice() });   // two equipped guns + the backpack; loose sights and the one mounted per weapon
   // where the player stood at time t (the shooter saw the target 120 ms in the past plus half the round trip);
   // the eye height and the heading are rewound with the position, so a crouch or a turn back then counts as it looked
   function poseAt(p, t) {
@@ -93,7 +94,7 @@ export function createGame(opts) {
     if (arena) [x, z, yaw] = basePoint(p); else if (p.bot) [x, z, yaw] = areaPoint();
     p.x = num(x, HX); p.z = num(z, HY); p.y = p.bot ? world.ground(p.x, p.z) + 1.7 : 1.7; p.yaw = num(yaw, 10); p.pitch = 0; p.hp = R.hp; p.alive = true; p.protectUntil = now() + R.protectMs; p.t = now(); p.free = true; p.hist.length = 0; p.nades = NADE.count; p.eye = 1.7; p.fallTop = p.y; if (p.bot) { p.bot.vy = 0; p.bot.fallTop = 0; }
     p.mag = WEAPONS.map(w => w.mag); p.reserve = RESERVE.slice(); p.meds = 0; p.reloadDone = 0; p.lastMed = 0;
-    send(p, { t: 'spawn', x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, nades: p.nades, mag: p.mag, reserve: p.reserve, meds: p.meds, sights: p.sights, attach: p.attach }); all({ t: 'alive', id: p.id });   // the sights stay with the player through a death
+    send(p, { t: 'spawn', x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, nades: p.nades, mag: p.mag, reserve: p.reserve, meds: p.meds, sights: p.sights, attach: p.attach, loadout: p.loadout, pack: p.pack }); all({ t: 'alive', id: p.id });   // the sights and the loadout stay with the player through a death
   }
   // damage dmg from attacker p to v (weapon w; zone 1 head, 0 torso, 2 legs; from = where it came from): the hit and
   // the hurt messages, and the kill
@@ -145,10 +146,30 @@ export function createGame(opts) {
     }
   }
   // ---- the inventory: the server keeps the magazines and the reserve; a reload takes time and fills from the reserve ----
-  const invMsg = p => send(p, { t: 'inv', mag: p.mag, reserve: p.reserve, nades: p.nades, meds: p.meds, sights: p.sights, attach: p.attach });
+  const invMsg = p => send(p, { t: 'inv', mag: p.mag, reserve: p.reserve, nades: p.nades, meds: p.meds, sights: p.sights, attach: p.attach, loadout: p.loadout, pack: p.pack });
+  // ---- the loadout: two equipped guns (loadout) and a backpack of ten cells (pack). A weapon index lives in exactly one
+  // place. A human swaps a pack cell with a loadout slot ('swap'); a bot equips a gun by pulling it into a slot (equip).
+  const held = (p, w) => p.loadout.includes(w);
+  function swapWeapon(p, w, slot) {
+    if (!p.alive || !okWeapon(w) || slot !== 0 && slot !== 1) return false;
+    const pi = p.pack.indexOf(w);
+    if (pi < 0 || held(p, w)) return false;   // the gun must ride in the pack, not already be equipped
+    const old = p.loadout[slot];
+    p.loadout[slot] = w; p.pack[pi] = old;   // the old gun takes the pack cell the new one left
+    invMsg(p); return true;
+  }
+  // make sure w is equipped (for bots, which may fight with any of the guns they own): if it is in the pack, pull it
+  // into slot 0; the gun that was there drops into the pack cell w left. Returns the slot w now occupies, or -1.
+  function equip(p, w) {
+    if (held(p, w)) return p.loadout.indexOf(w);
+    const pi = p.pack.indexOf(w); if (pi < 0) return -1;
+    const slot = 0, old = p.loadout[slot];
+    p.loadout[slot] = w; p.pack[pi] = old; return slot;
+  }
   // mounting a picked-up sight on a weapon (kind null takes it off): the pocket pays, the old one comes back loose
   function setSight(p, wi, kind) {
     if (!p.alive || kind === p.attach[wi]) return;
+    if (p.conn && !held(p, wi)) return;   // a human mounts only on an equipped gun
     if (kind && p.sights[kind] <= 0) return;
     if (kind) p.sights[kind]--;
     if (p.attach[wi]) p.sights[p.attach[wi]]++;
@@ -157,6 +178,7 @@ export function createGame(opts) {
   }
   function beginReload(p, wi, t0) {
     if (!p.alive || p.reloadDone > t0 || p.mag[wi] >= WEAPONS[wi].mag || p.reserve[wi] <= 0) return false;
+    if (p.conn && !held(p, wi)) return false;   // a human reloads only an equipped gun
     p.reloadDone = t0 + RELOAD_MS[wi]; p.reloadW = wi; return true;
   }
   function useMed(p, t0) {
@@ -237,6 +259,7 @@ export function createGame(opts) {
   // from the muzzle and cut it at the body when 'bhit' comes.
   function shoot(p, wi, rays, lagMs) {
     const W = WEAPONS[wi], t0 = now(); if (!Array.isArray(rays) || !rays.length || !p.alive) return;
+    if (p.conn && !held(p, wi)) return;   // a human fires only an equipped gun
     if (t0 - p.lastShot < W.gapMs) return;
     if (t0 < p.reloadDone) return;   // still reloading
     if (p.mag[wi] <= 0) { if (p.bot) beginReload(p, wi, t0); return; }   // a bot reloads by itself; a player asks with 'reload'
@@ -282,7 +305,7 @@ export function createGame(opts) {
   }
   // ---- bots
   const enemyBase = p => (arena ? (FFA ? arena.bases.flat()[Math.floor(Math.random() * arena.bases.flat().length)] : arena.bases[p.team === 1 ? 0 : 1][Math.floor(Math.random() * arena.bases[p.team === 1 ? 0 : 1].length)]) : null);
-  const brain = createBrain({ players, now, world, area, FFA, WEAPONS, R, shoot, throwNade, spawn, fall, roundOver: () => roundOver, enemyBase, reload: beginReload, get items() { return items; } });   // items is declared below: a getter reads it once the game is built
+  const brain = createBrain({ players, now, world, area, FFA, WEAPONS, R, shoot, throwNade, spawn, fall, roundOver: () => roundOver, enemyBase, reload: beginReload, equip, get items() { return items; } });   // items is declared below: a getter reads it once the game is built
   let botN = 0;
   function addBot(level) {
     if (players.size >= MAX) return null;
@@ -318,14 +341,15 @@ export function createGame(opts) {
           if (!first && far > R.runSpeed * dt * 1.6 + 3) send(p, { t: 'correct', x: p.x, y: p.y, z: p.z });   // too fast: put back
           else { p.x = x; p.z = z; p.y = y; }
           p.fallTop = Math.max(p.fallTop ?? p.y, p.y);   // the highest point since the last landing: the fall report is capped by it
-          p.yaw = num(m.yaw, 100); p.pitch = num(m.pitch, 1.6); p.eye = Math.max(0.9, Math.min(1.8, num(m.h, 1.8) || 1.7)); p.wep = okWeapon(m.w) ? m.w : 0;
+          p.yaw = num(m.yaw, 100); p.pitch = num(m.pitch, 1.6); p.eye = Math.max(0.9, Math.min(1.8, num(m.h, 1.8) || 1.7)); p.wep = okWeapon(m.w) && held(p, m.w) ? m.w : p.loadout[0];   // the gun in hand must be one of the two equipped
           p.hist.push([t0, p.x, p.y, p.z, p.eye, p.yaw]); while (p.hist.length > 2 && t0 - p.hist[0][0] > 1000) p.hist.shift();
-        } else if (m.t === 'shoot' && p.alive) shoot(p, okWeapon(m.w) ? m.w : 0, m.rays, 120 + Math.min(300, p.rtt / 2));
+        } else if (m.t === 'shoot' && p.alive) shoot(p, okWeapon(m.w) && held(p, m.w) ? m.w : p.loadout[0], m.rays, 120 + Math.min(300, p.rtt / 2));
         else if (m.t === 'throw') { const d = [num(m.dx, 1), num(m.dy, 1), num(m.dz, 1)], l = Math.hypot(...d); if (l >= 0.5) throwNade(p, d.map(x => x / l), m.sp == null ? NADE.speed : num(m.sp, NADE.maxSpeed)); }
         else if (m.t === 'reload' && p.alive) beginReload(p, okWeapon(m.w) ? m.w : p.wep, t0);
         else if (m.t === 'use' && m.kind === 'med') useMed(p, t0);
         else if (m.t === 'fall' && p.alive) fall(p, num(m.h, FALL.maxH));   // the client landed from a height: the damage is the server's
         else if (m.t === 'attach') setSight(p, okWeapon(m.w) ? m.w : p.wep, m.kind === 'sight' || m.kind === 'optic' ? m.kind : null);
+        else if (m.t === 'swap' && p.alive) swapWeapon(p, m.w, m.slot);   // exchange a backpack gun with an equipped slot
         else if (m.t === 'chat') {
           const text = String(m.text || '').replace(/[\u0000-\u001f\u007f​-‏‪-‮]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
           if (!text || t0 - p.lastChat < 700) return; p.lastChat = t0;
@@ -407,7 +431,7 @@ export function createGame(opts) {
   function stepBots(dt) { for (const p of [...players.values()]) if (p.bot) brain.think(p, dt); }
   timers.push(setInterval(() => { const t = now(), dt = Math.min(0.2, (t - last) / 1000); last = t; stepBots(dt); }, 50));
   return {
-    attach, addBot, removeBot, players, arena, world, mode: MODE,   // world: the city's physics (freePath, shotPath, stepNade) — the tools and the headless checks probe it
+    attach, addBot, removeBot, players, arena, world, mode: MODE, equip,   // world: the city's physics (freePath, shotPath, stepNade) — the tools and the headless checks probe it
     stepBullets: () => advanceBullets(now()),   // the tests drive the flight by their own clock
     stepNades,   // the tests drive the fuse by their own clock too
     stepBots,   // and the bots' think by the test clock, for the fall test

@@ -110,16 +110,16 @@ const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 const kbd = key => mk('kbd', '', key);
 
 const box = $('mpInv'), body = $('mpInvBody'), meChip = $('mpInvMe');
-let open = false, data = null, refs = null;
+let open = false, data = null, refs = null, builtLoadout = '';
 
 function build() {
   if (!data) return;
   body.textContent = '';
-  const R = { guns: [], nade: {}, med: {}, hp: {}, kd: {} };
-  // the weapons: a card each, the click takes the gun in hand
+  const R = { guns: [], pack: [], nade: {}, med: {}, hp: {}, kd: {} };
+  // the weapons: a card each for the two equipped guns, the click takes the gun in hand
   const wsec = mk('section', 'inv-sec');
   const whead = mk('div', 'inv-head');
-  whead.append(mk('h3', '', 'Оружие'), mk('small', '', 'щелчок по карточке или её клавиша — взять в руки · ' + data.reloadKey + ' — перезарядка'));
+  whead.append(mk('h3', '', 'Оружие · 2 слота'), mk('small', '', 'щелчок по карточке или её клавиша — взять в руки · ' + data.reloadKey + ' — перезарядка'));
   wsec.append(whead);
   const guns = mk('div', 'inv-guns');
   const maxDmg = Math.max(...data.weapons.map(w => w.dmg * w.pellets));
@@ -127,9 +127,9 @@ function build() {
   const maxRange = Math.max(...data.weapons.map(w => w.range));
   data.weapons.forEach((w, i) => {
     const c = mk('div', 'inv-gun'); c.setAttribute('role', 'button'); c.tabIndex = 0;   // a div, not a button: the sight buttons live inside
-    c.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cb.switchWeapon(i); } };
+    c.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cb.switchWeapon(w.i); } };
     const top = mk('span', 'inv-top'); top.append(kbd(w.key), mk('b', 'inv-hand', 'в руках'));
-    const sil = mk('span', 'inv-sil'); sil.innerHTML = SLOT_SVG[i];
+    const sil = mk('span', 'inv-sil'); sil.innerHTML = SLOT_SVG[w.i];
     const ammo = mk('span', 'inv-ammo');
     const magN = mk('b', '', '0'), resN = mk('span', '', '/ 0'); ammo.append(magN, resN);
     const mag = mk('span', 'inv-mag' + (w.magSize > 30 ? ' cont' : ''));
@@ -150,15 +150,36 @@ function build() {
     stat('дальность', w.range + ' м', w.range / maxRange);
     const foot = mk('small', 'inv-foot', 'магазин ' + w.magSize + ' · перезарядка ' + fmt1(w.reloadMs / 1000) + ' с');
     const att = mk('span', 'inv-att');   // the picked-up sight on this weapon: mount / take off (the pocket pays)
-    const attB = kind => { const b = mk('button', 'inv-att-b'); b.type = 'button'; b.textContent = kind === 'sight' ? 'Коллиматор' : 'Оптика 8×'; b.onclick = e => { e.stopPropagation(); cb.attach(i, w.attach === kind ? null : kind); }; return b; };
+    const attB = kind => { const b = mk('button', 'inv-att-b'); b.type = 'button'; b.textContent = kind === 'sight' ? 'Коллиматор' : 'Оптика 8×'; b.onclick = e => { e.stopPropagation(); cb.attach(w.i, w.attach === kind ? null : kind); }; return b; };
     const attS = attB('sight'), attO = attB('optic');
     att.append(mk('small', 'inv-att-l', 'прицел:'), attS, attO);
     c.append(top, sil, mk('b', 'inv-name', w.name), mk('small', 'inv-tag', gunTag(w)), ammo, mag, rl, rlText, stats, att, foot);
-    c.onclick = () => cb.switchWeapon(i);
+    c.onclick = () => cb.switchWeapon(w.i);
     guns.append(c);
     R.guns.push({ c, ammo, magN, resN, pips, fill, rlFill, rlText, attS, attO });
   });
   wsec.append(guns);
+  // the backpack: ten loot slots. A filled cell is a gun — the click swaps it into the active equipped slot; an empty
+  // cell waits for loot. The three guns not equipped start here, seven cells are empty.
+  const psec = mk('section', 'inv-sec');
+  const phead = mk('div', 'inv-head');
+  phead.append(mk('h3', '', 'Рюкзак · 10 слотов'), mk('small', '', 'щелчок по оружию — поменять с активным слотом · пустые слоты для лута'));
+  psec.append(phead);
+  const packGrid = mk('div', 'inv-pack');
+  for (let s = 0; s < 10; s++) {
+    const cell = mk('div', 'inv-pack-cell');
+    const sil = mk('span', 'inv-pack-sil');
+    const nm = mk('b', 'inv-pack-name');
+    const am = mk('span', 'inv-pack-ammo');
+    const kb = mk('kbd', 'inv-pack-key');
+    const empty = mk('span', 'inv-pack-empty', 'пусто');
+    cell.append(sil, nm, am, kb, empty);
+    cell.onclick = () => { const w = data.pack && data.pack[s]; if (w) cb.switchWeapon(w.i); };
+    cell.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { const w = data.pack && data.pack[s]; if (w) { e.preventDefault(); cb.switchWeapon(w.i); } } };
+    packGrid.append(cell);
+    R.pack.push({ cell, sil, nm, am, kb });
+  }
+  psec.append(packGrid);
   // the items and the condition of the player
   const low = mk('div', 'inv-low');
   const isec = mk('section', 'inv-sec'); isec.append(mk('h3', '', 'Предметы'));
@@ -209,8 +230,8 @@ function build() {
   ssec.append(state);
   low.append(isec, ssec);
   const note = mk('small', 'inv-note');
-  note.textContent = 'Предметы на карте подбираются автоматически — просто пройдите мимо. Ящик патронов даёт +' + AMMO_GIVE.join(' / +') + ' к запасу каждого ствола и возвращается через 25 с, граната — через 30 с, аптечка — через 35 с, коллиматор — через 45 с, оптика — через 60 с. Прицел из кармана ставится на любое оружие кнопками на его карточке и переживает смерть. Бой продолжается, пока панель открыта.';
-  body.append(wsec, low, note);
+  note.textContent = 'На игроке только два ствола — остальные лежат в рюкзаке (10 слотов, 7 пустых для лута). Щелчок по оружию в рюкзаке меняет его с активным слотом; клавиши 1–5 берут ствол в руки или достают из рюкзака, колесо мыши переключает два экипированных. Снаряжение переживает смерть. Предметы на карте подбираются автоматически — просто пройдите мимо. Ящик патронов даёт +' + AMMO_GIVE.join(' / +') + ' к запасу каждого ствола и возвращается через 25 с, граната — через 30 с, аптечка — через 35 с, коллиматор — через 45 с, оптика — через 60 с. Прицел из кармана ставится на любое оружие кнопками на его карточке. Бой продолжается, пока панель открыта.';
+  body.append(wsec, psec, low, note);
   refs = R;
 }
 
@@ -237,6 +258,26 @@ function paint() {
       b.title = on ? 'Снять прицел — вернётся в карман' : loose[k] > 0 ? 'Установить на это оружие' : 'Нет в кармане — подберите на карте';
     }
   });
+  // the backpack cells: a gun shows its silhouette, name, rounds and key (the click swaps it in); an empty cell waits
+  const pk = data.pack || [];
+  R.pack.forEach((r, s) => {
+    const w = pk[s];
+    r.cell.classList.toggle('filled', !!w);
+    r.cell.classList.toggle('empty', !w);
+    if (w) {
+      r.cell.setAttribute('role', 'button'); r.cell.tabIndex = 0;
+      r.cell.title = 'Взять в руки — поменять с активным слотом (' + w.key + ')';
+      r.sil.innerHTML = SLOT_SVG[w.i];
+      r.nm.textContent = w.name;
+      r.am.textContent = w.mag + ' / ' + w.reserve;
+      r.am.dataset.empty = w.mag === 0 ? 1 : 0;
+      r.kb.textContent = w.key;
+    } else {
+      r.cell.removeAttribute('role'); r.cell.tabIndex = -1;
+      r.cell.title = 'Пустой слот рюкзака';
+      r.sil.innerHTML = ''; r.nm.textContent = ''; r.am.textContent = ''; r.kb.textContent = '';
+    }
+  });
   const loose = data.sights || { sight: 0, optic: 0 };
   for (const [r, k] of [[R.sight, 'sight'], [R.optic, 'optic']]) {
     r.cnt.textContent = '×' + (loose[k] || 0);
@@ -259,12 +300,18 @@ function paint() {
   R.hp.fill.style.width = Math.max(0, data.hp) + '%';
   R.hp.row.dataset.hp = data.hp <= 25 ? 'low' : data.hp <= 60 ? 'mid' : 'ok';
   R.kd.k.textContent = data.kills; R.kd.d.textContent = data.deaths;
-  R.total.textContent = data.weapons.reduce((s, w) => s + w.mag + w.reserve, 0);
+  R.total.textContent = data.weapons.concat(data.pack || []).filter(Boolean).reduce((s, w) => s + w.mag + w.reserve, 0);
   meChip.textContent = '';
   meChip.append(mk('i', 'dot ' + (data.ffa ? 'tf' : 't' + data.team)), mk('b', '', data.name || 'Вы'), mk('span', 'kd', data.kills + ' · ' + data.deaths));
 }
 
-function renderInv(d) { data = d; if (open) paint(); }
+function renderInv(d) {
+  data = d;
+  if (!open) return;
+  const sig = (d.weapons || []).map(w => w.i).join(',');
+  if (sig !== builtLoadout) { build(); builtLoadout = sig; }   // a swap changed the equipped guns: rebuild the cards
+  paint();
+}
 // the reload bar of the gun that is reloading, every frame while the panel is open
 function invTick(now) {
   if (!open || !data || !refs || data.reloadW < 0) return;
@@ -280,7 +327,7 @@ function openInv() {
   open = true;
   if (document.pointerLockElement) document.exitPointerLock();
   keys.clear();
-  build(); paint();
+  build(); builtLoadout = (data.weapons || []).map(w => w.i).join(','); paint();
   box.hidden = false;
   box.querySelector('.panel').focus({ preventScroll: true });
 }
