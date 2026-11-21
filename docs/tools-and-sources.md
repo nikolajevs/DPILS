@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Claude | claude/character-movement-realism-931478 | Реалистичные движения персонажей в бою: стрейф, отход, присед, прыжок, наклон за прицелом | src/game/avatar.js, src/game/mp.js, models/{Soldier,Spartan,Alien,2B}.glb, tools/char-clips.mjs |
 
 ## Автономный цикл улучшений
 
