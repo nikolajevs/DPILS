@@ -105,7 +105,7 @@ const step = (text, w, reported) => {
     await step('Строю Дом Единства, «Латголу», университет и школы…', W.landmarks); await buildLandmarks();
     await step('Насыпаю валы и копаю рвы крепости…', W.fortress); await buildFortress();
     await groundDepth();   // the depth grids under the ground layers, now that all of them are drawn (src/world/ground.js)
-    await rest(); const lamps = buildLamps(); setTime(timeI);
+    await rest(); const lamps = await buildLamps(); setTime(timeI);
     await step('Сажаю деревья…', W.trees); const trees = await buildTrees();
     await step('Сажаю цветы в парках…', W.flora); await plantFlora();   // their files were asked for with the parks
     await step('Выпускаю трамваи и автобусы на линии…', W.transit); const tripsN = await buildTransit();

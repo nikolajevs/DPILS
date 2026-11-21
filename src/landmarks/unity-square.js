@@ -13,6 +13,7 @@ import { TERR, subTris } from '../world/terrain.js';
 import { scene } from '../render/renderer.js';
 import { GB } from '../core/geometry.js';
 import { area2, hb, reversed, sh, triangulate } from '../core/util.js';
+import { addLight } from '../world/lamp-light.js';
 
 /* ---- Vienības laukums ----
    The city's main square between Park Hotel Latgola and Vienības nams, where the festival stage and the New Year tree
@@ -75,6 +76,7 @@ function lmSquare(K) {
   for (const [u, v, gar] of [[-118, 66, 1], [-92, 74, 0], [-66, 62, 1], [-62, 30, 0], [-128, 52, 0]]) {
     const [x, z] = lmW(f, u, v); lmLathe(G, x, z, 0, [[0.16, 0], [0.12, 0.6], [0.08, 11.5], [0.06, 12.2]], 10, POLE);
     lmBar(G, [x, 11.9, z], [x + f[2] * 1.3, 12.2, z + f[3] * 1.3], 0.08, POLE); lmBoxL(K.globe, [x + f[2] * 1.3, z + f[3] * 1.3, f[2], f[3]], -0.35, 0.35, -0.16, 0.16, 11.95, 12.15, hb('#f2efe6'));
+    addLight(x + f[2] * 1.3, 11.9, z + f[3] * 1.3, 0, Math.atan2(f[3], f[2])); if (gar) addLight(x, 7.6, z, 2);   // their light (src/world/lamp-light.js)
     if (gar) for (let k = 0; k < 14; k++) { const a = k / 14 * 2 * Math.PI, gx = x + Math.cos(a) * 0.75, gz = z + Math.sin(a) * 0.75; lmBar(K.globe, [gx, 6.0, gz], [gx, 9.2, gz], 0.035, hb('#fff2d8')); }
     if (gar) for (const y of [6.0, 9.2]) lmLathe(G, x, z, y, [[0.78, 0], [0.78, 0.05], [0.72, 0.05], [0.72, 0]], 16, POLE);
   }

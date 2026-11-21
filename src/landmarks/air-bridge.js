@@ -3,6 +3,7 @@ import { lmBar, lmBoxL, lmLathe } from './helpers.js';
 import { lmW } from './core.js';
 import { bridgeOf, terrainH } from '../world/terrain.js';
 import { hb, sh } from '../core/util.js';
+import { addLight } from '../world/lamp-light.js';
 
 /* ---- The "air bridge" to Jaunā Forštadte (gaisa tilts) ----
    The footbridge over the railway yard between Minskas iela and Slāvu iela: the walk from the station side to Jaunā
@@ -38,7 +39,7 @@ function lmAirBridge(K) {
   const scale = L / AIR.spans.reduce((a, b) => a + b, 0); let sp = 0;
   for (let k = 0; k <= AIR.spans.length; k++) { const q = airAt(Math.min(L, sp * scale)), i = q[2], f0 = frame(P[i], P[i + 1]), f = [q[0], q[1], f0[2], f0[3]];
     lmBoxL(G, f, -0.3, 0.3, -0.3, 0.3, 0, D - 1.55, CON); lmBoxL(G, f, -0.45, 0.45, -hw - 0.1, hw + 0.1, D - 1.55, D - 1.0, sh(CON, 0.92));
-    if (k % 2 === 0) { const w = lmW(f, 0, hw + 0.15); lmBar(G, [w[0], D, w[1]], [w[0], D + 4.2, w[1]], 0.09, POST); lmLathe(K.globe, w[0], w[1], D + 4.2, [[0.02, 0], [0.18, 0.08], [0.24, 0.24], [0.18, 0.42], [0, 0.48]], 12, hb('#f4f1e8')); }
+    if (k % 2 === 0) { const w = lmW(f, 0, hw + 0.15); lmBar(G, [w[0], D, w[1]], [w[0], D + 4.2, w[1]], 0.09, POST); lmLathe(K.globe, w[0], w[1], D + 4.2, [[0.02, 0], [0.18, 0.08], [0.24, 0.24], [0.18, 0.42], [0, 0.48]], 12, hb('#f4f1e8')); addLight(w[0], D + 4.44, w[1], 1, 0, 4.6); }
     if (k < AIR.spans.length) sp += AIR.spans[k]; }
   // stairs: steps on an inclined slab with railings, a column under each long flight
   const stair = (A, B, h0, h1, wd = 2.4) => { const f = frame(A, B), l = f[4], m = Math.max(2, Math.round((h0 - h1) / 0.16)), hv = wd / 2;

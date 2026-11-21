@@ -7,6 +7,7 @@ import { LMF, LMWHITE, lmW } from './core.js';
 import { flatPlain } from '../buildings/walls.js';
 import { polyA } from '../core/geometry.js';
 import { area2, hb, reversed, sh } from '../core/util.js';
+import { addLight } from '../world/lamp-light.js';
 
 /* ---- Gastrobar "Vēsma", Rīgas iela 49 ----
    A one-storey pavilion on the north side of the pedestrian street (place and photographs: visitdaugavpils.lv). The
@@ -38,7 +39,7 @@ function lmVesma(K) {
   { const R = (a, b) => { const A = lmW(f, a[0], a[1]), B = lmW(f, b[0], b[1]), L = Math.hypot(B[0] - A[0], B[1] - A[1]); for (const h of [0.5, 1.05]) lmBar(G, [A[0], FB + h, A[1]], [B[0], FB + h, B[1]], h > 1 ? 0.05 : 0.03, STEEL);
       for (let s = 0; s <= L + 0.01; s += L / Math.max(1, Math.round(L / 1.6))) lmBar(G, [A[0] + (B[0] - A[0]) * s / L, FB, A[1] + (B[1] - A[1]) * s / L], [A[0] + (B[0] - A[0]) * s / L, FB + 1.05, A[1] + (B[1] - A[1]) * s / L], 0.04, STEEL); };
     R([4.3, -9.2], [4.3, 33.6]); R([4.3, -9.2], [10.6, -9.2]); R([4.3, 33.6], [11.3, 33.6]);
-    for (const v of [-8.6, -1.6, 5.4, 12.4, 19.4, 26.4, 33.0]) { const [x, z] = lmW(f, 4.45, v); lmBar(G, [x, FB, z], [x, FB + 1.6, z], 0.07, hb('#2b2e30')); lmLathe(G, x, z, FB + 1.6, [[0, 0], [0.07, 0.03], [0.05, 0.08]], 8, hb('#2b2e30')); lmLathe(K.globe, x, z, FB + 1.66, sphereProf(0.17), 10, hb('#f6f3ea')); } }
+    for (const v of [-8.6, -1.6, 5.4, 12.4, 19.4, 26.4, 33.0]) { const [x, z] = lmW(f, 4.45, v); lmBar(G, [x, FB, z], [x, FB + 1.6, z], 0.07, hb('#2b2e30')); lmLathe(G, x, z, FB + 1.6, [[0, 0], [0.07, 0.03], [0.05, 0.08]], 8, hb('#2b2e30')); lmLathe(K.globe, x, z, FB + 1.66, sphereProf(0.17), 10, hb('#f6f3ea')); addLight(x, FB + 1.83, z, 2, 0, 2.0); } }
   // the summer terrace
   { const D = DECK, vs = []; for (let k = 0; k <= 10; k++) vs.push(0.5 + k * (V1 - 1) / 10);
     lmBoxL(G, f, 0, UF, 0.3, V1 - 0.3, 0, 0.15, D, false);

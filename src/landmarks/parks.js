@@ -6,7 +6,7 @@ import { bandAlong, bench, fillPoly, groundMesh, groundsOf } from './school-grou
 import { GB, box, polyA } from '../core/geometry.js';
 import { area2, bbox, hash, hb, pip, reversed, sh, triangulate } from '../core/util.js';
 import { groundMaterial } from '../render/materials.js';
-import { glowTex } from '../render/textures.js';
+import { addLight } from '../world/lamp-light.js';
 import { scene } from '../render/renderer.js';
 import { TERR, subTris, terrainH } from '../world/terrain.js';
 import { inBuilding, inWater, onRoad } from '../world/data.js';
@@ -34,7 +34,7 @@ import { initFlora } from './flora.js';
 const PD = window.PARKS || null;
 const PARK_TREES = [];   // [x, z, type, scale] for buildTrees
 const NOTREE = [], NOTREE_POLY = [];
-let PARK_POOLS = null, PARK_JETS = null;
+let PARK_JETS = null;
 // no scattered tree on a bed, a playground, a pitch, by a fountain or a monument
 function parkNoTree(x, z) {
   for (const [cx, cz, r] of NOTREE) if (Math.abs(x - cx) < r && Math.abs(z - cz) < r && Math.hypot(x - cx, z - cz) < r) return true;
@@ -94,6 +94,7 @@ function lamp(K, x, z, pools) {   // a black cast post with a lantern head; the 
   lmLathe(G, x, z, 0, [[0.17, 0], [0.17, 0.12], [0.11, 0.2], [0.11, 0.55], [0.075, 0.7], [0.06, 3.35], [0.09, 3.42], [0.09, 3.48]], 8, IRON);
   lmLathe(K.globe, x, z, 3.48, [[0.09, 0], [0.2, 0.36], [0.18, 0.42]], 8, hb('#f3ead8'));
   lmLathe(G, x, z, 3.9, [[0.18, 0], [0.26, 0.05], [0.24, 0.1], [0.06, 0.3], [0.03, 0.42], [0.06, 0.48], [0.01, 0.56]], 8, IRON);
+  addLight(x, 3.68, z, 1);   // the light of the globe (src/world/lamp-light.js)
   STATE.GBC = null; pools.push(x, z);
 }
 function binAt(G, x, z) { STATE.GBC = levelAt(x, z); lmLathe(G, x, z, 0, [[0.2, 0], [0.22, 0.7], [0.24, 0.74], [0.02, 0.74]], 10, hb('#3b3f3d')); STATE.GBC = null; }
@@ -300,17 +301,11 @@ function lmParks(K) {
       for (; acc < L; acc += 24) { const tx = (bx - ax) / L, tz = (bz - az) / L, off = (hw === 'pedestrian' ? 3.2 : 1.7) * side, x = ax + tx * acc - tz * off, z = az + tz * acc + tx * off; side = -side;
         const key = Math.round(x / 10) + ':' + Math.round(z / 10); if (have.has(key) || inBuilding(x, z) || inWater(x, z) || parkNoTree(x, z) || onRoad(x, z, 0.35)) continue; have.add(key); lamp(K, x, z, pools); }
       acc -= L; } }
-  // the pools of light under the lamps at night
-  const pool = new THREE.PlaneGeometry(1, 1); pool.rotateX(-Math.PI / 2); const np = pools.length >> 1;
-  PARK_POOLS = new THREE.InstancedMesh(pool, new THREE.MeshBasicMaterial({ map: glowTex(), color: new THREE.Color(1.0, 0.78, 0.5), transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }), np);
-  const M = new THREE.Matrix4(), q = new THREE.Quaternion(), S = new THREE.Vector3(13, 1, 13);
-  for (let k = 0; k < np; k++) { M.compose(new THREE.Vector3(pools[2 * k], 0.07, pools[2 * k + 1]), q, S); PARK_POOLS.setMatrixAt(k, M); }
-  PARK_POOLS.visible = false; PARK_POOLS.renderOrder = 5; scene.add(PARK_POOLS);
   // the water of the jets: white and half clear, lit at night
   const jm = lmStd({ vertexColors: true, transparent: true, opacity: 0.7, depthWrite: false, roughness: 0.15, metalness: 0, emissive: new THREE.Color(0.85, 0.95, 1), emissiveIntensity: 0 }, 'park-jets');
   const mj = PARK_JETS.mesh(jm); if (mj) { mj.renderOrder = 6; scene.add(mj); PARK_JETS = jm; } else PARK_JETS = null;
 }
-// at night: the light under the lamps and the lit jets
-function parksNight(n) { if (PARK_POOLS) PARK_POOLS.visible = n > 0.5; if (PARK_JETS) PARK_JETS.emissiveIntensity = n * 0.9; }
+// at night: the lit jets (the light of the lamps is src/world/lamp-light.js)
+function parksNight(n) { if (PARK_JETS) PARK_JETS.emissiveIntensity = n * 0.9; }
 
 export { PARK_RINGS, PARK_TREES, bbq, lmParks, onPath, parkNoTree, parksNight, picnic };

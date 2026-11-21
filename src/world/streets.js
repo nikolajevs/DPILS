@@ -610,7 +610,7 @@ async function buildLines() {
         while (acc < L) {
           const off = (hw + 0.6) * side, x = x1 + tx * acc - tz * off, z = z1 + tz * acc + tx * off, k = Math.round(x / 14) + ',' + Math.round(z / 14);
           let trk = false; TRK.near(x, z, 2.2, () => { trk = true; });   // not on a tram bed
-          if (!trk && !lampGrid.has(k) && Math.abs(x) < HX && Math.abs(z) < HY) { lampGrid.add(k); LAMPS.push(x, z, Math.atan2(tz * side, -tx * side) ); }
+          if (!trk && !lampGrid.has(k) && Math.abs(x) < HX && Math.abs(z) < HY) { lampGrid.add(k); LAMPS.push(x, z, Math.atan2(tx * side, tz * side)); }   // the arm (local +x turned by the angle: cos a, −sin a) reaches over the carriageway
           acc += 32;
         }
         acc -= L;

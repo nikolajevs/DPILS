@@ -5,6 +5,7 @@ import { COL, ROAD } from '../world/data.js';
 import { hook, scene } from '../render/renderer.js';
 import { GB, box, lathe } from '../core/geometry.js';
 import { area2, hb, offsetRing, reversed, sh } from '../core/util.js';
+import { addLight } from '../world/lamp-light.js';
 
 /* ---- the railway station round its tracks (trains.js, from OpenStreetMap; the main platform is lmStation's) ----
    - the island platforms: low (0.35 m, as the main one), asphalt with a white edge, lamp posts every 30 m and benches;
@@ -29,7 +30,7 @@ function lmStationYard(K) {
     let L = 0, ux = 1, uz = 0; for (let i = 0; i < n; i++) { const j = (i + 1) % n, dx = r[2 * j] - r[2 * i], dz = r[2 * j + 1] - r[2 * i + 1], l = Math.hypot(dx, dz); if (l > L) { L = l; ux = dx / l; uz = dz / l; } }
     for (let s = -L / 2 + 10; s <= L / 2 - 10; s += 30) { const x = bx + ux * s, z = bz + uz * s;
       lathe(G, x, z, 0.35, [[0.09, 0], [0.07, 0.3], [0.05, 4.2]], 6, 0, STEEL); box(G, x + ux * 0.4, z + uz * 0.4, ux, uz, 0.5, 0.12, 4.15, 4.3, DARK);
-      box(K.globe, x + ux * 0.75, z + uz * 0.75, ux, uz, 0.16, 0.08, 4.05, 4.15, WHITE, false);
+      box(K.globe, x + ux * 0.75, z + uz * 0.75, ux, uz, 0.16, 0.08, 4.05, 4.15, WHITE, false); addLight(x + ux * 0.75, 4.0, z + uz * 0.75, 1);
       box(G, x + ux * 8, z + uz * 8, ux, uz, 0.9, 0.22, 0.75, 0.8, hb('#7a5a40')); box(G, x + ux * 8 - uz * 0.2, z + uz * 8 + ux * 0.2, ux, uz, 0.9, 0.03, 0.8, 1.2, hb('#7a5a40'));
       COL.add(x, z, x + 0.01, z, 0.12, 0); }
   }

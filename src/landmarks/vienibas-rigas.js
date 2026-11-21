@@ -7,6 +7,7 @@ import { area2, hb, reversed, sh, triangulate } from '../core/util.js';
 import { lmBar, lmBoxL, lmLathe } from './helpers.js';
 import { mkCanvas, toTex } from '../render/textures.js';
 import { std } from '../render/materials.js';
+import { addLight } from '../world/lamp-light.js';
 
 /* ---- Vienības iela × Rīgas iela, by the Unity House ----
    The four-way node where Vienības iela (tram in its own bed, the tree alley on the Unity House side) meets Rīgas iela.
@@ -105,7 +106,7 @@ function lmVienibasRigas(K) {
     for (const u of [-0.75, 0.75]) lmBoxL(G, f, u - 0.06, u + 0.06, -0.22, 0.22, WH, WH + 0.42, DARK);
     const q = add(add(N, d, t + 4), nNE, WO + 2.6);
     lmBar(G, [q[0], WH, q[1]], [q[0], WH + 4.0, q[1]], 0.06, DARK);
-    lmLathe(K.globe, q[0], q[1], WH + 4.0, [[0, 0], [0.16, 0.06], [0.2, 0.2], [0.12, 0.34], [0, 0.38]], 12, hb('#f2efe6'));
+    lmLathe(K.globe, q[0], q[1], WH + 4.0, [[0, 0], [0.16, 0.06], [0.2, 0.2], [0.12, 0.34], [0, 0.38]], 12, hb('#f2efe6')); addLight(q[0], WH + 4.19, q[1], 1, 0, 4.4);
     const r = add(add(N, d, t + 2), nNE, WO + 7.5);
     lmLathe(G, r[0], r[1], WH, [[0.16, 0], [0.14, 2.0], [0.1, 2.4]], 8, TRUNK);
     lmLathe(G, r[0], r[1], WH + 2.2, [[0, 0], [1.5, 0.3], [2.0, 1.3], [1.5, 2.5], [0, 3.1]], 10, sh(LEAF, 0.9 + (t % 3) * 0.06));

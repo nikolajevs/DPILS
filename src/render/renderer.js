@@ -65,6 +65,6 @@ function hook(m, key, patch) {
   return m;
 }
 
-function terrUniforms(s) { s.uniforms.tTerr = U.tTerr; s.uniforms.uTerrA = U.uTerrA; s.uniforms.uTerrB = U.uTerrB; for (const k in U) if (/^(tPatch|uPatch)/.test(k)) s.uniforms[k] = U[k]; }   // with the fine patches of the terrain (src/world/terrain.js)
+function terrUniforms(s) { s.uniforms.tTerr = U.tTerr; s.uniforms.uTerrA = U.uTerrA; s.uniforms.uTerrB = U.uTerrB; for (const k in U) if (/^(tPatch|uPatch|tLamp|uLamp)/.test(k)) s.uniforms[k] = U[k]; }   // with the fine patches of the terrain (src/world/terrain.js) and the light of the lamps (src/world/lamp-light.js)
 
 export { ANISO, GPU, LIGHTDIR, MAXTEX, POST, U, WEAK_GPU, camera, canvas, hemi, hook, renderer, scene, sun, terrUniforms };
