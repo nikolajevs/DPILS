@@ -121,7 +121,7 @@ const step = (text, w, reported) => {
     await step('Рисую первый кадр…', W.frame); frame(performance.now());
     await loading.frame(); warmSamples(false);
     loading.done('Готово: ' + BLD.length.toLocaleString('ru') + ' зданий, ' + LINES.length.toLocaleString('ru') + ' улиц и дорожек, ' + trees.toLocaleString('ru') + ' деревьев, ' + lamps.toLocaleString('ru') + ' фонарей' + (tripsN ? ', ' + tripsN.toLocaleString('ru') + ' рейсов в расписании' : '') + '.');
-    $('view').classList.add('shown');
+    if (document.body.classList.contains('mp')) $('view').classList.add('shown');   // the city fades in only in a fight; src/ui/startfx.js owns the rule
     enablePlay(); $('chTrain').focus();
     window.__city = { PERF, ambProbe, ambStatus, statEvent, statsOf, MP, STATE, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, P, setTime, setCycle, dayInfo, showTime: t => (/^h/i.test(String(t)) ? setCycle(+String(t).slice(1) / 24, Infinity) : setTime(+t)), fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, setQualityMode, qualityMode: () => (qAuto ? 'auto' : qi), scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU, probeState };
   } catch (e) { console.error(e); loading.fail('Ошибка при сборке города: ' + e.message); }
