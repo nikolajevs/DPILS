@@ -1,6 +1,6 @@
 /* Daugavpils shooter: the game server. The rules are in game.mjs (team deathmatch, or MODE=ffa: everybody against
    everybody; an arena with bases for the teams, ARENA=center|fortress|station|park|church|pond|speedway|culture|griva; bots, BOTS=6 and BOT_LEVEL=easy|normal|hard,
-   fill the empty places). This file is the network: WebSockets for the players and /health for the list of servers.
+   fill the empty places). This file is the network: WebSockets for the players and /health for the page.
      PORT, SERVER_NAME, MODE, WIN_SCORE, ARENA, BOTS, BOT_LEVEL, LEADERBOARD (file of the leaderboard, default server/data/leaderboard.json; off = none),
      ACCOUNTS (file of the accounts, default server/data/accounts.json; off = none: joins are not checked, but the page's mandatory gate cannot register on such a server),
      STATIC (a folder, e.g. dist after npm run build: the server also gives out the page, so the city and its server live on one address) */
@@ -22,7 +22,7 @@ const game = createGame({ board: LB, accounts: ACC, world: WORLD, mode: process.
 for (let i = 0; i < Math.max(0, Math.min(63, +process.env.BOTS || 0)); i++) game.addBot();   // up to 63 bots: with one human that fills the 64 places
 
 /* the page itself (STATIC=dist): files of the folder, / is index.html; the bundle in assets/ has hashes in its names
-   and is cached for long, the rest (the page, the city data, servers.json) is checked every time */
+   and is cached for long, the rest (the page, the city data) is checked every time */
 const STATIC = process.env.STATIC ? path.resolve(process.env.STATIC) : '';
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.glb': 'model/gltf-binary', '.webp': 'image/webp', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav', '.txt': 'text/plain; charset=utf-8' };
 function serveFile(req, res) {

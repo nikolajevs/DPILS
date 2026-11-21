@@ -11,8 +11,8 @@ import { onProps, prop } from './props.js';
 import { FLASH_SIZE, makeFlash } from './muzzle.js';
 import { SET, keyName, onChange } from './settings.js';
 import { firstGames } from './help.js';
-import { rememberServer } from '../ui/servers.js';
 import { requireAccount } from '../ui/auth.js';
+import { serverUrl } from './server.js';
 import { addNade, blastGlow, boomNade, clearBlasts, clearNades, nadeSamples, tickNades, onNadeBounce, setNadeBodies, syncNade, liveNades, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
 import { KINDS, SLOT_SVG, bindInv, setItems, itemBack, itemTook, tickItems, renderInv, invTick, closeInv, toggleInv } from './inventory.js';
 import { terrainH } from '../world/terrain.js';
@@ -78,7 +78,6 @@ function useMed() {
 STATE.mp = false;
 let voice = null;
 const remotes = new Map();   // id → { name, group, buf: [{ t, x, y, z, yaw, pitch }], tag }
-const DEFAULT_SERVER = '';   // e.g. 'wss://dpils-game.example.com'; empty: ?server=…, the saved address, or localhost
 
 /* ---------- geometry ---------- */
 // the server's shot scan over the page's own city data: fire() predicts the wall (and the walls punched through by the
@@ -648,7 +647,7 @@ function respawn() {
 /* ---------- messages from the server ---------- */
 function onMsg(m) {
   switch (m.t) {
-    case 'hello': MP.ffa = m.mode === 'ffa'; document.body.classList.toggle('ffa', MP.ffa); if (MP.ffa) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } if (!MP.local) rememberServer(MP.url, m.server); voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team, e.char); document.body.dataset.team = m.team;
+    case 'hello': MP.ffa = m.mode === 'ffa'; document.body.classList.toggle('ffa', MP.ffa); if (MP.ffa) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team, e.char); document.body.dataset.team = m.team;
       MP.arena = m.arena || null; clearFx(); clearBlasts(); setItems(m.items);
       for (const [id, a] of Object.entries(m.attach || {})) { const r = remotes.get(+id); if (r && Array.isArray(a)) { r.attach = a; if (r.av) a.forEach((k, w) => r.av.setAttach(w, k)); } } if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
       if (MP.local) feed('Тренировка с ботами: ' + MP.board.filter(e => e.bot).length + ', уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || '') + '»', 'sys'); break;
@@ -735,17 +734,11 @@ function onMsg(m) {
     case 'round': el('mpEnd').hidden = true; clearInterval(endTimer); break;
     case 'chat': feed(m.text, 'sys'); break;
     case 'full': el('mpMsg').textContent = 'На сервере нет мест.'; break;
-    case 'auth-required': el('mpMsg').textContent = 'Сервер пускает только игроков с аккаунтом: войдите или зарегистрируйтесь.'; requireAccount(MP.url); break;
+    case 'auth-required': el('mpMsg').textContent = 'Сервер пускает только игроков с аккаунтом: войдите или зарегистрируйтесь.'; requireAccount(); break;
   }
 }
 
 /* ---------- joining ---------- */
-function serverUrl() {
-  const q = new URLSearchParams(location.search).get('server'), typed = el('mpServer').value.trim();
-  let u = typed || q || DEFAULT_SERVER || (['localhost', '127.0.0.1'].includes(location.hostname) ? 'ws://localhost:8787' : '');
-  if (u && !/^wss?:\/\//.test(u)) u = (location.protocol === 'https:' ? 'wss://' : 'ws://') + u;
-  return u;
-}
 function showGame() {
   firstGames(); ambStart(); try { loadSounds(ac()); } catch (e) {}
   STATE.mp = true; MP.on = true; STATE.started = true; P.fly = false; document.body.classList.add('mp');
@@ -754,8 +747,7 @@ function showGame() {
 function join(local) {   // local: { bots, level, mode, arena } for the game against bots in the page, with no server
   if (!account()) { requireAccount(); return; }   // an account is mandatory for any game, the gate is already over the card
   const name = el('mpName').value.trim(), url = local ? 'local:' : serverUrl(), msg = el('mpMsg');
-  if (!url) { msg.textContent = 'Укажите адрес сервера (поле «Сервер»).'; return; }
-  try { localStorage.setItem('dpils.mp', JSON.stringify({ name, server: el('mpServer').value.trim(), spawn: el('mpSpawn').value, team: el('mpTeam').value, char: el('mpChar').value })); } catch (e) {}
+  try { localStorage.setItem('dpils.mp', JSON.stringify({ name, spawn: el('mpSpawn').value, team: el('mpTeam').value, char: el('mpChar').value })); } catch (e) {}
   MP.spawn = +el('mpSpawn').value; MP.wantTeam = +el('mpTeam').value; MP.url = url; MP.local = local || null; loadModels(); msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true; el('goTrain').disabled = true;
   let ws; try { ws = local ? openLocal(local) : new WebSocket(url); } catch (e) { msg.textContent = 'Неверный адрес сервера.'; el('goPlay').disabled = false; el('goTrain').disabled = false; return; }
   MP.ws = ws; MP.started = false;
@@ -772,7 +764,7 @@ function initUi() {   // the fields of the player and of the training: once, whe
   const r = document.createElement('option'); r.value = -1; r.textContent = 'Случайное место'; sel.append(r);
   const ch = el('mpChar'); ch.textContent = '';
   for (const key of CHAR_KEYS) { const o = document.createElement('option'); o.value = key; o.textContent = CHARS[key].name; ch.append(o); }
-  try { const s = JSON.parse(localStorage.getItem('dpils.mp') || '{}'); if (s.name) el('mpName').value = s.name; if (s.server) el('mpServer').value = s.server; if (s.spawn != null) sel.value = s.spawn; if (s.team != null) el('mpTeam').value = s.team; if (parseChar(s.char)) ch.value = s.char; } catch (e) {}
+  try { const s = JSON.parse(localStorage.getItem('dpils.mp') || '{}'); if (s.name) el('mpName').value = s.name; if (s.spawn != null) sel.value = s.spawn; if (s.team != null) el('mpTeam').value = s.team; if (parseChar(s.char)) ch.value = s.char; } catch (e) {}
   const acc = account(); if (acc) el('mpName').value = acc.name;   // the account's nick belongs to its key on the server
   el('mpName').placeholder = 'Игрок' + (100 + Math.floor(Math.random() * 900));
   if (!el('mpName').value) el('mpName').value = el('mpName').placeholder;

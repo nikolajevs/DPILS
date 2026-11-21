@@ -100,13 +100,6 @@
         <label>Персонаж<select id="mpChar"></select></label>
         <label id="mpSpawnRow">Где появиться<select id="mpSpawn"></select></label>
       </fieldset>
-      <div class="step-part srv-part" data-for="online">
-        <div class="srv-head"><span>Серверы</span><button class="btn" id="mpServersRefresh" type="button">Обновить</button></div>
-        <div class="servers" id="mpServers" aria-live="polite"></div>
-        <details class="srv-addr" id="mpServerBox"><summary>Другой сервер</summary>
-        <label>Адрес сервера<input id="mpServer" placeholder="wss://адрес-сервера (или выберите из списка)" autocomplete="off" spellcheck="false"></label>
-        </details>
-      </div>
       <button class="go step-part" id="goTrain" data-for="train" disabled>Тренироваться</button>
       <button class="go step-part" id="goPlay" data-for="online" disabled>Играть</button>
       <div class="step-part" data-for="online"><label class="chk"><input type="checkbox" id="mpNoBoard"> Не участвовать в таблице лидеров</label></div>
@@ -123,10 +116,8 @@
       <button class="auth-tab on" id="authTabLogin" type="button" aria-pressed="true">Вход</button>
       <button class="auth-tab" id="authTabReg" type="button" aria-pressed="false">Регистрация</button>
     </div>
-    <p class="hint" id="authHint">Аккаунт обязателен для игры: войдите или создайте его на выбранном сервере.</p>
+    <p class="hint" id="authHint">Аккаунт обязателен для игры: войдите или создайте его.</p>
     <form class="auth-form" id="authForm">
-      <label>Сервер<input id="authServer" list="authServers" placeholder="wss://адрес-сервера" autocomplete="off" spellcheck="false"></label>
-      <datalist id="authServers"></datalist>
       <label>Ник<input id="authName" maxlength="16" autocomplete="username" spellcheck="false"></label>
       <label>Пароль<input id="authPass" type="password" maxlength="128" autocomplete="current-password"></label>
       <label id="authPass2Row" hidden>Повторите пароль<input id="authPass2" type="password" maxlength="128" autocomplete="new-password"></label>
@@ -136,7 +127,7 @@
     <div class="sec-btns auth-btns" id="authBtns">
       <button class="btn" id="authClose" type="button">Закрыть</button>
     </div>
-    <p class="hint">Аккаунт создаётся на выбранном игровом сервере и действует на нём. Пароль хранится там только как необратимый хеш. Без аккаунта игра не начнётся.</p>
+    <p class="hint">Аккаунт создаётся на игровом сервере этой страницы. Пароль хранится там только как необратимый хеш. Без аккаунта игра не начнётся.</p>
   </div>
 </div>
 <div class="mp-settings" id="mpSet" hidden><div class="panel"><header><h2>Настройки</h2><button class="btn" id="mpSetClose">Закрыть</button></header><nav class="set-tabs" id="mpSetTabs" role="tablist" aria-label="Разделы настроек"></nav><div id="mpSetBody"></div><footer><button class="btn" id="mpSetReset">Сбросить всё</button><p class="set-note">Настройки сохраняются в этом браузере</p></footer></div></div>
