@@ -57,7 +57,7 @@ const DMG = [
   { dmg: 20, head: 42 },
   { dmg: 16, head: 28 },
 ];
-const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, lastNade: 0, spec: 0, specMode: 0, scope: false, zoom: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0, sights: { sight: 0, optic: 0 }, attach: [null, null, null, null, null] };   // the picked-up sights: loose in the pocket and mounted per weapon (server/combat.mjs INV)
+const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, lastNade: 0, spec: 0, specMode: 0, scope: false, zoom: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0, sights: { sight: 0, optic: 0 }, attach: [null, null, null, null, null], loadout: [0, 3], pack: [1, 2, 4, null, null, null, null, null, null, null] };   // two equipped guns + the ten-cell backpack (server/combat.mjs LOADOUT/PACK); the picked-up sights: loose and mounted per weapon
 // the pockets (keep server/combat.mjs in step: RESERVE and INV): the server owns them, the page only shows and predicts
 const RESERVE = [90, 24, 15, 36, 200], NADE_MAX = 3, MED_MAX = 2;
 // the aimed grenade throw: G takes the grenade in hand, the mouse aims it, the left button held down charges the power
@@ -441,9 +441,18 @@ function fire(now) {
   updatePanel();
 }
 let slotsT = 0;   // the weapon belt stays visible until this moment: a switch (keys, wheel, inventory) or a spawn shows it, then it fades away
+// take weapon i in hand: an equipped gun (a loadout slot) switches at once; a gun from the backpack is swapped into the
+// active slot first (the server is told, the page predicts the swap so the gun appears without waiting for the echo)
 function switchWeapon(i) {
   nadeCancel(); NTHROW.at = 0;   // a new weapon cuts the follow-through of a throw short
   if (MP.dead || i === MP.weapon || i < 0 || i >= WEAPONS.length) return;
+  if (!MP.loadout.includes(i)) {
+    const pi = MP.pack.indexOf(i);
+    if (pi < 0) { feed(WEAPONS[i].name + ' — нет в рюкзаке', 'sys'); return; }
+    const slot = Math.max(0, MP.loadout.indexOf(MP.weapon));
+    MP.pack[pi] = MP.loadout[slot]; MP.loadout[slot] = i;   // the old gun takes the cell the new one left
+    if (MP.ws && MP.ws.readyState === 1) MP.ws.send(JSON.stringify({ t: 'swap', w: i, slot }));
+  }
   MP.weapon = i; MP.firing = false; MP.scope = false; crossGap = CROSS[i].ring ? 20 : CROSS[i].gap; models.forEach((m, k) => { m.visible = k === i; }); if (vm) { vm.setWeapon(i); vm.equip(); } tone(300, 200, 0.06, 0.15, 'square'); slotsT = performance.now() + 1600; updatePanel();   // the reload keeps running: the server locks every weapon until it ends (server/game.mjs shoot)
 }
 function reload(now) {
@@ -475,9 +484,10 @@ function updatePanel() {
   const nk = keyName(SET.keys.grenade), mk = keyName(SET.keys.med);
   el('mpNades').textContent = '×' + Math.max(0, MP.nades); el('mpNadesBox').dataset.empty = MP.nades > 0 ? 0 : 1; el('mpNadesBox').title = 'Гранаты (' + nk + ' — прицельный бросок)'; el('mpNadeKey').textContent = nk;
   el('mpMeds').textContent = '×' + Math.max(0, MP.meds); el('mpMedsBox').dataset.empty = MP.meds > 0 ? 0 : 1; el('mpMedsBox').title = 'Аптечки (' + mk + ')'; el('mpMedKey').textContent = mk;
-  const sl = el('mpSlots'); if (sl.children.length !== WEAPONS.length) { sl.textContent = ''; WEAPONS.forEach((w, i) => { const d = document.createElement('span'), b = document.createElement('b'), r = document.createElement('i'); d.title = w.name; d.innerHTML = SLOT_SVG[i]; b.textContent = i + 1; d.append(b, r); sl.append(d); }); }
-  [...sl.children].forEach((d, i) => { d.classList.toggle('on', i === MP.weapon); d.querySelector('i').textContent = MP.reserve[i]; d.title = WEAPONS[i].name + ' · запас ' + MP.reserve[i]; });
-  renderInv({ weapons: WEAPONS.map((w, i) => ({ name: w.name, mag: MP.ammo[i], magSize: w.mag, reserve: MP.reserve[i], on: i === MP.weapon, key: keyName(SET.keys['w' + (i + 1)]), dmg: DMG[i].dmg, head: DMG[i].head, pellets: w.pellets, gapMs: w.gapMs, range: w.range, reloadMs: w.reloadMs, auto: w.auto, scope: !!w.scope, attach: MP.attach[i] })), nades: MP.nades, nadeMax: NADE_MAX, meds: MP.meds, medMax: MED_MAX, sights: MP.sights, hp: MP.hp, medKey: keyName(SET.keys.med), nadeKey: keyName(SET.keys.grenade), reloadKey: keyName(SET.keys.reload), reloadW: MP.reloadAt ? MP.reloadW : -1, reloadAt: MP.reloadAt, name: MP.name, team: MP.team, ffa: MP.ffa, kills: MP.kills, deaths: MP.deaths });
+  const sl = el('mpSlots'); if (sl.children.length !== MP.loadout.length) { sl.textContent = ''; MP.loadout.forEach(w => { const d = document.createElement('span'), b = document.createElement('b'), r = document.createElement('i'); d.title = WEAPONS[w].name; d.innerHTML = SLOT_SVG[w]; b.textContent = w + 1; d.append(b, r); sl.append(d); }); }
+  [...sl.children].forEach((d, s) => { const w = MP.loadout[s]; d.classList.toggle('on', w === MP.weapon); d.querySelector('i').textContent = MP.reserve[w]; d.title = WEAPONS[w].name + ' · запас ' + MP.reserve[w]; });
+  const gunInfo = i => ({ i, name: WEAPONS[i].name, mag: MP.ammo[i], magSize: WEAPONS[i].mag, reserve: MP.reserve[i], on: i === MP.weapon, key: keyName(SET.keys['w' + (i + 1)]), dmg: DMG[i].dmg, head: DMG[i].head, pellets: WEAPONS[i].pellets, gapMs: WEAPONS[i].gapMs, range: WEAPONS[i].range, reloadMs: WEAPONS[i].reloadMs, auto: WEAPONS[i].auto, scope: !!WEAPONS[i].scope, attach: MP.attach[i] });
+  renderInv({ weapons: MP.loadout.map(gunInfo), pack: MP.pack.map(w => w == null ? null : gunInfo(w)), nades: MP.nades, nadeMax: NADE_MAX, meds: MP.meds, medMax: MED_MAX, sights: MP.sights, hp: MP.hp, medKey: keyName(SET.keys.med), nadeKey: keyName(SET.keys.grenade), reloadKey: keyName(SET.keys.reload), reloadW: MP.reloadAt ? MP.loadout.indexOf(MP.reloadW) : -1, reloadAt: MP.reloadAt, name: MP.name, team: MP.team, ffa: MP.ffa, kills: MP.kills, deaths: MP.deaths });
   el('mpScore').textContent = MP.kills + ' · ' + MP.deaths; el('mpFps').textContent = PERF.fps + ' кадр/с' + (PERF.scale < 1 ? ' · разрешение ' + Math.round(PERF.scale * 100) + ' %' : '');
   el('mpMeName').textContent = MP.name || 'Вы'; el('mpMeDot').className = 'dot ' + (MP.ffa ? 'tf' : 't' + MP.team);
   const tm = el('mpTeams'); tm.textContent = '';
@@ -645,7 +655,7 @@ function onMsg(m) {
       nadeCancel(); punchReset();
       const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.vx = P.vz = 0; P.kx = P.kz = 0; P.fallTop = 0; P.landH = 0; P.land = 0; P.crouch = false; P.fly = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
-      MP.weapon = 0; MP.scope = false; models.forEach((mm, k) => { mm.visible = k === 0; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; MP.sights = m.sights ? { ...m.sights } : { sight: 0, optic: 0 }; MP.attach = Array.isArray(m.attach) ? m.attach.slice() : [null, null, null, null, null]; syncVm(); clearNades(); gun.visible = true; if (vm) { vm.setWeapon(0); vm.equip(); } el('mpDead').hidden = true; slotsT = performance.now() + 2600; updatePanel();   // the belt greets the spawn, then hides
+      MP.loadout = Array.isArray(m.loadout) ? m.loadout.slice() : [0, 3]; MP.pack = Array.isArray(m.pack) ? m.pack.slice() : [1, 2, 4, null, null, null, null, null, null, null]; MP.weapon = MP.loadout[0]; MP.scope = false; models.forEach((mm, k) => { mm.visible = k === MP.weapon; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; MP.sights = m.sights ? { ...m.sights } : { sight: 0, optic: 0 }; MP.attach = Array.isArray(m.attach) ? m.attach.slice() : [null, null, null, null, null]; syncVm(); clearNades(); gun.visible = true; if (vm) { vm.setWeapon(MP.weapon); vm.equip(); } el('mpDead').hidden = true; slotsT = performance.now() + 2600; updatePanel();   // the belt greets the spawn, then hides
       MP.ws.send(JSON.stringify({ t: 'state', x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch }));   // the server has the point as asked: tell it where the player really stands
       if (canvas.requestPointerLock) { canvas.focus(); try { const pr = canvas.requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} }
       break;
@@ -706,7 +716,7 @@ function onMsg(m) {
     case 'nade': { const own = m.by === MP.id && !!NTHROW.at; addNade(m, own ? (vm && vm.canNade ? vm.nadeAt(MV) : nadeBall.getWorldPosition(MV)) : null); if (own) NTHROW.gone = true; } if (m.by !== MP.id) { const rt = remotes.get(m.by); if (rt) rt.throwAt = performance.now(); const dd = Math.hypot(m.p[0] - P.x, m.p[2] - P.z); if (dd < 40) tone(500, 300, 0.08, 0.1 * (1 - dd / 40), 'triangle'); } break;
     case 'item': itemBack(m); break;
     case 'took': itemTook(m.id); if (m.to === MP.id) { feed('+ ' + KINDS[m.kind].name, 'sys'); tone(660, 990, 0.09, 0.22, 'triangle'); } break;
-    case 'inv': MP.ammo = m.mag.slice(); MP.reserve = m.reserve.slice(); MP.nades = m.nades; MP.meds = m.meds; if (m.sights) MP.sights = { ...m.sights }; if (Array.isArray(m.attach)) { MP.attach = m.attach.slice(); syncVm(); } updatePanel(); break;
+    case 'inv': MP.ammo = m.mag.slice(); MP.reserve = m.reserve.slice(); MP.nades = m.nades; MP.meds = m.meds; if (m.sights) MP.sights = { ...m.sights }; if (Array.isArray(m.attach)) { MP.attach = m.attach.slice(); syncVm(); } if (Array.isArray(m.loadout)) MP.loadout = m.loadout.slice(); if (Array.isArray(m.pack)) MP.pack = m.pack.slice(); if (!MP.loadout.includes(MP.weapon)) { MP.weapon = MP.loadout[0]; models.forEach((mm, k) => { mm.visible = k === MP.weapon; }); if (vm) { vm.setWeapon(MP.weapon); vm.equip(); } } updatePanel(); break;
     case 'attach': if (m.id === MP.id) { MP.attach = m.attach.slice(); syncVm(); updatePanel(); } else { const r = remotes.get(m.id); if (r) { r.attach = m.attach; if (r.av) m.attach.forEach((k, w) => r.av.setAttach(w, k)); } } break;
     case 'heal': { const got = m.hp - MP.hp; MP.hp = m.hp; MP.meds = m.meds; feed('Аптечка: +' + got + ' HP', 'sys'); tone(440, 660, 0.16, 0.25, 'sine'); updatePanel(); break; }
     case 'boom': {
@@ -771,7 +781,7 @@ function initUi() {   // the fields of the player and of the training: once, whe
 }
 
 /* ---------- input ---------- */
-canvas.addEventListener('wheel', e => { if (MP.on && !MP.dead) switchWeapon((MP.weapon + (e.deltaY > 0 ? 1 : WEAPONS.length - 1)) % WEAPONS.length); }, { passive: true });
+canvas.addEventListener('wheel', e => { if (MP.on && !MP.dead) { const s = Math.max(0, MP.loadout.indexOf(MP.weapon)); switchWeapon(MP.loadout[(s + (e.deltaY > 0 ? 1 : MP.loadout.length - 1)) % MP.loadout.length]); } }, { passive: true });
 canvas.addEventListener('contextmenu', e => { if (MP.on) e.preventDefault(); });
 canvas.addEventListener('mousedown', e => {
   if (MP.on && e.button === 2) { if (NAIM.on) { nadeCancel(); return; } if ((W().scope || MP.attach[MP.weapon]) && !MP.dead && !MP.reloadAt) MP.scope = true; }   // right button: the sniper's own scope, or the sight mounted on any weapon
