@@ -2,8 +2,8 @@
    in the environment, ACCOUNTS=off disables them). The password is stored only as a scrypt hash with a random salt.
    On registration the server makes a secret key for the account — the same key the leaderboard knows a player by
    (leaderboard.mjs, src/game/identity.js): the page sends it at the join, so the results follow the account to any
-   browser, and the nick belongs to the account. Without an account everything works as before: the browser makes
-   its own key. The HTTP routes (/auth/register, /auth/login, /auth/me) are in index.mjs. */
+   browser, and the nick belongs to the account. An account is mandatory: with accounts on, the game refuses a join
+   whose key is not an account key (game.mjs). The HTTP routes (/auth/register, /auth/login, /auth/me) are in index.mjs. */
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';

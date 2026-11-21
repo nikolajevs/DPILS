@@ -91,7 +91,7 @@
       </div>
       </div>
       <div class="step-part" data-for="online">
-        <div class="acct"><span id="acctState">Без аккаунта: результаты привязаны к этому браузеру.</span><button class="btn" id="bAuth" type="button">Войти / регистрация</button></div>
+        <div class="acct"><span id="acctState">Аккаунт обязателен: создайте его или войдите, чтобы играть.</span><button class="btn" id="bAuth" type="button">Войти / регистрация</button></div>
       </div>
       <fieldset class="player step-part" data-for="train online">
         <legend>Игрок</legend>
@@ -133,11 +133,10 @@
       <div class="auth-msg" id="authMsg" role="status"></div>
       <button class="go" id="authGo" type="submit">Войти</button>
     </form>
-    <div class="sec-btns auth-btns">
-      <button class="btn" id="authGuest" type="button">Продолжить без аккаунта</button>
+    <div class="sec-btns auth-btns" id="authBtns">
       <button class="btn" id="authClose" type="button">Закрыть</button>
     </div>
-    <p class="hint">Аккаунт создаётся на выбранном игровом сервере и действует на нём. Пароль хранится там только как необратимый хеш. Без аккаунта играть можно как раньше.</p>
+    <p class="hint">Аккаунт создаётся на выбранном игровом сервере и действует на нём. Пароль хранится там только как необратимый хеш. Без аккаунта игра не начнётся.</p>
   </div>
 </div>
 <div class="mp-settings" id="mpSet" hidden><div class="panel"><header><h2>Настройки</h2><button class="btn" id="mpSetClose">Закрыть</button></header><nav class="set-tabs" id="mpSetTabs" role="tablist" aria-label="Разделы настроек"></nav><div id="mpSetBody"></div><footer><button class="btn" id="mpSetReset">Сбросить всё</button><p class="set-note">Настройки сохраняются в этом браузере</p></footer></div></div>
