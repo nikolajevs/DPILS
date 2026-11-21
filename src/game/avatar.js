@@ -59,8 +59,12 @@ function loadAvatar() {
         // standing, measured once: the height of the head bone over the soles (metres; the crouch is fitted to it) and the
         // height of the hips in their parent (the flight of the jump clip is taken off to it: the jump of the game lifts the body)
         const hips = probe.getObjectByName('Hips'), jt = clips[MODEL.clips.jump] && clips[MODEL.clips.jump].tracks.find(t => t.name === 'Hips.position');
-        assets[key] = { scene: g.scene, clips, scale, floor: -box.min.y * scale, headStand: head ? (head.getWorldPosition(new THREE.Vector3()).y - box.min.y) * scale : 0,
-          hipsY: hips ? hips.position.y : 0, jumpHips: jt ? jt.createInterpolant() : null };
+        let jumpLift = null;
+        if (hips && jt) {   // the rise of the hips in the jump clip over their standing height, in metres up (their parent may lie turned)
+          const ip = jt.createInterpolant(), p0 = hips.position.clone(), M = new THREE.Matrix3().setFromMatrix4(hips.parent.matrixWorld), d = new THREE.Vector3();
+          jumpLift = t => d.fromArray(ip.evaluate(t)).sub(p0).applyMatrix3(M).y * scale;
+        }
+        assets[key] = { scene: g.scene, clips, scale, floor: -box.min.y * scale, headStand: head ? (head.getWorldPosition(new THREE.Vector3()).y - box.min.y) * scale : 0, jumpLift };
         res(assets[key]);
       }, undefined, () => res(null));
     })));
@@ -191,10 +195,11 @@ const HOLD_OFS = new THREE.Vector3(0, 0, 0);   // the holder from the shoulder j
    The players of a firefight strafe, back off, crouch and hop while their guns stay on the enemy. The body faces the aim
    and the legs walk where the player goes: four step clips around (forward, to the left, to the right, back) at a walk,
    at a run and crouched (STEP_SET; tools/char-clips.mjs measured each one's ground speed and the phase its left foot
-   lands at). The velocity in the frame of the figure weighs the directions (cos² and sin², so a diagonal is half and
-   half) and the speed the gaits; all the step clips run on one phase, each shifted by the phase of its left foot landing,
-   so the feet of a blend land together, and the phase advances at the rate the speed asks of the clips (RATE: past it
-   the feet slide — a sprint is faster than the run clip can step). Standing still it is the rifle idle or the kneel.
+   lands at). The velocity in the frame of the figure picks the directions — a diagonal mixes its two neighbours so that
+   their strides add up along the way the player goes — and the speed the gaits; all the step clips run on one phase,
+   each shifted by the phase of its left foot landing, so the feet of a blend land together, and the phase advances so
+   that the strides of the blend cover the ground the player covers: the planted foot stays put (RATE: past it the feet
+   slide — a sprint is faster than the run clip can step). Standing still it is the rifle idle or the kneel.
    The crouch is a pose, not a squashed figure: the eye height of the snapshot (1.7 → 1.1) weighs the crouched set, and
    the hitboxes of the server (server/combat.mjs: the head 0.1 under the eye) drop 0.6 m with it, so where the clip's
    head stays higher (the crouched walk carries it ~0.27 m over the kneel) the hips go down on bent knees, the feet
@@ -218,31 +223,52 @@ const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / ((b - a
 const ease = (rate, dt) => 1 - Math.exp(-rate * dt), clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 const AX = new THREE.Vector3(1, 0, 0), AY = new THREE.Vector3(0, 1, 0), QA = new THREE.Quaternion(), QB = new THREE.Quaternion(), QC = new THREE.Quaternion();
-const FT = [new THREE.Vector3(), new THREE.Vector3()], FQ = [new THREE.Quaternion(), new THREE.Quaternion()], VH = new THREE.Vector3();
-// the body on top of the clips, in the frame of the figure (+z forward, +x its left; a turn about +x by a positive
-// angle bends forward): B — the bones, st — { twist, crouch, moving, headStand, pitch, kick, fit } (fit: kept between frames)
-function body(B, inner, st, dt) {
-  setFrame(inner);
-  if (Math.abs(st.twist) > 1e-3) turnBy(B.hips, QA.setFromAxisAngle(AY, st.twist));   // the legs keep their own heading
+const FT = [new THREE.Vector3(), new THREE.Vector3()], FQ = [new THREE.Quaternion(), new THREE.Quaternion()], VH = new THREE.Vector3(), VP = new THREE.Vector3();
+const CW = Array.from({ length: 12 }, () => new THREE.Quaternion()), QD = new THREE.Quaternion();
+// a turn q given in the frame, made in the local turn of a bone whose parent stands turned by w in the frame
+const localTurn = (o, w, q) => o.quaternion.premultiply(QD.copy(w).invert().multiply(q).multiply(w));
+/* The body on top of the clips, in the frame of the figure (+z forward, +x its left; a turn about +x by a positive angle
+   bends forward). B — the bones: hips; the chain from the hips to the head (B.chain, the spine bones among them B.bend);
+   K, T, S — how the parent of the hips stands in the frame (a turn, a place, a scale; fixed). st — { lift, twist, crouch,
+   moving, headStand, pitch, kick, fit } (fit is kept between frames); far: only what the hitboxes need (the flight and the
+   crouch), not the aim. The turns are put into the local turns of the bones down the chain, worked out from the turns
+   of the clip: no matrices are recomputed here (hold() does it once for all) — but for the crouched walk, whose knees
+   bend by IK on the matrices. */
+function body(B, inner, st, dt, far) {
+  const h = B.hips, ch = B.chain, n = ch.length;
+  const tw = far ? 0 : st.twist, p = far ? 0 : clamp(st.pitch, -0.9, 0.9);
+  // the hips: the clip's own rise off in the air (the game lifts the body), the legs' own heading
+  if (st.lift > 1e-3) h.position.add(VP.set(0, -st.lift / B.S, 0).applyQuaternion(QD.copy(B.K).invert()));
+  if (Math.abs(tw) > 1e-3) localTurn(h, B.K, QA.setFromAxisAngle(AY, tw));
+  // the turns of the chain in the frame (CW[0] the hips) and, for the crouch, the height of the head bone
+  CW[0].copy(B.K).multiply(h.quaternion); for (let i = 0; i < n; i++) CW[i + 1].copy(CW[i]).multiply(ch[i].quaternion);
   // the crouch fitted to the hitboxes: how far the head bone is over where the eye height puts it (smoothed: the steps bob)
   let drop = 0, hunch = 0;
   if (B.head && st.crouch > 0.02) {
-    const over = at(B.head, VH).y - (st.headStand - 0.6 * st.crouch) - 0.05;
-    st.fit += (Math.max(0, over) - st.fit) * ease(5, dt);
+    let s = B.S; VH.copy(h.position).multiplyScalar(s).applyQuaternion(B.K).add(B.T); s *= h.scale.x;
+    for (let i = 0; i < n; i++) { VH.add(VP.copy(ch[i].position).multiplyScalar(s).applyQuaternion(CW[i])); s *= ch[i].scale.x; }
+    st.fit += (Math.max(0, VH.y - (st.headStand - 0.6 * st.crouch) - 0.05) - st.fit) * ease(5, dt);
   } else st.fit *= 1 - ease(8, dt);
   if (st.fit > 0.005) { drop = Math.min(0.2, st.fit * 0.6) * st.moving; hunch = clamp((st.fit - drop) / 0.5, 0, 0.6); }   // a kneel only bends over: its knee is on the ground
-  if (drop > 0.005 && B.legs) {
+  if (drop > 0.005 && B.legs) {   // the hips go down, the feet stay where the clip put them: the knees bend (two-bone IK)
+    setFrame(inner);
     for (let k = 0; k < 2; k++) { at(B.legs[k][2], FT[k]); turnOf(B.legs[k][2], FQ[k]); }
-    moveBy(B.hips, VH.set(0, -drop, 0));
+    moveBy(h, VH.set(0, -drop, 0));
     for (let k = 0; k < 2; k++) { reach(B.legs[k], FT[k]); turnOf(B.legs[k][2], QC); turnBy(B.legs[k][2], QB.copy(FQ[k]).multiply(QC.invert())); }   // the knee bends where the clip bent it, the foot keeps its turn
   }
-  // the spine: the twist of the legs undone, the lean with the aim (back to aim up, over to aim down), the hunch, the kick
-  const n = B.spine.length, p = clamp(st.pitch, -0.9, 0.9);
-  if (n) {
-    QB.setFromAxisAngle(AX, (-0.45 * p + hunch - 0.025 * st.kick) / n).multiply(QC.setFromAxisAngle(AY, -st.twist / n));
-    for (const b of B.spine) turnBy(b, QB);
+  // the spine: the twist of the legs undone, the lean with the aim (back to aim up, over to aim down), the hunch, the
+  // kick; the same turn q about each spine bone's joint. Each bone's local turn takes q seen from its parent as the clip
+  // had it, and everything above it rides along, so the head's parent ends up turned by q^(number of spine bones)
+  const bend = B.bend.length, lean = -0.45 * p + hunch - 0.025 * st.kick, look = -0.35 * p - 0.9 * hunch;
+  if (bend && Math.abs(lean) + Math.abs(tw) > 1e-3) {
+    QB.setFromAxisAngle(AX, lean / bend).multiply(QC.setFromAxisAngle(AY, -tw / bend));
+    QA.identity();
+    for (let i = 0; i < n; i++) {
+      if (B.isBend[i]) { localTurn(ch[i], CW[i], QB); QA.premultiply(QB); }
+      CW[i + 1].premultiply(QA);   // (the turns above a bent bone take its bend; CW[i] itself is its parent's, already turned)
+    }
   }
-  if (B.head) turnBy(B.head, QA.setFromAxisAngle(AX, -0.35 * p - 0.9 * hunch));   // the eyes along the gun
+  if (B.head && Math.abs(look) > 1e-3) localTurn(B.head, CW[n - 1], QC.setFromAxisAngle(AX, look));   // the eyes along the gun
 }
 // one player's model: update(dt, s) every frame, s = { vx, vz, yaw, pitch, h, air, vy, dead, shotAt, throwAt, flinch, fall, vel }:
 // vx, vz — the velocity over the ground (m/s, the world), yaw — where the figure faces (as the group of mp.js turns),
@@ -251,7 +277,7 @@ function body(B, inner, st, dt) {
 // one flashes and kicks; throwAt: of the last grenade thrown, the arm swings; flinch: { k, zone, side } of a hit just
 // taken — the head snaps back, the spine jolts. On death the skeleton falls by physics (ragdoll.js): fall — the
 // direction of the killing blow { x, z, head, nade }, vel — the speed the player had; without the bones for it the
-// death clip plays as before. lod: far away — the body on top of the clips is skipped.
+// death clip plays as before. lod: far away — the lean with the aim and the twist of the legs are skipped (body()).
 // char — the chosen character of CHARS ('' = the operator); if its file did not come, the operator stands in
 function makeAvatar(char) {
   const key = parseChar(char) || 'soldier', cfg = CHARS[key], asset = assets[key] || assets.soldier;
@@ -286,13 +312,19 @@ function makeAvatar(char) {
   const armQ = armBones.map(o => o.quaternion.clone()); holdMixer.stopAllAction(); holdMixer.uncacheRoot(root);
   const spine = root.getObjectByName('Spine1') || root.getObjectByName('Spine');   // the flinch bends the spine and the head on top of the clip
   const bone = n => root.getObjectByName(n), leg = s => [bone('thigh_' + s), bone('calf_' + s), bone('foot_' + s)];
-  const B = { hips: bone('Hips'), spine: ['Spine', 'Spine1', 'Spine2'].map(bone).filter(Boolean), head, legs: [leg('l'), leg('r')] };
+  const B = { hips: bone('Hips'), head, legs: [leg('l'), leg('r')], chain: [], bend: [], isBend: [], K: new THREE.Quaternion(), T: new THREE.Vector3(), S: 1 };
   if (!B.legs.every(l => l.every(Boolean))) B.legs = null;
+  if (B.hips) {   // the chain from the hips to the head (2B has a fourth spine bone in it) and the stand of the hips' parent in the frame
+    for (let o = head; o && o !== B.hips && o !== root; o = o.parent) B.chain.unshift(o);
+    if (!head || B.chain[0].parent !== B.hips) { B.chain = []; B.head = null; }
+    B.bend = ['Spine', 'Spine1', 'Spine2'].map(bone).filter(o => o && B.chain.includes(o)); B.isBend = B.chain.map(o => B.bend.includes(o));
+    inner.updateMatrixWorld(true); setFrame(inner); const s = new THREE.Vector3(); relMatrix(B.hips.parent, new THREE.Matrix4()).decompose(B.T, B.K, s); B.S = s.x || 1;
+  }
   let deadT = -1, tied = null, ragdoll = null; const shot = { at: 0, w: 0, dt: 0 };
   // the state of the legs: the velocity in the frame of the figure (f forward, r to its right), the direction weights,
   // the phase of the steps, the crouch, the heading of the legs against the aim, the flight and the landing
   let mvF = 0, mvR = 0, dirF = 1, dirR = 0, phase = 0, crouch = 0, lastYaw = null, airW = 0, wasAir = false, jumpT = J.takeoff, landT = -1, turning = false;
-  const dirW = {}, st = { twist: 0, crouch: 0, moving: 0, headStand: asset.headStand, pitch: 0, kick: 0, fit: 0 };
+  const dirW = {}, st = { lift: 0, twist: 0, crouch: 0, moving: 0, headStand: asset.headStand, pitch: 0, kick: 0, fit: 0 };
   function legs(dt, s) {
     const yaw = s.yaw || 0, sy = Math.sin(yaw), cy = Math.cos(yaw), k = ease(10, dt);
     const vx = s.vx ?? -sy * (s.speed || 0), vz = s.vz ?? -cy * (s.speed || 0);
@@ -352,15 +384,14 @@ function makeAvatar(char) {
     }
     if (ragdoll) ragdoll.step(dt);
     else { if (!s.dead) legs(dt, s); mixer.update(dt); }
-    const fired = (shot.dt = dt, shotFlash(flash, s, shot));
+    shot.dt = dt; const fired = shotFlash(flash, s, shot);
     st.kick = fired ? RECOIL[shot.w] || 1 : st.kick * (1 - ease(11, dt));
     if (s.dead) { if (H && gun.userData.both && tied) carry(H, inner, gun, tied); return; }
-    // the flight lifts the body: the clip's own rise of the hips is taken off while in the air
-    if (B.hips && asset.jumpHips && act[C.jump] && act[C.jump].weight && s.air) B.hips.position.y -= act[C.jump].weight * (asset.jumpHips.evaluate(jumpT)[1] - asset.hipsY);
     armBones.forEach((o, i) => o.quaternion.copy(armQ[i]));
     if (head) head.scale.setScalar(MODEL.headScale);
     st.pitch = s.pitch ?? headProxy.rotation.x;
-    if (B.hips && !s.lod) body(B, inner, st, dt);
+    st.lift = s.air && asset.jumpLift && act[C.jump] ? act[C.jump].weight * Math.max(0, asset.jumpLift(jumpT)) : 0;   // the flight lifts the body, not the clip
+    if (B.hips) body(B, inner, st, dt, !!s.lod);
     // the flinch of a hit (the bhit of mp.js), on top of the clip: the mixer rewrote the bones this frame, so the
     // offset is fresh every frame
     if (s.flinch) {

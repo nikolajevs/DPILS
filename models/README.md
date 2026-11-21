@@ -39,26 +39,37 @@ This work is based on the models above, each by its author, licensed under [CC-B
 
 ## Персонажи
 
-Четыре выбираемых персонажа игры (прежние мужчина и женщина Quaternius и пешеходы удалены). Тела и анимации — **CC BY 4.0** (Sketchfab), атрибуции ниже. Сборка — [tools/character.mjs](../tools/character.mjs) (обобщён из [tools/soldier.mjs](../tools/soldier.mjs)): штатное оружие и витринные подставки вырезаны, текстуры сжаты в WebP ≤1024 px, клипы ретаргетятся на скелет каждого тела (Mixamo напрямую, 2B — через таблицу костей 3ds Max biped; тело и ноги — дельтой от rest-позы, руки клипа Carry — по абсолютной мировой ориентации источника), файл пакуется meshopt. **Модели не перекрашиваются** — текстуры сохраняются как есть ради качества; в будущем у двух команд будут свои модели.
+Четыре выбираемых персонажа игры (прежние мужчина и женщина Quaternius и пешеходы удалены). Тела и анимации — **CC BY 4.0** (Sketchfab), атрибуции ниже. Сборка — [tools/character.mjs](../tools/character.mjs) (обобщён из [tools/soldier.mjs](../tools/soldier.mjs)): штатное оружие и витринные подставки вырезаны, текстуры сжаты в WebP ≤1024 px, клипы ретаргетятся на скелет каждого тела (Mixamo напрямую, 2B — через таблицу костей 3ds Max biped; руки клипа Carry — по абсолютной мировой ориентации источника), файл пакуется meshopt. Клипы тела после этого пересобраны [tools/char-clips.mjs](../tools/char-clips.mjs) (от bind-позы, с клипами шагов во все стороны и приседа — ниже). **Модели не перекрашиваются** — текстуры сохраняются как есть ради качества; в будущем у двух команд будут свои модели.
 
 | Файл | Персонаж | Автор | Лицензия | Итог |
 |---|---|---|---|---|
-| `Soldier.glb` | [S.W.A.T. Operator](https://sketchfab.com/models/9e82fabf26194896b5ad4a364d864eab) — каска с ПНВ, маска, форма | SpatialNeglect | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) | 2,4 МБ, 35 тыс. трис, рост 1,8 м |
-| `Spartan.glb` | [Spartan Armour MKV — Halo Reach](https://sketchfab.com/3d-models/spartan-armour-mkv-halo-reach-57070b2fd9ff472c8988e76d8c5cbe66) — броня спартанца (фан-арт) | McCarthy3D | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) | 3,4 МБ, 40 тыс. трис, рост 2,0 м |
-| `Alien.glb` | [Free Mixamo retextured Model](https://sketchfab.com/3d-models/free-mixamo-retextured-model-62990b050faf48dd8590d5d15872857c) — пришелец в скафандре | JonnyMANSON | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) | 1,1 МБ, 40 тыс. трис, рост 1,9 м |
-| `2B.glb` | [NieR:Automata 2B](https://sketchfab.com/3d-models/nierautomata-2b-cec89dce88cf4b3082c73c07ab5613e7) — платье, повязка, юбка на костях (риг LeoZack) | Negin | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) | 0,7 МБ, 40 тыс. трис, рост 1,68 м |
+| `Soldier.glb` | [S.W.A.T. Operator](https://sketchfab.com/models/9e82fabf26194896b5ad4a364d864eab) — каска с ПНВ, маска, форма | SpatialNeglect | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) | 2,5 МБ, 35 тыс. трис, рост 1,8 м |
+| `Spartan.glb` | [Spartan Armour MKV — Halo Reach](https://sketchfab.com/3d-models/spartan-armour-mkv-halo-reach-57070b2fd9ff472c8988e76d8c5cbe66) — броня спартанца (фан-арт) | McCarthy3D | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) | 3,6 МБ, 40 тыс. трис, рост 2,0 м |
+| `Alien.glb` | [Free Mixamo retextured Model](https://sketchfab.com/3d-models/free-mixamo-retextured-model-62990b050faf48dd8590d5d15872857c) — пришелец в скафандре | JonnyMANSON | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) | 1,4 МБ, 40 тыс. трис, рост 1,9 м |
+| `2B.glb` | [NieR:Automata 2B](https://sketchfab.com/3d-models/nierautomata-2b-cec89dce88cf4b3082c73c07ab5613e7) — платье, повязка, юбка на костях (риг LeoZack) | Negin | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) | 1,1 МБ, 40 тыс. трис, рост 1,68 м |
 
 Скачивание источников — [tools/sf-dl.mjs](../tools/sf-dl.mjs) (токен аккаунта в `sketchfab.token`, uid и команды в шапке `character.mjs`).
 
-**Анимации** — Mixamo-клипы автора fauze (CC BY 4.0):
+**Анимации** — Mixamo-клипы со Sketchfab, все **CC BY 4.0**, атрибуции обязательны:
 
-| Клип во всех файлах персонажей | Источник |
-|---|---|
-| Idle, Carry | [Rifle Idle](https://sketchfab.com/3d-models/rifle-idle-d9ed346ee92c4606baca727b0ad6ed7b) |
-| Walk | [ST Pistol Walk](https://sketchfab.com/3d-models/st-pistol-walk-94486ec326714092aec96746e3315c3c) |
-| Run | [ST Pistol Run](https://sketchfab.com/3d-models/st-pistol-run-c2985913ff7a4988b34374af1ee13d28) |
-| Jump | [Jumping](https://sketchfab.com/3d-models/jumping-9d8127cec9f04c3db3287cab301b4529) |
-| Death | [Falling Back Death(1)](https://sketchfab.com/3d-models/falling-back-death1-61732876c5ad4d548c433252be7f2d25) |
+| Клип во всех файлах персонажей | Источник | Автор |
+|---|---|---|
+| Idle, Carry | [Rifle Idle](https://sketchfab.com/3d-models/rifle-idle-d9ed346ee92c4606baca727b0ad6ed7b) | fauze |
+| Walk | [ST Pistol Walk](https://sketchfab.com/3d-models/st-pistol-walk-94486ec326714092aec96746e3315c3c) | fauze |
+| Jump | [Jumping](https://sketchfab.com/3d-models/jumping-9d8127cec9f04c3db3287cab301b4529) | fauze |
+| Death | [Falling Back Death(1)](https://sketchfab.com/3d-models/falling-back-death1-61732876c5ad4d548c433252be7f2d25) | fauze |
+| WalkL, WalkR — шаг вбок | [Walk Left](https://sketchfab.com/models/78cb1d884e43412e9f3ed7a73ae5424f), [Walk Right](https://sketchfab.com/models/9a272afe0d3f442e886d2c1a2b1ba1d5) | fauze |
+| Crouch — на колене с оружием | [ST Idle Crouching Aiming](https://sketchfab.com/models/f2cf924280234133abb31688626a597f) | fauze |
+| Run — бег вперёд | [Synth Running Forward 2.0](https://sketchfab.com/models/6826f3a868fc4071aac3de237bb3f577) | [vadimfedenko](https://sketchfab.com/vadimfedenko) |
+| RunL, RunR — бег боком (R — зеркало L) | [Synth Strafe Left 2.0](https://sketchfab.com/models/10c339229d6d4f3f9344aa6d6c46711a) | [vadimfedenko](https://sketchfab.com/vadimfedenko) |
+| RunB — бег спиной вперёд | [Synth Running Backward 2.0](https://sketchfab.com/models/794a943660ee4b0f92c4db8d8874c43a) | [vadimfedenko](https://sketchfab.com/vadimfedenko) |
+| WalkB — шаг назад | [Walking Backwards](https://sketchfab.com/models/244e1a6443bd43019243e13713ebbf58) | [Appsbypaulhamilton](https://sketchfab.com/Appsbypaulhamilton) |
+| CrouchF — ходьба вприсядку (назад — она же задом наперёд) | [Crouched Walking character](https://sketchfab.com/models/a06d785a52184d7e86f77debcbc18e51) | [merks11](https://sketchfab.com/merks11) |
+| CrouchL, CrouchR — вприсядку вбок (R — зеркало L) | [Crouched Sneaking Left](https://sketchfab.com/models/f2f87e2623c547b489d761cff0948d81) | [roffa](https://sketchfab.com/roffa) |
+
+This work is based on "Walk Left", "Walk Right", "ST Idle Crouching Aiming" by fauze, "Synth Running Forward 2.0", "Synth Strafe Left 2.0", "Synth Running Backward 2.0" by vadimfedenko, "Walking Backwards" by Appsbypaulhamilton, "Crouched Walking character" by merks11 and "Crouched Sneaking Left" by roffa (Sketchfab), licensed under [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/).
+
+Клипы тел (всё, кроме Carry) ретаргетит [tools/char-clips.mjs](../tools/char-clips.mjs): `node tools/char-clips.mjs <каталог клипов>` перезаписывает их в четырёх файлах (исходники качаются `tools/sf-dl.mjs` под именами из таблицы `SRC` в шапке скрипта). Поворот каждого сустава переносится от **bind-позы** скина (обратные bind-матрицы — чистая T/A-поза с прямыми ногами), а не от поз узлов файла: те — кадр чужой анимации (спартанец стоял с согнутыми коленями, 2B — полусидя с поднятыми руками), и прежний ретаргет `character.mjs` переносил эту разницу во все клипы (у 2B ноги разлетались в стороны при ходьбе и висели в воздухе в приседе). Высота таза подбирается так, чтобы нижняя ступня цели была над землёй ровно на столько, на сколько у источника, — ноги стоят на земле при любой длине. У клипов шагов в extras записаны скорость по земле, фаза постановки и отрыва левой ступни и направление; у прыжка — моменты отрыва, вершины и касания (см. шапку скрипта и «Движения в бою» в README). Файлы выросли на 0,03–0,37 МБ: оператор 2,5 МБ, спартанец 3,6, пришелец 1,4, 2B 1,1.
 
 Используется в [src/game/avatar.js](../src/game/avatar.js): реестр `CHARS` (файл, имя в панели, рост, поворот), выбор ездит в протоколе ключом `char`. Чтобы добавить персонажа, достаточно собрать его файл `tools/character.mjs` и добавить строку в `CHARS` (и в список сервера `server/game.mjs`).
 
