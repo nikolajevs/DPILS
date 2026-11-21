@@ -2,7 +2,7 @@
    everybody; an arena with bases for the teams, ARENA=center|fortress|station|park|church|pond|speedway|culture|griva; bots, BOTS=6 and BOT_LEVEL=easy|normal|hard,
    fill the empty places). This file is the network: WebSockets for the players and /health for the list of servers.
      PORT, SERVER_NAME, MODE, WIN_SCORE, ARENA, BOTS, BOT_LEVEL, LEADERBOARD (file of the leaderboard, default server/data/leaderboard.json; off = none),
-     ACCOUNTS (file of the accounts, default server/data/accounts.json; off = none: the page then plays without accounts only),
+     ACCOUNTS (file of the accounts, default server/data/accounts.json; off = none: joins are not checked, but the page's mandatory gate cannot register on such a server),
      STATIC (a folder, e.g. dist after npm run build: the server also gives out the page, so the city and its server live on one address) */
 import http from 'node:http';
 import fs from 'node:fs';
@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 const PORT = +process.env.PORT || 8787, WORLD = loadWorld();
 const LB = process.env.LEADERBOARD === 'off' ? null : createBoard({ file: process.env.LEADERBOARD || path.join(path.dirname(fileURLToPath(import.meta.url)), 'data', 'leaderboard.json') });
 const ACC = process.env.ACCOUNTS === 'off' ? null : createAccounts({ file: process.env.ACCOUNTS || path.join(path.dirname(fileURLToPath(import.meta.url)), 'data', 'accounts.json') });
-const game = createGame({ board: LB, world: WORLD, mode: process.env.MODE === 'ffa' ? 'ffa' : 'team', win: +process.env.WIN_SCORE || 0, name: String(process.env.SERVER_NAME || 'Даугавпилс').slice(0, 40), arena: ARENAS[process.env.ARENA] || null, level: process.env.BOT_LEVEL || 'normal' });
+const game = createGame({ board: LB, accounts: ACC, world: WORLD, mode: process.env.MODE === 'ffa' ? 'ffa' : 'team', win: +process.env.WIN_SCORE || 0, name: String(process.env.SERVER_NAME || 'Даугавпилс').slice(0, 40), arena: ARENAS[process.env.ARENA] || null, level: process.env.BOT_LEVEL || 'normal' });
 for (let i = 0; i < Math.max(0, Math.min(63, +process.env.BOTS || 0)); i++) game.addBot();   // up to 63 bots: with one human that fills the 64 places
 
 /* the page itself (STATIC=dist): files of the folder, / is index.html; the bundle in assets/ has hashes in its names

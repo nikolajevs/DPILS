@@ -58,7 +58,7 @@ async function warmRun(out, t, views) {
   await p.addInitScript(() => { try { localStorage.setItem('dpils-quality2', '1'); } catch (e) {} });   // the high quality setting
   await p.goto(URL, { waitUntil: 'load' });
   try { await p.waitForFunction(() => window.__city, null, { timeout: 600000, polling: 500 }); } catch (e) { console.log('LOAD FAIL\n' + errs.join('\n')); await b.close(); process.exit(2); }
-  await p.evaluate(t => { document.getElementById('start').hidden = true; const c = window.__city; c.STATE.started = true; c.PERF.dyn = false; c.setTime(t); c.P.fly = true; document.getElementById('hud').hidden = true; }, +t);   // the free camera of the tools: P.fly, no game
+  await p.evaluate(t => { document.getElementById('start').hidden = true; document.getElementById('auth').hidden = true; const c = window.__city; c.STATE.started = true; c.PERF.dyn = false; c.setTime(t); c.P.fly = true; document.getElementById('hud').hidden = true; }, +t);   // the free camera of the tools: P.fly, no game
   for (const v of views) {
     const [name, pos, tgt, fov] = v.split(':'), [x, z, h] = pos.split(',').map(Number), [tx, tz, th] = tgt.split(',').map(Number);
     await p.evaluate(([x, z, h, tx, tz, th, fov]) => { const c = window.__city, P = c.P, g = c.terrainH(tx, tz); P.x = x; P.z = z; P.y = g + h; const dx = tx - x, dz = tz - z;

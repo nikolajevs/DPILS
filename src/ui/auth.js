@@ -6,13 +6,15 @@ import { account, setAccount, clearAccount } from '../game/identity.js';
    регистрация» in the online section) or straight by the address of the page: #login or #register. The accounts live
    on the game server (server/accounts.mjs): the page asks /auth/login or /auth/register with the nick and the
    password, and the server answers with the secret key of the account — the same key the leaderboard knows the player
-   by (identity.js), so the results follow the account to any browser. Without an account everything works as before.
-   The server field offers the servers of servers.json and the ones the player joined before; an account belongs to
-   the server it was made on. */
+   by (identity.js), so the results follow the account to any browser. An account is mandatory: without one the page
+   opens this card as a gate — no guest button, no close, no Escape — and every game starts only after a login or a
+   registration; the server too refuses a join whose key is not an account key (server/game.mjs). The server field
+   offers the servers of servers.json and the ones the player joined before; an account belongs to the server it was
+   made on. */
 const overlay = $('auth'), form = $('authForm'), msg = $('authMsg'), title = $('authTitle'), hint = $('authHint'), goBtn = $('authGo');
 const serverIn = $('authServer'), nameIn = $('authName'), passIn = $('authPass'), pass2In = $('authPass2'), pass2Row = $('authPass2Row');
 const tabLogin = $('authTabLogin'), tabReg = $('authTabReg');
-let mode = 'login';
+let mode = 'login', mandatory = false;   // mandatory: the gate over the start card, closed only by a successful auth
 
 const wsUrl = u => { u = String(u || '').trim(); if (u && !/^wss?:\/\//.test(u)) u = (location.protocol === 'https:' ? 'wss://' : 'ws://') + u; return u.replace(/\/+$/, ''); };
 const httpUrl = u => wsUrl(u).replace(/^ws/, 'http');
@@ -23,7 +25,7 @@ const ERRORS = {
   'bad-login': 'Неверный ник или пароль.',
   'no-account': 'Аккаунт не найден — войдите заново.',
   rate: 'Слишком много попыток. Подождите несколько минут.',
-  off: 'На этом сервере аккаунты выключены.',
+  off: 'На этом сервере аккаунты выключены — выберите другой сервер.',
   'bad-request': 'Сервер не понял запрос.'
 };
 
@@ -33,14 +35,17 @@ function setMode(m) {
   tabLogin.classList.toggle('on', !reg); tabReg.classList.toggle('on', reg);
   tabLogin.setAttribute('aria-pressed', String(!reg)); tabReg.setAttribute('aria-pressed', String(reg));
   title.textContent = reg ? 'Регистрация' : 'Вход';
-  hint.textContent = reg ? 'Придумайте ник и пароль: ник будет вашим на этом сервере, а результаты боя — в его таблице лидеров.'
-    : 'Аккаунт привязывает результаты таблицы лидеров к вам, а не к браузеру: войдите с любого устройства.';
+  hint.textContent = (mandatory ? 'Аккаунт обязателен: без него игра не начнётся. ' : '') + (reg
+    ? 'Придумайте ник и пароль: ник будет вашим на этом сервере, а результаты боя — в его таблице лидеров.'
+    : 'Войдите с любого устройства — результаты боя останутся в таблице лидеров этого сервера.');
   goBtn.textContent = reg ? 'Создать аккаунт' : 'Войти';
   pass2Row.hidden = !reg;
   passIn.autocomplete = reg ? 'new-password' : 'current-password';
   msg.textContent = '';
 }
-function open(m) {
+function open(m, force) {
+  mandatory = !!force;
+  $('authBtns').hidden = mandatory;
   setMode(m);
   const a = account();
   if (!serverIn.value) serverIn.value = (a && a.url) || $('mpServer').value || '';
@@ -51,6 +56,7 @@ function open(m) {
   (nameIn.value ? passIn : nameIn).focus();
 }
 function close() {
+  if (mandatory) return;   // the gate has no way out except a successful login or registration
   overlay.hidden = true;
   try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
 }
@@ -64,7 +70,7 @@ function renderAcct() {
     state.append('Аккаунт: ', b, ' · ' + a.url.replace(/^wss?:\/\//, ''));
     btn.textContent = 'Выйти';
   } else {
-    state.textContent = 'Без аккаунта: результаты привязаны к этому браузеру.';
+    state.textContent = 'Аккаунт обязателен: создайте его или войдите, чтобы играть.';
     btn.textContent = 'Войти / регистрация';
   }
 }
@@ -73,6 +79,7 @@ function renderAcct() {
 async function offerServers() {
   const dl = $('authServers'), seen = new Set();
   const add = u => { u = wsUrl(u); if (!u || seen.has(u)) return; seen.add(u); const o = document.createElement('option'); o.value = u; dl.append(o); };
+  if (!['localhost', '127.0.0.1'].includes(location.hostname) && location.host) add((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);   // on the VPS the page and its game server share one address
   try { const r = await fetch('servers.json', { cache: 'no-store' }); if (r.ok) { const j = await r.json(); for (const s of j.servers || []) add(s.url); } } catch (e) {}
   try { const a = JSON.parse(localStorage.getItem('dpils.servers') || '[]'); if (Array.isArray(a)) for (const s of a) if (s && typeof s.url === 'string') add(s.url); } catch (e) {}
   if (['localhost', '127.0.0.1'].includes(location.hostname)) add('ws://localhost:8787');
@@ -84,7 +91,7 @@ async function verify() {
   const a = account(); if (!a) return;
   try {
     const r = await fetch(httpUrl(a.url) + '/auth/me?key=' + encodeURIComponent(a.key), { cache: 'no-store' });
-    if (r.status === 401) { clearAccount(); renderAcct(); return; }
+    if (r.status === 401) { clearAccount(); renderAcct(); open('login', true); return; }
     if (r.ok) { const j = await r.json(); if (j && j.ok && j.name && j.name !== a.name) { setAccount({ ...a, name: j.name }); renderAcct(); } }
   } catch (e) { /* the server is not answering now: keep the account */ }
 }
@@ -105,12 +112,12 @@ form.onsubmit = async e => {
     let r;
     try { r = await fetch(base + (mode === 'register' ? '/auth/register' : '/auth/login'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, pass }), signal: c.signal }); }
     finally { clearTimeout(t); }
-    if (r.status === 404) { msg.textContent = 'Этот сервер ещё не поддерживает аккаунты — его нужно обновить. Играть можно и без аккаунта.'; return; }
+    if (r.status === 404) { msg.textContent = 'Этот сервер ещё не поддерживает аккаунты — его нужно обновить. Выберите другой сервер.'; return; }
     const j = await r.json().catch(() => null);
     if (!r.ok || !j || !j.ok) { msg.textContent = (j && ERRORS[j.error]) || 'Сервер ответил ошибкой (HTTP ' + r.status + ').'; return; }
     setAccount({ url: wsUrl(serverIn.value), name: j.name, key: j.key, at: Date.now() });
     $('mpName').value = j.name;
-    renderAcct(); close();
+    renderAcct(); mandatory = false; close();
     $('mpMsg').textContent = 'Вы вошли как ' + j.name + '. Результаты боя будут в таблице лидеров этого сервера.';
   } catch (err) {
     msg.textContent = 'Сервер не отвечает. Проверьте адрес: страница на https пускает только wss://.';
@@ -119,19 +126,24 @@ form.onsubmit = async e => {
 
 tabLogin.onclick = () => setMode('login');
 tabReg.onclick = () => setMode('register');
-$('authGuest').onclick = close;
 $('authClose').onclick = close;
 $('bAuth').onclick = () => {
-  if (account()) { clearAccount(); renderAcct(); $('mpMsg').textContent = 'Вы вышли из аккаунта: результаты снова привязаны к этому браузеру.'; }
-  else open('login');
+  if (account()) { clearAccount(); renderAcct(); $('mpMsg').textContent = 'Вы вышли из аккаунта. Чтобы играть, войдите снова или создайте новый аккаунт.'; open('login', true); }
+  else open('login', true);
 };
+/* the game calls this when the server refused the key (mp.js): the gate opens on the server that was tried */
+export function requireAccount(serverUrl) {
+  if (serverUrl) serverIn.value = wsUrl(serverUrl);
+  open(account() ? 'login' : 'register', true);
+}
 window.addEventListener('keydown', e => { if (e.key === 'Escape' && !overlay.hidden) close(); });
 
 setMode('login'); renderAcct(); offerServers(); verify();
 const hash = location.hash.replace('#', '');
-if (hash === 'login' || hash === 'register') open(hash);
+if (hash === 'login' || hash === 'register') open(hash, !account());
+else if (!account()) open('register', true);   // a new visitor creates an account before any game
 // a link to #login / #register on the already open page is a same-document navigation: no module runs again
 window.addEventListener('hashchange', () => {
   const h = location.hash.replace('#', '');
-  if (h === 'login' || h === 'register') open(h);
+  if (h === 'login' || h === 'register') open(h, !account());
 });

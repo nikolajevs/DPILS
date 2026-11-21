@@ -54,6 +54,7 @@ export function createGame(opts) {
     return n;
   }
   const validKey = k => typeof k === 'string' && /^[0-9a-f]{16,64}$/i.test(k), lb = opts.board || null;   // the leaderboard (leaderboard.mjs): only the humans who sent a key are in it
+  const acc = opts.accounts || null;   // accounts (accounts.mjs): when on, a join whose key is not an account key is refused — guests are not let in
   // the chosen character rides the board: a key of CHARS in src/game/avatar.js; empty — the operator
   const CHARS = ['soldier', 'spartan', 'alien', '2b'];
   const cleanChar = s => (typeof s === 'string' && CHARS.includes(s) ? s : '');
@@ -325,8 +326,9 @@ export function createGame(opts) {
         if (!m || typeof m !== 'object') return;
         if (m.t !== 'rtc' && ++p.msgs > 90) return;   // the handshake of the voice chat has its own, larger limit
         if (m.t === 'join' && !p.joined) {
+          if (acc && !acc.byKey(m.key)) { send(p, { t: 'auth-required' }); conn.close(); return; }   // an account is mandatory: the key must belong to an account of this server
           if (players.size >= MAX && !removeBot()) { send(p, { t: 'full' }); conn.close(); return; }
-          if (lb && validKey(m.key) && ![...players.values()].some(q => q.key === m.key)) { p.key = m.key; const r = lb.identify(m.key, nameBase(m.name), n => !taken(n)); p.name = r.name; p.prof = r.prof; } else p.name = cleanName(m.name);
+          if (lb && m.board !== false && validKey(m.key) && ![...players.values()].some(q => q.key === m.key)) { p.key = m.key; const r = lb.identify(m.key, nameBase(m.name), n => !taken(n)); p.name = r.name; p.prof = r.prof; } else p.name = cleanName(m.name);
           p.team = pickTeam(m.team, p.id); p.char = cleanChar(m.char); p.joined = true; players.set(p.id, p);
           send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])) });
           spawn(p, m.x, m.z, m.yaw); sendBoard(); all({ t: 'chat', text: p.name + (FFA ? ' в игре' : ' в игре, ' + TEAMS[p.team]) });

@@ -12,6 +12,7 @@ import { FLASH_SIZE, makeFlash } from './muzzle.js';
 import { SET, keyName, onChange } from './settings.js';
 import { firstGames } from './help.js';
 import { rememberServer } from '../ui/servers.js';
+import { requireAccount } from '../ui/auth.js';
 import { addNade, blastGlow, boomNade, clearBlasts, clearNades, nadeSamples, tickNades, onNadeBounce, setNadeBodies, syncNade, liveNades, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
 import { KINDS, SLOT_SVG, bindInv, setItems, itemBack, itemTook, tickItems, renderInv, invTick, closeInv, toggleInv } from './inventory.js';
 import { terrainH } from '../world/terrain.js';
@@ -734,6 +735,7 @@ function onMsg(m) {
     case 'round': el('mpEnd').hidden = true; clearInterval(endTimer); break;
     case 'chat': feed(m.text, 'sys'); break;
     case 'full': el('mpMsg').textContent = 'На сервере нет мест.'; break;
+    case 'auth-required': el('mpMsg').textContent = 'Сервер пускает только игроков с аккаунтом: войдите или зарегистрируйтесь.'; requireAccount(MP.url); break;
   }
 }
 
@@ -750,16 +752,17 @@ function showGame() {
   $('start').hidden = true; $('hud').hidden = false; el('mpHud').hidden = false; $('cross').hidden = false; STATE.lodTimer = 0;
 }
 function join(local) {   // local: { bots, level, mode, arena } for the game against bots in the page, with no server
+  if (!account()) { requireAccount(); return; }   // an account is mandatory for any game, the gate is already over the card
   const name = el('mpName').value.trim(), url = local ? 'local:' : serverUrl(), msg = el('mpMsg');
   if (!url) { msg.textContent = 'Укажите адрес сервера (поле «Сервер»).'; return; }
   try { localStorage.setItem('dpils.mp', JSON.stringify({ name, server: el('mpServer').value.trim(), spawn: el('mpSpawn').value, team: el('mpTeam').value, char: el('mpChar').value })); } catch (e) {}
   MP.spawn = +el('mpSpawn').value; MP.wantTeam = +el('mpTeam').value; MP.url = url; MP.local = local || null; loadModels(); msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true; el('goTrain').disabled = true;
   let ws; try { ws = local ? openLocal(local) : new WebSocket(url); } catch (e) { msg.textContent = 'Неверный адрес сервера.'; el('goPlay').disabled = false; el('goTrain').disabled = false; return; }
   MP.ws = ws; MP.started = false;
-  ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, team: MP.wantTeam, char: el('mpChar').value || undefined, key: local ? undefined : playerKey() || undefined, ...s })); };
+  ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, team: MP.wantTeam, char: el('mpChar').value || undefined, key: local ? undefined : playerKey() || undefined, board: local ? undefined : boardOn(), ...s })); };
   ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (err) { console.error(err); } };
   ws.onerror = () => { if (!MP.started) msg.textContent = 'Не удалось подключиться к ' + url; };
-  ws.onclose = () => { nadeCancel(); el('nadeWarn').hidden = true; if (MP.started) { el('mpDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; if (!msg.textContent.startsWith('На сервере') && !msg.textContent.startsWith('Не удалось')) msg.textContent = 'Соединение закрыто.'; } };
+  ws.onclose = () => { nadeCancel(); el('nadeWarn').hidden = true; if (MP.started) { el('mpDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; if (!msg.textContent.startsWith('На сервере') && !msg.textContent.startsWith('Не удалось') && !msg.textContent.startsWith('Сервер пускает')) msg.textContent = 'Соединение закрыто.'; } };
 }
 let uiReady = false;
 function initUi() {   // the fields of the player and of the training: once, when the start card first needs them (or when the city is ready)
