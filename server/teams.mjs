@@ -129,9 +129,22 @@ export function createTeams({ file, now = Date.now } = {}) {
     return { team: was };
   }
 
+  // the admin panel (admin.mjs): every team as a list, and the right to close one or take a member out without being its leader
+  function list() { return teams().map(view).sort((a, b) => a.created - b.created); }
+  function remove(id) {
+    const t = data.teams[id]; if (!t) return null;
+    const was = view(t); delete data.teams[id]; data.invites = data.invites.filter(i => i.team !== id); touch();
+    return was;
+  }
+  function kickMember(id, name) {
+    const t = data.teams[id]; if (!t) return { error: 'no-team' };
+    const m = t.members.find(x => low(x) === low(name)); if (!m) return { error: 'not-member' };
+    return { team: view(t), ...drop(t, m) };
+  }
+
   function save() {
     if (!file || !dirty) return; dirty = false;
     try { fs.mkdirSync(path.dirname(file), { recursive: true }); const tmp = file + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(data)); fs.renameSync(tmp, file); } catch (e) { dirty = true; console.error('teams not saved:', e.message); }
   }
-  return { of: n => view(of(n)), get: id => view(get(id)), create, invite, cancel, invitesOf, invitesFrom, accept, decline, leave, kick, promote, disband, save, count: () => teams().length };
+  return { of: n => view(of(n)), get: id => view(get(id)), create, invite, cancel, invitesOf, invitesFrom, accept, decline, leave, kick, promote, disband, list, remove, kickMember, save, count: () => teams().length };
 }

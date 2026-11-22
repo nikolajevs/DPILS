@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231d4f91'/%3E%3Crect y='26' width='32' height='6' fill='%23a4432f'/%3E%3Ctext x='16' y='21' font-family='Arial' font-size='18' font-weight='bold' fill='white' text-anchor='middle'%3E%D0%94%3C/text%3E%3C/svg%3E">
+<title>Даугавпилс · админ-панель</title>
+<style>
+/* The city's own dress: warm paper of the panels, the ink of the streets, brick red of Daugavpils eclecticism and
+   the blue of the Latvian street-name plate. The fonts are the game's (Golos Text, PT Sans Narrow) with system
+   fallbacks — the page asks nothing from the outside (the server's CSP keeps it self-contained). */
+:root {
+  --ink: #1c2527; --muted: #566365; --paper: #f7f4ec; --page: #cfe0ea;
+  --line: rgba(28, 37, 39, .16); --brick: #a4432f; --plate: #1d4f91;
+  --red: #c0262d; --blue: #1d4f91; --ok: #2e7d4f; --warn: #b07a1e;
+  --f-body: "Golos Text", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-plate: "PT Sans Narrow", "Arial Narrow", "Golos Text", sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--page); color: var(--ink); font: 15px/1.45 var(--f-body); }
+[hidden] { display: none !important; }
+button { font: inherit; cursor: pointer; }
+input, select, textarea { font: inherit; color: inherit; }
+h1, h2, h3, .plate-font { font-family: var(--f-plate); }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ---- the login ---- */
+#login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.login-card { width: 360px; max-width: 100%; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: 0 18px 50px rgba(28, 37, 39, .25); }
+.login-card .strip { background: var(--plate); color: #fff; padding: 14px 20px 12px; border-bottom: 3px solid var(--brick); }
+.login-card .strip h1 { margin: 0; font-size: 22px; letter-spacing: .06em; text-transform: uppercase; font-weight: 700; }
+.login-card .strip p { margin: 2px 0 0; font-size: 12px; opacity: .85; letter-spacing: .12em; text-transform: uppercase; }
+.login-card form { padding: 20px; display: grid; gap: 12px; }
+.login-card label { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.login-card input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.login-card input:focus { outline: 2px solid var(--plate); outline-offset: 1px; }
+.login-err { color: var(--red); font-size: 13px; min-height: 18px; }
+
+/* ---- buttons ---- */
+.btn { background: var(--paper); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; font-weight: 600; }
+.btn:hover { border-color: var(--muted); }
+.btn-brick { background: var(--brick); border-color: var(--brick); color: #fff; }
+.btn-brick:hover { background: #8d3826; border-color: #8d3826; }
+.btn-plate { background: var(--plate); border-color: var(--plate); color: #fff; }
+.btn-plate:hover { background: #173f74; border-color: #173f74; }
+.btn-sm { padding: 4px 10px; font-size: 13px; border-radius: 6px; }
+.btn-danger { color: var(--red); border-color: rgba(192, 38, 45, .4); }
+.btn-danger:hover { background: rgba(192, 38, 45, .08); border-color: var(--red); }
+.btn:disabled { opacity: .5; cursor: default; }
+
+/* ---- the frame ---- */
+#app header { background: var(--plate); color: #fff; border-bottom: 3px solid var(--brick); padding: 10px 20px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; position: sticky; top: 0; z-index: 20; }
+#app header h1 { margin: 0; font-size: 21px; letter-spacing: .07em; text-transform: uppercase; font-weight: 700; }
+#app header .sub { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; opacity: .8; }
+#app header .grow { flex: 1; }
+.head-chip { font-size: 13px; background: rgba(255, 255, 255, .14); border-radius: 6px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 7px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #7fd6a2; display: inline-block; }
+.dot.off { background: #e08a8a; }
+#logout { background: transparent; color: #fff; border: 1px solid rgba(255, 255, 255, .5); border-radius: 8px; padding: 6px 12px; }
+#logout:hover { background: rgba(255, 255, 255, .12); }
+nav { background: var(--paper); border-bottom: 1px solid var(--line); padding: 0 12px; display: flex; gap: 2px; overflow-x: auto; position: sticky; top: 52px; z-index: 19; }
+nav button { background: none; border: none; border-bottom: 3px solid transparent; padding: 12px 16px 9px; font-family: var(--f-plate); font-size: 16px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+nav button:hover { color: var(--ink); }
+nav button.on { color: var(--brick); border-bottom-color: var(--brick); }
+main { max-width: 1240px; margin: 0 auto; padding: 20px 16px 60px; }
+section.tab { display: grid; gap: 16px; }
+.tab-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.tab-head h2 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: .05em; }
+.tab-head .grow { flex: 1; }
+.hint { color: var(--muted); font-size: 13px; }
+
+/* ---- cards and tables ---- */
+.card { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 16px; box-shadow: 0 2px 10px rgba(28, 37, 39, .06); }
+.card.brick { border-left: 4px solid var(--brick); }
+.card.plate { border-left: 4px solid var(--plate); }
+.card h3 { margin: 0 0 10px; font-size: 17px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 12px; }
+.stat { background: var(--paper); border: 1px solid var(--line); border-left: 4px solid var(--brick); border-radius: 10px; padding: 12px 14px; }
+.stat .v { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stat .k { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-top: 2px; }
+.stat.blue { border-left-color: var(--plate); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th { font-family: var(--f-plate); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); text-align: left; padding: 8px 10px; border-bottom: 2px solid var(--line); white-space: nowrap; }
+td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+tr:hover td { background: rgba(29, 79, 145, .05); }
+td.r, th.r { text-align: right; }
+tr.dim td { opacity: .55; }
+.chip { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 4px; padding: 1px 6px; letter-spacing: .04em; vertical-align: 1px; }
+.chip.bot { background: rgba(28, 37, 39, .12); color: var(--muted); }
+.chip.red { background: rgba(192, 38, 45, .14); color: var(--red); }
+.chip.blue { background: rgba(29, 79, 145, .14); color: var(--blue); }
+.chip.tag { background: var(--plate); color: #fff; font-family: var(--f-plate); }
+.chip.mark { background: rgba(176, 122, 30, .18); color: var(--warn); }
+.chip.where { background: rgba(46, 125, 79, .14); color: var(--ok); }
+.acct { color: var(--muted); font-size: 12px; }
+.status { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.status .dot { width: 7px; height: 7px; }
+.status .dot.dead { background: #b9b2a4; }
+.status .dot.bot { background: var(--plate); }
+.empty { color: var(--muted); padding: 22px; text-align: center; }
+
+/* ---- controls ---- */
+.controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.controls input[type="number"] { width: 84px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.controls input[type="text"], .controls input[type="search"] { flex: 1; min-width: 200px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.controls input:focus, .controls select:focus { outline: 2px solid var(--plate); outline-offset: 1px; }
+.controls select { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { background: #fff; border: none; padding: 8px 14px; font-weight: 600; color: var(--muted); }
+.seg button.on { background: var(--plate); color: #fff; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 14px; }
+.kv .k { color: var(--muted); }
+.matchline { display: flex; gap: 18px; flex-wrap: wrap; align-items: baseline; }
+.matchline .big { font-size: 22px; font-weight: 700; }
+.phase { font-family: var(--f-plate); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 2px 10px; border-radius: 6px; font-size: 15px; }
+.phase.fight { background: rgba(46, 125, 79, .15); color: var(--ok); }
+.phase.storm { background: rgba(192, 38, 45, .15); color: var(--red); }
+.phase.over { background: rgba(28, 37, 39, .12); color: var(--muted); }
+
+/* ---- teams ---- */
+.team-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.team-card { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.team-card .th { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.team-card .th .name { font-weight: 700; font-size: 16px; }
+.team-card .meta { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+.members { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.member { display: inline-flex; align-items: center; gap: 6px; background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px 3px 9px; font-size: 13px; }
+.member .lead { color: var(--warn); }
+.member button { border: none; background: none; color: var(--muted); font-size: 14px; padding: 0 2px; line-height: 1; }
+.member button:hover { color: var(--red); }
+
+/* ---- modal and toasts ---- */
+#modal { position: fixed; inset: 0; background: rgba(28, 37, 39, .45); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
+.modal-card { width: 420px; max-width: 100%; background: var(--paper); border-radius: 12px; border-top: 4px solid var(--brick); box-shadow: 0 24px 60px rgba(0, 0, 0, .35); padding: 20px; }
+.modal-card.danger { border-top-color: var(--red); }
+.modal-card h3 { margin: 0 0 8px; font-size: 19px; text-transform: uppercase; letter-spacing: .05em; }
+.modal-card p { margin: 0 0 14px; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+.modal-card input { width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; margin-bottom: 14px; }
+.modal-btns { display: flex; justify-content: flex-end; gap: 10px; }
+#toasts { position: fixed; right: 16px; bottom: 16px; display: grid; gap: 8px; z-index: 60; max-width: min(380px, calc(100vw - 32px)); }
+.toast { background: var(--ink); color: #fff; border-radius: 8px; padding: 10px 14px; font-size: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, .3); border-left: 4px solid var(--ok); animation: tin .2s ease; }
+.toast.err { border-left-color: var(--red); }
+.toast.out { opacity: 0; transform: translateY(6px); transition: .3s; }
+@keyframes tin { from { opacity: 0; transform: translateY(8px); } }
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="login-card">
+    <div class="strip"><h1>Даугавпилс</h1><p>служебный вход · админ-панель</p></div>
+    <form id="loginForm">
+      <label for="pass">Пароль администратора</label>
+      <input id="pass" type="password" autocomplete="current-password" autofocus>
+      <button class="btn btn-brick" type="submit">Войти</button>
+      <div class="login-err" id="loginErr"></div>
+    </form>
+  </div>
+</div>
+
+<div id="app" hidden>
+  <header>
+    <div><h1>Даугавпилс · админ</h1><div class="sub">панель управления сервером</div></div>
+    <div class="grow"></div>
+    <span class="head-chip"><span class="dot" id="srvDot"></span><span id="srvName">—</span></span>
+    <span class="head-chip num" id="srvUp">—</span>
+    <button id="logout">Выйти</button>
+  </header>
+  <nav id="tabs">
+    <button data-tab="overview" class="on">Обзор</button>
+    <button data-tab="players">Игроки</button>
+    <button data-tab="accounts">Аккаунты</button>
+    <button data-tab="board">Лидеры</button>
+    <button data-tab="teams">Команды</button>
+  </nav>
+  <main>
+    <section class="tab" id="tab-overview">
+      <div class="cards" id="stats"></div>
+      <div class="grid2">
+        <div class="card plate"><h3>Катка</h3><div id="matchInfo"></div></div>
+        <div class="card brick"><h3>Управление</h3>
+          <div class="controls" style="margin-bottom:12px">
+            <span class="hint">Боты:</span>
+            <input type="number" id="botN" min="0" max="63" value="0">
+            <button class="btn btn-plate btn-sm" data-act="bots">Применить</button>
+            <button class="btn btn-sm" data-act="cargo">📦 Сбросить груз</button>
+          </div>
+          <div class="controls">
+            <input type="text" id="sayText" maxlength="120" placeholder="Сообщение в чат всем игрокам…">
+            <button class="btn btn-brick btn-sm" data-act="say">Отправить</button>
+          </div>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="card"><h3>Сервер</h3><div class="kv" id="srvInfo"></div></div>
+        <div class="card"><h3>Данные</h3><div class="kv" id="fileInfo"></div></div>
+      </div>
+    </section>
+
+    <section class="tab" id="tab-players" hidden>
+      <div class="tab-head"><h2>Игроки</h2><span class="hint" id="playersHint"></span><div class="grow"></div><button class="btn btn-sm" data-act="refresh">Обновить</button></div>
+      <div class="card table-wrap"><table>
+        <thead><tr><th>Игрок</th><th>Сторона</th><th class="r">K</th><th class="r">D</th><th class="r">Урон</th><th class="r">Точн.</th><th class="r">Пинг</th><th class="r">HP</th><th>Статус</th><th class="r">Позиция</th><th class="r">В игре</th><th></th></tr></thead>
+        <tbody id="playersBody"></tbody>
+      </table></div>
+    </section>
+
+    <section class="tab" id="tab-accounts" hidden>
+      <div class="tab-head"><h2>Аккаунты</h2><span class="hint" id="accHint"></span><div class="grow"></div>
+        <div class="controls" style="flex:1;max-width:340px"><input type="search" id="accQ" placeholder="Поиск по нику…"></div>
+        <button class="btn btn-sm" data-act="refresh">Обновить</button>
+      </div>
+      <div class="card table-wrap"><table>
+        <thead><tr><th>Ник</th><th>Команда</th><th>Создан</th><th>Последний вход</th><th>Сейчас</th><th></th></tr></thead>
+        <tbody id="accBody"></tbody>
+      </table></div>
+    </section>
+
+    <section class="tab" id="tab-board" hidden>
+      <div class="tab-head"><h2>Таблица лидеров</h2><span class="hint" id="boardHint"></span><div class="grow"></div>
+        <div class="seg" id="boardPeriod"><button data-p="all" class="on">Всё время</button><button data-p="week">Неделя</button></div>
+        <select id="boardSort"><option value="kills">По убийствам</option><option value="kd">По K/D</option><option value="acc">По точности</option><option value="wins">По победам</option></select>
+        <button class="btn btn-sm btn-danger" data-act="resetweek">Сбросить неделю</button>
+        <button class="btn btn-sm btn-danger" data-act="resetall">Сбросить всё</button>
+      </div>
+      <div class="card table-wrap"><table>
+        <thead><tr><th class="r">#</th><th>Ник</th><th class="r">K</th><th class="r">D</th><th class="r">K/D</th><th class="r">Точн.</th><th class="r">Головы</th><th class="r">Победы</th><th class="r">Раунды</th><th class="r">Урон</th><th class="r">Время</th><th>Был</th><th></th></tr></thead>
+        <tbody id="boardBody"></tbody>
+      </table></div>
+    </section>
+
+    <section class="tab" id="tab-teams" hidden>
+      <div class="tab-head"><h2>Команды игроков</h2><span class="hint" id="teamsHint"></span><div class="grow"></div><button class="btn btn-sm" data-act="refresh">Обновить</button></div>
+      <div class="team-cards" id="teamsBody"></div>
+    </section>
+  </main>
+</div>
+
+<div id="modal" hidden>
+  <div class="modal-card" id="modalCard">
+    <h3 id="modalTitle"></h3>
+    <p id="modalText"></p>
+    <input id="modalInput" hidden>
+    <div class="modal-btns"><button class="btn" id="modalNo">Отмена</button><button class="btn btn-brick" id="modalYes">Подтвердить</button></div>
+  </div>
+</div>
+<div id="toasts"></div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const ERR = { 'bad-pass': 'Неверный пароль', rate: 'Слишком много попыток — подождите 10 минут', 'no-session': 'Сессия истекла — войдите снова', off: 'Отключено на этом сервере', 'no-user': 'Аккаунт не найден', 'no-player': 'Игрок уже вышел', 'no-team': 'Команда не найдена', 'not-member': 'Игрок не в команде', active: 'Груз уже в воздухе или на земле', empty: 'Пустое сообщение', 'bad-request': 'Сервер не понял запрос', internal: 'Ошибка на сервере', 'bad-name': 'Ник: 2–16 символов — буквы, цифры, пробел, _ . -', 'bad-pass-account': 'Пароль: 6–128 символов' };
+const WHERE = { lobby: 'лобби', train: 'тренировка', game: 'бой', storm: 'шторм' };
+const state = { tab: 'overview', period: 'all', sort: 'kills', mode: 'team', overview: null };
+let token = sessionStorage.getItem('dpils.admin.token') || '';
+
+/* ---- the doors ---- */
+async function api(path, opts = {}) {
+  const h = { 'x-admin-token': token };
+  if (opts.body !== undefined) h['content-type'] = 'application/json';
+  let r;
+  try { r = await fetch('/admin/api/' + path + (opts.q || ''), { method: opts.method || 'GET', headers: h, body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined }); }
+  catch (e) { throw new Error('Сервер недоступен'); }
+  let j = null; try { j = await r.json(); } catch (e) { /* not json */ }
+  if (r.status === 401) { showLogin(); throw new Error(ERR['no-session']); }
+  if (!r.ok || !j || j.ok === false) { const code = j && j.error; throw new Error(ERR[code] || (code === 'bad-pass' && path.startsWith('accounts') ? ERR['bad-pass-account'] : 'Ошибка сервера (' + r.status + ')')); }
+  return j;
+}
+function toast(text, kind) {
+  const d = document.createElement('div');
+  d.className = 'toast' + (kind === 'err' ? ' err' : ''); d.textContent = text;
+  $('#toasts').append(d);
+  setTimeout(() => { d.classList.add('out'); setTimeout(() => d.remove(), 350); }, 3800);
+}
+async function run(fn) { try { await fn(); } catch (e) { toast(e.message, 'err'); } }
+
+/* ---- the modal: a question with an optional input; resolves the value, true, or false (cancelled) ---- */
+let modalResolve = null;
+function ask({ title, text = '', input = null, okText = 'Подтвердить', danger = false }) {
+  return new Promise(resolve => {
+    modalResolve = resolve;
+    $('#modalTitle').textContent = title; $('#modalText').textContent = text;
+    const inp = $('#modalInput');
+    inp.hidden = input === null; inp.value = ''; inp.type = input === 'password' ? 'password' : 'text'; inp.placeholder = input || '';
+    $('#modalCard').classList.toggle('danger', danger);
+    const yes = $('#modalYes'); yes.textContent = okText; yes.className = 'btn ' + (danger ? 'btn-brick' : 'btn-plate');
+    $('#modal').hidden = false;
+    (input !== null ? inp : yes).focus();
+  });
+}
+function closeModal(v) { $('#modal').hidden = true; const r = modalResolve; modalResolve = null; if (r) r(v); }
+$('#modalNo').onclick = () => closeModal(false);
+$('#modalYes').onclick = () => closeModal($('#modalInput').hidden ? true : $('#modalInput').value);
+$('#modalInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('#modalYes').click(); });
+$('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(false); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#modal').hidden) closeModal(false); });
+
+/* ---- formats ---- */
+const p2 = n => String(n).padStart(2, '0');
+function fmtDate(t) { if (!t) return '—'; const d = new Date(t); return p2(d.getDate()) + '.' + p2(d.getMonth() + 1) + '.' + d.getFullYear() + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes()); }
+function fmtAgo(t) {
+  if (!t) return '—';
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 60) return 'только что'; if (s < 3600) return Math.floor(s / 60) + ' мин назад';
+  if (s < 86400) return Math.floor(s / 3600) + ' ч назад'; return Math.floor(s / 86400) + ' дн назад';
+}
+function fmtDur(sec) { sec = Math.max(0, Math.round(sec)); const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60); return h ? h + ' ч ' + p2(m) + ' мин' : m + ' мин ' + p2(sec % 60) + ' с'; }
+function fmtLeft(ms) { const s = Math.max(0, Math.ceil(ms / 1000)); return s >= 3600 ? Math.floor(s / 3600) + ':' + p2(Math.floor(s % 3600 / 60)) + ':' + p2(s % 60) : p2(Math.floor(s / 60)) + ':' + p2(s % 60); }
+function fmtSize(b) { return b >= 1048576 ? (b / 1048576).toFixed(1) + ' МБ' : Math.max(1, Math.round(b / 1024)) + ' КБ'; }
+function fmtPlay(sec) { const h = Math.floor(sec / 3600); return h >= 1 ? h + ' ч ' + Math.floor(sec % 3600 / 60) + ' м' : Math.max(1, Math.round(sec / 60)) + ' мин'; }
+
+/* ---- login / logout ---- */
+function showLogin() { token = ''; sessionStorage.removeItem('dpils.admin.token'); $('#app').hidden = true; $('#login').hidden = false; $('#pass').focus(); }
+function showApp() { $('#login').hidden = true; $('#app').hidden = false; setTab(state.tab); }
+$('#loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const err = $('#loginErr'); err.textContent = '';
+  try {
+    const r = await fetch('/admin/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pass: $('#pass').value }) });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j || !j.ok) { err.textContent = ERR[j && j.error] || 'Не удалось войти (' + r.status + ')'; return; }
+    token = j.token; sessionStorage.setItem('dpils.admin.token', token); $('#pass').value = '';
+    showApp();
+  } catch (e2) { err.textContent = 'Сервер недоступен'; }
+});
+$('#logout').onclick = () => run(async () => { await fetch('/admin/logout', { method: 'POST', headers: { 'x-admin-token': token } }).catch(() => {}); showLogin(); });
+
+/* ---- tabs ---- */
+function setTab(t) {
+  state.tab = t;
+  for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b.dataset.tab === t);
+  for (const s of document.querySelectorAll('section.tab')) s.hidden = s.id !== 'tab-' + t;
+  refresh();
+}
+$('#tabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) setTab(b.dataset.tab); });
+function refresh() {
+  if (state.tab === 'overview') run(loadOverview);
+  else if (state.tab === 'players') run(loadPlayers);
+  else if (state.tab === 'accounts') run(loadAccounts);
+  else if (state.tab === 'board') run(loadBoard);
+  else if (state.tab === 'teams') run(loadTeams);
+}
+setInterval(() => { if (!document.hidden && token && !$('#app').hidden && (state.tab === 'overview' || state.tab === 'players')) refresh(); }, 3000);
+
+/* ---- overview ---- */
+async function loadOverview() {
+  const j = await api('overview');
+  state.overview = j; state.mode = j.server.mode;
+  const s = j.server, c = j.counts;
+  $('#srvName').textContent = s.name; $('#srvDot').classList.toggle('off', !s.ok);
+  $('#srvUp').textContent = 'аптайм ' + fmtDur(j.uptime);
+  $('#botN').value = s.bots;
+  const stats = [
+    ['Игроки', s.players + ' / ' + s.max, ''], ['Боты', s.bots, 'blue'],
+    ['Аккаунты', c.accounts == null ? 'выкл' : c.accounts, ''], ['Профили лидеров', c.board == null ? 'выкл' : c.board, 'blue'],
+    ['Команды', c.teams == null ? 'выкл' : c.teams, ''], ['Онлайн (соц.)', c.online == null ? '—' : c.online, 'blue'],
+    ['Память', j.mem + ' МБ', ''], ['Соединений WS', j.clients, 'blue'],
+  ];
+  $('#stats').innerHTML = stats.map(([k, v, cl]) => '<div class="stat ' + cl + '"><div class="v num">' + esc(v) + '</div><div class="k">' + esc(k) + '</div></div>').join('');
+  // the match
+  let m = '';
+  if (s.match) {
+    const ph = s.match.phase === 'storm' ? ['storm', '⚡ Шторм'] : s.match.phase === 'over' ? ['over', 'Итоги'] : ['fight', 'Бой'];
+    m += '<div class="matchline"><span class="phase ' + ph[0] + '">' + ph[1] + '</span><span class="big num">' + fmtLeft(s.match.left) + '</span><span class="hint">до конца катки №' + s.match.n + '</span></div>';
+    m += '<div class="kv" style="margin-top:10px">';
+    if (s.match.phase === 'fight') m += '<span class="k">Шторм через</span><span class="num">' + fmtLeft(s.match.stormIn) + '</span>';
+    m += '<span class="k">Вход</span><span>' + (s.match.open ? '<b style="color:var(--ok)">открыт</b> · ещё ' + fmtLeft(s.match.joinLeft) : '<b style="color:var(--red)">закрыт</b> — новые игроки в следующей катке') + '</span>';
+    if (s.storm) m += '<span class="k">Шторм</span><span>этап ' + (s.storm.pi + 1) + ' / ' + s.storm.stages + ' · живы ' + s.storm.alive + ' из ' + s.storm.total + '</span>';
+    if (s.day) { const hh = s.day.f * 24; m += '<span class="k">Время города</span><span class="num">' + p2(Math.floor(hh)) + ':' + p2(Math.floor(hh % 1 * 60)) + '</span>'; }
+    m += '</div>';
+  } else {
+    m = '<div class="matchline"><span class="phase fight">Раунды</span><span class="hint">бесконечные раунды' + (s.win ? ' до ' + s.win + ' убийств' : '') + ', без шторма (MATCH=off)</span></div>';
+    if (s.day) { const hh = s.day.f * 24; m += '<div class="kv" style="margin-top:10px"><span class="k">Время города</span><span class="num">' + p2(Math.floor(hh)) + ':' + p2(Math.floor(hh % 1 * 60)) + '</span></div>'; }
+  }
+  if (!s.match && s.score && s.score.length) m += '<div class="kv" style="margin-top:8px"><span class="k">Счёт</span><span class="num"><b style="color:var(--red)">' + s.score[0] + '</b> : <b style="color:var(--blue)">' + s.score[1] + '</b></span></div>';
+  $('#matchInfo').innerHTML = m;
+  const e = j.env;
+  $('#srvInfo').innerHTML = [
+    ['Режим', e.mode === 'ffa' ? 'каждый сам за себя' : 'командный бой'], ['Арена', e.arena || 'весь город (центр)'],
+    ['Уровень ботов', { easy: 'лёгкий', normal: 'обычный', hard: 'сложный' }[e.level] || e.level],
+    ['Катки', e.match === 'off' ? 'выключены' : 'по ' + e.day + ' мин'], ['Node', j.node],
+    ['Запущен', fmtDate(j.boot)],
+  ].map(([k, v]) => '<span class="k">' + esc(k) + '</span><span>' + esc(v) + '</span>').join('');
+  $('#fileInfo').innerHTML = j.files.map(f => '<span class="k">' + esc(f.name) + '</span><span class="num">' + (f.size ? fmtSize(f.size) + ' · ' + fmtAgo(f.mtime) : 'нет файла') + '</span>').join('')
+    + '<span class="k">Куча JS</span><span class="num">' + j.heap + ' МБ</span>';
+}
+
+/* ---- players ---- */
+async function loadPlayers() {
+  const j = await api('players');
+  const rows = j.rows;
+  $('#playersHint').textContent = rows.length + ' в бою · людей ' + rows.filter(r => !r.bot).length + ' · обновление каждые 3 с';
+  if (!rows.length) { $('#playersBody').innerHTML = '<tr><td colspan="12" class="empty">В бою никого нет</td></tr>'; return; }
+  $('#playersBody').innerHTML = rows.map(p => {
+    const side = p.bot ? '<span class="chip bot">БОТ</span>' : state.mode === 'ffa' ? '<span class="hint">FFA</span>' : p.team === 0 ? '<span class="chip red">Красные</span>' : '<span class="chip blue">Синие</span>';
+    const st = p.bot ? '<span class="status"><span class="dot bot"></span>бот</span>' : p.alive ? '<span class="status"><span class="dot"></span>жив</span>' : '<span class="status"><span class="dot dead"></span>мёртв</span>';
+    return '<tr' + (p.alive ? '' : ' class="dim"') + '>'
+      + '<td><b>' + esc(p.name) + '</b>' + (p.tag ? ' <span class="chip tag">' + esc(p.tag) + '</span>' : '') + (p.mark ? ' <span class="chip mark">🎯 мишень</span>' : '') + (p.acct ? '<div class="acct">' + esc(p.acct) + '</div>' : '') + '</td>'
+      + '<td>' + side + '</td>'
+      + '<td class="r num">' + p.kills + '</td><td class="r num">' + p.deaths + '</td><td class="r num">' + p.dmg + '</td><td class="r num">' + p.acc + '%</td>'
+      + '<td class="r num">' + (p.ping == null ? '—' : p.ping) + '</td><td class="r num">' + p.hp + '</td><td>' + st + '</td>'
+      + '<td class="r num hint">' + p.x + ', ' + p.z + '</td><td class="r num hint">' + (p.since ? fmtDur((Date.now() - p.since) / 1000) : '—') + '</td>'
+      + '<td class="r"><button class="btn btn-sm btn-danger" data-act="kick" data-id="' + p.id + '" data-name="' + esc(p.name) + '">Кик</button></td></tr>';
+  }).join('');
+}
+
+/* ---- accounts ---- */
+async function loadAccounts() {
+  const j = await api('accounts', { q: '?q=' + encodeURIComponent($('#accQ').value.trim()) });
+  $('#accHint').textContent = 'всего ' + j.total + (j.rows.length < j.total ? ' · показано ' + j.rows.length : '');
+  if (!j.rows.length) { $('#accBody').innerHTML = '<tr><td colspan="6" class="empty">Аккаунтов нет</td></tr>'; return; }
+  $('#accBody').innerHTML = j.rows.map(u => '<tr>'
+    + '<td><b>' + esc(u.name) + '</b></td>'
+    + '<td>' + (u.tag ? '<span class="chip tag">' + esc(u.tag) + '</span>' : '<span class="hint">—</span>') + '</td>'
+    + '<td class="num hint">' + fmtDate(u.created) + '</td><td class="num hint">' + fmtAgo(u.seen) + '</td>'
+    + '<td>' + (u.fight ? '<span class="chip where">в бою</span>' : u.where ? '<span class="chip where">' + esc(WHERE[u.where] || u.where) + '</span>' : '<span class="hint">—</span>') + '</td>'
+    + '<td class="r" style="white-space:nowrap"><button class="btn btn-sm" data-act="pass" data-name="' + esc(u.name) + '">Пароль</button> <button class="btn btn-sm btn-danger" data-act="delacc" data-name="' + esc(u.name) + '">Удалить</button></td></tr>').join('');
+}
+let accTimer = 0;
+$('#accQ').addEventListener('input', () => { clearTimeout(accTimer); accTimer = setTimeout(() => run(loadAccounts), 300); });
+
+/* ---- the leaderboard ---- */
+async function loadBoard() {
+  const j = await api('board', { q: '?period=' + state.period + '&sort=' + state.sort });
+  $('#boardHint').textContent = 'профилей ' + j.total + (j.week ? ' · неделя ' + j.week : '');
+  if (!j.rows.length) { $('#boardBody').innerHTML = '<tr><td colspan="13" class="empty">Пока пусто</td></tr>'; return; }
+  $('#boardBody').innerHTML = j.rows.map((r, i) => '<tr>'
+    + '<td class="r num hint">' + (i + 1) + '</td><td><b>' + esc(r.name) + '</b></td>'
+    + '<td class="r num">' + r.kills + '</td><td class="r num">' + r.deaths + '</td><td class="r num">' + r.kd.toFixed(2) + '</td><td class="r num">' + r.acc + '%</td>'
+    + '<td class="r num">' + r.heads + '</td><td class="r num">' + r.wins + '</td><td class="r num">' + r.rounds + '</td><td class="r num">' + r.dmg + '</td>'
+    + '<td class="r num hint">' + fmtPlay(r.secs) + '</td><td class="num hint">' + fmtAgo(r.seen) + '</td>'
+    + '<td class="r" style="white-space:nowrap"><button class="btn btn-sm" data-act="resetrow" data-id="' + esc(r.id) + '" data-name="' + esc(r.name) + '">Сброс</button> <button class="btn btn-sm btn-danger" data-act="delrow" data-id="' + esc(r.id) + '" data-name="' + esc(r.name) + '">Удалить</button></td></tr>').join('');
+}
+$('#boardPeriod').addEventListener('click', e => {
+  const b = e.target.closest('[data-p]'); if (!b) return;
+  state.period = b.dataset.p;
+  for (const x of document.querySelectorAll('#boardPeriod button')) x.classList.toggle('on', x === b);
+  run(loadBoard);
+});
+$('#boardSort').addEventListener('change', () => { state.sort = $('#boardSort').value; run(loadBoard); });
+
+/* ---- teams ---- */
+async function loadTeams() {
+  const j = await api('teams');
+  $('#teamsHint').textContent = 'команд ' + j.rows.length;
+  if (!j.rows.length) { $('#teamsBody').innerHTML = '<div class="card empty" style="grid-column:1/-1">Команд пока нет</div>'; return; }
+  $('#teamsBody').innerHTML = j.rows.map(t => '<div class="team-card">'
+    + '<div class="th"><span class="chip tag" style="font-size:14px;padding:3px 8px">' + esc(t.tag) + '</span><span class="name">' + esc(t.name) + '</span></div>'
+    + '<div class="meta">лидер: <b>' + esc(t.leader) + '</b> · создана ' + fmtDate(t.created) + ' · в бою ' + t.fight + ' из ' + t.members.length + '</div>'
+    + '<div class="members">' + t.members.map(m => '<span class="member">' + (m === t.leader ? '<span class="lead" title="лидер">★</span>' : '') + esc(m)
+      + (t.where[m] ? ' <span class="dot" title="' + esc(WHERE[t.where[m]] || '') + '"></span>' : '')
+      + '<button data-act="kickmember" data-id="' + esc(t.id) + '" data-name="' + esc(m) + '" title="Убрать из команды">×</button></span>').join('') + '</div>'
+    + '<button class="btn btn-sm btn-danger" data-act="delteam" data-id="' + esc(t.id) + '" data-name="' + esc(t.name) + '">Распустить</button></div>').join('');
+}
+
+/* ---- the actions (one delegated listener) ---- */
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const act = b.dataset.act, id = b.dataset.id, name = b.dataset.name;
+  if (act === 'refresh') return refresh();
+  if (act === 'bots') return run(async () => { const j = await api('bots', { method: 'POST', body: { n: +$('#botN').value } }); toast('Ботов в бою: ' + j.bots); loadOverview(); });
+  if (act === 'cargo') return run(async () => { await api('cargo', { method: 'POST', body: {} }); toast('📦 Груз сброшен — ищите дым-маяк'); });
+  if (act === 'say') return run(async () => { const t = $('#sayText').value.trim(); if (!t) return toast('Напишите сообщение', 'err'); await api('say', { method: 'POST', body: { text: t } }); $('#sayText').value = ''; toast('Отправлено в чат'); });
+  if (act === 'kick') return run(async () => {
+    const ok = await ask({ title: 'Кик игрока', text: 'Исключить «' + name + '» из боя? Он сможет зайти снова.', okText: 'Исключить', danger: true });
+    if (!ok) return;
+    await api('kick', { method: 'POST', body: { id: +id } }); toast(name + ' исключён'); loadPlayers();
+  });
+  if (act === 'pass') return run(async () => {
+    const v = await ask({ title: 'Новый пароль', text: 'Пароль для аккаунта «' + name + '» (6–128 символов). Результаты и ключ сохранятся.', input: 'password', okText: 'Сохранить' });
+    if (v === false) return;
+    if (typeof v !== 'string' || v.length < 6 || v.length > 128) return toast('Пароль: 6–128 символов', 'err');
+    await api('accounts/pass', { method: 'POST', body: { name, pass: v } }); toast('Пароль обновлён: ' + name);
+  });
+  if (act === 'delacc') return run(async () => {
+    const ok = await ask({ title: 'Удалить аккаунт', text: 'Аккаунт «' + name + '» будет удалён вместе с результатами в таблице лидеров и местом в команде. Игрок в бою будет исключён. Это необратимо.', okText: 'Удалить', danger: true });
+    if (!ok) return;
+    await api('accounts/delete', { method: 'POST', body: { name } }); toast('Аккаунт удалён: ' + name); loadAccounts();
+  });
+  if (act === 'resetrow') return run(async () => {
+    const ok = await ask({ title: 'Сброс результатов', text: 'Обнулить ' + (state.period === 'week' ? 'недельные' : 'все') + ' результаты «' + name + '»?', okText: 'Обнулить' });
+    if (!ok) return;
+    await api('board/reset', { method: 'POST', body: { id, period: state.period === 'week' ? 'week' : 'all' } }); toast('Результаты обнулены: ' + name); loadBoard();
+  });
+  if (act === 'delrow') return run(async () => {
+    const ok = await ask({ title: 'Удалить профиль', text: 'Профиль «' + name + '» исчезнет из таблицы лидеров вместе с ником. Это необратимо.', okText: 'Удалить', danger: true });
+    if (!ok) return;
+    await api('board/delete', { method: 'POST', body: { id } }); toast('Профиль удалён: ' + name); loadBoard();
+  });
+  if (act === 'resetweek') return run(async () => {
+    const ok = await ask({ title: 'Сброс недели', text: 'Обнулить недельные результаты ВСЕХ профилей? Общие останутся.', okText: 'Обнулить неделю', danger: true });
+    if (!ok) return;
+    const j = await api('board/reset', { method: 'POST', body: { period: 'week' } }); toast('Неделя обнулена: ' + j.n + ' профилей'); loadBoard();
+  });
+  if (act === 'resetall') return run(async () => {
+    const ok = await ask({ title: 'Сброс всей таблицы', text: 'Обнулить ВСЕ результаты ВСЕХ профилей (и общие, и недельные)? Ники останутся. Это необратимо.', okText: 'Обнулить всё', danger: true });
+    if (!ok) return;
+    const j = await api('board/reset', { method: 'POST', body: { period: 'both' } }); toast('Таблица обнулена: ' + j.n + ' профилей'); loadBoard();
+  });
+  if (act === 'kickmember') return run(async () => {
+    const ok = await ask({ title: 'Убрать из команды', text: 'Убрать «' + name + '» из команды? Если он лидер, руководство перейдёт следующему участнику.', okText: 'Убрать', danger: true });
+    if (!ok) return;
+    await api('teams/kick', { method: 'POST', body: { id, name } }); toast(name + ' убран из команды'); loadTeams();
+  });
+  if (act === 'delteam') return run(async () => {
+    const ok = await ask({ title: 'Распустить команду', text: 'Команда «' + name + '» будет распущена: участники потеряют тег и союзников. Это необратимо.', okText: 'Распустить', danger: true });
+    if (!ok) return;
+    await api('teams/delete', { method: 'POST', body: { id } }); toast('Команда распущена: ' + name); loadTeams();
+  });
+});
+$('#sayText').addEventListener('keydown', e => { if (e.key === 'Enter') document.querySelector('[data-act="say"]').click(); });
+
+/* ---- start: a kept token opens the panel at once; a dead one falls back to the login ---- */
+(async () => {
+  if (!token) return showLogin();
+  try { await api('overview'); showApp(); } catch (e) { /* api already showed the login on 401 */ }
+})();
+</script>
+</body>
+</html>
