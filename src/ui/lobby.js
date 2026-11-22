@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { CHARS, CHAR_KEYS, makeAvatar, parseChar } from '../game/avatar.js';
-import { loadModels } from '../game/mp.js';
+import { CHARS, CHAR_KEYS, hasChar, loadChar, makeAvatar, parseChar } from '../game/avatar.js';
+import { akReady, loadAK } from '../game/viewmodel.js';
 import { worldSpace } from '../render/world-space.js';
 import { $, reduceMotion } from '../core/env.js';
 
@@ -16,7 +16,10 @@ import { $, reduceMotion } from '../core/env.js';
    stage take the team's colour (amber while the team is not chosen or everyone fights for himself).
    Every material here is worldSpace: the page lifts all shaders by the terrain height (world/terrain.js), and the
    lobby scene stands at its own origin, not in the city. If the models or WebGL cannot come, the cards and the
-   settings still work; a silhouette stands in for the figure. */
+   settings still work; a silhouette stands in for the figure.
+   The lobby opens while the city is still being built, so it waits for as little as it can: the chosen figure comes
+   with its own file and the AK (not with every model of the game), its shaders compile beside the page, and the
+   portraits are taken after it, one at a time (see showChar and portraits). */
 
 const LORE = {
   soldier: { role: 'Штурмовик', desc: 'Оператор спецназа: тяжёлая броня, шлем и автомат наизготовку.' },
@@ -30,9 +33,9 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 let open = false, step = 'train';
 let renderer = null, scene = null, camera = null, spin = null, ring = null, glow = null;
-let av = null, avKey = '', yaw = Math.PI, dist = 4.6, raf = 0, lastT = 0;
-let dragging = false, lastX = 0, idleAt = 0, modelsReady = false, cardsBuilt = false;
-const cards = {};
+let av = null, avKey = '', want = 0, yaw = Math.PI, dist = 4.6, raf = 0, lastT = 0;
+let dragging = false, lastX = 0, idleAt = 0, cardsBuilt = false, shots = false;
+const cards = {}, figs = {};   // figs: key → the promise of its figure (null if it cannot be made), each built once
 
 const curKey = () => parseChar($('mpChar').value) || 'soldier';
 
@@ -95,33 +98,66 @@ function bindStageInput() {
 }
 function fallback(note) { $('lobbyFallback').hidden = false; $('lobbyFallbackNote').textContent = note; }
 
-/* ---------- the figure ---------- */
+/* ---------- the figure ----------
+   A figure is made as soon as its own file and the AK in its hands have come (loadChar of avatar.js asks for the
+   chosen character first), not after every model of the game. Before its first frame its shaders are compiled beside
+   the page where the browser can (compileAsync: KHR_parallel_shader_compile) and its textures are sent to the GPU a
+   few milliseconds at a time: drawn at once, the first frame of a new figure stopped the page for over a second. Each
+   figure is made once and kept, so a character chosen again is back on the next frame. While the next figure is being
+   prepared the one before stays on the pedestal; while its file is still on its way, the silhouette. */
 function disposeAvatar(a) {
   a.root.traverse(o => { if (o.isMesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.dispose(); });
 }
-function showChar(key) {
-  if (!renderer || !modelsReady) return;
-  if (av && avKey === key) return;
-  if (av) { spin.remove(av.root); disposeAvatar(av); av = null; }
-  avKey = key;
-  const a = makeAvatar(key);
-  if (!a) { fallback('Модель не загрузилась — в бою будет запасная фигура.'); return; }
-  a.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
-  av = a; spin.add(a.root);
-  a.update(0.016, IDLE);
-  yaw = Math.PI;   // the new character faces the visitor
-  $('lobbyFallback').hidden = true;
+const later = () => new Promise(r => setTimeout(r, 0));
+// the shaders of a model compiled for the target it will be drawn into (null: the stage; a portrait's target draws
+// without the tone mapping, so its programs are other ones), then its textures sent to the GPU, ~8 ms of them a task
+async function prepare(root, cam, target) {
+  renderer.setRenderTarget(target);
+  const compiled = renderer.compileAsync(root, cam, scene);
+  renderer.setRenderTarget(null);
+  await compiled;
+  const tex = new Set();
+  root.traverse(o => { if (o.isMesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) for (const v of Object.values(m)) if (v && v.isTexture) tex.add(v); });
+  let t0 = performance.now();
+  for (const t of tex) {
+    if (performance.now() - t0 > 8) { await later(); t0 = performance.now(); }
+    renderer.initTexture(t);
+  }
 }
-function ensureModels() {
-  if (modelsReady) { showChar(curKey()); return; }
-  fallback('Загружаю модели персонажей…');
-  loadModels().then(() => { modelsReady = true; buildPortraits(); showChar(curKey()); })
-    .catch(() => fallback('Модели не загрузились — в бою будет запасная фигура.'));
+function figure(key) {
+  return figs[key] || (figs[key] = Promise.all([loadChar(key), loadAK()]).then(async () => {
+    const a = makeAvatar(key); if (!a) return null;
+    a.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    a.update(0.016, IDLE);
+    await prepare(a.root, camera, null);
+    return a;
+  }).catch(e => { console.error(e); return null; }));
+}
+function put(a) {
+  if (av === a) return;
+  if (av) spin.remove(av.root);
+  av = a; if (a) spin.add(a.root);
+}
+function showChar(key) {
+  if (!renderer || key === avKey) return;
+  avKey = key; const my = ++want;
+  if (!figs[key] && !(hasChar(key) && akReady())) { put(null); fallback('Загружаю модель персонажа…'); }
+  figure(key).then(a => {
+    if (my !== want) return;   // another character was chosen meanwhile
+    if (!a) { put(null); avKey = ''; fallback('Модель не загрузилась — в бою будет запасная фигура.'); return; }
+    if (av !== a) yaw = Math.PI;   // the new character faces the visitor
+    put(a); $('lobbyFallback').hidden = true;
+    portraits();
+  });
 }
 
-/* ---------- the portraits: one supersampled shot of each model in the same scene ---------- */
-function buildPortraits() {
-  if (!renderer) return;
+/* ---------- the portraits: one supersampled shot of each model in the same scene ----------
+   Taken after the first figure stands on the pedestal, one at a time as the files come: each model prepared for the
+   portrait's target beforehand, the shot itself in one task (the figure of the stage steps off the pedestal for it and
+   is back before the next frame), its pixels read back without waiting for the GPU. Taken all at once before the first
+   figure, they stopped the page for about three seconds. */
+function portraits() {
+  if (shots || !renderer) return; shots = true;
   const W = 400, H = 480, OW = 200, OH = 240;
   const rt = new THREE.WebGLRenderTarget(W, H);
   rt.texture.colorSpace = THREE.SRGBColorSpace;
@@ -132,27 +168,35 @@ function buildPortraits() {
   const bctx = big.getContext('2d');
   const out = document.createElement('canvas'); out.width = OW; out.height = OH;
   const octx = out.getContext('2d');
-  const keep = av, keepYaw = spin.rotation.y;
-  if (av) spin.remove(av.root);
-  for (const key of CHAR_KEYS) {
-    const a = makeAvatar(key); if (!a) continue;
+  const made = [];   // disposed together at the end: the models of different characters may share programs
+  async function shot(key) {
+    if (!hasChar(key)) return;   // its file did not come: the card keeps the silhouette
+    const a = makeAvatar(key); if (!a) return;
+    made.push(a);
     a.update(0.016, IDLE);
     a.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    await prepare(a.root, cam, rt);
+    const keep = av, keepYaw = spin.rotation.y;
+    if (keep) spin.remove(keep.root);
     spin.add(a.root); spin.rotation.y = Math.PI + 0.35;
-    renderer.setRenderTarget(rt); renderer.render(scene, cam);
-    renderer.readRenderTargetPixels(rt, 0, 0, W, H, buf);
+    renderer.setRenderTarget(rt); renderer.render(scene, cam); renderer.setRenderTarget(null);
+    spin.remove(a.root); spin.rotation.y = keepYaw;
+    if (keep) spin.add(keep.root);
+    await renderer.readRenderTargetPixelsAsync(rt, 0, 0, W, H, buf);
     const img = bctx.createImageData(W, H);
     for (let y = 0; y < H; y++) img.data.set(buf.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
     bctx.putImageData(img, 0, 0);
     octx.clearRect(0, 0, OW, OH); octx.drawImage(big, 0, 0, OW, OH);
-    const url = out.toDataURL('image/png');
-    spin.remove(a.root); disposeAvatar(a);
     const c = cards[key];
-    if (c) { c.img.src = url; c.img.hidden = false; c.ph.hidden = true; }
+    if (c) { c.img.src = out.toDataURL('image/png'); c.img.hidden = false; c.ph.hidden = true; }
   }
-  renderer.setRenderTarget(null);
-  rt.dispose();
-  if (keep) { spin.add(keep.root); spin.rotation.y = keepYaw; }
+  let queue = Promise.resolve(), left = CHAR_KEYS.length;
+  for (const key of CHAR_KEYS) Promise.all([loadChar(key), loadAK()]).then(() => {
+    queue = queue.then(() => shot(key)).catch(e => console.error(e)).then(() => {
+      if (--left) return;
+      rt.dispose(); for (const a of made) disposeAvatar(a);
+    });
+  });
 }
 
 /* ---------- the cards and the reading under the stage ---------- */
@@ -252,8 +296,7 @@ function tick(t) {
 function openLobby(s) {
   step = s; open = true;
   for (const p of painters) p();   // prepareUi restored the selects from localStorage without a 'change'
-  buildCards(); refresh(); updateTeam();
-  ensureRenderer(); ensureModels();
+  buildCards(); ensureRenderer(); refresh(); updateTeam();   // the renderer first: the ring takes the team's colour, refresh asks for the figure
   if (!raf) { lastT = performance.now(); raf = requestAnimationFrame(tick); }
 }
 function closeLobby() {

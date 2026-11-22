@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Claude | claude/lobby-loading-optimization-a6316c | Быстрая загрузка лобби: фигура без заморозки, модели по очереди, 304 для статики | src/ui/lobby.js, src/game/avatar.js, src/game/mp.js, server/index.mjs |
 
 ## Автономный цикл улучшений
 

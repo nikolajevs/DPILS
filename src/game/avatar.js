@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { worldSpace } from '../render/world-space.js';
-import { HOLD, SIGHT_MOUNT, akReady, muzzleOf } from './viewmodel.js';
+import { HOLD, SIGHT_MOUNT, akReady, loadAK, muzzleOf } from './viewmodel.js';
 import { prop, onProps } from './props.js';
 import { alignHand, at, moveBy, reach, relMatrix, setFrame, turnBy, turnOf } from './ik.js';
 import { FLASH_SIZE, makeFlash } from './muzzle.js';
@@ -44,38 +44,62 @@ const CHAR_KEYS = Object.keys(CHARS);
 const parseChar = s => (typeof s === 'string' && CHARS[s] ? s : '');
 const randomChar = () => CHAR_KEYS[Math.floor(Math.random() * CHAR_KEYS.length)];
 const assets = {};
+// each character on its own: its asset, or null if its file did not come (loadChar)
+const charWait = {};
+for (const key of CHAR_KEYS) { let res; charWait[key] = { p: new Promise(r => { res = r; }), res }; }
 let gunsP = null;
-function loadAvatar() {
+/* The files of the players are many megabytes (the four characters 8.6 MB, the guns 2.9, the AK of viewmodel.js 3.9)
+   and come while the city is built. The lobby needs only the chosen character and the AK in its hands, so these are
+   asked for first; the other characters and the guns only once both have come (or 12 s later at most). Asked for all at
+   once, they shared the line and the chosen figure came with the last of them, after all ~17 MB.
+   first: the key of the chosen character (the one kept in the browser, src/game/mp.js), the soldier by default. */
+function loadAvatar(first) {
   if (!gunsP) gunsP = import('three/addons/libs/meshopt_decoder.module.js').then(({ MeshoptDecoder }) => {
     const L = new GLTFLoader(); L.setMeshoptDecoder(MeshoptDecoder);   // the character files are packed with EXT_meshopt_compression
-    const chars = Promise.all(CHAR_KEYS.map(key => new Promise(res => {
-      L.load(CHARS[key].file, g => {
-        const clips = Object.fromEntries(g.animations.map(c => [c.name, c])), probe = clone(g.scene), mixer = new THREE.AnimationMixer(probe);
-        if (clips[MODEL.clips.idle]) { mixer.clipAction(clips[MODEL.clips.idle]).play(); mixer.update(0.01); }
-        const head = probe.getObjectByName(MODEL.head); if (head) head.scale.setScalar(MODEL.headScale);
-        probe.updateMatrixWorld(true); const box = new THREE.Box3().setFromObject(probe, true), h = box.max.y - box.min.y || 1, scale = CHARS[key].height / h;
-        // the crouched walk backwards is the forward one played in reverse: its own action, so it can blend with the others
-        const cf = clips[STEP_SET.crouch.F]; if (cf && !clips[STEP_SET.crouch.B]) { const cb = cf.clone(); cb.name = STEP_SET.crouch.B; cb.userData = { ...cf.userData, rev: true }; clips[cb.name] = cb; }
-        // standing, measured once: the height of the head bone over the soles (metres; the crouch is fitted to it) and the
-        // height of the hips in their parent (the flight of the jump clip is taken off to it: the jump of the game lifts the body)
-        const hips = probe.getObjectByName('Hips'), jt = clips[MODEL.clips.jump] && clips[MODEL.clips.jump].tracks.find(t => t.name === 'Hips.position');
-        let jumpLift = null;
-        if (hips && jt) {   // the rise of the hips in the jump clip over their standing height, in metres up (their parent may lie turned)
-          const ip = jt.createInterpolant(), p0 = hips.position.clone(), M = new THREE.Matrix3().setFromMatrix4(hips.parent.matrixWorld), d = new THREE.Vector3();
-          jumpLift = t => d.fromArray(ip.evaluate(t)).sub(p0).applyMatrix3(M).y * scale;
-        }
-        assets[key] = { scene: g.scene, clips, scale, floor: -box.min.y * scale, headStand: head ? (head.getWorldPosition(new THREE.Vector3()).y - box.min.y) * scale : 0, jumpLift };
-        res(assets[key]);
-      }, undefined, () => res(null));
-    })));
+    const k0 = parseChar(first) || 'soldier';
+    const head = Promise.all([loadChar1(L, k0), loadAK()]);
+    const rest = Promise.race([head, new Promise(r => setTimeout(r, 12000))]);
+    const chars = rest.then(() => Promise.all(CHAR_KEYS.filter(k => k !== k0).map(k => loadChar1(L, k))));
     // the guns come with the characters; without them the simple rifle is drawn
-    const guns = Promise.all([...new Set(MODEL.guns.filter(Boolean))].map(f => new Promise(r => L.load(f, x => r([f, x.scene]), undefined, () => r([f, null]))))).then(list => {
+    const guns = rest.then(() => Promise.all([...new Set(MODEL.guns.filter(Boolean))].map(f => new Promise(r => L.load(f, x => r([f, x.scene]), undefined, () => r([f, null])))))).then(list => {
       const by = Object.fromEntries(list); return MODEL.guns.map((f, i) => level((f && by[f]) || null, MODEL.gunAxes[i]));
     });
-    return Promise.all([chars, guns]).then(([, g]) => { for (const k in assets) assets[k].guns = g; return assets.soldier || null; });
+    return Promise.all([head, chars, guns]).then(([, , g]) => { for (const k in assets) assets[k].guns = g; return assets.soldier || null; });
   });
+  gunsP.catch(() => { for (const k of CHAR_KEYS) charWait[k].res(null); });   // no decoder: no character will come
   return gunsP;
 }
+// one character's file: its asset ready for makeAvatar, null if it did not come
+function loadChar1(L, key) {
+  return new Promise(res => {
+    L.load(CHARS[key].file, g => {
+      const clips = Object.fromEntries(g.animations.map(c => [c.name, c])), probe = clone(g.scene), mixer = new THREE.AnimationMixer(probe);
+      if (clips[MODEL.clips.idle]) { mixer.clipAction(clips[MODEL.clips.idle]).play(); mixer.update(0.01); }
+      const head = probe.getObjectByName(MODEL.head); if (head) head.scale.setScalar(MODEL.headScale);
+      probe.updateMatrixWorld(true); const box = new THREE.Box3().setFromObject(probe, true), h = box.max.y - box.min.y || 1, scale = CHARS[key].height / h;
+      // the crouched walk backwards is the forward one played in reverse: its own action, so it can blend with the others
+      const cf = clips[STEP_SET.crouch.F]; if (cf && !clips[STEP_SET.crouch.B]) { const cb = cf.clone(); cb.name = STEP_SET.crouch.B; cb.userData = { ...cf.userData, rev: true }; clips[cb.name] = cb; }
+      // standing, measured once: the height of the head bone over the soles (metres; the crouch is fitted to it) and the
+      // height of the hips in their parent (the flight of the jump clip is taken off to it: the jump of the game lifts the body)
+      const hips = probe.getObjectByName('Hips'), jt = clips[MODEL.clips.jump] && clips[MODEL.clips.jump].tracks.find(t => t.name === 'Hips.position');
+      let jumpLift = null;
+      if (hips && jt) {   // the rise of the hips in the jump clip over their standing height, in metres up (their parent may lie turned)
+        const ip = jt.createInterpolant(), p0 = hips.position.clone(), M = new THREE.Matrix3().setFromMatrix4(hips.parent.matrixWorld), d = new THREE.Vector3();
+        jumpLift = t => d.fromArray(ip.evaluate(t)).sub(p0).applyMatrix3(M).y * scale;
+      }
+      assets[key] = { scene: g.scene, clips, scale, floor: -box.min.y * scale, headStand: head ? (head.getWorldPosition(new THREE.Vector3()).y - box.min.y) * scale : 0, jumpLift };
+      res(assets[key]);
+    }, undefined, () => res(null));
+  }).then(a => { charWait[key].res(a); return a; });
+}
+// the asset of one character as soon as its own file has come (null if it did not): the lobby shows the chosen figure
+// without waiting for the others and the guns. Asks for the files if nobody has yet, this character first.
+function loadChar(key) {
+  const k = parseChar(key) || 'soldier';
+  loadAvatar(k);
+  return charWait[k].p;
+}
+const hasChar = key => !!assets[parseChar(key) || 'soldier'];
 const ready = () => assets.soldier || null;
 // a tilted gun turned about its origin so that its bore is +z and its left side +x; two groups, because readyGun sets
 // the y turn of the outer one
@@ -436,4 +460,4 @@ const gunSource = i => { const a = ready(); return (a && a.guns && a.guns[i]) ||
 // a ready gun for the viewmodel of the player himself (a clone in metres, the muzzle along +z), or null before the files have come
 function gunModel(i) { const a = ready(); return a && a.guns && a.guns[i] ? readyGun(a.guns[i], MODEL.gunLen[i], MODEL.gunYaw[i], MODEL.gunM[i]) : null; }
 
-export { MODEL, CHARS, CHAR_KEYS, gunModel, gunSource, loadAvatar, makeAvatar, parseChar, randomChar, ready };
+export { MODEL, CHARS, CHAR_KEYS, gunModel, gunSource, hasChar, loadAvatar, loadChar, makeAvatar, parseChar, randomChar, ready };

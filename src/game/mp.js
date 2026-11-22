@@ -163,10 +163,12 @@ function addRemote(id, name, team, char) {
    scene after the first frame; their materials are not disposed, so the programs stay compiled for the players
    to come. The boxes of makeFigure and of the gun in hand remain for a file that did not come. */
 let modelsP = null, modelsDone = false, samples = null;
+// the character chosen on an earlier visit (initUi puts it in #mpChar later): its file is asked for first (avatar.js loadAvatar)
+const savedChar = () => { try { return parseChar(JSON.parse(localStorage.getItem('dpils.mp') || '{}').char); } catch (e) { return ''; } };
 // onPart(f): the share of the files that have come (the loading bar)
 function loadModels(onPart) {
   if (modelsP) return modelsP;
-  const files = [loadAK(), loadAvatar(), new Promise(r => onProps(r))]; let n = 0;
+  const files = [loadAK(), loadAvatar(savedChar()), new Promise(r => onProps(r))]; let n = 0;
   if (onPart) for (const f of files) f.then(() => onPart(++n / files.length));
   modelsP = Promise.all(files).then(([k, a]) => {
     if (k) upgradeAK(); if (a) upgradeViewmodels();

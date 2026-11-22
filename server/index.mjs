@@ -35,8 +35,13 @@ function serveFile(req, res) {
   if (file !== STATIC && !file.startsWith(STATIC + path.sep)) { res.writeHead(403); res.end(); return; }
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) { res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }); res.end('Not found'); return; }
-    res.writeHead(200, { 'content-type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', 'content-length': st.size,
-      'cache-control': rel.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache', 'last-modified': st.mtime.toUTCString() });
+    // no-cache: the browser asks every time whether its copy is still good; a file that has not changed is answered
+    // 304 without its body. Without that every visit downloaded the city data and the models (~25 MB) again.
+    const etag = 'W/"' + st.size.toString(16) + '-' + Math.floor(st.mtimeMs).toString(16) + '"';
+    const cache = { 'cache-control': rel.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache', 'last-modified': st.mtime.toUTCString(), etag };
+    const inm = req.headers['if-none-match'], ims = Date.parse(req.headers['if-modified-since'] || '');
+    if (inm ? inm.split(',').some(t => t.trim() === etag || t.trim() === '*') : Math.floor(st.mtimeMs / 1000) <= Math.floor(ims / 1000)) { res.writeHead(304, cache); res.end(); return; }
+    res.writeHead(200, { 'content-type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', 'content-length': st.size, ...cache });
     if (req.method === 'HEAD') { res.end(); return; }
     fs.createReadStream(file).on('error', () => res.destroy()).pipe(res);
   });
