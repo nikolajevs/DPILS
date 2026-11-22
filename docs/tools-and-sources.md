@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/assault-rifles | Три новых автомата: M4A1, SCAR-L, AR-15 (модели, статы, инвентарь, боты) | server/combat.mjs, server/bots.mjs, src/game/mp.js, viewmodel.js, avatar.js, inventory.js, settings.js, sfx.js, tools/fp-weapons.mjs, models/fp_m4.glb, fp_scar.glb, fp_ar15.glb, vite.config.mjs |
 
 ## Автономный цикл улучшений
 
