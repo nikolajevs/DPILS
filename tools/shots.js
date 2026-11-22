@@ -60,6 +60,9 @@ async function warmRun(out, t, views) {
   await p.goto(URL, { waitUntil: 'load' });
   try { await p.waitForFunction(() => window.__city, null, { timeout: 600000, polling: 500 }); } catch (e) { console.log('LOAD FAIL\n' + errs.join('\n')); await b.close(); process.exit(2); }
   await p.evaluate(t => { document.getElementById('start').hidden = true; document.getElementById('auth').hidden = true; const c = window.__city; c.STATE.started = true; c.PERF.dyn = false; c.showTime(t); c.P.fly = true; document.getElementById('hud').hidden = true; }, t);   // the free camera of the tools: P.fly, no game
+  // the city shown at once: outside a fight src/ui/startfx.js fades it out (its observer of the start card runs after the
+  // card is hidden, so the class goes on after it)
+  await p.evaluate(() => new Promise(r => setTimeout(() => { const v = document.getElementById('view'); v.style.transition = 'none'; v.classList.add('shown'); r(); })));
   for (const v of views) {
     const [name, pos, tgt, fov] = v.split(':'), [x, z, h] = pos.split(',').map(Number), [tx, tz, th] = tgt.split(',').map(Number);
     await p.evaluate(([x, z, h, tx, tz, th, fov]) => { const c = window.__city, P = c.P, g = c.terrainH(tx, tz); P.x = x; P.z = z; P.y = g + h; const dx = tx - x, dz = tz - z;

@@ -3,6 +3,7 @@ import { LMWHITE, lmW } from './core.js';
 import { band, flatPlain, vband } from '../buildings/walls.js';
 import { polyA } from '../core/geometry.js';
 import { area2, offsetRing, reversed, sh } from '../core/util.js';
+import { addMirrorWall } from '../render/mirror.js';
 
 /* ---- geometry helpers ---- */
 // frame of a straight wall from Pw to Qw (world xz); outward normal is (tz, -tx) as for cadastre outer rings
@@ -82,6 +83,7 @@ function lmWall(K, Pw, Qw, y0, y1, ops, st) {
     if (o.tile) {   // a tile of the landmark atlas by name, or a tile of another atlas (o.tile an object) drawn into o.det
       const t = typeof o.tile === 'string' ? LMT[o.tile] : o.tile, f0 = (ya - o.y0) / (o.y1 - o.y0), f1 = (yb - o.y0) / (o.y1 - o.y0), va = t.v0 + (t.v1 - t.v0) * f0, vb = t.v0 + (t.v1 - t.v0) * f1;
       (o.det || K.det).q(at(o.s0, ya, d), at(o.s1, ya, d), at(o.s1, yb, d), at(o.s0, yb, d), N, [t.u1, va, t.u0, va, t.u0, vb, t.u1, vb], LMWHITE, o.lit ? 1 : 0);
+      const A = at(o.s0, ya, d), B = at(o.s1, ya, d); addMirrorWall(A[0], A[2], B[0], B[2], ya, yb, F.nx, F.nz);   // a glazed opening: a plane the glass mirror may take (src/render/mirror.js)
     }
     if (o.sill && ya > y0 + 0.1) lmBoxW(K.plain, F, o.s0 - 0.06, o.s1 + 0.06, ya - 0.07, ya, -0.1, d, o.sill);
   }

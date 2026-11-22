@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { LIGHTDIR, U, camera, renderer } from './renderer.js';
+import { mirrorShow } from './mirror.js';
 import { LAMP_REACH, lampSlot, lampTable } from '../world/lamp-light.js';
 import { terrainH } from '../world/terrain.js';
 
@@ -57,8 +58,9 @@ function atlas() {
    addMoverInstances(mesh): an InstancedMesh of vehicles all over the city (the trams, the buses, the trains): each frame
    the ones near the eye are copied into a small mesh of its own that casts, so a frame does not draw every bus twice. */
 const movers = new Set(), proxies = [], ROOT = new THREE.Object3D(), MP = [];   // MP: per mover near the eye x, y, z, radius
-function addMover(o, r = 1.2) { o.userData.moverR = r; movers.add(o); }
+function addMover(o, r = 1.2) { o.userData.moverR = r; movers.add(o); mirrorShow(o); }   // what moves is in the glass too (src/render/mirror.js)
 function addMoverInstances(src, cap, r) {
+  mirrorShow(src);
   const p = new THREE.InstancedMesh(src.geometry, src.material, cap); p.count = 0; p.castShadow = true; p.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   proxies.push({ src, p, r });
 }

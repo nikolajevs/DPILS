@@ -41,13 +41,13 @@ sun.shadow.bias = -0.0002; sun.shadow.normalBias = 0.05; sun.shadow.radius = 0.8
 sun.shadow.camera.near = 1; sun.shadow.camera.far = 360;
 const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.15 * Math.PI); scene.add(hemi);
 // uniforms shared by many materials
-const U = { night: { value: 0 }, lit: { value: 0 }, time: { value: 0 }, sunDir: { value: LIGHTDIR }, fogGlow: { value: new THREE.Color(0, 0, 0) }, sunCol: { value: new THREE.Color(1, 1, 1) }, impFar: { value: 2600 } };   // impFar: where the far-tree impostors fade out and their tiles stop drawing (src/render/post.js updateLod)
+const U = { night: { value: 0 }, lit: { value: 0 }, time: { value: 0 }, sunDir: { value: LIGHTDIR }, fogGlow: { value: new THREE.Color(0, 0, 0) }, sunCol: { value: new THREE.Color(1, 1, 1) }, impFar: { value: 2600 }, mirFade: { value: new THREE.Vector2(0, 0) } };   // impFar: where the far-tree impostors fade out and their tiles stop drawing (src/render/post.js updateLod); mirFade: where the frame of the glass mirror fades out (src/render/mirror.js), 0 0 in every other pass
 
 /* Aerial perspective instead of the stock linear fog: haze that thins with height, takes the colour of the sky at the
    horizon and glows towards the sun; near the far plane it closes completely so the edge of the world never shows. */
 THREE.ShaderChunk.fog_pars_vertex = '#ifdef USE_FOG\n varying float fogDepth; varying vec3 vFogRay;\n#endif';
 THREE.ShaderChunk.fog_vertex = '#ifdef USE_FOG\n fogDepth = -mvPosition.z; vFogRay = mvPosition.xyz * mat3(viewMatrix);\n#endif';
-THREE.ShaderChunk.fog_pars_fragment = '#ifdef USE_FOG\n uniform vec3 fogColor; uniform float fogNear; uniform float fogFar; uniform vec3 uFogGlow; uniform vec3 uFogSun; varying float fogDepth; varying vec3 vFogRay;\n#endif';
+THREE.ShaderChunk.fog_pars_fragment = '#ifdef USE_FOG\n uniform vec3 fogColor; uniform float fogNear; uniform float fogFar; uniform vec3 uFogGlow; uniform vec3 uFogSun; uniform vec2 uMirFade; varying float fogDepth; varying vec3 vFogRay;\n#endif';
 THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
   float fogD = length(vFogRay); vec3 fogR = vFogRay / max(fogD, 1e-3);
   float fogT = fogR.y * fogD / 340.0;
@@ -57,10 +57,11 @@ THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
   float fogS = max(dot(fogR, uFogSun), 0.0);
   vec3 fogC = fogColor + uFogGlow * (pow(fogS, 6.0) * 0.5 + pow(fogS, 48.0) * 0.6);
   gl_FragColor.rgb = mix(gl_FragColor.rgb, fogC, fogFactor);
+  if (uMirFade.y > 0.0) gl_FragColor *= 1.0 - smoothstep(uMirFade.x, uMirFade.y, fogD);   // the far edge of the glass mirror: premultiplied, the city cubes show through
 #endif`;
-// every fogged material gets the two extra fog uniforms; patch may edit the shader further
+// every fogged material gets the extra fog uniforms; patch may edit the shader further
 function hook(m, key, patch) {
-  m.onBeforeCompile = (s, r) => { terrUniforms(s, r); s.uniforms.uFogGlow = U.fogGlow; s.uniforms.uFogSun = U.sunDir; if (patch) patch(s); };
+  m.onBeforeCompile = (s, r) => { terrUniforms(s, r); s.uniforms.uFogGlow = U.fogGlow; s.uniforms.uFogSun = U.sunDir; s.uniforms.uMirFade = U.mirFade; if (patch) patch(s); };
   if (key) m.customProgramCacheKey = () => key;
   return m;
 }

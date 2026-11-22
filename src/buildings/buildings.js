@@ -10,6 +10,7 @@ import { shopClaim } from '../landmarks/shops.js';
 import { band, church, flatPlain, flatRoof, roofFace, tileOf, tiles, vband, wallQuad } from './walls.js';
 import { lidarOf } from './lidar.js';
 import { serBuild } from './series.js';
+import { addMirrorWall } from '../render/mirror.js';
 import { addHoledCollision, passageHolesOf } from './passages.js';
 import { footprintHoles } from './passage-holes.mjs';
 import { ovDrops } from '../world/overpass.js';
@@ -82,6 +83,7 @@ async function buildBuildings(from, to) {
     if (useLid) { const h0 = h; h = lid.eave; if (Math.abs(h - h0) > 2.5) floors = Math.max(1, Math.round(floors * h / h0)); }
     const tint = worship ? (style === 8 ? (/Бориса/.test(name) ? hb('#a9c4e4') : hb('#f0ebe0')) : style === 9 ? hb('#f2eee6') : style === 10 ? hb('#a5503a') : hb('#e6dccb'))
       : row === 0 && floors <= 3 && fortIn(cx, cz, -60) ? pick(FORT_PAL, id, 1) : pick(WALLPAL[row], id, 1);   // the barracks and stores of the fortress
+    BLD[bid].tint = tint; BLD[bid].fh = floors > 0 ? h / floors : 3;   // the colour and the storey of its walls, for the city in the glass (src/render/mirror-city.js)
     let mat = rec[4] & 15; const pitched = useLid ? lid.type >= 2 : rec[4] >= 16 || worship;
     if (!mat) mat = pitched ? (row === 5 || row === 7 ? [1, 1, 2, 1, 4][Math.floor(rnd(id, 3) * 5)] : row <= 1 ? 2 : 1) : (row === 6 && rnd(id, 3) < 0.5 ? 0 : 5);
     if (worship) mat = 2;
@@ -114,6 +116,7 @@ async function buildBuildings(from, to) {
         const ext = parapet ? 0.6 : 0;
         const wo = facadeSink(id, nx, nz, x1, z1);
         wallQuad(G.fac, x1 - nx * wo, z1 - nz * wo, x2 - nx * wo, z2 - nz * wo, yb, h + ext, nx, nz, tint, 0, blank ? L / bay : cnt, 0, floors + ext / fh, row, seed, fl | blank);
+        if (!blank && !small) addMirrorWall(x1 - nx * wo, z1 - nz * wo, x2 - nx * wo, z2 - nz * wo, yb, h, nx, nz);   // a wall with windows: a plane the glass mirror may take (src/render/mirror.js)
         if (apart && ri === 0 && L >= 14 && cnt >= 4) {
           const tx = (x2 - x1) / L, tz = (z2 - z1) / L, bw = L / cnt;
           if (rnd(id, 20 + i) < 0.6) { // balconies

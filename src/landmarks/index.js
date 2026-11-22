@@ -36,6 +36,8 @@ import { lmTramWires, lmVienibas } from '../world/tram-wires.js';
 import { lmUnderpass } from '../world/underpass.js';
 import { lmOverpass } from '../world/overpass.js';
 import { allMats, std } from '../render/materials.js';
+import { PU } from '../render/cityprobe.js';
+import { GLASS_GLSL, MU, glassLights } from '../render/mirror.js';
 import { mkCanvas, toTex } from '../render/textures.js';
 import { TERR, vbComp } from '../world/terrain.js';
 import { U, hook, scene } from '../render/renderer.js';
@@ -66,7 +68,10 @@ function lmTick() {
 if (!THREE.ShaderLib.physical.fragmentShader.includes('#include <opaque_fragment>')) console.warn('three.js: the landmark materials lost their NaN guard (no opaque_fragment)');
 const LM_SAFE = s => { s.fragmentShader = s.fragmentShader.replace('#include <opaque_fragment>',
   'if (any(isnan(outgoingLight)) || any(isinf(outgoingLight))) outgoingLight = diffuseColor.rgb * 0.3;\noutgoingLight = min( outgoingLight, vec3( 40.0 ) );\n#include <opaque_fragment>'); };
-const lmStd = (opts, key, patch) => std(opts, key, s => { LM_SAFE(s); if (patch) patch(s); });
+// the glass of the detail atlases (roughness 0.10–0.13 in their ORM, src/landmarks/tiles.js) mirrors the city cubes and
+// the wall in view like the glass of the houses (src/render/mirror.js)
+const LM_GLASS = s => { Object.assign(s.uniforms, PU, MU); s.fragmentShader = GLASS_GLSL + s.fragmentShader.replace('#include <lights_fragment_maps>', glassLights('1.0 - smoothstep(0.16, 0.24, roughnessFactor)')); };
+const lmStd = (opts, key, patch) => std(opts, key, s => { LM_SAFE(s); if (opts.roughnessMap) LM_GLASS(s); if (patch) patch(s); });
 async function buildLandmarks() {
   const [dc, dorm, dglow] = lmTiles(); await rest(); const [sc, sglow] = lmSigns(), WT = [];
   for (let k = 0; k < 8; k++) { await rest(); WT.push(lmWallTex(k)); }
