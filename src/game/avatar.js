@@ -279,14 +279,28 @@ function body(B, inner, st, dt, far) {
 // direction of the killing blow { x, z, head, nade }, vel — the speed the player had; without the bones for it the
 // death clip plays as before. lod: far away — the lean with the aim and the twist of the legs are skipped (body()).
 // char — the chosen character of CHARS ('' = the operator); if its file did not come, the operator stands in
+/* The bounds of a skinned body, for the cull of each camera. three tests a skinned mesh by its own boundingSphere, and
+   the one it would compute is the pose of one moment; so the bodies used to be drawn by every camera always — the
+   screen, the glass of the walls, the maps of the sun and the lamps — the players behind your back too, each mesh a
+   draw call and a skeleton upload. Now the sphere is the rest pose of the file (computed once per geometry, the
+   clones share it) grown by CULL_PAD metres: room for any step, the crouch, the jump, the gun held out and a body the
+   ragdoll threw (ragdoll.js moves the bones, not the player), so a body is culled only when it is well out of view. */
+const CULL_PAD = 2.5, SV = new THREE.Vector3();
+function cullBounds(o) {
+  const g = o.geometry.userData;
+  if (!g.cullSphere) { o.computeBoundingSphere(); g.cullSphere = o.boundingSphere.clone(); g.cullSphere.radius += CULL_PAD / (SV.setFromMatrixScale(o.matrixWorld).x || 1); }
+  o.boundingSphere = g.cullSphere.clone(); o.frustumCulled = true;
+}
 function makeAvatar(char) {
   const key = parseChar(char) || 'soldier', cfg = CHARS[key], asset = assets[key] || assets.soldier;
   if (!asset) return null;
   const cc = assets[key] ? cfg : CHARS.soldier;
   const root = clone(asset.scene), inner = new THREE.Group(), mixer = new THREE.AnimationMixer(root), act = {}, C = MODEL.clips;
   root.scale.setScalar(asset.scale); root.position.y = asset.floor; inner.rotation.y = cc.turn; inner.add(root);
+  inner.updateMatrixWorld(true);
   root.traverse(o => {
-    if (!o.isMesh) return; o.frustumCulled = false;   // a skinned mesh keeps the bounds of its rest pose
+    if (!o.isMesh) return;
+    if (o.isSkinnedMesh) cullBounds(o);
     o.material = worldSpace(Array.isArray(o.material) ? o.material.map(m => m.clone()) : o.material.clone());   // the file's textures, uncoloured
   });
   for (const n of [C.idle, C.crouch, C.jump, C.death]) if (asset.clips[n]) { act[n] = mixer.clipAction(asset.clips[n]); act[n].play(); act[n].weight = n === C.idle ? 1 : 0; }
