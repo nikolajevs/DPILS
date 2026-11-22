@@ -841,7 +841,7 @@ console.log('bullet drag (v(s), damage, flight time):');
   g.stop();
 }
 
-/* ---------- 2k. the loadout: two equipped guns, a ten-slot backpack, swapping ---------- */
+/* ---------- 2k. the loadout: two equipped guns, a 30-cell backpack, swapping ---------- */
 console.log('the loadout (two guns + the backpack):');
 {
   let clock = 1e6;
@@ -850,7 +850,7 @@ console.log('the loadout (two guns + the backpack):');
   msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
   const p = A.handle.player;
   ok(p.loadout.length === 2 && p.loadout.join() === '0,3', 'the player spawns with two guns equipped (rifle + pistol)', p.loadout.join());
-  ok(p.pack.length === 10 && p.pack.filter(w => w !== null).length === 6 && p.pack.filter(w => w === null).length === 4, 'the backpack has ten cells: six guns and four empty', JSON.stringify(p.pack));
+  ok(p.pack.length === 30 && p.pack.filter(w => w !== null).length === 6 && p.pack.filter(w => w === null).length === 24, 'the backpack has 30 cells: six guns and 24 free', JSON.stringify(p.pack));
   const sp = A.last('spawn');
   ok(sp && Array.isArray(sp.loadout) && Array.isArray(sp.pack), 'the spawn message carries the loadout and the pack');
   clock += 3000;
@@ -919,7 +919,7 @@ console.log('the ready belt and the backpack stores:');
   ok(sIt.active && p.pack.filter(k => k === 'sight').length === 1, 'a second collimator is refused while one is owned');
   // a full pack refuses the take-off
   let guard = 0;
-  while (p.pack.includes(null) && guard++ < 12) pick('med');
+  while (p.pack.includes(null) && guard++ < 40) pick('med');
   ok(!p.pack.includes(null), 'the pack is full of stored kits', JSON.stringify(p.pack));
   msg(A, { t: 'attach', w: 0, kind: null });
   ok(p.attach[0] === 'optic' && A.last('chat') && /Рюкзак полон/.test(A.last('chat').text), 'a full pack refuses the take-off with a notice');

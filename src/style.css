@@ -414,140 +414,159 @@ label.chk { display: flex; align-items: center; gap: 8px; font-size: 13px; color
 .mp-slots span i { font-style: normal; font-size: 10px; line-height: 1; opacity: .65; font-variant-numeric: tabular-nums; }
 .mp-slots span.on { background: #fff; color: #111; box-shadow: 0 0 0 1px #fff, 0 2px 8px rgba(255, 255, 255, .25); }
 .mp-slots span.on i { opacity: .8; }
-/* the inventory panel (I): a tactical glass card in the look of the arena console — five weapon cards with
-   silhouettes, round-by-round magazines and combat stats; the grenades and med kits with pips; the player's condition */
-#mpInv .panel { box-sizing: border-box; width: min(1060px, 100%); background: rgba(13, 17, 24, .88); color: #fff; border-color: var(--glass-line); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+/* the inventory panel (I): an ordinary game inventory in the glass of the arena console — the equipment on the left
+   (two gun slots, each with a sight slot; the four pockets of the vest), the backpack grid and the card of the pointed
+   thing on the right; every thing a picture in a slot (src/game/inventory.js, src/game/inv-icons.js) */
+#mpInv .panel { box-sizing: border-box; width: min(1320px, 100%); padding: 0 22px 14px; background: rgba(13, 17, 24, .9); color: #fff; border-color: var(--glass-line); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
 #mpInv .panel:focus { outline: none; }
-#mpInv header { background: rgba(13, 17, 24, .95); border-bottom-color: var(--glass-line); }
+#mpInv header { gap: 16px; margin: 0 -22px; padding: 14px 22px 12px; background: rgba(13, 17, 24, .95); border-bottom-color: var(--glass-line); }
 #mpInv header::after { background: var(--warn); }
-#mpInv .btn { color: #fff; border-color: var(--glass-line); }
+#mpInv header h2 { font: 700 19px/1 var(--f-display); letter-spacing: .04em; text-transform: uppercase; }
+#mpInv .btn { color: #fff; border-color: var(--glass-line); padding: 8px 14px; }
 #mpInv .btn:hover { background: rgba(255, 255, 255, .12); }
 #mpInv .btn kbd { color: rgba(255, 255, 255, .55); }
-.inv-title { display: grid; gap: 3px; }
-.inv-title small { font: 600 9px/1 var(--f-body); letter-spacing: .22em; text-transform: uppercase; color: rgba(255, 255, 255, .5); }
-.inv-me { display: flex; align-items: center; gap: 8px; margin-left: auto; margin-right: 14px; font: 600 13px/1 var(--f-body); min-width: 0; }
+.inv-me { display: flex; align-items: center; gap: 9px; margin-left: auto; min-width: 0; font: 600 14px/1 var(--f-body); }
 .inv-me .dot { width: 9px; height: 9px; border-radius: 50%; background: #8a8a8a; flex: none; }
 .inv-me .dot.t0 { background: var(--red); box-shadow: 0 0 8px rgba(224, 70, 58, .8); }
 .inv-me .dot.t1 { background: var(--blue); box-shadow: 0 0 8px rgba(59, 134, 232, .8); }
-.inv-me b { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.inv-me .kd { color: rgba(255, 255, 255, .6); font-variant-numeric: tabular-nums; border-left: 1px solid var(--glass-line); padding-left: 8px; }
+.inv-nick { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inv-me .kd { color: rgba(255, 255, 255, .55); font-variant-numeric: tabular-nums; }
+.inv-hp { display: flex; align-items: center; gap: 6px; margin-left: 4px; padding-left: 12px; border-left: 1px solid var(--glass-line); }
+.inv-hp small { font: 700 9px/1 var(--f-body); letter-spacing: .14em; color: rgba(255, 255, 255, .45); }
+.inv-hp b { min-width: 3ch; text-align: right; font: 700 17px/1 var(--f-display); font-variant-numeric: tabular-nums; }
+.inv-hpbar { width: 110px; height: 7px; border-radius: 3px; background: rgba(255, 255, 255, .12); overflow: hidden; }
+.inv-hpbar i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #5fcf6a, #9be15d); transition: width .18s; }
+.inv-hp[data-hp="mid"] .inv-hpbar i { background: linear-gradient(90deg, #f0b429, #f5d04a); }
+.inv-hp[data-hp="low"] .inv-hpbar i { background: linear-gradient(90deg, #e0463a, #f06a4a); }
+.inv-hp[data-hp="low"] b { color: #ff7a6b; animation: hp-pulse 1s ease-in-out infinite; }
 
-#mpInvBody { display: grid; gap: 16px; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px 6px 4px 2px; }   /* the panel clips (overflow hidden): the body is the scroller, as #mpSetBody in the settings; the header stays put */
+#mpInvBody { display: grid; grid-template-columns: minmax(250px, 370px) minmax(0, 1fr); gap: 14px 22px; align-items: start; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 2px 2px; }   /* the panel clips (overflow hidden): the body is the scroller where the screen is too low; the header stays put */
 #mpInvBody:focus { outline: none; }
-
+.inv-col { display: grid; gap: 16px; min-width: 0; }
 .inv-sec { display: grid; gap: 8px; min-width: 0; }
-.inv-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.inv-sec h3 { margin: 0; font: 600 11px/1 var(--f-body); letter-spacing: .18em; text-transform: uppercase; color: var(--warn); }
-.inv-head small { font: 500 11.5px/1.3 var(--f-body); color: rgba(255, 255, 255, .5); }
-.inv-guns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-/* the backpack: ten loot slots in a 5×2 grid; a filled cell is a gun you can swap in, an empty cell is dashed */
-.inv-pack { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
-.inv-pack-cell { position: relative; display: grid; gap: 4px; align-content: center; justify-items: center; text-align: center; min-height: 96px; padding: 10px 8px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, .1); background: rgba(255, 255, 255, .04); color: #fff; font: inherit; transition: background .15s, border-color .15s, transform .15s; }
-.inv-pack-cell.filled { cursor: pointer; }
-.inv-pack-cell.filled:hover { background: rgba(255, 255, 255, .09); border-color: rgba(240, 180, 41, .55); transform: translateY(-2px); }
-.inv-pack-cell.filled:focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; }
-.inv-pack-cell.empty { border-style: dashed; border-color: rgba(255, 255, 255, .14); background: rgba(255, 255, 255, .02); }
-.inv-pack-sil { display: block; height: 30px; width: 100%; }
-.inv-pack-sil svg { width: 100%; height: 100%; fill: rgba(255, 255, 255, .62); }
-.inv-pack-cell.filled:hover .inv-pack-sil svg { fill: var(--warn); }
-.inv-pack-cell.item .inv-pack-sil svg { fill: none; stroke: rgba(255, 255, 255, .62); stroke-width: 1.7; }   /* stored items: stroke icons, not the filled gun silhouettes */
-.inv-pack-cell.item.filled:hover .inv-pack-sil svg { fill: none; stroke: var(--warn); }
-.inv-pack-name { font: 600 12px/1.1 var(--f-body); }
-.inv-pack-ammo { font: 600 11px/1 var(--f-body); font-variant-numeric: tabular-nums; color: rgba(255, 255, 255, .55); }
-.inv-pack-ammo[data-empty="1"] { color: #ff7a6b; }
-.inv-pack-key { position: absolute; left: 6px; top: 5px; font: 700 9px/1 var(--f-body); padding: 2px 5px; border-radius: 4px; background: rgba(255, 255, 255, .12); color: rgba(255, 255, 255, .6); }
-.inv-pack-empty { font: 500 11px/1 var(--f-body); letter-spacing: .08em; color: rgba(255, 255, 255, .3); }
-.inv-pack-cell.filled .inv-pack-empty { display: none; }
-.inv-pack-cell.empty .inv-pack-sil, .inv-pack-cell.empty .inv-pack-name, .inv-pack-cell.empty .inv-pack-ammo, .inv-pack-cell.empty .inv-pack-key { display: none; }
-.inv-gun { position: relative; display: grid; gap: 7px; align-content: start; text-align: left; padding: 10px 12px 12px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, .1); background: rgba(255, 255, 255, .05); color: #fff; font: inherit; cursor: pointer; transition: background .15s, border-color .15s, transform .15s, box-shadow .15s; }
-.inv-gun:hover { background: rgba(255, 255, 255, .09); border-color: rgba(255, 255, 255, .28); transform: translateY(-2px); }
-.inv-gun:focus-visible { outline: 2px solid var(--warn); outline-offset: 2px; }
-.inv-gun.on { border-color: rgba(240, 180, 41, .75); background: rgba(240, 180, 41, .09); box-shadow: 0 0 18px rgba(240, 180, 41, .22), 0 10px 24px rgba(0, 0, 0, .35); }
-.inv-top { display: flex; justify-content: space-between; align-items: center; }
-.inv-top kbd { font: 700 10px/1 var(--f-body); padding: 3px 6px; border-radius: 5px; background: rgba(255, 255, 255, .12); color: rgba(255, 255, 255, .75); }
-.inv-hand { font: 700 8.5px/1 var(--f-body); letter-spacing: .14em; text-transform: uppercase; color: #1a1206; background: var(--warn); padding: 4px 7px; border-radius: 999px; visibility: hidden; }
-.inv-gun.on .inv-hand { visibility: visible; }
-.inv-sil { display: block; height: 52px; }
-.inv-sil svg { width: 100%; height: 100%; fill: rgba(255, 255, 255, .68); }
-.inv-gun.on .inv-sil svg { fill: var(--warn); }
-.inv-name { font: 600 14.5px/1.1 var(--f-body); }
-.inv-tag { font: 500 10.5px/1.2 var(--f-body); color: rgba(255, 255, 255, .5); margin-top: -4px; }
-.inv-ammo { display: flex; align-items: baseline; gap: 5px; font-variant-numeric: tabular-nums; }
-.inv-ammo b { font: 700 24px/1 var(--f-display); }
-.inv-ammo span { font: 600 12px/1 var(--f-body); color: rgba(255, 255, 255, .55); }
-.inv-ammo[data-empty="1"] b { color: #ff7a6b; }
-.inv-ammo[data-low="1"] b { color: var(--warn); }
-.inv-mag { display: flex; gap: 2px; height: 9px; }
-.inv-mag i { flex: 1; border-radius: 2px; background: rgba(255, 255, 255, .12); }
-.inv-mag i.full { background: linear-gradient(180deg, #ffd27a, #f0b429); }
-.inv-mag.cont { display: block; border-radius: 3px; background: rgba(255, 255, 255, .12); overflow: hidden; }
-.inv-mag.cont i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #ffd27a, #f0b429); }
-.inv-rl { display: block; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .12); overflow: hidden; opacity: 0; }
-.inv-rl i { display: block; height: 100%; width: 0; background: var(--warn); }
-.inv-rlt { font: 600 10px/1 var(--f-body); color: var(--warn); opacity: 0; height: 10px; }
-.inv-gun.reloading .inv-rl, .inv-gun.reloading .inv-rlt { opacity: 1; }
-.inv-stats { display: grid; gap: 4px; margin-top: 2px; }
-.inv-st { display: grid; grid-template-columns: 58px 1fr 46px; gap: 6px; align-items: center; }
-.inv-st small { font: 600 8.5px/1 var(--f-body); letter-spacing: .1em; text-transform: uppercase; color: rgba(255, 255, 255, .45); }
-.inv-st .inv-bar { display: block; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .1); overflow: hidden; }
-.inv-st .inv-bar i { display: block; height: 100%; background: rgba(255, 255, 255, .55); border-radius: 2px; }
-.inv-gun.on .inv-st .inv-bar i { background: rgba(240, 180, 41, .8); }
-.inv-st b { font: 600 10.5px/1 var(--f-body); font-variant-numeric: tabular-nums; text-align: right; color: rgba(255, 255, 255, .8); white-space: nowrap; }
-.inv-foot { font: 500 10px/1.3 var(--f-body); color: rgba(255, 255, 255, .45); }
-/* the sight row of a weapon card: mount / take off the picked-up collimator or optic */
-.inv-att { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
-.inv-att-l { font: 500 10px/1.3 var(--f-body); color: rgba(255, 255, 255, .45); }
-.inv-att-b { font: 600 10px/1 var(--f-body); color: rgba(255, 255, 255, .75); padding: 4px 7px; border-radius: 7px; border: 1px solid rgba(255, 255, 255, .18); background: rgba(255, 255, 255, .06); cursor: pointer; transition: background .15s, border-color .15s; }
-.inv-att-b:hover:not(:disabled) { background: rgba(255, 255, 255, .14); border-color: rgba(255, 255, 255, .35); }
-.inv-att-b.on { color: #1a1206; background: var(--warn); border-color: var(--warn); }
-.inv-att-b:disabled { opacity: .35; cursor: default; }
-.inv-low { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 14px; align-items: start; }
-.inv-items { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.inv-item { display: grid; gap: 6px; padding: 12px 14px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, .1); background: rgba(255, 255, 255, .05); align-content: start; }
-.inv-item[data-empty="1"] { opacity: .55; }
-.inv-it-top { display: flex; align-items: center; gap: 9px; }
-.inv-ico { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 9px; background: rgba(255, 255, 255, .08); }
-.inv-ico svg { width: 21px; height: 21px; fill: none; stroke: rgba(255, 255, 255, .85); stroke-width: 1.7; }
-.inv-it-top b { font: 600 14px/1.1 var(--f-body); }
-.inv-cnt { margin-left: auto; font: 700 13px/1 var(--f-body); font-variant-numeric: tabular-nums; color: var(--warn); }
-.inv-item[data-empty="1"] .inv-cnt { color: rgba(255, 255, 255, .5); }
-.inv-pips { display: flex; gap: 4px; }
-.inv-pips i { width: 14px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .14); }
-.inv-pips i.full { background: var(--warn); }
-.inv-item small { font: 500 11.5px/1.4 var(--f-body); color: rgba(255, 255, 255, .6); }
-.inv-item small.inv-dim { color: rgba(255, 255, 255, .42); font-size: 10.5px; }
-.inv-use { justify-self: start; display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px; font: 600 12px/1 var(--f-body); }
-.inv-use kbd { font: 700 10px/1 var(--f-body); padding: 2px 5px; border-radius: 4px; background: rgba(255, 255, 255, .14); }
-.inv-use:disabled { opacity: .4; cursor: default; }
-.inv-use:not(:disabled):hover { background: rgba(240, 180, 41, .18); border-color: rgba(240, 180, 41, .6); }
-.inv-state { gap: 8px; }
-.inv-hp { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; }
-.inv-hp b { font: 700 30px/1 var(--f-display); font-variant-numeric: tabular-nums; min-width: 2.2ch; }
-.inv-hpbar { display: block; height: 9px; border-radius: 5px; background: rgba(255, 255, 255, .12); overflow: hidden; }
-.inv-hpbar i { display: block; height: 100%; border-radius: 5px; background: linear-gradient(90deg, #5fcf6a, #9be15d); transition: width .18s; }
-.inv-state[data-hp="mid"] .inv-hpbar i { background: linear-gradient(90deg, #f0b429, #f5d04a); }
-.inv-state[data-hp="low"] .inv-hpbar i { background: linear-gradient(90deg, #e0463a, #f06a4a); }
-.inv-state[data-hp="low"] .inv-hp b { color: #ff7a6b; animation: hp-pulse 1s ease-in-out infinite; }
-.inv-kd { display: flex; gap: 18px; }
-.inv-kd span { display: grid; gap: 2px; }
-.inv-kd b { font: 700 18px/1 var(--f-display); font-variant-numeric: tabular-nums; }
-.inv-kd small { font: 600 8.5px/1 var(--f-body); letter-spacing: .14em; text-transform: uppercase; color: rgba(255, 255, 255, .45); }
-.inv-total { display: flex; align-items: baseline; gap: 6px; border-top: 1px solid var(--glass-line); padding-top: 8px; }
-.inv-total b { font: 700 16px/1 var(--f-display); font-variant-numeric: tabular-nums; color: var(--warn); }
-.inv-total small { font: 500 10.5px/1 var(--f-body); color: rgba(255, 255, 255, .45); }
-.inv-note { display: block; font: 400 11.5px/1.5 var(--f-body); color: rgba(255, 255, 255, .45); border-top: 1px solid var(--glass-line); padding-top: 10px; }
-@media (max-width: 980px) { .inv-guns { grid-template-columns: repeat(2, minmax(0, 1fr)); } .inv-pack { grid-template-columns: repeat(4, minmax(0, 1fr)); } .inv-low { grid-template-columns: 1fr; } }
-@media (max-width: 560px) {
-  #mpInv .panel { padding: 0 14px 14px; }
-  #mpInv header { margin: 0 -14px; padding: 12px 14px 10px; }
-  .inv-guns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .inv-pack { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .inv-items { grid-template-columns: 1fr; }
-  .inv-me { display: none; }
-  .inv-ammo b { font-size: 20px; }
-  .inv-head small { display: none; }
+.inv-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.inv-sec h3 { margin: 0; font: 600 11.5px/1 var(--f-body); letter-spacing: .18em; text-transform: uppercase; color: var(--warn); }
+.inv-head small { font: 500 11.5px/1 var(--f-body); color: rgba(255, 255, 255, .42); font-variant-numeric: tabular-nums; }
+
+/* a slot: a dark cell; a filled one glows faintly in the colour of its kind, with a line of it at the bottom */
+.inv-slot { --tone: 200, 206, 214; position: relative; box-sizing: border-box; min-width: 0; padding: 0; border-radius: 8px; border: 1px solid rgba(255, 255, 255, .1); background: linear-gradient(180deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, .02)); color: #fff; font: inherit; text-align: left; -webkit-user-select: none; user-select: none; transition: border-color .12s, box-shadow .12s, opacity .12s; }
+.inv-slot[role="button"], button.inv-slot { cursor: pointer; }
+.inv-slot[role="button"]:hover, button.inv-slot:hover { border-color: rgba(240, 180, 41, .65); }
+.inv-slot:focus-visible { outline: 2px solid var(--warn); outline-offset: 1px; }
+[data-kind="gun"] { --tone: 214, 192, 146; } [data-kind="nade"] { --tone: 150, 176, 104; } [data-kind="smoke"] { --tone: 168, 188, 204; }
+[data-kind="napalm"] { --tone: 255, 122, 58; } [data-kind="med"] { --tone: 236, 88, 74; } [data-kind="sight"] { --tone: 255, 110, 96; } [data-kind="optic"] { --tone: 127, 178, 255; }
+.inv-c.filled, .inv-b { background: radial-gradient(circle at 50% 55%, rgba(var(--tone), .2), transparent 70%), linear-gradient(180deg, rgba(255, 255, 255, .055), rgba(255, 255, 255, .02)); box-shadow: inset 0 -2px 0 rgba(var(--tone), .5); }
+.inv-pic { position: relative; display: grid; place-items: center; min-width: 0; min-height: 0; pointer-events: none; }
+.inv-pic img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .5)); }   /* the box of the picture is the slot's: never over the name under it */
+.inv-pic svg { width: 66%; height: 66%; fill: none; stroke: rgba(255, 255, 255, .78); stroke-width: 1.6; }
+.inv-pic.gun svg { width: 100%; height: 100%; fill: rgba(255, 255, 255, .72); stroke: none; }
+.inv-key { position: absolute; left: 5px; top: 5px; z-index: 1; padding: 2px 5px; border-radius: 4px; background: rgba(0, 0, 0, .5); color: rgba(255, 255, 255, .8); font: 700 10px/1 var(--f-body); pointer-events: none; }
+.inv-key:empty { display: none; }
+
+/* the two gun slots: the picture, the name and the rounds, the magazine as a line at the bottom, the sight slot at the side */
+.inv-ws { display: grid; gap: 8px; }
+.inv-w { display: grid; grid-template-columns: minmax(0, 1fr) 56px; grid-template-rows: 68px auto; gap: 4px 10px; padding: 8px 10px 13px; }
+.inv-w > .inv-pic { grid-area: 1 / 1; height: 68px; }
+.inv-w > .inv-pic.gun svg { width: auto; max-width: 100%; height: 80%; }
+.inv-w-line { grid-area: 2 / 1; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+.inv-w-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 14px/1.1 var(--f-body); }
+.inv-w-ammo { white-space: nowrap; font: 700 14px/1 var(--f-display); font-variant-numeric: tabular-nums; color: rgba(255, 255, 255, .88); }
+.inv-w-ammo[data-st="low"] { color: var(--warn); }
+.inv-w-ammo[data-st="empty"] { color: #ff7a6b; }
+.inv-w-ammo[data-st="rl"] { font: 700 9.5px/1 var(--f-body); letter-spacing: .1em; text-transform: uppercase; color: var(--warn); }
+.inv-w .inv-att { grid-area: 1 / 2 / 3 / 3; align-self: center; width: 56px; height: 56px; }
+.inv-att > .inv-pic { width: 100%; height: 100%; }
+.inv-att > .inv-pic img { inset: 7%; width: 86%; height: 86%; }
+.inv-att:not(.filled) { border-style: dashed; background: rgba(255, 255, 255, .02); }
+.inv-att:not(.filled) svg { width: 52%; height: 52%; stroke: rgba(255, 255, 255, .28); }
+.inv-att.filled { background: radial-gradient(circle, rgba(127, 178, 255, .16), transparent 70%), rgba(255, 255, 255, .04); }
+.inv-w-mag { position: absolute; left: 10px; right: 76px; bottom: 5px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .1); overflow: hidden; pointer-events: none; }
+.inv-w-mag i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; background: rgba(255, 255, 255, .5); }
+.inv-w-mag i.rl { width: 0; background: var(--warn); }
+.inv-w.on .inv-w-mag i { background: linear-gradient(90deg, #ffd27a, #f0b429); }
+.inv-w.reloading .inv-w-mag i:not(.rl) { opacity: 0; }
+.inv-hand { position: absolute; top: 7px; right: 74px; z-index: 1; padding: 3px 7px; border-radius: 999px; background: var(--warn); color: #1a1206; font: 700 9px/1 var(--f-body); letter-spacing: .14em; text-transform: uppercase; visibility: hidden; pointer-events: none; }
+.inv-w.on { border-color: rgba(240, 180, 41, .75); background: linear-gradient(180deg, rgba(240, 180, 41, .13), rgba(240, 180, 41, .04)); box-shadow: 0 0 16px rgba(240, 180, 41, .16); }
+.inv-w.on .inv-hand { visibility: visible; }
+.inv-w.on > .inv-pic.gun svg { fill: var(--warn); }
+
+/* the vest: four pockets, each a stack with its key and its count */
+.inv-belt { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.inv-b { aspect-ratio: 1; }
+.inv-b > .inv-pic { position: absolute; inset: 8px 8px 15px; }
+.inv-cnt { position: absolute; right: 6px; bottom: 5px; font: 700 13px/1 var(--f-display); font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgba(0, 0, 0, .8); pointer-events: none; }
+.inv-b.empty { box-shadow: none; background: rgba(255, 255, 255, .02); }
+.inv-b.empty > .inv-pic { opacity: .25; filter: grayscale(1); }
+.inv-b.empty .inv-cnt { color: rgba(255, 255, 255, .4); }
+
+/* the backpack: a grid of square cells in three rows (--cols from inventory.js: ten to a row for 30 cells) */
+.inv-pack { display: grid; grid-template-columns: repeat(var(--cols, 10), minmax(0, 1fr)); gap: 6px; }
+.inv-c { aspect-ratio: 1; }
+.inv-c > .inv-pic { position: absolute; inset: 7px 7px 16px; }
+.inv-c[data-kind="gun"] > .inv-pic { inset: 8px 3px 15px; }
+.inv-lbl { position: absolute; left: 2px; right: 2px; bottom: 3px; overflow: hidden; text-align: center; text-overflow: ellipsis; white-space: nowrap; font: 600 9.5px/1 var(--f-body); font-variant-numeric: tabular-nums; color: rgba(255, 255, 255, .72); text-shadow: 0 0 3px #000, 0 1px 2px #000; pointer-events: none; }
+.inv-c.empty { border-style: dashed; border-color: rgba(255, 255, 255, .08); background: rgba(255, 255, 255, .015); }
+
+/* the card of the pointed thing: its picture, what it is, its numbers and what a click does */
+.inv-card { box-sizing: border-box; display: grid; grid-template-columns: 150px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 8px 16px; height: 158px; padding: 13px 16px 10px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, .1); background: rgba(0, 0, 0, .24); overflow: hidden; }
+.inv-card-pic { grid-area: 1 / 1; align-self: center; height: 96px; }
+.inv-card-pic svg { width: 64px; height: 64px; }
+.inv-card-pic.gun svg { width: 100%; height: auto; }
+.inv-card-pic.none { border: 1px dashed rgba(255, 255, 255, .12); border-radius: 7px; }
+.inv-card-txt { grid-area: 1 / 2; display: grid; gap: 7px; align-content: start; min-width: 0; }
+.inv-card-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.inv-card-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 17px/1.1 var(--f-display); }
+.inv-card-tag { flex: none; font: 600 10px/1 var(--f-body); letter-spacing: .14em; text-transform: uppercase; color: rgba(255, 255, 255, .45); }
+.inv-card-tag[data-on="1"] { color: var(--warn); }
+.inv-card-p { margin: 0; font: 400 13px/1.4 var(--f-body); color: rgba(255, 255, 255, .7); }
+.inv-card-hint { grid-area: 2 / 1 / 3 / 3; overflow: hidden; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, .08); text-overflow: ellipsis; white-space: nowrap; font: 500 12.5px/1.3 var(--f-body); color: var(--warn); }
+.inv-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.inv-st { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 6px; align-items: center; }
+.inv-st small { grid-area: 1 / 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 9.5px/1 var(--f-body); letter-spacing: .1em; text-transform: uppercase; color: rgba(255, 255, 255, .45); }
+.inv-st b { grid-area: 1 / 2; text-align: right; white-space: nowrap; font: 600 12px/1 var(--f-body); font-variant-numeric: tabular-nums; color: rgba(255, 255, 255, .88); }
+.inv-st .inv-bar { grid-area: 2 / 1 / 3 / 3; display: block; height: 5px; border-radius: 2px; background: rgba(255, 255, 255, .1); overflow: hidden; }   /* not 'bar': that class belongs to the bottom button bar */
+.inv-st .inv-bar i { display: block; height: 100%; border-radius: 2px; background: var(--warn); }
+.inv-help { grid-column: 1 / -1; padding-top: 10px; border-top: 1px solid var(--glass-line); text-align: center; font: 500 12px/1.3 var(--f-body); color: rgba(255, 255, 255, .4); }
+
+/* a drag: the picture follows the pointer, the slots that take it light up green */
+.inv-ghost { position: fixed; left: 0; top: 0; z-index: 100; pointer-events: none; }
+.inv-ghost > .inv-pic { width: 76px; height: 76px; margin: -38px 0 0 -38px; opacity: .92; }
+.inv-ghost > .inv-pic.gun { width: 180px; height: 56px; margin: -28px 0 0 -90px; }
+#mpInv.dragging, #mpInv.dragging .inv-slot { cursor: grabbing; }
+.inv-slot.dragging { opacity: .35; }
+.inv-slot.drop-can { border-color: rgba(126, 224, 143, .55); }
+.inv-slot.drop-ok { border-color: #7ee08f; box-shadow: 0 0 0 1px #7ee08f inset, 0 0 14px rgba(126, 224, 143, .35); }
+.inv-slot.drop-no { border-color: rgba(255, 122, 107, .55); }
+
+@media (min-width: 781px) and (max-height: 820px) { #mpInv .panel { width: min(1160px, 100%); } }   /* a lower screen: smaller cells, still no scrolling */
+@media (min-width: 781px) and (max-height: 700px) { #mpInv .panel { width: min(1000px, 100%); } }
+@media (max-width: 780px) {
+  #mpInvBody { grid-template-columns: minmax(0, 1fr); }
+  .inv-ws { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .inv-belt { grid-template-columns: repeat(4, minmax(0, 76px)); }
 }
-@media (prefers-reduced-motion: reduce) { .inv-gun, .inv-hpbar i { transition: none; } .inv-state[data-hp="low"] .inv-hp b { animation: none; } }
+@media (max-width: 560px) {
+  #mpInv .panel { padding: 0 12px 12px; }
+  #mpInv header { margin: 0 -12px; padding: 10px 12px; }
+  #mpInv header h2 { font-size: 16px; }
+  .inv-w { grid-template-columns: minmax(0, 1fr) 48px; grid-template-rows: 54px auto; }
+  .inv-w > .inv-pic { height: 54px; }
+  .inv-w .inv-att { width: 48px; height: 48px; }
+  .inv-hand { right: 64px; }
+  .inv-w-mag { right: 68px; }
+  .inv-nick, .inv-me .kd, .inv-hpbar, #mpInv .btn kbd { display: none; }
+  .inv-ws { grid-template-columns: minmax(0, 1fr); }
+  .inv-pack { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
+  .inv-lbl, .inv-c .inv-key { display: none; }
+  .inv-c > .inv-pic, .inv-c[data-kind="gun"] > .inv-pic { inset: 3px; }
+  .inv-card { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 120px; }
+  .inv-card-pic { display: none; }
+  .inv-card-txt { grid-area: auto; }
+  .inv-card-hint { grid-area: auto; white-space: normal; }
+  .inv-stats { gap: 8px; }
+  .inv-help { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .inv-slot, .inv-hpbar i { transition: none; } .inv-hp[data-hp="low"] b { animation: none; } }
 .mp-itemhint { position: fixed; left: 50%; bottom: 132px; transform: translateX(-50%); z-index: 6; background: var(--glass); border: 1px solid var(--glass-line); padding: 6px 12px; border-radius: 8px; font: 600 13px/1.3 var(--f-body); color: #fff; pointer-events: none; }
 .mp-itemhint[hidden] { display: none; }
 .mp-stat small { grid-column: auto; font: 500 11px/1.3 var(--f-body); opacity: .6; } .mp-stat .mp-hp { min-width: 0; width: 100%; }

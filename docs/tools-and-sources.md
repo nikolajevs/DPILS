@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Claude | claude/inventory-ui-redesign-c880fb | Окно инвентаря: компактная сетка слотов, предметы в ячейках | src/game/inventory.js, src/style.css (блок инвентаря), index.html (#mpInv) |
 
 ## Автономный цикл улучшений
 

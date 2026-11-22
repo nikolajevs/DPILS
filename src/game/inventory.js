@@ -7,6 +7,7 @@ import { worldSpace } from '../render/world-space.js';
 import { addMover } from '../render/lamp-shadows.js';
 import { $ } from '../core/env.js';
 import { prop, onProps } from './props.js';
+import { makePics, onPic, picUrl } from './inv-icons.js';
 
 /* ---------- the inventory ----------
    The server owns what a player carries (server/game.mjs: magazines, reserve, grenades, med kits); this module draws
@@ -23,7 +24,7 @@ const KINDS = {
   optic: { name: 'Оптика 8x', color: 0x7fb2ff, hint: 'дальний зум с сеткой — хранится в рюкзаке, ставится на оружие' },
 };
 const items = new Map();   // id → { kind, group, baseY, active }
-let cb = { useMed: () => {}, switchWeapon: () => {}, ready: () => {}, attach: () => {}, beep: () => {} };
+let cb = { useMed: () => {}, switchWeapon: () => {}, swap: () => {}, ready: () => {}, attach: () => {}, nade: () => {}, beep: () => {} };
 const bindInv = f => { cb = f; };
 
 /* ---------- the items on the map ---------- */
@@ -89,12 +90,20 @@ function tickItems(dt, now) {
   else if (!hint.hidden) hint.hidden = true;
 }
 
+
 /* ---------- the panel (I) ----------
-   A tactical glass card in the look of the arena console: five weapon cards with silhouettes, the magazine drawn
-   round by round and the combat stats of each gun; the grenades and the med kits with their pips; the condition of
-   the player. The structure is built once per opening; renderInv repaints the values in place (it comes on every
-   state change and once a second), invTick animates the reload bar of the gun that is reloading every frame. */
-// silhouettes in the order of WEAPONS in mp.js: the AK, the shotgun, the SVD, the pistol, the machine gun
+   An inventory as in an ordinary shooter: everything the player owns lies in a slot as a picture of itself (the model,
+   shot once — inv-icons.js; the SVG stands in until then). On the left the equipment: the two guns on the player, each
+   with a slot for its sight, and the vest — four pockets of the ready belt (frag, smoke, napalm, med kits) with the
+   count of each. On the right the backpack, a grid of cells (guns and stored items), and under it the card of the thing
+   under the pointer (the gun in hand while nothing is pointed at). A click (or the right button) uses the thing: a gun
+   goes to the hands (from the pack it changes places with the gun in hand), a stored med kit or grenade goes to its
+   pocket, a stored sight onto the gun in hand, a mounted sight back to the pack, a med kit heals, a grenade comes to the
+   hand to be thrown. A drag puts it where it is dropped: a pack gun into the chosen gun slot, a sight onto the chosen
+   gun, a stored grenade into its pocket. The server owns the contents (server/game.mjs); mp.js passes them and the
+   actions through bindInv. The slots are built once per opening; renderInv repaints them in place on every change,
+   invTick moves the reload bar every frame. */
+// silhouettes in the order of WEAPONS in mp.js: the AK, the shotgun, the SVD, the pistol, the machine gun, the M4A1, the SCAR-L, the AR-15
 const SLOT_SVG = [
   '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="24" y="9" width="14" height="2"/><rect x="8" y="8" width="17" height="5"/><polygon points="1,9 8,8 8,13 3,14"/><polygon points="14,13 19,13 17,19 13,19"/><polygon points="20,13 23,13 22,17 19,17"/><rect x="26" y="7" width="2" height="2"/></svg>',
   '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="14" y="9" width="24" height="2.5"/><rect x="18" y="11.5" width="7" height="3"/><polygon points="1,9 14,9 14,13 4,15"/><rect x="10" y="8.5" width="8" height="4"/></svg>',
@@ -105,287 +114,375 @@ const SLOT_SVG = [
   '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="25" y="9" width="13" height="2"/><rect x="9" y="7.5" width="17" height="5.5"/><polygon points="1,7 9,7.5 9,14 3,15"/><rect x="9" y="6" width="17" height="1.5"/><path d="M14 13h4l-1.5 6h-3z"/><polygon points="20,13 23,13 22,17 19,17"/><rect x="11" y="13" width="3" height="4"/></svg>',   // SCAR-L: the tall butt, the full-length top rail, the curved magazine
   '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="25" y="9" width="13" height="2"/><rect x="9" y="8" width="17" height="5"/><polygon points="1,8 9,8 9,14 2,15"/><rect x="12" y="5" width="7" height="3"/><polygon points="14,13 18,13 17,19 13,19"/><polygon points="20,13 23,13 22,17 19,17"/><rect x="27" y="7" width="2" height="2"/></svg>',   // AR-15: the fixed stock, the ACOG hump, the straight magazine
 ];
-const NADE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="14" r="7"/><path d="M10 7h4v3h-4zM14 5l3-2"/></svg>';
-const MED_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M12 10v6M9 13h6M9 6V4h6v2"/></svg>';
-const NADE_INFO = 'до 100 урона · радиус 8 м · задержка 2,5 с';   // keep server/combat.mjs NADE in step
-const SMOKE_INFO = 'завеса 12 с · радиус 6 м · скрывает от врага';   // keep server/combat.mjs SMOKE in step
-const NAPALM_INFO = 'огонь 8 с · радиус 4 м · 30 урона/с';   // keep server/combat.mjs NAPALM in step
-const SMOKE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="9" width="8" height="11" rx="1.5"/><path d="M10 9V7h4v2M12 7V5"/><path d="M5 5c1-1 2-1 3 0M16 4c1-1 2-1 3 0"/></svg>';
-const NAPALM_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="9" width="8" height="11" rx="1.5"/><path d="M10 9V7h4v2M12 7V5"/><path d="M12 12c1.6 1.4 2 2.6 0 4-2-1.4-1.6-2.6 0-4z"/></svg>';
-const AMMO_GIVE = [30, 8, 5, 12, 50, 30, 30, 30];   // keep server/combat.mjs INV ammo.give in step
-const SIGHT_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18h14v2H5zM6 8h2v10H6zM16 8h2v10h-2zM6 6h12v2H6z"/><circle cx="12" cy="12" r="1.6"/></svg>';
-const OPTIC_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="9" width="18" height="5" rx="2.5"/><rect x="6" y="14" width="3" height="5"/><rect x="15" y="14" width="3" height="5"/><rect x="10" y="6" width="4" height="3"/></svg>';
-const ITEM_SVG = { nade: NADE_SVG, smoke: SMOKE_SVG, napalm: NAPALM_SVG, med: MED_SVG, sight: SIGHT_SVG, optic: OPTIC_SVG };   // a stored item in a pack cell (stroke icons, unlike the gun silhouettes)
+const ITEM_SVG = {   // stroke icons of the items (the gun silhouettes are filled)
+  nade: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="14" r="7"/><path d="M10 7h4v3h-4zM14 5l3-2"/></svg>',
+  smoke: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="9" width="8" height="11" rx="1.5"/><path d="M10 9V7h4v2M12 7V5"/><path d="M5 5c1-1 2-1 3 0M16 4c1-1 2-1 3 0"/></svg>',
+  napalm: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="9" width="8" height="11" rx="1.5"/><path d="M10 9V7h4v2M12 7V5"/><path d="M12 12c1.6 1.4 2 2.6 0 4-2-1.4-1.6-2.6 0-4z"/></svg>',
+  med: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M12 10v6M9 13h6M9 6V4h6v2"/></svg>',
+  sight: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18h14v2H5zM6 8h2v10H6zM16 8h2v10h-2zM6 6h12v2H6z"/><circle cx="12" cy="12" r="1.6"/></svg>',
+  optic: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="9" width="18" height="5" rx="2.5"/><rect x="6" y="14" width="3" height="5"/><rect x="15" y="14" width="3" height="5"/><rect x="10" y="6" width="4" height="3"/></svg>',
+  '-sight': '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5.5"/><path d="M12 3v5M12 16v5M3 12h5M16 12h5"/></svg>',   // the empty sight slot
+};
+// what each thing does (keep server/combat.mjs NADE, SMOKE, NAPALM, INV in step)
+const ABOUT = {
+  nade: 'Осколочная M67: до 100 урона в радиусе 8 м, взрыв через 2,5 с. По своим урона нет, по себе — вполовину.',
+  smoke: 'Дымовая M18: завеса радиусом 6 м на 12 с — скрывает и от игроков, и от ботов. Урона нет.',
+  napalm: 'Зажигательная AN-M14: огонь радиусом 4 м на 8 с, 30 урона в секунду всем, кто стоит в огне.',
+  med: 'Лечит 50 HP. Между двумя аптечками — 0,8 с.',
+  sight: 'Красная точка: ПКМ поднимает ствол к прицелу, разброс втрое меньше; Shift в прицеле — короткий зум.',
+  optic: 'Зум 8× с сеткой: ПКМ — прицел, колесо мыши меняет кратность 4–8×; точно только стоя на месте.',
+};
+const SHORT = { nade: 'Граната', smoke: 'Дым', napalm: 'Напалм', med: 'Аптечка', sight: 'Коллиматор', optic: 'Оптика 8×' };
+const BELT = ['nade', 'smoke', 'napalm', 'med'];
+const BELT_NAME = { nade: 'Осколочная граната', smoke: 'Дымовая граната', napalm: 'Напалм', med: 'Аптечка' };
 const gunTag = w => (w.pellets > 1 ? w.pellets + ' дробин за выстрел' : w.scope ? 'встроенная оптика' : w.auto ? 'автоматический огонь' : 'одиночный огонь');
 const fmt1 = x => (Math.round(x * 10) / 10).toString().replace('.', ',');
 const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-const kbd = key => mk('kbd', '', key);
+const isGun = it => !!it && typeof it.i === 'number';
+const isSight = k => k === 'sight' || k === 'optic';
 
 const box = $('mpInv'), body = $('mpInvBody'), meChip = $('mpInvMe');
-let open = false, data = null, refs = null, builtLoadout = '';
+let open = false, data = null, refs = null, hov = null, drag = null, eatClick = false, cardSig = '';
 
+// the counts of the ready belt and what the player carries
+const beltN = k => Math.max(0, (k === 'nade' ? data.nades : k === 'smoke' ? data.smokes : k === 'napalm' ? data.napalms : data.meds) || 0);
+const beltMax = k => (k === 'med' ? data.medMax : data.nadeMax);
+const beltKey = k => (k === 'nade' ? data.nadeKey : k === 'smoke' ? data.smokeKey : k === 'napalm' ? data.napalmKey : data.medKey);
+const packN = k => (data.pack || []).filter(it => it && it.kind === k).length;
+const allGuns = () => data.weapons.concat((data.pack || []).filter(isGun));
+
+/* a picture in a slot: the shot model once it is ready, the SVG until then; '' empties the slot */
+function setPic(el, key) {
+  const url = key ? picUrl(key) : null, sig = key + (url ? '+' : '');
+  if (el.dataset.sig === sig) return;
+  el.dataset.sig = sig; el.dataset.pic = key;
+  el.classList.toggle('gun', key[0] === 'g'); el.classList.toggle('real', !!url);
+  if (!key) el.textContent = '';
+  else if (url) { const im = new Image(); im.alt = ''; im.draggable = false; im.decoding = 'async'; im.src = url; el.replaceChildren(im); }
+  else el.innerHTML = key[0] === 'g' ? SLOT_SVG[+key.slice(1)] : ITEM_SVG[key];
+}
+onPic(key => { if (!refs) return; for (const el of box.querySelectorAll('.inv-pic')) if (el.dataset.pic === key) setPic(el, key); cardSig = ''; showCard(); });
+
+/* what lies in a slot: z is the zone ('w' a gun slot, 'att' its sight slot, 'belt' a pocket, 'pack' a backpack cell) */
+function thing(z, i) {
+  if (!data) return null;
+  if (z === 'w' || z === 'att') { const w = data.weapons[i]; return w ? { t: z === 'w' ? 'gun' : 'att', w, s: i, kind: w.attach, where: 'w' } : null; }
+  if (z === 'belt') return BELT.includes(i) ? { t: 'belt', kind: i } : null;
+  if (z === 'pack') { const it = (data.pack || [])[i]; return !it ? { t: 'empty', c: i } : isGun(it) ? { t: 'gun', w: it, c: i, where: 'pack' } : { t: 'item', kind: it.kind, c: i }; }
+  return null;
+}
+const idx = el => (el.dataset.z === 'belt' ? el.dataset.i : +el.dataset.i);
+
+/* ---------- what a click does ---------- */
+function act(z, i) {
+  const x = thing(z, i); if (!x) return;
+  if (x.t === 'gun') cb.switchWeapon(x.w.i);   // in hand; from the pack it changes places with the gun in hand
+  else if (x.t === 'att') {
+    if (x.kind) cb.attach(x.w.i, null);   // the mounted sight back to the pack
+    else { const it = (data.pack || []).find(p => p && isSight(p.kind)); if (it) cb.attach(x.w.i, it.kind); }
+  } else if (x.t === 'belt') {
+    if (beltN(x.kind) <= 0) return;
+    if (x.kind === 'med') { if (data.hp < 100) { cb.useMed(); cb.beep('med'); } }
+    else cb.nade(x.kind);   // the grenade to the hand: the panel closes, the mouse aims the throw
+  } else if (x.t === 'item') {
+    if (isSight(x.kind)) { const held = data.weapons.find(w => w.on); if (held) cb.attach(held.i, x.kind); }
+    else cb.ready(x.kind);
+  }
+}
+/* ---------- what a drop does: the action, or null where the thing cannot go ---------- */
+function dropAct(src, z, i) {
+  const a = thing(src.z, src.i); if (!a || (z === src.z && i === src.i)) return null;
+  if (z === 'att' && a.t === 'gun') z = 'w';   // a gun dropped on the sight slot means the gun slot
+  const b = thing(z, i); if (!b) return null;
+  const free = (data.pack || []).includes(null);
+  if (a.t === 'gun' && a.where === 'pack' && z === 'w') return () => cb.swap(a.w.i, i);
+  if (a.t === 'gun' && a.where === 'w' && b.t === 'gun' && b.where === 'pack') return () => cb.swap(b.w.i, src.i);
+  if (a.t === 'item' && isSight(a.kind) && (z === 'w' || z === 'att')) { const w = data.weapons[i]; return w.attach === a.kind ? null : () => cb.attach(w.i, a.kind); }
+  if (a.t === 'att' && a.kind && z === 'pack' && free) return () => cb.attach(a.w.i, null);
+  if (a.t === 'att' && a.kind && (z === 'w' || z === 'att') && i !== src.i && free) { const w = data.weapons[i]; return () => { cb.attach(a.w.i, null); cb.attach(w.i, a.kind); }; }
+  if (a.t === 'item' && z === 'belt' && a.kind === i && beltN(i) < beltMax(i)) return () => cb.ready(i);
+  return null;
+}
+const canDrag = (z, i) => { const x = thing(z, i); return !!x && (x.t === 'gun' || x.t === 'item' || (x.t === 'att' && !!x.kind)); };
+
+/* ---------- the structure: built once per opening ---------- */
 function build() {
-  if (!data) return;
   body.textContent = '';
-  const R = { guns: [], pack: [], nade: {}, smoke: {}, napalm: {}, med: {}, hp: {}, kd: {} };
-  // the weapons: a card each for the two equipped guns, the click takes the gun in hand
-  const wsec = mk('section', 'inv-sec');
-  const whead = mk('div', 'inv-head');
-  whead.append(mk('h3', '', 'Оружие · 2 слота'), mk('small', '', 'щелчок по карточке или её клавиша — взять в руки · ' + data.reloadKey + ' — перезарядка'));
-  wsec.append(whead);
-  const guns = mk('div', 'inv-guns');
-  const maxDmg = Math.max(...data.weapons.map(w => w.dmg * w.pellets));
-  const maxRate = Math.max(...data.weapons.map(w => 60000 / w.gapMs));
-  const maxRange = Math.max(...data.weapons.map(w => w.range));
-  data.weapons.forEach((w, i) => {
-    const c = mk('div', 'inv-gun'); c.setAttribute('role', 'button'); c.tabIndex = 0;   // a div, not a button: the sight buttons live inside
-    c.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cb.switchWeapon(w.i); } };
-    const top = mk('span', 'inv-top'); top.append(kbd(w.key), mk('b', 'inv-hand', 'в руках'));
-    const sil = mk('span', 'inv-sil'); sil.innerHTML = SLOT_SVG[w.i];
-    const ammo = mk('span', 'inv-ammo');
-    const magN = mk('b', '', '0'), resN = mk('span', '', '/ 0'); ammo.append(magN, resN);
-    const mag = mk('span', 'inv-mag' + (w.magSize > 30 ? ' cont' : ''));
-    const pips = []; let fill = null;
-    if (w.magSize > 30) { fill = mk('i'); mag.append(fill); }   // the machine gun's hundred rounds: one continuous bar
-    else for (let k = 0; k < w.magSize; k++) { const p = mk('i'); mag.append(p); pips.push(p); }
-    const rl = mk('span', 'inv-rl'), rlFill = mk('i'); rl.append(rlFill);
-    const rlText = mk('small', 'inv-rlt', 'перезарядка');
-    const stats = mk('span', 'inv-stats');
+  const R = { w: [], belt: {}, pack: [] };
+  const sec = (title, note) => {
+    const s = mk('section', 'inv-sec'), h = mk('div', 'inv-head');
+    h.append(mk('h3', '', title)); if (note) h.append(note); s.append(h); return s;
+  };
+  const slot = (tag, cls, z, i) => { const e = mk(tag, 'inv-slot ' + cls); e.dataset.z = z; e.dataset.i = i; return e; };
+  // the left: the two guns on the player with their sight slots, and the ready belt
+  const left = mk('div', 'inv-col inv-eq');
+  const wsec = sec('Оружие', mk('small', '', 'на игроке')), ws = mk('div', 'inv-ws');
+  for (let s = 0; s < 2; s++) {
+    const c = slot('div', 'inv-w', 'w', s); c.setAttribute('role', 'button'); c.tabIndex = 0;
+    const key = mk('kbd', 'inv-key'), hand = mk('b', 'inv-hand', 'в руках'), pic = mk('span', 'inv-pic');
+    const nm = mk('b', 'inv-w-name'), ammo = mk('span', 'inv-w-ammo'), line = mk('span', 'inv-w-line'); line.append(nm, ammo);
+    const mag = mk('span', 'inv-w-mag'), magF = mk('i'), rlF = mk('i', 'rl'); mag.append(magF, rlF);
+    const att = slot('button', 'inv-att', 'att', s); att.type = 'button';
+    const attPic = mk('span', 'inv-pic'); att.append(attPic);
+    c.append(key, hand, pic, line, att, mag);
+    ws.append(c);
+    R.w.push({ c, key, pic, nm, ammo, magF, rlF, att, attPic });
+  }
+  wsec.append(ws);
+  const bsec = sec('Разгрузка', mk('small', '', 'готово к бою'));
+  const belt = mk('div', 'inv-belt');
+  for (const k of BELT) {
+    const c = slot('div', 'inv-b', 'belt', k); c.setAttribute('role', 'button'); c.tabIndex = 0; c.dataset.kind = k;
+    const key = mk('kbd', 'inv-key'), pic = mk('span', 'inv-pic'), cnt = mk('b', 'inv-cnt');
+    c.append(key, pic, cnt); belt.append(c);
+    R.belt[k] = { c, key, pic, cnt };
+  }
+  bsec.append(belt);
+  left.append(wsec, bsec);
+  // the right: the backpack and the card of the thing under the pointer
+  const right = mk('div', 'inv-col inv-bag');
+  const fill = mk('small', 'inv-fill');
+  const psec = sec('Рюкзак', fill);
+  const grid = mk('div', 'inv-pack');
+  grid.style.setProperty('--cols', Math.max(1, Math.ceil((data.pack || []).length / 3)));   // three rows: 30 cells are ten to a row
+  for (let n = 0; n < (data.pack || []).length; n++) {
+    const c = slot('div', 'inv-c', 'pack', n);
+    const key = mk('kbd', 'inv-key'), pic = mk('span', 'inv-pic'), lbl = mk('small', 'inv-lbl');
+    c.append(key, pic, lbl); grid.append(c);
+    R.pack.push({ c, key, pic, lbl });
+  }
+  psec.append(grid);
+  R.card = mk('div', 'inv-card'); R.card.setAttribute('aria-live', 'polite');
+  R.fill = fill;
+  right.append(psec, R.card);
+  R.help = mk('div', 'inv-help');
+  body.append(left, right, R.help);
+  // the header: who, the score and the health
+  meChip.textContent = '';
+  R.dot = mk('i', 'dot'); R.name = mk('b', 'inv-nick'); R.kd = mk('span', 'kd');
+  R.hp = mk('span', 'inv-hp'); R.hpN = mk('b'); const hpBar = mk('span', 'inv-hpbar'); R.hpF = mk('i'); hpBar.append(R.hpF);
+  R.hp.append(mk('small', '', 'HP'), R.hpN, hpBar);
+  meChip.append(R.dot, R.name, R.kd, R.hp);
+  refs = R; cardSig = '';
+}
+
+/* ---------- the values, repainted in place ---------- */
+function paint() {
+  if (!data || !refs) return;
+  const R = refs, pk = data.pack || [];
+  if (R.pack.length !== pk.length) { build(); return paint(); }
+  data.weapons.forEach((w, s) => {
+    const r = R.w[s]; if (!r) return;
+    const reloading = data.reloadW === s;
+    r.c.classList.toggle('on', w.on); r.c.classList.toggle('reloading', reloading);
+    r.c.setAttribute('aria-pressed', w.on ? 'true' : 'false');
+    r.c.setAttribute('aria-label', w.name + (w.on ? ', в руках' : ', взять в руки — ' + w.key));
+    r.key.textContent = w.key;
+    setPic(r.pic, 'g' + w.i);
+    r.nm.textContent = w.name;
+    r.ammo.textContent = reloading ? 'перезарядка' : w.mag + ' / ' + w.reserve;
+    r.ammo.dataset.st = reloading ? 'rl' : w.mag === 0 ? 'empty' : w.mag <= w.magSize * 0.25 ? 'low' : '';
+    r.magF.style.width = (w.mag / w.magSize * 100).toFixed(1) + '%';
+    if (!reloading) r.rlF.style.width = '0';
+    r.att.classList.toggle('filled', !!w.attach);
+    setPic(r.attPic, w.attach || '-sight');
+    r.att.setAttribute('aria-label', w.attach ? SHORT[w.attach] + ' на оружии — снять в рюкзак' : 'Слот прицела — пуст');
+  });
+  for (const k of BELT) {
+    const r = R.belt[k], n = beltN(k);
+    r.key.textContent = beltKey(k);
+    r.cnt.textContent = '×' + n;
+    r.c.classList.toggle('empty', n <= 0);
+    r.c.setAttribute('aria-label', BELT_NAME[k] + ': ' + n + ' из ' + beltMax(k));
+    setPic(r.pic, k);
+  }
+  R.pack.forEach((r, n) => {
+    const it = pk[n];
+    r.c.classList.toggle('filled', !!it); r.c.classList.toggle('empty', !it);
+    r.c.dataset.kind = !it ? '' : isGun(it) ? 'gun' : it.kind;
+    if (it) { r.c.setAttribute('role', 'button'); r.c.tabIndex = 0; r.c.setAttribute('aria-label', it.name); }
+    else { r.c.removeAttribute('role'); r.c.tabIndex = -1; r.c.removeAttribute('aria-label'); }
+    setPic(r.pic, !it ? '' : isGun(it) ? 'g' + it.i : it.kind);
+    r.key.textContent = isGun(it) ? it.key : '';
+    r.lbl.textContent = !it ? '' : isGun(it) ? it.mag + '/' + it.reserve : SHORT[it.kind];
+  });
+  R.fill.textContent = pk.filter(Boolean).length + ' / ' + pk.length;
+  R.dot.className = 'dot ' + (data.ffa ? 'tf' : 't' + data.team);
+  R.name.textContent = data.name || 'Вы';
+  R.kd.textContent = data.kills + ' · ' + data.deaths; R.kd.title = 'убийства · смерти';
+  const hp = Math.max(0, Math.ceil(data.hp));
+  R.hpN.textContent = hp; R.hpF.style.width = Math.max(0, Math.min(100, data.hp)) + '%';
+  R.hp.dataset.hp = data.hp <= 25 ? 'low' : data.hp <= 60 ? 'mid' : 'ok';
+  const help = 'Щелчок — взять или использовать · перетащите вещь в нужный слот · ' + data.reloadKey + ' — перезарядка · Esc — закрыть';
+  if (R.help.textContent !== help) R.help.textContent = help;
+  showCard();
+}
+
+/* ---------- the card: what the thing under the pointer is and what a click does with it ---------- */
+function showCard() {
+  if (!data || !refs) return;
+  let x = hov && thing(hov.z, hov.i);
+  if (!x) x = thing('w', Math.max(0, data.weapons.findIndex(w => w.on)));
+  if (!x) return;
+  const sig = JSON.stringify([x, x.t === 'belt' || x.t === 'item' || x.t === 'att' ? [beltN(x.kind || 'med'), packN(x.kind), data.hp >= 100, data.sights] : 0, data.reloadKey]);
+  if (sig === cardSig) return;
+  cardSig = sig;
+  const card = refs.card; card.textContent = ''; card.dataset.t = x.t;
+  const pic = mk('span', 'inv-pic inv-card-pic'), txt = mk('div', 'inv-card-txt'), head = mk('div', 'inv-card-head');
+  const title = mk('b', 'inv-card-name'), tag = mk('small', 'inv-card-tag');
+  head.append(title, tag); txt.append(head);
+  const p = t => { const e = mk('p', 'inv-card-p', t); txt.append(e); return e; };
+  const hint = mk('div', 'inv-card-hint');
+  if (x.t === 'gun') {
+    const w = x.w, guns = allGuns();
+    setPic(pic, 'g' + w.i); pic.classList.add('wide');
+    title.textContent = w.name;
+    tag.textContent = x.where === 'pack' ? 'в рюкзаке' : w.on ? 'в руках' : 'на игроке';
+    tag.dataset.on = w.on ? 1 : 0;
+    const stats = mk('div', 'inv-stats');
+    const maxDmg = Math.max(...guns.map(g => g.dmg * g.pellets)), maxRate = Math.max(...guns.map(g => 60000 / g.gapMs)), maxRange = Math.max(...guns.map(g => g.range));
     const stat = (label, val, frac, tip) => {
-      const r = mk('span', 'inv-st'), bar = mk('span', 'inv-bar'), bf = mk('i');   // not 'bar': that class belongs to the bottom button bar
-      bf.style.width = Math.round(frac * 100) + '%'; bar.append(bf);
-      if (tip) r.title = tip;
-      r.append(mk('small', '', label), bar, mk('b', '', val)); stats.append(r);
+      const bar = mk('span', 'inv-bar'), bf = mk('i'); bf.style.width = Math.round(frac * 100) + '%'; bar.append(bf);
+      const r = mk('span', 'inv-st'); if (tip) r.title = tip; r.append(mk('small', '', label), bar, mk('b', '', val)); stats.append(r);
     };
     stat('урон', w.pellets > 1 ? w.dmg + '×' + w.pellets : String(w.dmg), w.dmg * w.pellets / maxDmg, 'в тело ' + w.dmg + ' · в голову ' + w.head + (w.pellets > 1 ? ' — за одну дробину' : ''));
     stat('темп', Math.round(60000 / w.gapMs) + '/мин', (60000 / w.gapMs) / maxRate);
     stat('дальность', w.range + ' м', w.range / maxRange);
-    const foot = mk('small', 'inv-foot', 'магазин ' + w.magSize + ' · перезарядка ' + fmt1(w.reloadMs / 1000) + ' с');
-    const att = mk('span', 'inv-att');   // the picked-up sight on this weapon: mount / take off (the pocket pays)
-    const attB = kind => { const b = mk('button', 'inv-att-b'); b.type = 'button'; b.textContent = kind === 'sight' ? 'Коллиматор' : 'Оптика 8×'; b.onclick = e => { e.stopPropagation(); cb.attach(w.i, w.attach === kind ? null : kind); }; return b; };
-    const attS = attB('sight'), attO = attB('optic');
-    att.append(mk('small', 'inv-att-l', 'прицел:'), attS, attO);
-    c.append(top, sil, mk('b', 'inv-name', w.name), mk('small', 'inv-tag', gunTag(w)), ammo, mag, rl, rlText, stats, att, foot);
-    c.onclick = () => cb.switchWeapon(w.i);
-    guns.append(c);
-    R.guns.push({ c, ammo, magN, resN, pips, fill, rlFill, rlText, attS, attO });
-  });
-  wsec.append(guns);
-  // the backpack: ten loot slots. A filled cell is a gun (the click swaps it into the active equipped slot) or a stored
-  // item (a med kit / grenade goes to the ready belt, a sight mounts on the gun in hand); an empty cell waits for loot.
-  // The three guns not equipped start here, seven cells are empty.
-  const psec = mk('section', 'inv-sec');
-  const phead = mk('div', 'inv-head');
-  phead.append(mk('h3', '', 'Рюкзак · 10 слотов'), mk('small', '', 'оружие — поменять с активным слотом · предмет — в готовность или на оружие в руках'));
-  psec.append(phead);
-  const packGrid = mk('div', 'inv-pack');
-  for (let s = 0; s < 10; s++) {
-    const cell = mk('div', 'inv-pack-cell');
-    const sil = mk('span', 'inv-pack-sil');
-    const nm = mk('b', 'inv-pack-name');
-    const am = mk('span', 'inv-pack-ammo');
-    const kb = mk('kbd', 'inv-pack-key');
-    const empty = mk('span', 'inv-pack-empty', 'пусто');
-    cell.append(sil, nm, am, kb, empty);
-    const act = () => {
-      const it = data.pack && data.pack[s]; if (!it) return;
-      if (typeof it.i === 'number') cb.switchWeapon(it.i);
-      else if (it.kind === 'med' || it.kind === 'nade' || it.kind === 'smoke' || it.kind === 'napalm') cb.ready(it.kind);
-      else { const held = (data.weapons || []).find(w => w.on); if (held) cb.attach(held.i, it.kind); }
-    };
-    cell.onclick = act;
-    cell.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } };
-    packGrid.append(cell);
-    R.pack.push({ cell, sil, nm, am, kb });
-  }
-  psec.append(packGrid);
-  // the items and the condition of the player
-  const low = mk('div', 'inv-low');
-  const isec = mk('section', 'inv-sec'); isec.append(mk('h3', '', 'Предметы'));
-  const items = mk('div', 'inv-items');
-  const itemCard = (svg, name) => {
-    const card = mk('div', 'inv-item'), top = mk('div', 'inv-it-top');
-    const ico = mk('span', 'inv-ico'); ico.innerHTML = svg;
-    const cnt = mk('span', 'inv-cnt', '×0');
-    top.append(ico, mk('b', '', name), cnt);
-    const pips = mk('span', 'inv-pips');
-    card.append(top, pips);
-    return { card, cnt, pips };
-  };
-  const nade = itemCard(NADE_SVG, 'Гранаты · готовы');
-  for (let k = 0; k < data.nadeMax; k++) nade.pips.append(mk('i'));
-  const nPack = mk('small', 'inv-dim', '');
-  nade.card.append(mk('small', '', data.nadeKey + ' — прицельный бросок: мышь целится, ЛКМ заряжает силу'), mk('small', 'inv-dim', NADE_INFO), nPack);
-  R.nade = { ...nade, pack: nPack };
-  const smoke = itemCard(SMOKE_SVG, 'Дым · готовы');
-  for (let k = 0; k < data.nadeMax; k++) smoke.pips.append(mk('i'));
-  const sPack = mk('small', 'inv-dim', '');
-  smoke.card.append(mk('small', '', data.smokeKey + ' — дымовая завеса: мышь целится, ЛКМ заряжает силу'), mk('small', 'inv-dim', SMOKE_INFO), sPack);
-  R.smoke = { ...smoke, pack: sPack };
-  const napalm = itemCard(NAPALM_SVG, 'Напалм · готовы');
-  for (let k = 0; k < data.nadeMax; k++) napalm.pips.append(mk('i'));
-  const pPack = mk('small', 'inv-dim', '');
-  napalm.card.append(mk('small', '', data.napalmKey + ' — зажигательная граната: огонь выжигает всё в радиусе'), mk('small', 'inv-dim', NAPALM_INFO), pPack);
-  R.napalm = { ...napalm, pack: pPack };
-  const med = itemCard(MED_SVG, 'Аптечки · готовы');
-  for (let k = 0; k < data.medMax; k++) med.pips.append(mk('i'));
-  const use = mk('button', 'btn inv-use'); use.type = 'button'; use.append(document.createTextNode('Использовать '), kbd(data.medKey));
-  use.onclick = () => { cb.useMed(); cb.beep('med'); };
-  const mnote = mk('small', 'inv-dim', 'лечит 50 HP');
-  const mPack = mk('small', 'inv-dim', '');
-  med.card.append(use, mnote, mPack);
-  R.med = { ...med, use, note: mnote, pack: mPack };
-  const sight = itemCard(SIGHT_SVG, 'Коллиматоры · рюкзак'); sight.pips.append(mk('i'));
-  const sNote = mk('small', 'inv-dim', '');
-  sight.card.append(mk('small', '', 'ПКМ — красная точка, разброс уже; Shift — короткий зум'), sNote);
-  R.sight = { ...sight, note: sNote };
-  const optic = itemCard(OPTIC_SVG, 'Оптика 8× · рюкзак'); optic.pips.append(mk('i'));
-  const oNote = mk('small', 'inv-dim', '');
-  optic.card.append(mk('small', '', 'ПКМ — зум с сеткой, колесо меняет кратность 4–8×, руки прячутся'), oNote);
-  R.optic = { ...optic, note: oNote };
-  items.append(nade.card, smoke.card, napalm.card, med.card, sight.card, optic.card);
-  isec.append(items);
-  const ssec = mk('section', 'inv-sec'); ssec.append(mk('h3', '', 'Состояние'));
-  const state = mk('div', 'inv-item inv-state');
-  state.append(mk('small', 'inv-dim', 'здоровье'));
-  const hpRow = mk('div', 'inv-hp'), hpN = mk('b', '', '100'), hpBar = mk('span', 'inv-hpbar'), hpFill = mk('i');
-  hpBar.append(hpFill); hpRow.append(hpN, hpBar); state.append(hpRow);
-  const kd = mk('div', 'inv-kd');
-  const kdCell = (label) => { const s = mk('span'), b = mk('b', '', '0'); s.append(b, mk('small', '', label)); kd.append(s); return b; };
-  const killsN = kdCell('убийств'), deathsN = kdCell('смертей');
-  state.append(kd);
-  const total = mk('div', 'inv-total'), totalN = mk('b', '', '0');
-  total.append(mk('small', '', 'боезапас'), totalN, mk('small', '', 'патронов'));
-  state.append(total);
-  R.hp = { row: state, n: hpN, fill: hpFill }; R.kd = { k: killsN, d: deathsN }; R.total = totalN;
-  ssec.append(state);
-  low.append(isec, ssec);
-  const note = mk('small', 'inv-note');
-  note.textContent = 'На игроке только два ствола — остальные лежат в рюкзаке (10 слотов, 7 пустых для лута). Щелчок по оружию в рюкзаке меняет его с активным слотом; клавиши 1–5 берут ствол в руки или достают из рюкзака, колесо мыши переключает два экипированных. Прицелы хранятся в рюкзаке: установка на оружие освобождает слот, снятие возвращает прицел в свободный слот. К использованию готовы до ' + data.medMax + ' аптечек и до ' + data.nadeMax + ' гранат каждого типа (обычная, дымовая, напалм); излишки лежат в рюкзаке и сами пополняют готовность после использования (щелчок по предмету в рюкзаке тоже берёт его в готовность, прицел — ставит на оружие в руках). Снаряжение переживает смерть. Предметы на карте подбираются автоматически — просто пройдите мимо. Ящик патронов даёт +' + AMMO_GIVE.join(' / +') + ' к запасу каждого ствола и возвращается через 25 с, граната — через 30 с, дымовая — через 35 с, напалм — через 40 с, аптечка — через 35 с, коллиматор — через 45 с, оптика — через 60 с. Бой продолжается, пока панель открыта.';
-  body.append(wsec, psec, low, note);
-  refs = R;
-}
-
-function paint() {
-  if (!data || !refs) return;
-  const R = refs;
-  data.weapons.forEach((w, i) => {
-    const g = R.guns[i];
-    g.c.classList.toggle('on', w.on);
-    g.c.setAttribute('aria-pressed', w.on ? 'true' : 'false');
-    g.c.title = w.on ? w.name + ' — в руках' : 'Взять в руки (' + w.key + ')';
-    g.magN.textContent = w.mag;
-    g.resN.textContent = '/ ' + w.reserve;
-    g.ammo.dataset.empty = w.mag === 0 ? 1 : 0;
-    g.ammo.dataset.low = w.mag > 0 && w.mag <= w.magSize * 0.25 ? 1 : 0;
-    if (g.fill) g.fill.style.width = (w.mag / w.magSize * 100).toFixed(1) + '%';
-    else g.pips.forEach((p, k) => p.classList.toggle('full', k < w.mag));
-    g.c.classList.toggle('reloading', data.reloadW === i);
-    const loose = data.sights || { sight: 0, optic: 0 };
-    for (const [b, k] of [[g.attS, 'sight'], [g.attO, 'optic']]) {
-      const on = w.attach === k;
-      b.classList.toggle('on', on);
-      b.disabled = !on && loose[k] <= 0;
-      b.title = on ? 'Снять прицел — вернётся в рюкзак' : loose[k] > 0 ? 'Установить на это оружие' : 'Нет в рюкзаке — подберите на карте';
-    }
-  });
-  // the backpack cells: a gun shows its silhouette, name, rounds and key (the click swaps it in); a stored item shows
-  // its icon and what the click does (to the ready belt, or onto the gun in hand); an empty cell waits
-  const pk = data.pack || [];
-  R.pack.forEach((r, s) => {
-    const w = pk[s];
-    r.cell.classList.toggle('filled', !!w);
-    r.cell.classList.toggle('empty', !w);
-    r.cell.classList.toggle('item', !!w && typeof w.i !== 'number');
-    if (w && typeof w.i === 'number') {
-      r.cell.setAttribute('role', 'button'); r.cell.tabIndex = 0;
-      r.cell.title = 'Взять в руки — поменять с активным слотом (' + w.key + ')';
-      r.sil.innerHTML = SLOT_SVG[w.i];
-      r.nm.textContent = w.name;
-      r.am.textContent = w.mag + ' / ' + w.reserve;
-      r.am.dataset.empty = w.mag === 0 ? 1 : 0;
-      r.kb.textContent = w.key;
-    } else if (w) {
-      r.cell.setAttribute('role', 'button'); r.cell.tabIndex = 0;
-      const belt = w.kind === 'med' || w.kind === 'nade' || w.kind === 'smoke' || w.kind === 'napalm';
-      r.cell.title = belt ? w.name + ' — щелчок: в готовность (если есть место)' : w.name + ' — щелчок: установить на оружие в руках';
-      r.sil.innerHTML = ITEM_SVG[w.kind];
-      r.nm.textContent = w.name;
-      r.am.textContent = belt ? 'в готовность' : 'на оружие';
-      delete r.am.dataset.empty;
-      r.kb.textContent = '';
+    txt.append(stats);
+    p(gunTag(w) + ' · магазин ' + w.magSize + ' · перезарядка ' + fmt1(w.reloadMs / 1000) + ' с · прицел: ' + (w.attach ? SHORT[w.attach].toLowerCase() : 'нет'));
+    hint.textContent = x.where === 'pack' ? 'Щелчок или ' + w.key + ' — поменять с оружием в руках · или перетащите на любой слот оружия'
+      : w.on ? 'В руках · ' + data.reloadKey + ' — перезарядка · колесо мыши — второй ствол' : 'Щелчок или ' + w.key + ' — взять в руки';
+  } else if (x.t === 'att') {
+    const w = x.w;
+    if (x.kind) {
+      setPic(pic, x.kind); title.textContent = KINDS[x.kind].name; tag.textContent = 'на оружии';
+      p(ABOUT[x.kind]); p('Стоит на: ' + w.name + '.');
+      hint.textContent = 'Щелчок — снять в рюкзак · перетащите на другое оружие';
     } else {
-      r.cell.removeAttribute('role'); r.cell.tabIndex = -1;
-      r.cell.title = 'Пустой слот рюкзака';
-      r.sil.innerHTML = ''; r.nm.textContent = ''; r.am.textContent = ''; r.kb.textContent = '';
+      setPic(pic, '-sight'); title.textContent = 'Слот прицела'; tag.textContent = w.name;
+      const loose = ['sight', 'optic'].filter(k => packN(k) > 0).map(k => SHORT[k].toLowerCase());
+      p(loose.length ? 'В рюкзаке: ' + loose.join(', ') + '.' : 'Прицелов нет. Коллиматор и оптика 8× лежат на карте — подберите, они лягут в рюкзак.');
+      hint.textContent = loose.length ? 'Щелчок — поставить прицел из рюкзака · или перетащите его сюда' : 'Пусто';
     }
-  });
-  const loose = data.sights || { sight: 0, optic: 0 };
-  for (const [r, k] of [[R.sight, 'sight'], [R.optic, 'optic']]) {
-    r.cnt.textContent = '×' + (loose[k] || 0);
-    r.card.dataset.empty = loose[k] > 0 ? 0 : 1;
-    [...r.pips.children].forEach((p, j) => p.classList.toggle('full', j < loose[k]));
-    const on = data.weapons.filter(w => w.attach === k).map(w => w.name);
-    r.note.textContent = on.length ? 'стоит на: ' + on.join(', ') : loose[k] > 0 ? 'в рюкзаке — выберите оружие выше' : 'нет — ищите на карте';
+  } else if (x.t === 'belt') {
+    const k = x.kind, n = beltN(k), more = packN(k);
+    setPic(pic, k); title.textContent = BELT_NAME[k]; tag.textContent = 'разгрузка';
+    p(ABOUT[k]);
+    p('Готово: ' + n + ' из ' + beltMax(k) + (more ? ' · в рюкзаке ещё ' + more + ' — сами пополнят разгрузку' : ' · излишки ложатся в рюкзак'));
+    hint.textContent = n <= 0 ? 'Нет — ищите на карте' : k === 'med' ? (data.hp >= 100 ? 'Здоровье полное · ' + beltKey(k) + ' — использовать' : 'Щелчок или ' + beltKey(k) + ' — использовать')
+      : 'Щелчок или ' + beltKey(k) + ' — взять в руку · зажатая ЛКМ — сила броска';
+  } else if (x.t === 'item') {
+    const k = x.kind;
+    setPic(pic, k); title.textContent = KINDS[k].name; tag.textContent = 'в рюкзаке';
+    p(ABOUT[k]);
+    if (isSight(k)) {
+      const held = data.weapons.find(w => w.on);
+      hint.textContent = 'Щелчок — поставить на ' + (held ? held.name.toLowerCase() : 'оружие в руках') + ' · перетащите на нужное оружие';
+    } else {
+      const full = beltN(k) >= beltMax(k);
+      p('В разгрузке ' + beltN(k) + ' из ' + beltMax(k) + '.');
+      hint.textContent = full ? 'Разгрузка полна — предмет сам переложится, когда освободится место' : 'Щелчок — переложить в разгрузку · или перетащите в карман';
+    }
+  } else {
+    pic.classList.add('none'); title.textContent = 'Свободный слот'; tag.textContent = 'рюкзак';
+    p('Подбирайте вещи на карте — просто пройдите мимо. Ящик патронов пополняет запас каждого ствола (+' + AMMO_GIVE.join(' / +') + ').');
+    hint.textContent = (data.pack || []).filter(it => !it).length + ' свободно из ' + (data.pack || []).length;
   }
-  const packN = k => (data.pack || []).filter(it => it && it.kind === k).length;
-  R.nade.cnt.textContent = '×' + data.nades + ' / ' + data.nadeMax;
-  R.nade.card.dataset.empty = data.nades > 0 ? 0 : 1;
-  [...R.nade.pips.children].forEach((p, k) => p.classList.toggle('full', k < data.nades));
-  const nPack = packN('nade');
-  R.nade.pack.textContent = nPack ? 'в рюкзаке ещё ' + nPack + ' — сами пополняют готовность после броска' : 'готовы до ' + data.nadeMax + ' одного типа · излишки хранятся в рюкзаке';
-  for (const [r, k, cnt] of [[R.smoke, 'smoke', data.smokes || 0], [R.napalm, 'napalm', data.napalms || 0]]) {
-    r.cnt.textContent = '×' + cnt + ' / ' + data.nadeMax;
-    r.card.dataset.empty = cnt > 0 ? 0 : 1;
-    [...r.pips.children].forEach((p, j) => p.classList.toggle('full', j < cnt));
-    const n = packN(k);
-    r.pack.textContent = n ? 'в рюкзаке ещё ' + n + ' — сами пополняют готовность после броска' : 'готовы до ' + data.nadeMax + ' · излишки хранятся в рюкзаке';
-  }
-  R.med.cnt.textContent = '×' + data.meds + ' / ' + data.medMax;
-  R.med.card.dataset.empty = data.meds > 0 ? 0 : 1;
-  [...R.med.pips.children].forEach((p, k) => p.classList.toggle('full', k < data.meds));
-  const mPack = packN('med');
-  R.med.pack.textContent = mPack ? 'в рюкзаке ещё ' + mPack + ' — сами пополняют готовность после использования' : 'готовы до ' + data.medMax + ' · излишки хранятся в рюкзаке';
-  const none = data.meds <= 0, full = data.hp >= 100;
-  R.med.use.disabled = none || full;
-  R.med.note.textContent = none ? 'нет аптечек — ищите белые ящики на карте' : full ? 'здоровье полное — беречь не нужно' : 'лечит 50 HP';
-  const hp = Math.max(0, Math.ceil(data.hp));
-  R.hp.n.textContent = hp;
-  R.hp.fill.style.width = Math.max(0, data.hp) + '%';
-  R.hp.row.dataset.hp = data.hp <= 25 ? 'low' : data.hp <= 60 ? 'mid' : 'ok';
-  R.kd.k.textContent = data.kills; R.kd.d.textContent = data.deaths;
-  R.total.textContent = data.weapons.concat(data.pack || []).filter(Boolean).reduce((s, w) => s + w.mag + w.reserve, 0);
-  meChip.textContent = '';
-  meChip.append(mk('i', 'dot ' + (data.ffa ? 'tf' : 't' + data.team)), mk('b', '', data.name || 'Вы'), mk('span', 'kd', data.kills + ' · ' + data.deaths));
+  card.append(pic, txt, hint);
 }
+const AMMO_GIVE = [30, 8, 5, 12, 50, 30, 30, 30];   // keep server/combat.mjs ITEMS.ammo.give in step
 
+/* ---------- the pointer: hover shows the card, a click acts, a drag moves ---------- */
+const sameSlot = (a, b) => (a && b ? a.z === b.z && a.i === b.i : a === b);
+function point(el) {
+  if (drag && drag.on) return;
+  const h = el ? { z: el.dataset.z, i: idx(el) } : null;
+  if (!h || sameSlot(h, hov)) return;   // between the slots the card keeps the last thing
+  hov = h; showCard();
+}
+body.addEventListener('mouseover', e => point(e.target.closest('[data-z]')));
+body.addEventListener('focusin', e => point(e.target.closest('[data-z]')));
+body.addEventListener('mouseleave', () => { if (hov && !(drag && drag.on)) { hov = null; showCard(); } });
+body.addEventListener('click', e => {
+  if (eatClick) { eatClick = false; return; }   // the click that ends a drag
+  if (e.detail > 1) return;   // a double click acts once (a pack gun clicked twice would come back)
+  const el = e.target.closest('[data-z]'); if (el) act(el.dataset.z, idx(el));
+});
+body.addEventListener('contextmenu', e => { e.preventDefault(); const el = e.target.closest('[data-z]'); if (el) act(el.dataset.z, idx(el)); });
+body.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const el = e.target.closest('[data-z]'); if (!el || el.tagName === 'BUTTON') return;   // a button clicks by itself
+  e.preventDefault(); e.stopPropagation(); act(el.dataset.z, idx(el));   // not the chat that Enter opens in the fight
+});
+let ghost = null;
+body.addEventListener('pointerdown', e => {
+  if (e.button !== 0 || e.pointerType === 'touch') return;   // a touch screen taps; a drag there scrolls the panel
+  const el = e.target.closest('[data-z]'); if (!el || !canDrag(el.dataset.z, idx(el))) return;
+  drag = { z: el.dataset.z, i: idx(el), el, x0: e.clientX, y0: e.clientY, on: false, over: null, act: null };
+});
+function startDrag() {
+  drag.on = true;
+  ghost = mk('div', 'inv-ghost');
+  const pic = drag.el.querySelector('.inv-pic'); if (pic) ghost.append(pic.cloneNode(true));
+  document.body.append(ghost);
+  drag.el.classList.add('dragging'); box.classList.add('dragging');
+  for (const el of body.querySelectorAll('[data-z]')) if (dropAct(drag, el.dataset.z, idx(el))) el.classList.add('drop-can');
+}
+function overSlot(e) {
+  const t = document.elementFromPoint(e.clientX, e.clientY), el = t && t.closest ? t.closest('[data-z]') : null;
+  return el && body.contains(el) ? el : null;
+}
+window.addEventListener('pointermove', e => {
+  if (!drag) return;
+  if (!drag.on) { if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 6) return; startDrag(); }
+  ghost.style.transform = 'translate(' + e.clientX + 'px,' + e.clientY + 'px)';
+  const el = overSlot(e);
+  if (el === drag.over) return;
+  if (drag.over) drag.over.classList.remove('drop-ok', 'drop-no');
+  drag.over = el; drag.act = el ? dropAct(drag, el.dataset.z, idx(el)) : null;
+  if (el && el !== drag.el) el.classList.add(drag.act ? 'drop-ok' : 'drop-no');
+});
+function endDrag() {
+  if (!drag) return;
+  if (ghost) { ghost.remove(); ghost = null; }
+  for (const el of body.querySelectorAll('.drop-can, .drop-ok, .drop-no, .dragging')) el.classList.remove('drop-can', 'drop-ok', 'drop-no', 'dragging');
+  box.classList.remove('dragging');
+  drag = null;
+}
+window.addEventListener('pointerup', () => {
+  if (!drag) return;
+  const d = drag; endDrag();
+  if (!d.on) return;
+  eatClick = true; setTimeout(() => { eatClick = false; }, 0);
+  if (d.act) d.act();
+});
+window.addEventListener('pointercancel', endDrag);
+
+let warm = false;
 function renderInv(d) {
   data = d;
+  if (!warm) { warm = true; setTimeout(makePics, 5000); }   // the pictures ready before the first opening (what has not come yet is shot then)
   if (!open) return;
-  const sig = (d.weapons || []).map(w => w.i).join(',');
-  if (sig !== builtLoadout) { build(); builtLoadout = sig; }   // a swap changed the equipped guns: rebuild the cards
   paint();
 }
 // the reload bar of the gun that is reloading, every frame while the panel is open
 function invTick(now) {
   if (!open || !data || !refs || data.reloadW < 0) return;
-  const g = refs.guns[data.reloadW], ms = data.weapons[data.reloadW].reloadMs;
-  if (!g) return;
-  const p = Math.min(1, Math.max(0, (now - data.reloadAt) / ms));
-  g.rlFill.style.width = (p * 100).toFixed(1) + '%';
-  const t = 'перезарядка · ' + fmt1(Math.max(0, (ms - (now - data.reloadAt)) / 1000)) + ' с';
-  if (g.rlText.textContent !== t) g.rlText.textContent = t;
+  const r = refs.w[data.reloadW], w = data.weapons[data.reloadW];
+  if (!r || !w) return;
+  r.rlF.style.width = (Math.min(1, Math.max(0, (now - data.reloadAt) / w.reloadMs)) * 100).toFixed(1) + '%';
 }
 function openInv() {
   if (open || !data) return;
-  open = true;
+  open = true; hov = null;
   if (document.pointerLockElement) document.exitPointerLock();
   keys.clear();
-  build(); builtLoadout = (data.weapons || []).map(w => w.i).join(','); paint();
+  build(); paint();
   box.hidden = false;
-  body.focus({ preventScroll: true });   // the scroller takes the focus: wheel, touch and the arrow keys scroll the panel
+  body.focus({ preventScroll: true });   // the panel takes the keys: wheel, touch and the arrows scroll it where it is taller than the screen
+  makePics();   // the models shot as pictures, once (inv-icons.js); the SVG stands in meanwhile
 }
-function closeInv() { if (!open) return; open = false; box.hidden = true; }
+function closeInv() { if (!open) return; open = false; endDrag(); box.hidden = true; }
 const toggleInv = () => (open ? closeInv() : openInv());
 const invOpen = () => open;
 window.addEventListener('keydown', e => { if (e.code === 'Escape' && open) { closeInv(); e.preventDefault(); e.stopImmediatePropagation(); } }, true);
