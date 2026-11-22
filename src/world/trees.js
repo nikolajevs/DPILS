@@ -29,6 +29,16 @@ function lidarTrees() { const L = window.LIDAR_TREES; if (!L || !L.n) return nul
 // A crown is a cloud of small leaf cards that always face the viewer (and the sun in the shadow pass), shaded as one soft
 // ball. Far trees are two-quad impostors baked from the very same model, so the switch between the two is hard to spot.
 const treeTiles = new Map();
+/* The far trees (impostors) are drawn by tiles of ITILE = 2 × 2 tree tiles: one draw call a square kilometre, not four
+   (some 36 calls of impostors at eye level were a large share of the city's ~220). A tree tile shows its trees as
+   models while the eye is near it (updateLod in src/render/post.js) — its impostors then must not draw. The tile of an
+   impostor is an attribute of its own (aTile, the key of its tree tile), and the keys of the tree tiles shown as models
+   are a uniform (uImpHi, at most IMP_HI: the tiles within 300 m of the eye are at most 3 × 3); the vertex shader folds
+   such an impostor into a point. */
+const ITILE = TTILE * 2, IMP_HI = 16;
+const impTiles = [];   // { x0, z0, lo: the impostors, subs: its tree tiles }
+const IMP_U = { hi: { value: new Float32Array(IMP_HI).fill(-1) }, n: { value: 0 } };   // the keys of the tree tiles shown as models, and how many
+const tileKey = (i, j) => (i + 100) * 1000 + j + 100;
 const LIDAR_STATS = { moved: 0, narrower: 0, out: 0 };   // what treeRoom did to the lidar trees (for checks: window.__city.treeStats)
 // Leaf atlas, 2 × 2 cells: 0 broadleaf, 1 birch, 2 pine needles, 3 spruce twigs
 function leafAtlas() {
@@ -284,8 +294,10 @@ async function buildTrees() {
   // impostor: an upright quad that turns towards the camera plus a flat cap for the view from above
   matTreeFar = std({ roughness: 0.85, metalness: 0 }, 'treefar', s => {
     s.uniforms.uImp = { value: imp }; s.uniforms.uImpFar = U.impFar; s.uniforms.uCap = { value: hi.map(g => new THREE.Vector2(g.userData.R / (g.userData.H / 2), g.userData.capY / g.userData.H)) };
-    s.vertexShader = 'attribute float aQ; attribute float aType; uniform vec2 uCap[4]; varying vec3 vImp;\n' + s.vertexShader.replace('#include <project_vertex>', `
+    s.uniforms.uImpHi = IMP_U.hi; s.uniforms.uImpHiN = IMP_U.n;
+    s.vertexShader = 'attribute float aQ; attribute float aType; attribute float aTile; uniform vec2 uCap[4]; uniform float uImpHi[' + IMP_HI + ']; uniform float uImpHiN; varying vec3 vImp;\n' + s.vertexShader.replace('#include <project_vertex>', `
       vec3 iC = (modelMatrix * vec4(instanceMatrix[3].xyz, 1.0)).xyz; iC.y += terrainH(iC.xz); float iW = instanceMatrix[0].x, iH = instanceMatrix[1].y;
+      for (int k = 0; k < ${IMP_HI}; k++) if (float(k) < uImpHiN && aTile == uImpHi[k]) { iW = 0.0; iH = 0.0; }   // its tree tile shows the models: a point
       vec3 iTo = cameraPosition - iC; vec2 iR = normalize(vec2(iTo.z, -iTo.x) + vec2(1e-5, 0.0));
       vec3 iP, iN; vec2 iCap = uCap[int(aType + 0.5)];
       if (aQ < 0.5) { iP = iC + vec3(iR.x, 0.0, iR.y) * (position.x * iW) + vec3(0.0, position.y * iH, 0.0); iN = vec3(iR.x, 0.0, iR.y) * (position.x * 0.9) + vec3(-iR.y, 0.0, iR.x) * 0.55 + vec3(0.0, position.y * 1.3 - 0.35, 0.0); }
@@ -313,8 +325,8 @@ async function buildTrees() {
   // a tree: its kind, the scale of the model across (sc) and up (sy), and a variation v for its tint and turn
   const add = (x, z, type, sc, v, sy = sc * (0.88 + (v * 7 % 1) * 0.3)) => {
     if (Math.abs(x) > HX || Math.abs(z) > HY || lmClear(x, z) || ssNoTree(x, z) || wetTree(x, z) || fortNoTree(x, z) || vbNoTree(x, z) || spwNoTree(x, z) || fuelNoTree(x, z) || ovNoTree(x, z) || parkNoTree(x, z) || upNoTree(x, z)) return;
-    const i = Math.floor(x / TTILE), j = Math.floor(z / TTILE), k = (i + 100) * 1000 + j + 100;
-    let t = treeTiles.get(k); if (!t) treeTiles.set(k, t = { x0: i * TTILE, z0: j * TTILE, list: [] }); t.list.push(x, z, type, sc, v, sy);
+    const i = Math.floor(x / TTILE), j = Math.floor(z / TTILE), k = tileKey(i, j);
+    let t = treeTiles.get(k); if (!t) treeTiles.set(k, t = { x0: i * TTILE, z0: j * TTILE, key: k, list: [] }); t.list.push(x, z, type, sc, v, sy);
   };
   /* The trees the lidar found (lidar-trees.js, tools/lidar.js --trees): outside the woods each where it stands, as high
      and as wide as it was measured. With them the guessed trees go — those of OpenStreetMap, the rows of the parks, and
@@ -389,18 +401,30 @@ async function buildTrees() {
   // smooth leaf edges: with multisampling on, the alpha of a leaf card becomes sample coverage
   const a2cOn = () => { if (PP.msaa > 0) gl.enable(gl.SAMPLE_ALPHA_TO_COVERAGE); }, a2cOff = () => gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE);
   const tint = v => { const f = 0.84 + v * 0.3; return col.setRGB(f * (0.94 + (v * 13 % 1) * 0.14), f, f * (0.86 + (v * 29 % 1) * 0.12)); };
-  for (const t of treeTiles.values()) {
+  // the impostors, by tiles of ITILE
+  const groups = new Map();
+  for (const t of treeTiles.values()) { const i = Math.floor(t.x0 / ITILE), j = Math.floor(t.z0 / ITILE), k = tileKey(i, j); let g = groups.get(k); if (!g) groups.set(k, g = { x0: i * ITILE, z0: j * ITILE, subs: [] }); g.subs.push(t); }
+  for (const g of groups.values()) {
     if (due()) await pause();
-    const l = t.list, n = l.length / 6; count += n; t.hi = []; t.lo = [];
-    const cx = t.x0 + TTILE / 2, cz = t.z0 + TTILE / 2;
+    let n = 0; for (const t of g.subs) n += t.list.length / 6;
+    const l = new Float32Array(n * 6), keys = new Float32Array(n); let o = 0;
+    for (const t of g.subs) { l.set(t.list, o * 6); keys.fill(t.key, o, o + t.list.length / 6); o += t.list.length / 6; }
+    const cx = g.x0 + ITILE / 2, cz = g.z0 + ITILE / 2;
     const fg = farGeo.clone(), types = new Float32Array(n); fg.boundingSphere = tileSphere;
     const L = new THREE.InstancedMesh(fg, matTreeFar, n), ts = sphereOf(l, n, cx, cz); L.boundingSphere = ts;
     for (let i = 0; i < n; i++) {
       const type = l[6 * i + 2], sc = l[6 * i + 3], v = l[6 * i + 4], sy = l[6 * i + 5], H = hi[type].userData.H; types[i] = type;
       M.compose(new THREE.Vector3(l[6 * i] - cx, fortTreeY(l[6 * i], l[6 * i + 1]), l[6 * i + 1] - cz), q0, new THREE.Vector3(sc * H / 2, sy * H, 1)); L.setMatrixAt(i, M); L.setColorAt(i, tint(v));
     }
-    fg.setAttribute('aType', new THREE.InstancedBufferAttribute(types, 1));
-    L.position.set(cx, 0, cz); L.instanceMatrix.needsUpdate = true; L.instanceColor.needsUpdate = true; L.onBeforeRender = a2cOn; L.onAfterRender = a2cOff; L.userData.noProbe = true; scene.add(L); t.lo.push(L);
+    fg.setAttribute('aType', new THREE.InstancedBufferAttribute(types, 1)); fg.setAttribute('aTile', new THREE.InstancedBufferAttribute(keys, 1));
+    L.position.set(cx, 0, cz); L.instanceMatrix.needsUpdate = true; L.instanceColor.needsUpdate = true; L.onBeforeRender = a2cOn; L.onAfterRender = a2cOff; L.userData.noProbe = true; scene.add(L);
+    impTiles.push({ x0: g.x0, z0: g.z0, lo: L, subs: g.subs });
+  }
+  // the models, by tree tiles
+  for (const t of treeTiles.values()) {
+    if (due()) await pause();
+    const l = t.list, n = l.length / 6; count += n; t.hi = [];
+    const cx = t.x0 + TTILE / 2, cz = t.z0 + TTILE / 2, ts = sphereOf(l, n, cx, cz);
     for (let type = 0; type < 4; type++) {
       const idx = []; for (let i = 0; i < n; i++) if (l[6 * i + 2] === type) idx.push(i); if (!idx.length) continue;
       const Hm = new THREE.InstancedMesh(hi[type], matTree, idx.length); Hm.boundingSphere = ts;
@@ -415,4 +439,4 @@ async function buildTrees() {
   return count;
 }
 
-export { LIDAR_STATS, buildTrees, treeTiles };
+export { IMP_HI, IMP_U, ITILE, LIDAR_STATS, buildTrees, impTiles, treeTiles };

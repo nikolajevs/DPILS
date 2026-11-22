@@ -6,8 +6,8 @@ import { mirrorShow, onMirror } from './mirror.js';
 
 /* ---------- the houses in the glass ----------
    The mirror of the glass (src/render/mirror.js) draws what moves — you, the players, the trams — every frame. The
-   houses themselves are merged into tiles of 800 m and drawn in ~1000 calls: a second pass of them would double the
-   frame. In the glass they are a simple model instead: the walls of every house within R of the eye, extruded from its
+   houses themselves are merged into tiles of 800 m, millions of triangles: a second pass of them would double the
+   frame (+12–20 ms measured when they took ~1000 draw calls; batched now, src/render/batch.js, the triangles stay). In the glass they are a simple model instead: the walls of every house within R of the eye, extruded from its
    footprint (src/world/data.js BLD) to its height, in the colour of its walls, with a grid of dark windows by its
    storeys that light up at night as the windows of the city do. One draw call, rebuilt when the eye has moved MOVE metres.
    Seen dimly in a pane, it puts the street where it is — the houses across it, their parallax as you walk — and hides

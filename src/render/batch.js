@@ -40,7 +40,7 @@ import { due, pause } from '../core/pause.js';
   else { THREE.ShaderChunk.batching_pars_vertex = pars.slice(k); THREE.ShaderChunk.batching_vertex = '#ifdef USE_BATCHING\n\tconst mat4 batchingMatrix = mat4( 1.0 );\n#endif\n'; }
 }
 
-const STAT = { batches: 0, pieces: 0, geometries: 0, left: 0, given: 0, ms: 0 };
+const STAT = { batches: 0, pieces: 0, geometries: 0, left: 0, given: 0, ms: 0, wall: 0 };   // ms: the work of batchStatic, wall: with its pauses
 const BATCHES = [];   // { bm, px: the stand-ins, vis: the visibility each instance has now (null: given back) }
 const PROXY = new WeakMap();   // stand-in → [its batch, its instance, where its geometry lies in the batch]
 const IDENT = new THREE.Matrix4(), EMPTY = new THREE.BufferGeometry(); EMPTY.setAttribute('position', new THREE.Float32BufferAttribute([], 3)); EMPTY.setIndex([]);
