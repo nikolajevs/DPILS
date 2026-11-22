@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Claude | claude/storm-server-game-event-2e379f | Катка сервера 2 ч (вход первые 30 мин), Шторм — последние 20 мин катки вместо отдельного режима | server/game.mjs, server/storm.mjs, server/index.mjs, src/game/storm.js, src/game/mp.js, src/ui/lobby.js, src/ui/start.js, index.html |
 
 ## Автономный цикл улучшений
 
