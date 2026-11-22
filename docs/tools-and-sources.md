@@ -8,6 +8,7 @@
 
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
+| Claude | claude/reduce-city-render-calls-6dc6a3 | Меньше вызовов отрисовки самого города (слияние мешей) | src/render/, src/landmarks/, src/world/ (сборка мешей) |
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
 
 ## Автономный цикл улучшений
