@@ -67,13 +67,22 @@ function hook(m, key, patch) {
 }
 
 // with the fine patches of the terrain (src/world/terrain.js), the light of the lamps (src/world/lamp-light.js) and the
-// shadow maps of the lamps and of what moves (src/render/lamp-shadows.js). r: the renderer compiling it; another one
-// than the city's (the lobby's podium, src/ui/lobby.js) cannot sample the city's atlas — it gets none (three's empty one)
-const SH_NONE = { value: null };
+// shadow maps of the lamps and of what moves (src/render/lamp-shadows.js). r: the renderer compiling it.
+// Another one than the city's (the lobby's podium, src/ui/lobby.js) stands outside the city, with the same shaders: no
+// terrain under it, no lamps over it, no shadow atlas — empty stand-ins of the right kinds, and the city's tables are not
+// sent to its GPU a second time. The lamp table is an unsigned-integer texture: while the city's lamps were not built
+// yet, three bound its own empty (non-integer) texture there, and every lit draw of the lobby failed (INVALID_OPERATION)
+// — the figure and the podium stayed invisible for the first half of the build, the portraits came out empty.
+const SH_NONE = { value: null }, TEX_NONE = { value: null }, OFF = { value: new THREE.Vector4(0, 0, 0, 0) };
+const LAMP_NONE = { value: new THREE.DataTexture(new Uint32Array(4), 1, 1, THREE.RGBAIntegerFormat, THREE.UnsignedIntType) };
+LAMP_NONE.value.internalFormat = 'RGBA32UI'; LAMP_NONE.value.needsUpdate = true;
 function terrUniforms(s, r) {
   s.uniforms.tTerr = U.tTerr; s.uniforms.uTerrA = U.uTerrA; s.uniforms.uTerrB = U.uTerrB;
   for (const k in U) if (/^(tPatch|uPatch|tLamp|uLamp|tSh|uSh)/.test(k)) s.uniforms[k] = U[k];
-  if (r && r !== renderer) s.uniforms.tShAtlas = SH_NONE;
+  if (r && r !== renderer) {
+    for (const k in s.uniforms) if (/^t(Terr|Patch)/.test(k)) s.uniforms[k] = TEX_NONE;
+    s.uniforms.uTerrA = OFF; s.uniforms.tLamp = LAMP_NONE; s.uniforms.uLampOn = OFF; s.uniforms.tShAtlas = SH_NONE; s.uniforms.uShSun = OFF;
+  }
 }
 
 export { ANISO, GPU, LIGHTDIR, MAXTEX, POST, U, WEAK_GPU, camera, canvas, hemi, hook, renderer, scene, sun, terrUniforms };

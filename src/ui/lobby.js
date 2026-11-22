@@ -49,7 +49,7 @@ function ensureRenderer() {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.12;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;   // the soft one is gone from three (r18x), it fell back to this with a warning
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(32, 1, 0.1, 40);
   scene.add(new THREE.HemisphereLight(0x9db8d9, 0x14100c, 0.5));
@@ -110,7 +110,8 @@ function disposeAvatar(a) {
 }
 const later = () => new Promise(r => setTimeout(r, 0));
 // the shaders of a model compiled for the target it will be drawn into (null: the stage; a portrait's target draws
-// without the tone mapping, so its programs are other ones), then its textures sent to the GPU, ~8 ms of them a task
+// without the tone mapping, so its programs are other ones), then its textures sent to the GPU (~0.1 s for a figure
+// and its AK), letting the build of the city go on every 50 ms: each pause hands it a slice of up to a few hundred ms
 async function prepare(root, cam, target) {
   renderer.setRenderTarget(target);
   const compiled = renderer.compileAsync(root, cam, scene);
@@ -120,7 +121,7 @@ async function prepare(root, cam, target) {
   root.traverse(o => { if (o.isMesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) for (const v of Object.values(m)) if (v && v.isTexture) tex.add(v); });
   let t0 = performance.now();
   for (const t of tex) {
-    if (performance.now() - t0 > 8) { await later(); t0 = performance.now(); }
+    if (performance.now() - t0 > 50) { await later(); t0 = performance.now(); }
     renderer.initTexture(t);
   }
 }
