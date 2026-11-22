@@ -40,6 +40,7 @@ export const WEAPONS = [
 export const W_NADE = 9;
 export const W_FALL = 10;   // the kill feed: a fall, not a weapon
 export const W_FIRE = 11;   // the kill feed: burnt in the napalm's patch
+export const W_STORM = 12;   // the kill feed: taken by the storm outside the safe circle (the «Шторм» event, storm.mjs)
 // a fall hurts above the safe height: k hp per metre over safe (10 m costs 56, above 15 m kills); g is the player's jump
 // gravity (JUMP in src/game/player.js) so the bots fall at the same rate; maxH caps the client's landing report
 export const FALL = { safe: 3, k: 8, g: 21, maxH: 80 };

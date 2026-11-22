@@ -7,6 +7,7 @@ import { frame } from './game/loop.js';
 import { PERF } from './game/perf.js';
 import './game/mirror-self.js';
 import { MP, enablePlay, loadModels, warmSamples } from './game/mp.js';
+import { stormState } from './game/storm.js';
 import './ui/start.js';
 import { ambProbe, ambStatus } from './game/ambience.js';
 import { statEvent, statsOf } from './game/stats.js';
@@ -131,6 +132,6 @@ const step = (text, w, reported) => {
     loading.done();   // no summary line: the bar fades out and the load block leaves the start card
     if (document.body.classList.contains('mp')) $('view').classList.add('shown');   // the city fades in only in a fight; src/ui/startfx.js owns the rule
     enablePlay(); $('chTrain').focus();
-    window.__city = { PERF, ambProbe, ambStatus, statEvent, statsOf, MP, STATE, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, P, setTime, setCycle, dayInfo, showTime: t => (/^h/i.test(String(t)) ? setCycle(+String(t).slice(1) / 24, Infinity) : setTime(+t)), fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, setQualityMode, qualityMode: () => (qAuto ? 'auto' : qi), scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU, probeState, mirror: MIRROR, mirrorCity: MIRROR_CITY, staticWorld: STATIC_WORLD, batch: BATCH };
+    window.__city = { PERF, ambProbe, ambStatus, statEvent, statsOf, MP, STATE, storm: stormState, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, P, setTime, setCycle, dayInfo, showTime: t => (/^h/i.test(String(t)) ? setCycle(+String(t).slice(1) / 24, Infinity) : setTime(+t)), fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, setQualityMode, qualityMode: () => (qAuto ? 'auto' : qi), scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU, probeState, mirror: MIRROR, mirrorCity: MIRROR_CITY, staticWorld: STATIC_WORLD, batch: BATCH };
   } catch (e) { console.error(e); loading.fail('Ошибка при сборке города: ' + e.message); }
 })();

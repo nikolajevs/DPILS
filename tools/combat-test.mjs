@@ -21,11 +21,17 @@
    2l. The ready belt and the backpack stores: three kits and two grenades of a kind are ready, the surplus rides
       in the pack and refills the belt as it is spent (also on respawn); the sights live in the pack — mounting
       frees the cell, a swap returns the old sight to it, a full pack refuses the take-off.
+   2m. The «Шторм» event (mode storm, storm.mjs): the plan of nine stages lasts exactly 30 minutes and every next
+      circle lies inside the current one; the gathering holds the guns cold, the burn outside hurts twice a second
+      (no kill credit), the respawn is refused and the dead gets his place; the last survivor wins the round with
+      the places table, the next gathering revives him; the sudden death closes the circle to nothing and refuses
+      the late join; a bot parked outside the circle sprints into it.
    3. A real bot fight on a flat arena (12 s of real time): with the small hitboxes the bots must still see,
       shoot and kill each other. */
 import { BULLET_G, CARGO, FALL, HIT, INV, WEAPONS, NADE, SMOKE, W_FALL, bulletAt, bulletDir, bulletDrop, dragDist, dragTime, dragVel, rayHit, smokeCore, smokeDepth } from '../server/combat.mjs';
 import { createGame, MUZZLE } from '../server/game.mjs';
 import { makePhysics } from '../server/physics.mjs';
+import { STORM as STORMC, stageCircle, stormPlan } from '../server/storm.mjs';
 
 let pass = 0, fail = 0;
 const ok = (cond, name, extra = '') => { if (cond) { pass++; console.log('  ok   ' + name); } else { fail++; console.log('  FAIL ' + name + (extra ? ' вЂ” ' + extra : '')); } };
@@ -1158,6 +1164,7 @@ console.log('bot tactics (roles, weapons, footwork, cover, reaction):');
   const bot = g.addBot('hard'); bot.team = 0; bot.x = 0; bot.z = 0; bot.y = 1.7; bot.yaw = 0;   // looks toward -z; the shooter is behind at +z, 140 m > sight 130
   clock += 3000;
   for (let i = 0; i < 4; i++) { clock += 50; g.stepBots(0.05); }   // let the bot settle and take its full hp into lastHp before the blow
+  bot.x = 0; bot.z = 0; bot.y = 1.7; bot.hist.length = 0;   // pin it back: the settle ticks may roam, and the ray below aims at the origin
   msg(B, { t: 'state', x: 0, y: 1.7, z: 140, yaw: 0, pitch: 0 });
   const bid = bot.id, L = 140;
   msg(B, { t: 'shoot', w: 0, rays: [[0, (1.1 - 1.7) / L, -140 / L, L, bid]] });
@@ -1182,14 +1189,92 @@ console.log('bot tactics (roles, weapons, footwork, cover, reaction):');
   msg(E, { t: 'state', x: 0, y: 1.7, z: -20, yaw: 0, pitch: 0 });
   bot.bot.target = E.handle.player.id; bot.bot.react = 0; bot.bot.look = 1;   // engaged at once: the gun fires its last round and reloads under the enemy's nose
   let retreated = false, covered = false, crouched = false;
-  for (let i = 0; i < 80; i++) { clock += 50; g.stepBots(0.05); g.stepItems(); if (bot.bot.retreatUntil > clock) retreated = true; if (bot.bot.cover) covered = true; if ((bot.eye || 1.7) < 1.5) crouched = true; }
+  for (let i = 0; i < 140; i++) { clock += 50; g.stepBots(0.05); g.stepItems(); if (bot.bot.retreatUntil > clock) retreated = true; if (bot.bot.cover) covered = true; if ((bot.eye || 1.7) < 1.5) crouched = true; }   // 7 s: the machine gun's reload is 4.5 s, the walk to a far cover takes its time
   ok(retreated, 'the bot falls back while its slow gun reloads with the enemy close');
   ok(covered, 'the bot finds a wall to hide behind');
   ok(crouched, 'the bot crouches behind the cover');
   g.stop();
 }
 
-/* ---------- 2m. the cargo event: the drop, the beacon, the loot, the mark ---------- */
+/* ---------- 2m. the «Шторм» event: the shrinking circle, the burn outside, the last survivor ---------- */
+console.log('the storm event (createGame mode storm, controlled clock):');
+{
+  const c0 = STORMC.c0, cF = { x: -1487, z: 1263 }, plan = stormPlan(c0, cF, 0, 7);
+  ok(plan.length === 9 && plan[8].tEnd === 1800000, 'the plan: nine stages, exactly 30 minutes', String(plan[8].tEnd));
+  let nested = true;
+  for (const ph of plan) {
+    if (Math.hypot(ph.to.x - ph.from.x, ph.to.z - ph.from.z) + ph.to.r > ph.from.r + 1e-6) nested = false;
+    const mid = stageCircle(ph, ph.tShrink + ph.shrinkMs / 2);
+    if (!(mid.r < ph.from.r && mid.r > ph.to.r)) nested = false;
+  }
+  ok(nested, 'every next circle lies inside the current one, the shrink walks between them');
+  ok(plan[8].to.x === cF.x && plan[8].to.z === cF.z && plan[8].to.r === STORMC.rEnd, 'the last stage lands on the final point');
+  const far = stormPlan(c0, { x: c0.x + 1600, z: c0.z }, 0, 3);
+  ok(far.every(ph => Math.hypot(ph.to.x - ph.from.x, ph.to.z - ph.from.z) + ph.to.r <= ph.from.r + 1e-6), 'the nesting holds at the maximal travel (1600 m)');
+}
+{
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), mode: 'storm', area: { cx: -1000, cz: 500, r: 3300 }, now: () => clock, name: 'storm', itemCount: 8 });
+  g.stop();   // the test drives every clock itself
+  const A = seat(g, conn()), B = seat(g, conn());
+  msg(A, { t: 'join', name: 'Один', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Два', x: 0, z: 0, yaw: 0 });
+  ok(A.last('hello').mode === 'storm' && A.last('hello').storm.phase === 'wait', 'hello carries the storm state (the gathering)');
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  msg(B, { t: 'state', x: 0, y: 1.7, z: -20, yaw: 0, pitch: 0 });
+  msg(A, { t: 'shoot', w: 0, rays: [[0, 0, -1, 20, 1]] }); g.stepBullets();
+  ok(!B.last('hurt'), 'the guns are cold in the gathering');
+  clock += 60000; g.stepStorm();
+  ok(g.storm.phase === 'play' && g.storm.cur.r === 3200, 'the fight starts, the first circle covers the city');
+  const c = g.storm.cur;   // the positions set directly: a 3 km teleport is no legal 'state'
+  B.handle.player.x = c.x + 3300; B.handle.player.z = c.z;
+  A.handle.player.x = c.x; A.handle.player.z = c.z;
+  clock += 2600;   // past the spawn protection
+  const hp0 = B.handle.player.hp;
+  clock += 500; g.stepStorm();
+  ok(B.handle.player.hp < hp0 && A.handle.player.hp === 100, 'the storm burns outside the circle, inside is safe', hp0 + ' -> ' + B.handle.player.hp);
+  ok(B.last('hurt').storm === 1 && B.last('hurt').by === B.handle.player.id, 'the burn is marked and self-inflicted (no kill credit)');
+  clock = g.storm.plan[0].tShrink + 1; g.stepStorm();
+  const r1 = g.storm.cur.r;
+  clock = g.storm.plan[0].tShrink + STORMC.shrinks[0] * 500; g.stepStorm();
+  ok(g.storm.cur.r < r1 && g.storm.kind === 'shrink', 'the circle shrinks through the stage', r1 + ' -> ' + g.storm.cur.r);
+  B.handle.player.hp = 1; clock += 500; g.stepStorm();
+  ok(!B.handle.player.alive && B.last('stormDead') && B.last('stormDead').place >= 1, 'the storm kills, the dead gets his place');
+  clock += 10000; msg(B, { t: 'respawn' });
+  ok(!B.handle.player.alive, 'the respawn is refused in the storm');
+  clock += 500; g.stepStorm();
+  const win = A.last('win');
+  ok(g.storm.phase === 'end' && win && win.mode === 'storm' && win.name === 'Один' && win.rows[0].place === 1, 'the last survivor wins, the table carries the places');
+  clock += 15000; g.stepStorm();
+  ok(g.storm.phase === 'wait' && g.storm.cycle === 2 && A.handle.player.alive, 'the next gathering starts, the survivor is back in');
+  clock += 60000; g.stepStorm();
+  clock = g.storm.plan[8].tEnd + 1; g.stepStorm();
+  ok(g.storm.phase === 'sudden', 'the sudden death follows the thirty minutes');
+  const C = seat(g, conn()); msg(C, { t: 'join', name: 'Поздний', x: 0, z: 0, yaw: 0 });
+  ok(C.last('stormBusy'), 'the join in the final is refused with stormBusy');
+  clock += 120000 + 600; g.stepStorm();
+  ok(g.storm.cur.r === 0, 'the circle closes to nothing');
+}
+{
+  // the bot outside the circle sprints into it: the storm of the brain (bots.mjs) over the flat city
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), mode: 'storm', area: { cx: 0, cz: 0, r: 3300 }, now: () => clock, name: 'storm-bot', itemCount: 4 });
+  g.stop();
+  const A = seat(g, conn()); msg(A, { t: 'join', name: 'Один', x: 0, z: 0, yaw: 0 });
+  const bot = g.addBot('normal');
+  clock += 60000; g.stepStorm();   // the fight starts
+  const c = g.storm.cur;
+  bot.x = c.x + 2900; bot.z = c.z; bot.y = 1.7;   // beyond the 0.9·r edge: the run begins
+  A.handle.player.x = c.x; A.handle.player.z = c.z;
+  const d0 = Math.hypot(bot.x - c.x, bot.z - c.z);
+  for (let i = 0; i < 200; i++) { clock += 50; g.stepStorm(); g.stepBots(0.05); }   // ten seconds of the sprint
+  const d1 = Math.hypot(bot.x - g.storm.cur.x, bot.z - g.storm.cur.z);
+  ok(d1 < d0 - 40, 'the bot outside the circle runs in', d0.toFixed(0) + ' -> ' + d1.toFixed(0));
+  ok(bot.alive, 'the bot survives the run (the first stage burns slowly)');
+  g.stop();
+}
+/* ---------- 2n. the cargo event: the drop, the beacon, the loot, the mark ---------- */
 console.log('cargo event (createGame, controlled clock):');
 {
   let clock = 1e6;
