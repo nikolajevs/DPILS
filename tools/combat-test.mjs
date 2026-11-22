@@ -1139,7 +1139,7 @@ console.log('bot tactics (roles, weapons, footwork, cover, reaction):');
   msg(E, { t: 'state', x: 0, y: 1.7, z: -20, yaw: 0, pitch: 0 });
   bot.bot.target = E.handle.player.id; bot.bot.react = 0; bot.bot.look = 1;   // engaged at once: the gun fires its last round and reloads under the enemy's nose
   let retreated = false, covered = false, crouched = false;
-  for (let i = 0; i < 80; i++) { clock += 50; g.stepBots(0.05); g.stepItems(); if (bot.bot.retreatUntil > clock) retreated = true; if (bot.bot.cover) covered = true; if ((bot.eye || 1.7) < 1.5) crouched = true; }
+  for (let i = 0; i < 140; i++) { clock += 50; g.stepBots(0.05); g.stepItems(); if (bot.bot.retreatUntil > clock) retreated = true; if (bot.bot.cover) covered = true; if ((bot.eye || 1.7) < 1.5) crouched = true; }   // 7 s: the machine gun's reload is 4.5 s, the walk to a far cover takes its time
   ok(retreated, 'the bot falls back while its slow gun reloads with the enemy close');
   ok(covered, 'the bot finds a wall to hide behind');
   ok(crouched, 'the bot crouches behind the cover');
