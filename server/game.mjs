@@ -955,17 +955,24 @@ export function createGame(opts) {
     const inside = (x, z) => Math.hypot(x - SIEGE.cx, z - SIEGE.cz) < SIEGE.domeR - 6;
     const outside = (x, z) => { const d = Math.hypot(x - SIEGE.cx, z - SIEGE.cz); return d > SIEGE.domeR + 6 && d < SIEGE.r - 10; };
     const ok = side === 'd' ? inside : outside;
+    // the staging ground: flat ground underfoot and an open sight towards the fortress — the dome must be seen, not a wall
+    const open = (x, z) => {
+      const g0 = world.ground(x, z);
+      for (const [dx, dz] of [[2, 0], [-2, 0], [0, 2], [0, -2]]) if (Math.abs(world.ground(x + dx, z + dz) - g0) > 2) return false;
+      const dx = SIEGE.cx - x, dz = SIEGE.cz - z, l = Math.hypot(dx, dz) || 1;
+      return world.freePath([x, g0 + 1.6, z], [dx / l, 0, dz / l], 30) >= 29;
+    };
     if (side === 'd' && Math.random() < 0.45) {   // near the altar: the garden is the heart of the defence
       for (let k = 0; k < 24; k++) { const a = Math.random() * 6.283, r = 5 + Math.random() * 40, x = SIEGE.altar.x + Math.cos(a) * r, z = SIEGE.altar.z + Math.sin(a) * r; if (world.walkable(x, z) && ok(x, z)) return [x, z]; }
     }
-    for (let k = 0; k < 40; k++) {
+    for (let k = 0; k < 60; k++) {
       const a = side === 'd' ? Math.random() * 6.283 : -Math.PI / 2 + (Math.random() - 0.5) * 1.4;
       const r = side === 'd' ? 50 + Math.sqrt(Math.random()) * (SIEGE.domeR - 90) : SIEGE.domeR + 18 + Math.random() * (SIEGE.r - SIEGE.domeR - 43);
       const x = SIEGE.cx + Math.cos(a) * r, z = SIEGE.cz + Math.sin(a) * r;
-      if (world.walkable(x, z) && ok(x, z)) return [x, z];
+      if (world.walkable(x, z) && ok(x, z) && (side === 'd' || open(x, z))) return [x, z];
     }
     const [x, z] = side === 'd' ? walkSpot(SIEGE.altar.x + 18, SIEGE.altar.z) : walkSpot(SIEGE.cx, SIEGE.cz + SIEGE.domeR + 30);
-    return ok(x, z) ? [x, z] : [SIEGE.cx + (side === 'd' ? 0 : 0), SIEGE.cz + (side === 'd' ? 60 : SIEGE.domeR + 30)];
+    return ok(x, z) ? [x, z] : [SIEGE.cx, SIEGE.cz + (side === 'd' ? 60 : SIEGE.domeR + 30)];
   }
   function startSiege(t) {
     if (siege) return 'active';
