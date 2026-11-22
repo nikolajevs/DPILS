@@ -8,6 +8,7 @@
 
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
+| Claude | claude/high-ping-startup-40f702 | Пинг на старте игры: замер без подвисаний страницы | src/game/mp.js |
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
 
 ## Автономный цикл улучшений

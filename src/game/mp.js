@@ -60,7 +60,7 @@ const DMG = [
   { dmg: 20, head: 42 },
   { dmg: 16, head: 28 },
 ];
-const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, smokes: 1, napalms: 1, lastNade: 0, burnAt: 0, lastBurnSnd: 0, spec: 0, specMode: 0, scope: false, zoom: 0, opticMag: 8, dotBoost: 0, dotBoostAt: 0, dotBoostCd: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0, sights: { sight: 0, optic: 0 }, attach: [null, null, null, null, null], loadout: [0, 3], pack: [1, 2, 4, null, null, null, null, null, null, null] };   // two equipped guns + the ten-cell backpack (server/combat.mjs LOADOUT/PACK): a cell holds a gun index or a stored item ('sight', 'optic', 'med', 'nade'); sights: loose in the pack, attach: mounted per weapon
+const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, smokes: 1, napalms: 1, lastNade: 0, burnAt: 0, lastBurnSnd: 0, spec: 0, specMode: 0, scope: false, zoom: 0, opticMag: 8, dotBoost: 0, dotBoostAt: 0, dotBoostCd: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, rtts: [], pingT: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0, sights: { sight: 0, optic: 0 }, attach: [null, null, null, null, null], loadout: [0, 3], pack: [1, 2, 4, null, null, null, null, null, null, null] };   // two equipped guns + the ten-cell backpack (server/combat.mjs LOADOUT/PACK): a cell holds a gun index or a stored item ('sight', 'optic', 'med', 'nade'); sights: loose in the pack, attach: mounted per weapon
 // the pockets (keep server/combat.mjs in step: RESERVE and INV): the server owns them, the page only shows and predicts
 const RESERVE = [90, 24, 15, 36, 200], NADE_MAX = 2, MED_MAX = 3;   // the ready belt caps: the surplus rides in the pack and refills the belt as it is spent
 // the aimed grenade throw: G takes the grenade in hand, the mouse aims it, the left button held down charges the power
@@ -682,7 +682,10 @@ function onMsg(m) {
       if (canvas.requestPointerLock) { canvas.focus(); try { const pr = canvas.requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} }
       break;
     }
-    case 'pong': MP.rtt = Math.round(MP.rtt ? MP.rtt * 0.6 + (performance.now() - m.c) * 0.4 : performance.now() - m.c); el('mpPing').textContent = 'пинг ' + MP.rtt + ' мс'; updatePanel(); break;
+    case 'pong': {   // the pong waits for the page's thread, so a long frame only adds to a sample: the least of the last five is the network's own delay
+      const s = MP.rtts; s.push(performance.now() - m.c); if (s.length > 5) s.shift();
+      MP.rtt = Math.round(Math.min(...s)); el('mpPing').textContent = 'пинг ' + MP.rtt + ' мс'; updatePanel(); break;
+    }
     case 'correct': P.x = m.x; P.z = m.z; if (m.out) edgeNotice(); break;
     case 'snap': {
       const t = performance.now(), seen = new Set();
@@ -776,6 +779,7 @@ function showGame() {
   firstGames(); ambStart(); try { loadSounds(ac()); } catch (e) {}
   STATE.mp = true; MP.on = true; STATE.started = true; P.fly = false; document.body.classList.add('mp');
   $('start').hidden = true; $('hud').hidden = false; el('mpHud').hidden = false; $('cross').hidden = false; STATE.lodTimer = 0;
+  MP.pingT = 1;   // the first ping waits out the freeze of the start (the city around the spawn, the models, the shaders): it would be measured in it
 }
 /* The time of day of the game: the day of the server (hello.day — the share of it gone and its length, server/daycycle.mjs),
    the same day in the training's «авто», or the fixed time of the training. A server without a clock leaves the sky as it is. */
@@ -1002,7 +1006,7 @@ function mpTick(dt) {
   }
   MP.burst = Math.max(0, MP.burst - dt * 0.03); crossTick(dt, now);
   { const pk = Math.exp(-dt * 8); punch.p *= pk; punch.y *= pk; punch.r *= pk; if (punch.p < 1e-4) punch.p = 0; if (Math.abs(punch.y) < 1e-4) punch.y = 0; if (Math.abs(punch.r) < 1e-4) punch.r = 0; }   // the aim punch springs back
-  if ((MP.pingT = (MP.pingT || 0) - dt) <= 0 && MP.ws.readyState === 1) { MP.pingT = 2; MP.ws.send(JSON.stringify({ t: 'ping', c: now, rtt: MP.rtt })); }
+  if ((MP.pingT -= dt) <= 0 && MP.ws.readyState === 1) { MP.pingT = MP.rtts.length < 5 ? 0.5 : 2; MP.ws.send(JSON.stringify({ t: 'ping', c: performance.now(), rtt: MP.rtt })); }   // the first five come fast, to fill the window
   if (MP.firing && W().auto) fire(now);
   if (MP.dead) { const left = Math.max(0, 3 - (now - MP.deadAt) / 1000); el('mpRespawn').disabled = left > 0; el('mpRespawn').textContent = left > 0 ? 'Возрождение через ' + Math.ceil(left) : MP.specMode === 2 ? 'Возродиться (Enter)' : 'Возродиться (пробел)'; }
   else if ((MP.sendT -= dt) <= 0 && MP.ws.readyState === 1) { MP.sendT = 0.05; MP.ws.send(JSON.stringify({ t: 'state', x: +P.x.toFixed(2), y: +P.y.toFixed(2), z: +P.z.toFixed(2), yaw: +P.yaw.toFixed(3), pitch: +P.pitch.toFixed(3), h: +P.eye.toFixed(2), w: MP.weapon })); }
