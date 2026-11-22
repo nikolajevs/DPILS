@@ -12,6 +12,7 @@ const ACTIONS = [
   ['jump', 'Прыжок', 'Space'], ['crouch', 'Присесть', 'KeyC'], ['reload', 'Перезарядка', 'KeyR'], ['grenade', 'Граната', 'KeyG'],
   ['smoke', 'Дымовая граната', 'KeyB'], ['napalm', 'Напалм (зажигательная)', 'KeyN'],
   ['w1', 'Автомат', 'Digit1'], ['w2', 'Дробовик', 'Digit2'], ['w3', 'Снайперская', 'Digit3'], ['w4', 'Пистолет', 'Digit4'], ['w5', 'Пулемёт', 'Digit5'],
+  ['w6', 'M4A1', 'Digit6'], ['w7', 'SCAR-L', 'Digit7'], ['w8', 'AR-15', 'Digit8'],
   ['inv', 'Инвентарь', 'KeyI'], ['med', 'Аптечка (использовать)', 'KeyH'],
   ['voice', 'Рация (удерживать)', 'KeyV'], ['chat', 'Чат всем', 'KeyY'], ['teamChat', 'Чат команде', 'KeyU'], ['board', 'Таблица очков', 'Tab'],
 ];
@@ -60,7 +61,7 @@ const TABS = [
 ];
 const KEY_GROUPS = [
   ['Движение', ['forward', 'back', 'left', 'right', 'run', 'jump', 'crouch']],
-  ['Бой', ['reload', 'grenade', 'w1', 'w2', 'w3', 'w4', 'w5', 'inv', 'med']],
+  ['Бой', ['reload', 'grenade', 'w1', 'w2', 'w3', 'w4', 'w5', 'w6', 'w7', 'w8', 'inv', 'med']],
   ['Общение', ['voice', 'chat', 'teamChat', 'board']],
 ];
 const LABELS = Object.fromEntries(ACTIONS.map(a => [a[0], a[1]]));

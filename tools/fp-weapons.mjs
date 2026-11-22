@@ -27,13 +27,20 @@ import { MeshoptEncoder } from 'meshoptimizer';
 import sharp from 'sharp';
 
 const [which, srcDir] = process.argv.slice(2);
-if (!which || !srcDir) { console.error('usage: node tools/fp-weapons.mjs <shotgun|sniper|pistol|mg|all> <unzipped-dir>'); process.exit(1); }
+if (!which || !srcDir) { console.error('usage: node tools/fp-weapons.mjs <shotgun|sniper|pistol|mg|m4|scar|ar15|all> <unzipped-dir>'); process.exit(1); }
 const CFG = {
   // grip: the point of the model that becomes the origin; rotY: turns the barrel onto +z; k: scale to metres
   shotgun: { file: 'shotgun/scene.gltf', out: 'models/fp_shotgun.glb', rotY: -Math.PI / 2, grip: [-0.20, 0.045, 0], k: 1, tex: 1024 },
   sniper: { file: 'sniper/scene.gltf', out: 'models/fp_sniper.glb', rotY: 0, grip: [-0.13, 3.19, 0.576], k: 1.225 / 4.207, tex: 2048, stripSkin: true },
   pistol: { file: 'pistol/scene.gltf', out: 'models/fp_pistol.glb', rotY: 0, grip: [0, 0.045, 0.005], k: 1, tex: 1024, drop: ['Floor', 'Stand', 'Makarov_bullet', 'Makarov_suppressor'] },
   mg: { file: 'mg/scene.gltf', out: 'models/fp_mg.glb', rotY: 0, grip: [0, 0.01, 0.047], k: 1, tex: 1024 },
+  // the three assault rifles added later (CC BY 4.0, credits in models/README.md). The M4 arrives in centimetres
+  // (104 cm long, scaled to 0.89 m), the SCAR-L already in metres; the AR-15 in arbitrary units (6.79 long → 0.90 m).
+  // The M4's muzzle is on +z of its file, the SCAR's and the AR-15's on −z (rotY π). grip: the top of the pistol
+  // grip where it meets the receiver — the origin the HOLD table of src/game/viewmodel.js measures the palms from.
+  m4: { file: 'm4/scene.gltf', out: 'models/fp_m4.glb', rotY: 0, grip: [0, -2, -13], k: 0.0085, tex: 1024 },
+  scar: { file: 'scar/scene.gltf', out: 'models/fp_scar.glb', rotY: Math.PI, grip: [0, 0.016, 0.13], k: 1, tex: 1024 },
+  ar15: { file: 'ar15/scene.gltf', out: 'models/fp_ar15.glb', rotY: Math.PI, grip: [0, -0.27, 0.62], k: 0.133, tex: 1024, drop: ['bullets', 'gps'] },
 };
 await MeshoptEncoder.ready;
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.encoder': MeshoptEncoder });

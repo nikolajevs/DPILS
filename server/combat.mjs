@@ -23,6 +23,12 @@ export const WEAPONS = [
   { name: 'Снайперская', mag: 5, gapMs: 1300, pellets: 1, dmg: 70, head: 100, range: 400, vel: 820, drag: 0.00013, pen: 1.2 },
   { name: 'Пистолет', mag: 12, gapMs: 150, pellets: 1, dmg: 20, head: 42, range: 90, vel: 430, drag: 0.002, pen: 0.2 },
   { name: 'Пулемёт', mag: 100, gapMs: 60, pellets: 1, dmg: 16, head: 28, range: 140, vel: 560, drag: 0.001, pen: 0.6 },
+  // the three assault rifles (models fp_m4 / fp_scar / fp_ar15, CC BY 4.0, models/README.md): the M4A1 is the quick
+  // one (fast cycle, light 5.56), the SCAR-L the heavy hitter (slower, harder, punches a little more), the AR-15 the
+  // flat-shooting marksman's rifle (the fastest bullet, the least drag, the longest reach of the three)
+  { name: 'M4A1', mag: 30, gapMs: 75, pellets: 1, dmg: 20, head: 36, range: 170, vel: 620, drag: 0.0011, pen: 0.45 },
+  { name: 'SCAR-L', mag: 30, gapMs: 95, pellets: 1, dmg: 24, head: 44, range: 180, vel: 590, drag: 0.001, pen: 0.55 },
+  { name: 'AR-15', mag: 30, gapMs: 90, pellets: 1, dmg: 22, head: 42, range: 200, vel: 700, drag: 0.0008, pen: 0.4 },
 ];   // mag: the magazine size (keep src/game/mp.js in step); the reserve and the reload time are below
 // the grenade (keep src/game/nades.js in step): thrown along the aim lifted by `loft`, falls with `g`, bounces on the
 // ground, off walls and off players (bodyR + r is the capsule it meets), goes off after `fuseMs`; damage falls linearly
@@ -51,8 +57,8 @@ export const NAPALM = { count: 1, fuseMs: 2000, radius: 4, durMs: 8000, dps: 30,
 export const NADE_KINDS = ['nade', 'smoke', 'napalm'];   // the frag, the smoke, the incendiary — the 'throw' message's kind
 // the inventory (keep src/game/mp.js and src/game/inventory.js in step): the reserve each weapon starts with, the time
 // of its reload, and the items that lie on the map and are picked up by walking over them
-export const RESERVE = [90, 24, 15, 36, 200];
-export const RELOAD_MS = [1800, 2600, 2800, 1400, 4500];
+export const RESERVE = [90, 24, 15, 36, 200, 90, 90, 90];
+export const RELOAD_MS = [1800, 2600, 2800, 1400, 4500, 1700, 2000, 1800];
 // the loadout (keep src/game/mp.js in step): only two weapons are equipped on the player at a time — the rifle and the
 // pistol by default. The other three ride in the backpack (PACK): ten loot slots, three filled at the start and seven
 // empty. A weapon index lives in exactly one place — a loadout slot or a pack cell — never both. Swapping exchanges a
@@ -61,9 +67,9 @@ export const RELOAD_MS = [1800, 2600, 2800, 1400, 4500];
 // until mounted (mounting frees the cell, taking off returns the sight to a free cell), and the med kits and grenades
 // beyond the ready belt (INV.medMax / INV.nadeMax) are stored here — the belt refills from the pack as it is spent.
 export const LOADOUT = [0, 3];
-export const PACK = [1, 2, 4, null, null, null, null, null, null, null];
+export const PACK = [1, 2, 4, 5, 6, 7, null, null, null, null];   // the three new rifles ride in the pack: swap one into a slot from the inventory (I)
 export const ITEMS = {
-  ammo: { name: 'Патроны', respawnMs: 25000, give: [30, 8, 5, 12, 50] },   // reserve added per weapon
+  ammo: { name: 'Патроны', respawnMs: 25000, give: [30, 8, 5, 12, 50, 30, 30, 30] },   // reserve added per weapon
   nade: { name: 'Граната', respawnMs: 30000 },
   smoke: { name: 'Дымовая граната', respawnMs: 35000 },
   napalm: { name: 'Напалм', respawnMs: 40000 },
