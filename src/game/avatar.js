@@ -25,11 +25,11 @@ import { makeRagdoll } from './ragdoll.js';
    The weapons in hand are ready models too (models/fp_shotgun.glb, fp_sniper.glb, fp_pistol.glb, fp_mg.glb — CC BY 4.0, from Sketchfab, credits in models/README.md): metres, the muzzle along +z, the top along +y, the grip at the origin.
    The AK (null in MODEL.guns) is the rifle of the arms of viewmodel.js. Every gun is held in both hands: see heldGun and hold below. */
 const MODEL = {
-  guns: [null, 'models/fp_shotgun.glb', 'models/fp_sniper.glb', 'models/fp_pistol.glb', 'models/fp_mg.glb'], gunLen: [1, 1, 1, 1.5, 1], gunYaw: [0, 0, 0, 0, 0], gunM: [false, true, true, true, true], headScale: 1,   // one gun model for each weapon of the game; the fp_* guns are already in metres and point along +z (gunM), the pistol is a little bigger in the hand
+  guns: [null, 'models/fp_shotgun.glb', 'models/fp_sniper.glb', 'models/fp_pistol.glb', 'models/fp_mg.glb', 'models/fp_m4.glb', 'models/fp_scar.glb', 'models/fp_ar15.glb'], gunLen: [1, 1, 1, 1.5, 1, 1, 1, 1], gunYaw: [0, 0, 0, 0, 0, 0, 0, 0], gunM: [false, true, true, true, true, true, true, true], headScale: 1,   // one gun model for each weapon of the game; the fp_* guns are already in metres and point along +z (gunM), the pistol is a little bigger in the hand
   // a gun whose file lies tilted: where its bore and its left side point in the file. The Makarov came off its display
   // stand rolled by 35° and its barrel 30° down and aside (tools/fp-weapons.mjs did not level it): it is turned once on
   // loading, about its grip, so that every clone has the muzzle along +z and the top along +y (axes of its faces)
-  gunAxes: [null, null, null, { bore: [0.289, -0.408, 0.866], left: [0.8165, 0.5774, 0] }, null],
+  gunAxes: [null, null, null, { bore: [0.289, -0.408, 0.866], left: [0.8165, 0.5774, 0] }, null, null, null, null],
   clips: { idle: 'Idle', crouch: 'Crouch', jump: 'Jump', death: 'Death', hold: 'Carry' },   // hold: the pose of the arms with a rifle; the step clips are in STEP_SET
   arms: ['ShoulderL', 'UpperArmL', 'LowerArmL', 'FistL', 'ShoulderR', 'UpperArmR', 'LowerArmR', 'FistR'], hand: 'FistR', head: 'Head',
 };

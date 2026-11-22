@@ -15,7 +15,7 @@ import { worldSpace } from '../render/world-space.js';
    makeFlash({ size, wrap }) gives { group, fire(power, scale), tick(dt) → brightness 0…1 }. The group is put at the
    muzzle, its +z along the barrel; size scales the whole flash (1: an assault rifle), scale one shot (FLASH_SIZE of the
    weapon); wrap is applied to each material (the arms of viewmodel.js draw theirs over everything). */
-const FLASH_SIZE = [1, 1.35, 1.5, 0.6, 1.25];   // in the order of the weapons: the shotgun, the sniper rifle and the machine gun blow bigger flames than the AK, the pistol a small one
+const FLASH_SIZE = [1, 1.35, 1.5, 0.6, 1.25, 1, 1.1, 0.95];   // in the order of the weapons: the shotgun, the sniper rifle and the machine gun blow bigger flames than the AK, the pistol a small one; the SCAR-L a touch bigger than the M4A1, the AR-15 a touch smaller
 const N = 4, CELL = 256;
 let TEX = null;
 function hash(x, y, s) { let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 1442695041) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16; return (h >>> 0) / 4294967296; }

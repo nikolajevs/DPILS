@@ -5,7 +5,7 @@
      (www.kenney.nl, "Impact Sounds" and "RPG Audio", CC0). Chrome and Firefox decode OGG themselves; where a browser
      cannot (Safari) the buffer simply stays absent and the caller plays its own synthesis, as before the recordings.
    Every function returns false when its buffers have not come yet: mp.js then synthesises the sound itself. */
-const GUN = ['ak', 'sg', 'sn', 'pi', 'mg'];
+const GUN = ['ak', 'sg', 'sn', 'pi', 'mg', 'mg', 'ak', 'mg'];   // the new rifles share the recorded families: the 5.56 M4A1 and AR-15 the Minimi's crack, the heavier SCAR-L the AK's punch
 const NAMES = [...GUN.flatMap(g => [g + '-1', g + '-2', g + '-far']), 'hit-body-1', 'hit-body-2', 'hit-body-3', 'hit-body-4', 'hit-head', 'hit-wall-1', 'hit-wall-2', 'hit-wall-3', 'hit-ground', 'ricochet', 'crack-1', 'crack-2'];
 // the families of Kenney: five variants each (the explosion four, plus two low rumbles)
 const FAM = { 'step-concrete': 'footstep_concrete', 'step-grass': 'footstep_grass', 'debris-wood': 'impactWood_medium', 'debris-stone': 'impactMining', 'debris-concrete': 'impactGeneric_light', 'debris-metal': 'impactMetal', 'debris-soft': 'impactSoft_medium' };

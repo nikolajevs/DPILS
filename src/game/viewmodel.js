@@ -23,7 +23,7 @@ const EYE = new THREE.Vector3(0, 1.598, 0.022);
 // the AK in the coordinates of its own file (the arms' bone carries it), the others from their grip (HOLD).
 // The top of the receiver was measured off the models (tools/sights.mjs builds the sights to the same convention).
 // The pistol's is on the top of its slide once avatar.js has levelled it.
-const SIGHT_MOUNT = [[-0.13, 1.5, 0.24], [0, 0.088, 0.1], [0, 0.045, 0.05], [0.01, 0.063, -0.055], [0, 0.112, 0]];
+const SIGHT_MOUNT = [[-0.13, 1.5, 0.24], [0, 0.088, 0.1], [0, 0.045, 0.05], [0.01, 0.063, -0.055], [0, 0.112, 0], [0, 0.104, 0.04], [0, 0.084, 0.15], [0, 0.069, 0.28]];
 let loading = null, ak = null, settled = false;
 function loadAK() {
   if (!loading) loading = new Promise(res => import('three/addons/libs/meshopt_decoder.module.js').then(({ MeshoptDecoder }) => {   // the decoder of the packed geometry comes only with the game
@@ -70,6 +70,9 @@ const HOLD = [null,
   { grip: [-0.031, -0.053, -0.105], fore: [0.027, -0.025, 0.24], shift: [0, 0, 0] },   // SVD: the grip of the thumbhole stock, the left hand under the wooden handguard
   { grip: [-0.023, -0.021, -0.098], fore: [0.036, -0.073, -0.077], shift: [0.025, 0.05, 0.17] },   // Makarov: held out, the left hand under the base of the grip
   { grip: [-0.034, -0.033, -0.097], fore: [0.035, -0.021, 0.25], shift: [0, 0, 0] },   // Minimi: the pistol grip, the left hand under the handguard before the box
+  { grip: [-0.034, -0.034, -0.03], fore: [0.034, 0.028, 0.3], shift: [0, 0, 0] },   // M4A1: the pistol grip, the left hand under the railed handguard (origin at the grip top, below the bore)
+  { grip: [-0.034, -0.066, -0.025], fore: [0.034, -0.02, 0.33], shift: [0, 0, 0] },   // SCAR-L: the pistol grip, the left hand under the handguard
+  { grip: [-0.034, -0.07, -0.015], fore: [0.034, -0.02, 0.29], shift: [0, 0, 0] },   // AR-15: the pistol grip, the left hand under the handguard ahead of the ACOG
 ];
 const GIVE = 0.1;   // how far the left shoulder may come forward after the hand (metres)
 const V3 = a => new THREE.Vector3(...a);

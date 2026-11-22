@@ -48,6 +48,9 @@ const WEAPONS = [
   { name: 'Снайперская', mag: 5, reloadMs: 2800, gapMs: 1300, range: 400, pellets: 1, cone: 0, auto: false, scope: true },   // right mouse button: the scope
   { name: 'Пистолет', mag: 12, reloadMs: 1400, gapMs: 170, range: 90, pellets: 1, cone: 0, auto: false, base: 0.001, kick: 0.006, vol: 0.25, hear: 150 },
   { name: 'Пулемёт', mag: 100, reloadMs: 4500, gapMs: 65, range: 140, pellets: 1, cone: 0, auto: true, base: 0.012, burst: 0.003, cap: 0.05, kick: 0.004, vol: 0.45, hear: 260 },
+  { name: 'M4A1', mag: 30, reloadMs: 1700, gapMs: 90, range: 170, pellets: 1, cone: 0, auto: true, base: 0.0018, burst: 0.0018, cap: 0.03, kick: 0.003, vol: 0.35, hear: 220 },
+  { name: 'SCAR-L', mag: 30, reloadMs: 2000, gapMs: 110, range: 180, pellets: 1, cone: 0, auto: true, base: 0.0022, burst: 0.0026, cap: 0.04, kick: 0.0045, vol: 0.42, hear: 240 },
+  { name: 'AR-15', mag: 30, reloadMs: 1800, gapMs: 105, range: 200, pellets: 1, cone: 0, auto: true, base: 0.0015, burst: 0.0015, cap: 0.025, kick: 0.0028, vol: 0.33, hear: 230 },
 ];
 // what the weapons of the table do not say themselves: the kick of one shot, how loud, how far it is heard, the size of the gun in your hands
 const FEEL = { kick: 0.0035, vol: 0.35, hear: 220, vm: 0.55 };
@@ -59,10 +62,13 @@ const DMG = [
   { dmg: 70, head: 100 },
   { dmg: 20, head: 42 },
   { dmg: 16, head: 28 },
+  { dmg: 20, head: 36 },
+  { dmg: 24, head: 44 },
+  { dmg: 22, head: 42 },
 ];
-const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, smokes: 1, napalms: 1, lastNade: 0, burnAt: 0, lastBurnSnd: 0, spec: 0, specMode: 0, scope: false, zoom: 0, opticMag: 8, dotBoost: 0, dotBoostAt: 0, dotBoostCd: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, rtts: [], pingT: 0, server: '', kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0, sights: { sight: 0, optic: 0 }, attach: [null, null, null, null, null], loadout: [0, 3], pack: [1, 2, 4, null, null, null, null, null, null, null] };   // two equipped guns + the ten-cell backpack (server/combat.mjs LOADOUT/PACK): a cell holds a gun index or a stored item ('sight', 'optic', 'med', 'nade'); sights: loose in the pack, attach: mounted per weapon
+const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, smokes: 1, napalms: 1, lastNade: 0, burnAt: 0, lastBurnSnd: 0, spec: 0, specMode: 0, scope: false, zoom: 0, opticMag: 8, dotBoost: 0, dotBoostAt: 0, dotBoostCd: 0, ammo: [30, 6, 5, 12, 100, 30, 30, 30], reserve: [90, 24, 15, 36, 200, 90, 90, 90], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, rtts: [], pingT: 0, server: '', kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0, sights: { sight: 0, optic: 0 }, attach: [null, null, null, null, null, null, null, null], loadout: [0, 3], pack: [1, 2, 4, 5, 6, 7, null, null, null, null] };   // two equipped guns + the ten-cell backpack (server/combat.mjs LOADOUT/PACK): a cell holds a gun index or a stored item ('sight', 'optic', 'med', 'nade'); sights: loose in the pack, attach: mounted per weapon
 // the pockets (keep server/combat.mjs in step: RESERVE and INV): the server owns them, the page only shows and predicts
-const RESERVE = [90, 24, 15, 36, 200], NADE_MAX = 2, MED_MAX = 3;   // the ready belt caps: the surplus rides in the pack and refills the belt as it is spent
+const RESERVE = [90, 24, 15, 36, 200, 90, 90, 90], NADE_MAX = 2, MED_MAX = 3;   // the ready belt caps: the surplus rides in the pack and refills the belt as it is spent
 // the aimed grenade throw: G takes the grenade in hand, the mouse aims it, the left button held down charges the power
 const NAIM = { on: false, charging: false, t0: 0, power: 0, full: false, at: 0 };
 const NTHROW = { at: 0, pw: 0, gone: false, kind: 'nade' };   // the throw just made: the arm follows through, then the weapon comes back up; gone: its grenade is in the air
@@ -209,7 +215,7 @@ function upgradeViewmodels() {
     if (vm && (vm.has(i) || vm.addWeapon(i, gunSource(i)))) { m.clear(); return; }   // the arms of viewmodel.js hold it: the boxes and their fists go
     const g = gunModel(i); if (!g || m.userData.ready) return; m.userData.ready = true;
     m.children.forEach(c => { if (!c.userData.keep) c.visible = false; });   // the old boxes off (the hands stay)
-    const s = [0.55, 0.29, 0.46, 0.8, 0.44][i] ?? FEEL.vm;   // the fp_* guns are in metres: these keep the on-screen size of the old boxes
+    const s = [0.55, 0.29, 0.46, 0.8, 0.44, 0.55, 0.55, 0.55][i] ?? FEEL.vm;   // the fp_* guns are in metres: these keep the on-screen size of the old boxes
     g.rotation.y = Math.PI; g.scale.multiplyScalar(s); g.position.set(0.05, i === 3 ? 0.07 : -0.02, i === 3 ? 0.02 : 0.12); m.add(g);
     m.userData.flashZ = g.position.z - (g.userData.muzzle || 0.5) * s; m.userData.flashY = g.position.y + (g.userData.muzzleY || 0) * s;   // the flash at the muzzle tip
     hands[i].scale.setScalar(i === 3 ? 0.6 : 1);   // the pistol is small: its fists too
@@ -364,7 +370,7 @@ function bang(vol, low) {
 const SV = new THREE.Vector3();
 function spot(x, y, z) { SV.set(x, y, z).applyMatrix4(camera.matrixWorldInverse); const d = SV.length(); return { d, pan: d > 0.5 ? 0.85 * SV.x / Math.max(0.5, Math.hypot(SV.x, SV.z)) : 0 }; }
 // the recorded shots are louder than the old synthetic bang: their own volumes, in the order of WEAPONS
-const SHOT_VOL = [0.55, 0.7, 0.75, 0.45, 0.55];
+const SHOT_VOL = [0.55, 0.7, 0.75, 0.45, 0.55, 0.5, 0.6, 0.5];
 // what a bullet hits, by the facade style of the cadastre (tools/process.js): wood, brick, plaster or metal
 const WALL_MAT = { 0: 'concrete', 1: 'stone', 2: 'stone', 3: 'concrete', 4: 'concrete', 5: 'wood', 6: 'metal', 12: 'metal', 13: 'metal', 14: 'concrete' };
 // a bullet stopped by a wall or the ground at distance len along d from o: the sound of the hit, if it is near enough to hear
@@ -915,7 +921,7 @@ window.addEventListener('keydown', e => {
   else if (e.code === SET.keys.napalm) { closeInv(); nadePrep('napalm'); }
   else if (e.code === SET.keys.reload) { closeInv(); nadeCancel(); reload(performance.now()); }
   else if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { const t = performance.now(); if (MP.scope && MP.attach[MP.weapon] === 'sight' && !MP.dead && !MP.reloadAt && MP.zoom > 0.6 && !MP.dotBoostAt && t >= MP.dotBoostCd) { MP.dotBoostAt = t; tone(680, 920, 0.06, 0.14, 'sine'); } }   // the red dot's brief extra zoom on Shift, only while aiming through it (a press starts one peek; holding does not extend it)
-  else if (e.code === SET.keys.w1) switchWeapon(0); else if (e.code === SET.keys.w2) switchWeapon(1); else if (e.code === SET.keys.w3) switchWeapon(2); else if (e.code === SET.keys.w4) switchWeapon(3); else if (e.code === SET.keys.w5) switchWeapon(4);
+  else if (e.code === SET.keys.w1) switchWeapon(0); else if (e.code === SET.keys.w2) switchWeapon(1); else if (e.code === SET.keys.w3) switchWeapon(2); else if (e.code === SET.keys.w4) switchWeapon(3); else if (e.code === SET.keys.w5) switchWeapon(4); else if (e.code === SET.keys.w6) switchWeapon(5); else if (e.code === SET.keys.w7) switchWeapon(6); else if (e.code === SET.keys.w8) switchWeapon(7);
   else if (e.code === SET.keys.board) { e.preventDefault(); el('mpBoard').hidden = false; drawBoard(); }
   else if ((e.code === 'Enter' || (e.code === 'Space' && MP.specMode !== 2)) && MP.dead) { e.preventDefault(); respawn(); }   // in the free camera Space is up, Enter respawns
 });
@@ -930,7 +936,10 @@ const CROSS = [
   { ring: true, gap: 12, th: 2 },   // shotgun: the ring is the pellet cone
   { gap: 12, len: 7, th: 1.5 },     // sniper, from the hip
   { gap: 4, len: 7, th: 2 },        // pistol
-  { gap: 8, len: 10, th: 2.5 } ];   // machine gun
+  { gap: 8, len: 10, th: 2.5 },   // machine gun
+  { gap: 5, len: 9, th: 2 },        // M4A1
+  { gap: 6, len: 9, th: 2.2 },      // SCAR-L
+  { gap: 4.5, len: 8, th: 1.8 } ];  // AR-15
 const crossEl = $('cross'), crossRe = crossEl.querySelector('.c-re circle');
 const scopeMag = $('mpScopeMag'), dotHint = $('mpDotHint');   // the optic's magnification label, the red dot's Shift hint
 let crossGap = 6, crossKey = '';

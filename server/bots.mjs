@@ -22,11 +22,12 @@ const rnd = (a, b) => a + Math.random() * (b - a), gauss = () => { let s = 0; fo
 // unique ("Андрис 2 (бот)"), so addBot never loops forever looking for a free one
 export const botName = i => NAMES[i % NAMES.length] + (i < NAMES.length ? '' : ' ' + (1 + (i / NAMES.length | 0))) + ' (бот)';
 
-// ---- the guns and how each is fought (indices of WEAPONS: 0 rifle, 1 shotgun, 2 sniper, 3 pistol, 4 machine gun)
+// ---- the guns and how each is fought (indices of WEAPONS: 0 rifle, 1 shotgun, 2 sniper, 3 pistol, 4 machine gun,
+// 5 M4A1, 6 SCAR-L, 7 AR-15)
 // want: the distance the gun likes to keep; core: where it is at its best; outer: past this it is a poor choice.
-const WANT = [28, 8, 90, 14, 55];
-const CORE = [[12, 90], [0, 14], [60, 250], [4, 25], [25, 90]];
-const OUTER = [[4, 150], [0, 30], [35, 400], [0, 60], [10, 140]];
+const WANT = [28, 8, 90, 14, 55, 26, 32, 45];
+const CORE = [[12, 90], [0, 14], [60, 250], [4, 25], [25, 90], [10, 85], [12, 95], [20, 140]];
+const OUTER = [[4, 150], [0, 30], [35, 400], [0, 60], [10, 140], [4, 140], [5, 150], [8, 190]];
 // how well the gun fits the distance: 1 in its core, fading to 0.08 at the outer edge and past it
 function fit(w, d) {
   const [a, b] = CORE[w], [c, e] = OUTER[w];
@@ -38,9 +39,9 @@ function fit(w, d) {
 // take the sniper and the machine gun more often. Everybody still carries and can fall back on every weapon.
 function pickRole(level) {
   const r = Math.random();
-  if (level === 'easy') return r < 0.5 ? 0 : r < 0.75 ? 1 : r < 0.9 ? 3 : 4;
-  if (level === 'hard') return r < 0.3 ? 0 : r < 0.5 ? 4 : r < 0.7 ? 2 : r < 0.85 ? 1 : 3;
-  return r < 0.4 ? 0 : r < 0.6 ? 1 : r < 0.75 ? 2 : r < 0.9 ? 4 : 3;
+  if (level === 'easy') return r < 0.4 ? 0 : r < 0.6 ? 1 : r < 0.75 ? 3 : r < 0.88 ? 5 : 4;
+  if (level === 'hard') return r < 0.2 ? 0 : r < 0.35 ? 4 : r < 0.5 ? 2 : r < 0.62 ? 6 : r < 0.74 ? 7 : r < 0.86 ? 1 : r < 0.95 ? 5 : 3;
+  return r < 0.28 ? 0 : r < 0.42 ? 1 : r < 0.54 ? 2 : r < 0.66 ? 4 : r < 0.78 ? 5 : r < 0.88 ? 6 : r < 0.96 ? 7 : 3;
 }
 // the metres a second the bot moves: a jog between fights, a sprint when the coast is clear, a measured step in one,
 // a sprint away from danger; a crouched bot creeps at the player's own crouch speed (JUMP.crouchSpeed in src/game/player.js)
