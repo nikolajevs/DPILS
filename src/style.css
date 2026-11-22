@@ -948,3 +948,31 @@ body.mp:not(:has(#view.locked)) .mp-sys { bottom: 64px; }   /* above the returne
 .credits-card .credit a { color: var(--ink); text-decoration-color: color-mix(in srgb, var(--brick) 55%, transparent); text-underline-offset: 2px; }
 .credits-card .credit a:hover { color: var(--brick); }
 @media (prefers-reduced-motion: reduce) { .credits-card { animation: none; } .choice, .choice::after { transition: none; } }
+
+/* ---------- the cargo event: the drop banner, the mark on you, the pointer to the crate ----------
+   The server drops a supply crate on a parachute every few minutes (server/game.mjs, CARGO); a smoke beacon marks
+   the landing, the taker is marked for everyone for a minute. The banner rides under the team score, the red chip
+   under it counts the mark's minute down, the gold arrow at the screen edge points at the crate when it is off screen. */
+.cargo-banner { position: fixed; left: 50%; top: 58px; transform: translateX(-50%); z-index: 6; display: flex; gap: 10px; align-items: center; padding: 8px 14px; border-radius: 8px; background: rgba(16, 13, 8, .74); border: 1px solid rgba(255, 176, 42, .4); border-left: 3px solid #ffb02a; backdrop-filter: blur(6px); pointer-events: none; animation: cargo-in .3s ease-out; max-width: min(480px, 92vw); }
+.cargo-banner svg { flex: none; width: 24px; height: 24px; fill: none; stroke: #ffb02a; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.cargo-banner b { display: block; font: 700 14px/1.2 var(--f-display); color: #ffd98a; letter-spacing: .02em; }
+.cargo-banner small { display: block; font: 500 12px/1.3 var(--f-body); color: rgba(255, 255, 255, .78); }
+.cargo-banner.mine { border-color: rgba(255, 90, 60, .55); border-left-color: #ff3b2a; }
+.cargo-banner.mine svg { stroke: #ff6a5a; }
+.cargo-banner.mine b { color: #ff9b8f; }
+@keyframes cargo-in { from { opacity: 0; transform: translateX(-50%) translateY(-8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+.cargo-self { position: fixed; left: 50%; top: 116px; transform: translateX(-50%); z-index: 6; display: flex; gap: 8px; align-items: center; padding: 6px 12px; border-radius: 6px; background: rgba(150, 26, 18, .88); border: 1px solid #ff6a5a; color: #fff; font: 700 13px/1 var(--f-body); letter-spacing: .08em; pointer-events: none; animation: cargo-pulse 1.1s ease-in-out infinite; }
+.cargo-self svg { width: 16px; height: 16px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; }
+.cargo-self span { font-variant-numeric: tabular-nums; background: rgba(0, 0, 0, .3); padding: 3px 6px; border-radius: 4px; }
+.cargo-self.low { animation-duration: .45s; background: rgba(190, 20, 12, .95); }
+@keyframes cargo-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 60, 40, .55); } 50% { box-shadow: 0 0 14px 3px rgba(255, 60, 40, .55); } }
+.cargo-point { position: fixed; left: 0; top: 0; z-index: 6; display: grid; justify-items: center; gap: 3px; pointer-events: none; will-change: transform; }
+.cargo-point i { width: 30px; height: 30px; display: block; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, .8)); }
+.cargo-point i svg { width: 100%; height: 100%; fill: none; stroke: #ffb02a; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.cargo-point b { font: 700 11px/1 var(--f-body); color: #ffd98a; background: rgba(0, 0, 0, .55); padding: 3px 6px; border-radius: 4px; text-shadow: none; }
+.cargo-label { position: absolute; left: 0; top: 0; font: 700 12px/1 var(--f-body); letter-spacing: .05em; color: #1a1408; background: #ffb02a; padding: 4px 7px; border-radius: 4px; white-space: nowrap; box-shadow: 0 1px 5px rgba(0, 0, 0, .55); }
+.mp-tag.marked { box-shadow: 0 0 0 2px #ff3b2a, 0 0 10px rgba(255, 60, 40, .6); }
+.mp-tag.marked::before { content: "🎯 "; }
+.bd-mark { flex: none; font: 700 9px/1 var(--f-body); font-style: normal; letter-spacing: .06em; text-transform: uppercase; padding: 2.5px 5px; border-radius: 3px; border: 1px solid rgba(255, 176, 42, .7); color: #ffd98a; }
+@media (prefers-reduced-motion: reduce) { .cargo-banner, .cargo-self { animation: none; } }
+@media (max-width: 700px) { .cargo-banner { top: 52px; padding: 6px 10px; } .cargo-banner b { font-size: 12px; } .cargo-self { top: 104px; font-size: 11px; } }

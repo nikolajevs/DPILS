@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { worldSpace } from '../render/world-space.js';
 
-const FILES = { ammo: 'models/item_ammo.glb', nade: 'models/item_nade.glb', smoke: 'models/item_smoke.glb', napalm: 'models/item_napalm.glb', med: 'models/item_med.glb', sight: 'models/item_sight.glb', optic: 'models/item_optic.glb' };
+const FILES = { ammo: 'models/item_ammo.glb', nade: 'models/item_nade.glb', smoke: 'models/item_smoke.glb', napalm: 'models/item_napalm.glb', med: 'models/item_med.glb', sight: 'models/item_sight.glb', optic: 'models/item_optic.glb', cargo: 'models/cargo.glb' };
 const templates = {};
 const waiters = [];
 let left = Object.keys(FILES).length;
