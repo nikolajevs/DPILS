@@ -27,7 +27,7 @@ curl http://127.0.0.1:8787/health
 
 Команды игроков ([server/teams.mjs](../teams.mjs), живая часть — [server/social.mjs](../social.mjs)) хранятся рядом с аккаунтами в `server/data/teams.json` (другое место — `Environment=TEAMS=/var/lib/dpils/teams.json`, без команд — `TEAMS=off`); страница держит WebSocket на пути `/social` того же процесса, Caddy проксирует его вместе с остальным.
 
-Ивент «Шторм» (battle royale, [server/storm.mjs](../storm.mjs)) живёт в том же процессе отдельным раундом на WebSocket-пути `/storm` рядом с основным боем; статус для лобби — `/storm-health`. Свои боты — `Environment=STORM_BOTS=15` (по умолчанию 15, 0 — только люди), `Environment=STORM=off` выключает ивент целиком. Длина дня у ивента общая (`DAY_MIN`).
+Бой идёт катками по 2 часа — одни сутки игры (длину задаёт тот же `DAY_MIN`): вход открыт первые 30 минут (и 5 минут после перезапуска сервера), последние 20 минут — «Шторм» до последнего выжившего ([server/storm.mjs](../storm.mjs)). Состояние катки отдаёт `/health` (поле `match`), его читает лобби. `Environment=MATCH=off` возвращает бесконечные раунды до `WIN_SCORE` без шторма. Отдельного ивента на `/storm` и `/storm-health`, а с ними `STORM` и `STORM_BOTS` больше нет.
 
 Обновление: `cd /opt/dpils && sudo -u dpils git pull && sudo systemctl restart dpils-game`. Логи: `journalctl -u dpils-game -f`.
 

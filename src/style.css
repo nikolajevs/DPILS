@@ -949,32 +949,17 @@ body.mp:not(:has(#view.locked)) .mp-sys { bottom: 64px; }   /* above the returne
 .credits-card .credit a:hover { color: var(--brick); }
 @media (prefers-reduced-motion: reduce) { .credits-card { animation: none; } .choice, .choice::after { transition: none; } }
 
-/* ---------- the «Шторм» event ----------
-   The third door of the start card (the battle royale), its lobby card with the live status, the storm HUD in the
-   fight (the phase, the countdown, the living, the radar and the way in), the electric edge of the burn outside the
-   circle, and the dead man's way back to the lobby. The storm's own colour: electric cyan on deep indigo, the gold
-   of the final beacon. The lobby shell repeats the dark console of the train and online steps. */
-.card[data-step="storm"] { width: min(1080px, 100%); background: #0d1219; border-color: rgba(255, 255, 255, .14); color: #fff; gap: 12px; }
-.card[data-step="storm"] h1, .card[data-step="storm"] .card-top { display: none; }
-.card[data-step="storm"] .progress { color: rgba(255, 255, 255, .55); }
-.card[data-step="storm"] .load-pct { color: #fff; }
-.card[data-step="storm"] .load-bar { background: rgba(255, 255, 255, .12); }
-.card[data-step="storm"] .load-bar i { background: var(--warn); }
-.card[data-step="storm"] .start-foot { border-color: rgba(255, 255, 255, .12); }
-.card[data-step="storm"] .foot-link { color: rgba(255, 255, 255, .55); }
-.card[data-step="storm"] .foot-link:hover { color: var(--warn); }
-.card[data-step="storm"] .foot-note { color: rgba(255, 255, 255, .4); }
-@media (max-width: 900px) { .card[data-step="storm"] { width: min(660px, 100%); } }
-/* the home door */
-.choice.storm-choice { border-color: rgba(87, 200, 255, .35); background: linear-gradient(135deg, rgba(23, 37, 84, .55), rgba(13, 18, 25, .2)); }
-.choice.storm-choice .ch-ico { background: rgba(87, 200, 255, .14); color: #57c8ff; }
-.choice.storm-choice .ch-ico svg { fill: currentColor; stroke: none; }
-.choice.storm-choice:hover:not(:disabled) { border-color: #57c8ff; background: linear-gradient(135deg, rgba(31, 52, 110, .65), rgba(13, 18, 25, .3)); }
-.choice.storm-choice:hover:not(:disabled)::after { color: #57c8ff; }
-.ch-badge { position: absolute; right: 34px; top: 10px; font: 700 9px/1 var(--f-body); font-style: normal; letter-spacing: .08em; text-transform: uppercase; padding: 4px 7px; border-radius: 999px; background: rgba(87, 200, 255, .22); color: #0f6ea8; border: 1px solid rgba(29, 127, 184, .5); }
-.ch-badge[data-phase="play"], .ch-badge[data-phase="sudden"] { background: rgba(255, 90, 77, .18); color: #c2372b; border-color: rgba(194, 55, 43, .5); animation: storm-blink 1.6s ease-in-out infinite; }
+/* ---------- the match of the server and its «Шторм» ----------
+   The online door carries the live badge of the match (the door open, the storm, the time to the next one), the
+   online card its status and rules; in the fight the score chip counts down to the storm, then the storm HUD takes
+   the top of the screen (the phase, the countdown, the living, the radar and the way in), the electric edge of the
+   burn outside the circle, and the dead man's place. The storm's own colour: electric cyan on deep indigo, the gold
+   of the final beacon. */
+.ch-badge { position: absolute; right: 34px; top: 10px; font: 700 9px/1 var(--f-body); font-style: normal; letter-spacing: .08em; text-transform: uppercase; padding: 4px 7px; border-radius: 999px; background: rgba(87, 200, 255, .22); color: color-mix(in srgb, #2f9dd8 60%, var(--ink)); border: 1px solid rgba(29, 127, 184, .5); }   /* the colour leans to the ink: readable on the light card and the dark one */
+.ch-badge[data-phase="play"], .ch-badge[data-phase="sudden"] { background: rgba(255, 90, 77, .18); color: color-mix(in srgb, #e0463a 65%, var(--ink)); border-color: rgba(194, 55, 43, .5); animation: storm-blink 1.6s ease-in-out infinite; }
 @keyframes storm-blink { 50% { opacity: .55; } }
-/* the lobby event card */
+.ch-badge[data-phase="open"] { background: rgba(70, 190, 120, .2); color: color-mix(in srgb, #2fae62 60%, var(--ink)); border-color: rgba(29, 122, 69, .5); }
+/* the lobby card of the match */
 .storm-sec h3 { color: #57c8ff; }
 .storm-lore { margin: 0; font: 400 12.5px/1.5 var(--f-body); color: rgba(255, 255, 255, .68); }
 .storm-status { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(87, 200, 255, .3); background: rgba(87, 200, 255, .07); font: 600 12.5px/1.35 var(--f-body); color: #bfe7ff; }
@@ -983,7 +968,15 @@ body.mp:not(:has(#view.locked)) .mp-sys { bottom: 64px; }   /* above the returne
 .storm-rules li { position: relative; padding-left: 16px; font: 400 12px/1.4 var(--f-body); color: rgba(255, 255, 255, .6); }
 .storm-rules li::before { content: "⚡"; position: absolute; left: 0; top: 0; font-size: 10px; color: #57c8ff; }
 .storm-rules b { color: #fff; font-weight: 600; }
-.lobby .go.storm-go { background: linear-gradient(180deg, #7fd8ff, #2f9dd8); color: #06121f; box-shadow: 0 4px 0 rgba(0, 0, 0, .35), 0 8px 24px rgba(87, 200, 255, .25); }
+.storm-status[data-phase="open"] { border-color: rgba(110, 220, 150, .4); background: rgba(110, 220, 150, .08); color: #c9f5d8; }
+.storm-status[data-phase="open"] .storm-pulse { background: #6edc96; box-shadow: 0 0 10px #6edc96; }
+.storm-status[data-phase="storm"] { border-color: rgba(255, 90, 77, .45); background: rgba(255, 90, 77, .08); color: #ffd0c9; }
+.storm-status[data-phase="storm"] .storm-pulse { background: #ff8a7a; box-shadow: 0 0 10px #ff8a7a; }
+.storm-status[data-phase="fight"], .storm-status[data-phase="over"] { border-color: rgba(255, 210, 77, .35); background: rgba(255, 210, 77, .06); color: #ffeab0; }
+.storm-status[data-phase="fight"] .storm-pulse, .storm-status[data-phase="over"] .storm-pulse { background: #ffd24d; box-shadow: 0 0 10px #ffd24d; }
+/* the fight: the score chip counts down to the storm (blinking in its last five minutes); in the storm its HUD takes the top */
+body.match-soon .mp-teams > small { color: #ffd24d; opacity: 1; animation: storm-blink 1.6s ease-in-out infinite; }
+body.storm .mp-top { display: none; }
 /* the storm HUD over the fight */
 .storm-hud { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 7; display: grid; justify-items: center; gap: 8px; pointer-events: none; }
 .storm-top { display: flex; align-items: center; gap: 16px; padding: 9px 14px; background: rgba(9, 13, 26, .78); border: 1px solid rgba(87, 200, 255, .35); border-radius: 12px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 6px 24px rgba(0, 0, 0, .35); }
@@ -1032,7 +1025,7 @@ body.storm .end-row.me { background: rgba(87, 200, 255, .14); box-shadow: inset 
   .storm-timer { font-size: 18px; min-width: 52px; }
   .storm-ph-t b { font-size: 11px; }
 }
-@media (prefers-reduced-motion: reduce) { .storm-hurt, .storm-dist, .storm-pulse, .ch-badge { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .storm-hurt, .storm-dist, .storm-pulse, .ch-badge, body.match-soon .mp-teams > small { animation: none; } }
 
 /* ---------- the cargo event: the drop banner, the mark on you, the pointer to the crate ----------
    The server drops a supply crate on a parachute every few minutes (server/game.mjs, CARGO); a smoke beacon marks

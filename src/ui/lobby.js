@@ -244,7 +244,6 @@ function cycle(d) {
 
 /* ---------- the team: the ring, the glow and the chip take its colour ---------- */
 function teamInfo() {
-  if (step === 'storm') return { c: 0x57c8ff, css: '#57c8ff', label: 'Каждый сам за себя' };   // the storm: no teams, the electric colour of the zone
   if (step === 'train' && $('trMode').value === 'ffa') return { c: 0xf0b429, css: '#f0b429', label: 'Каждый сам за себя' };
   const t = $('mpTeam').value;
   if (t === '0') return { c: 0xe0463a, css: '#e0463a', label: 'Красные' };
@@ -296,39 +295,42 @@ function tick(t) {
   renderer.render(scene, camera);
 }
 
-/* ---------- the «Шторм» event card: the live status of the server's battle royale ----------
-   The lobby polls /storm-health (server/index.mjs) while it is open: the home door carries a live badge (the countdown
-   to the start, or the living in the fight), the event card — the full status and the door in. The door opens during
-   the gathering and the fight (a late join appears inside the circle); the final and the victory table refuse it
-   (the server answers stormBusy). The city's own readiness gates the door too: enablePlay fires 'dpils-ready'. */
-let stormPoll = 0, stormLast = null;
-async function stormStatus() {
+/* ---------- the match of the server: its live status on the online card ----------
+   The lobby polls /health (server/index.mjs) from the first frame: the match of two hours (server/storm.mjs) — the
+   fight, the storm of its last twenty minutes, the victory table — the door of its first half hour and the time to
+   the next match. The home door «Играть онлайн» carries a live badge, the online card the full status; the countdowns
+   tick every second between the polls. Past the first half hour the door still lets in whoever already plays in this
+   match (a reload), so the button stays and changes its words; the server answers a stranger 'closed'. */
+let matchPoll = 0, matchLast = null, matchAt = 0;
+const clock = ms => { const s = Math.max(0, Math.ceil(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, ss = String(s % 60).padStart(2, '0'); return h ? h + ':' + String(m).padStart(2, '0') + ':' + ss : m + ':' + ss; };
+async function matchStatus() {
   try {
-    const r = await fetch(serverHttp() + '/storm-health', { cache: 'no-store' });
+    const r = await fetch(serverHttp() + '/health', { cache: 'no-store' });
     const j = r.ok ? await r.json() : null;
-    stormLast = j && j.ok && j.storm ? j : null;
-  } catch (e) { stormLast = null; }
-  paintStorm();
+    matchLast = j && j.ok && j.match ? j : null; matchAt = performance.now();
+  } catch (e) { matchLast = null; }
+  paintMatch();
 }
-function paintStorm() {
-  const badge = $('chStormBadge'), txt = $('stormStatusText'), go = $('goStorm');
-  const j = stormLast;
-  if (!j) { badge.hidden = true; txt.textContent = 'Ивент недоступен на этом сервере'; go.disabled = true; return; }
-  const s = j.storm, left = Math.max(0, Math.ceil(s.left / 1000)), mm = Math.floor(left / 60), ss = String(left % 60).padStart(2, '0');
-  const label = s.phase === 'wait' ? 'Сбор игроков · старт через ' + mm + ':' + ss
-    : s.phase === 'play' ? 'Идёт бой · ' + s.alive + ' в живых · этап ' + (s.pi + 1) + '/9 · до конца раунда ' + mm + ':' + ss
-    : s.phase === 'sudden' ? 'Финал · зона исчезает · ' + s.alive + ' в живых'
-    : 'Раунд завершён · новый заход через ' + mm + ':' + ss;
-  txt.textContent = label + ' · участников: ' + s.total;
+function paintMatch() {
+  const badge = $('chOnlineBadge'), box = $('matchStatus'), txt = $('matchStatusText'), go = $('goPlay');
+  const j = matchLast;
+  if (!j) { badge.hidden = true; box.dataset.phase = ''; txt.textContent = 'Статус катки недоступен — сервер не ответил'; go.textContent = 'Играть'; return; }
+  const m = j.match, gone = performance.now() - matchAt, left = ms => Math.max(0, ms - gone), next = clock(left(m.left));
+  const open = m.open && left(m.joinLeft) > 0, people = j.players + (j.bots ? ' + ботов ' + j.bots : '');
+  const label = m.phase === 'storm' ? 'Шторм! ' + (j.storm ? j.storm.alive + ' в живых · ' : '') + 'вход закрыт · следующая катка через ' + next
+    : m.phase === 'over' ? 'Катка завершена · следующая через ' + next
+    : open ? 'Идёт бой · вход открыт ещё ' + clock(left(m.joinLeft)) + ' · шторм через ' + clock(left(m.stormIn))
+    : 'Идёт бой · вход закрыт · шторм через ' + clock(left(m.stormIn)) + ' · следующая катка через ' + next;
+  txt.textContent = label + ' · игроков: ' + people + (open || m.phase === 'over' ? '' : '. Если вы уже в этой катке — можно вернуться.');
+  box.dataset.phase = open ? 'open' : m.phase;
   badge.hidden = false;
-  badge.textContent = s.phase === 'wait' ? 'старт ' + mm + ':' + ss : s.phase === 'play' || s.phase === 'sudden' ? s.alive + ' в живых' : 'скоро новый заход';
-  badge.dataset.phase = s.phase;
-  const can = s.phase === 'wait' || s.phase === 'play';
-  go.disabled = !can || $('goPlay').disabled;   // the city must be ready too (enablePlay enables goPlay)
-  go.textContent = s.phase === 'play' ? 'Войти в бой' : 'Войти в шторм';
+  badge.textContent = m.phase === 'storm' ? 'шторм' : open ? 'вход ' + clock(left(m.joinLeft)) : 'новая через ' + next;
+  badge.dataset.phase = m.phase === 'storm' ? 'play' : open ? 'open' : 'wait';
+  go.textContent = open ? 'Играть' : 'Вернуться в катку';
 }
-window.addEventListener('dpils-ready', paintStorm);
-stormStatus(); stormPoll = setInterval(stormStatus, 5000);   // the poll lives from the first frame: the home door's badge and the event door's readiness must not wait for the lobby to open
+window.addEventListener('dpils-ready', paintMatch);
+matchStatus(); matchPoll = setInterval(matchStatus, 10000);   // the poll lives from the first frame: the home door's badge must not wait for the lobby to open
+setInterval(() => { if (matchLast && !$('start').hidden) paintMatch(); }, 1000);   // the countdowns tick between the polls
 
 /* ---------- open / close (src/ui/start.js) ---------- */
 function openLobby(s) {
@@ -336,7 +338,7 @@ function openLobby(s) {
   for (const p of painters) p();   // prepareUi restored the selects from localStorage without a 'change'
   buildCards(); ensureRenderer(); refresh(); updateTeam();   // the renderer first: the ring takes the team's colour, refresh asks for the figure
   if (!raf) { lastT = performance.now(); raf = requestAnimationFrame(tick); }
-  if (!stormPoll) { stormStatus(); stormPoll = setInterval(stormStatus, 5000); }
+  if (!matchPoll) { matchStatus(); matchPoll = setInterval(matchStatus, 10000); }
 }
 function closeLobby() {
   open = false;

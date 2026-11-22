@@ -5,9 +5,9 @@ import { worldSpace } from '../render/world-space.js';
 import { terrainH } from '../world/terrain.js';
 import { $, reduceMotion } from '../core/env.js';
 
-/* ---------- the «Шторм» event: the shrinking zone drawn over the city ----------
-   The server owns the circle (server/storm.mjs: nine stages over thirty minutes towards a random final point, the
-   burn outside, the last survivor). This module draws it: a wall of storm on the edge of the safe circle — a curtain
+/* ---------- the «Шторм»: the shrinking zone of the last twenty minutes of a match, drawn over the city ----------
+   The server owns the circle (server/storm.mjs: it begins beyond the whole field and shrinks in nine stages towards a
+   random point of open ground, the burn outside, the last survivor wins the match). This module draws it: a wall of storm on the edge of the safe circle — a curtain
    of electric filaments rising out of a glowing hem, lightning striking it now and then — and a gold beacon column
    on the final point, visible across the whole city. The HUD keeps the phase, the countdown, the living and the way
    in (an arrow and the distance when you stand outside); the maps (STATE.mapOverlay of mp.js) draw the current circle,
@@ -15,7 +15,7 @@ import { $, reduceMotion } from '../core/env.js';
    so the wall glides instead of stepping. Everything here is worldSpace: the wall stands in true city coordinates,
    its hem below the ground, its top above the sky. */
 
-const S = { on: false, phase: 'wait', pi: -1, kind: 'hold', from: null, to: null, cur: { x: -1000, z: 500, r: 3200 }, disp: { x: -1000, z: 500, r: 3200 }, dps: 0, final: null, alive: 0, total: 0, left: 0, roundLeft: 0, recvAt: 0, cycle: 0 };
+const S = { on: false, phase: 'play', pi: -1, stages: 9, kind: 'hold', from: null, to: null, cur: { x: -1000, z: 500, r: 3200 }, disp: { x: -1000, z: 500, r: 3200 }, dps: 0, final: null, alive: 0, total: 0, left: 0, roundLeft: 0, recvAt: 0, cycle: 0 };
 export const stormState = S;
 export const stormAudio = { thunder: null, zap: null };   // mp.js hooks the game's own audio context in (one context, one volume knob)
 
@@ -23,7 +23,7 @@ let wall = null, beacon = null, built = false;
 let flash = 0, flashId = 1, nextFlash = 0, outK = 0, radarT = 0, flashHide = 0;
 const V = new THREE.Vector3();
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-const fmt = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+const fmt = ms => { const s = Math.max(0, Math.ceil(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s % 60).padStart(2, '0'); };
 
 /* ---------- the wall and the beacon ---------- */
 const WALL_VS = `
@@ -139,7 +139,7 @@ function build() {
 export function setStorm(m) {
   if (!m) return;
   const first = !S.on;
-  Object.assign(S, { on: true, phase: m.phase, pi: m.pi, kind: m.kind, from: m.from, to: m.to, dps: m.dps, final: m.final, alive: m.alive, total: m.total, left: m.left, roundLeft: m.roundLeft || 0, cycle: m.cycle, recvAt: performance.now() });
+  Object.assign(S, { on: true, phase: m.phase, pi: m.pi, stages: m.stages || 9, kind: m.kind, from: m.from, to: m.to, dps: m.dps, final: m.final, alive: m.alive, total: m.total, left: m.left, roundLeft: m.roundLeft || 0, cycle: m.cycle, recvAt: performance.now() });
   if (m.cur) S.cur = { x: m.cur.x, z: m.cur.z, r: m.cur.r };
   if (first) S.disp = { ...S.cur };
   build();
@@ -187,10 +187,10 @@ export function stormTick(dt, now) {
   // the HUD: the phase, the countdown, the living
   const left = Math.max(0, S.left - (now - S.recvAt)), roundLeft = Math.max(0, S.roundLeft - (now - S.recvAt));
   const ph = $('stormPhase');
-  const label = S.phase === 'wait' ? 'СБОР ИГРОКОВ' : S.phase === 'end' ? 'ШТОРМ ЗАВЕРШЁН' : S.phase === 'sudden' ? 'ФИНАЛ · ЗОНА ИСЧЕЗАЕТ' : S.kind === 'shrink' ? 'ЗОНА СУЖАЕТСЯ' : 'ЗОНА СТАБИЛЬНА';
+  const label = S.phase === 'end' ? 'КАТКА ЗАВЕРШЕНА' : S.phase === 'sudden' ? 'ФИНАЛ · ЗОНА ИСЧЕЗАЕТ' : S.kind === 'shrink' ? 'ЗОНА СУЖАЕТСЯ' : 'ЗОНА СТАБИЛЬНА';
   if (ph.textContent !== label) { ph.textContent = label; ph.dataset.kind = S.phase === 'sudden' ? 'sudden' : S.kind; }
   $('stormTimer').textContent = fmt(left);
-  const sub = S.phase === 'wait' ? 'бой начнётся по таймеру' : S.phase === 'play' ? 'этап ' + (S.pi + 1) + '/9 · до конца ' + fmt(roundLeft) : S.phase === 'sudden' ? 'последний выживший побеждает' : 'следующий заход скоро';
+  const sub = S.phase === 'play' ? 'этап ' + (S.pi + 1) + '/' + S.stages + ' · до конца ' + fmt(roundLeft) : S.phase === 'sudden' ? 'последний выживший побеждает' : 'до следующей катки';
   const subEl = $('stormSub'); if (subEl.textContent !== sub) subEl.textContent = sub;
   const al = $('stormAlive'); if (al.textContent !== String(S.alive)) al.textContent = String(S.alive);
   $('stormHud').dataset.phase = S.phase;
@@ -241,7 +241,7 @@ function drawRadar(c, fight) {
 
 /* ---------- the circles on the city maps (the minimap and the full map, STATE.mapOverlay of mp.js) ---------- */
 export function stormMapOverlay(ctx, cx, cz, ppm, w, h) {
-  if (!S.on || S.phase === 'wait' || S.phase === 'end') return;
+  if (!S.on || S.phase === 'end') return;
   const c = S.disp, x = w / 2 + (c.x - cx) * ppm, y = h / 2 + (c.z - cz) * ppm, r = Math.max(1, c.r * ppm);
   ctx.save();
   ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.arc(x, y, r, 0, 6.2832, true);
