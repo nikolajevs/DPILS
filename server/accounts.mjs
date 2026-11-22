@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { idOf } from './leaderboard.mjs';
 
 export const validKey = k => typeof k === 'string' && /^[0-9a-f]{32}$/i.test(k);
 // the nick rules of the game (nameBase in game.mjs): letters, digits, space, _ . - ; 2 to 16 characters
@@ -49,9 +50,35 @@ export function createAccounts({ file, now = Date.now } = {}) {
   // the nick of an account as it was registered (the teams invite by nick, any case): null when there is no such account
   function find(name) { const u = data.users[lower(cleanName(name))]; return u ? u.name : null; }
 
+  // the admin panel (admin.mjs): the accounts as a list — the nick, when it was made and last seen, and the id the
+  // leaderboard knows it by (never the key itself); the last activity first, q searches the nick
+  function list({ q = '', limit = 200 } = {}) {
+    const needle = lower(cleanName(q));
+    let rows = Object.values(data.users).map(u => ({ name: u.name, created: u.created, seen: u.seen, id: idOf(u.key) }));
+    if (needle) rows = rows.filter(r => lower(r.name).includes(needle));
+    rows.sort((a, b) => b.seen - a.seen);
+    return { total: rows.length, rows: rows.slice(0, Math.max(1, Math.min(500, limit))) };
+  }
+  // a new password for an account (the admin resets a lost one): the key stays, so the results stay with it too
+  function setPass(name, pass) {
+    const u = data.users[lower(cleanName(name))];
+    if (!u) return { error: 'no-user' };
+    if (typeof pass !== 'string' || pass.length < 6 || pass.length > 128) return { error: 'bad-pass' };
+    const salt = crypto.randomBytes(16);
+    u.salt = salt.toString('hex'); u.hash = hash(pass, salt).toString('hex'); dirty = true;
+    return { name: u.name };
+  }
+  // the account goes (the admin): its key comes back so the fight can put out whoever plays with it now
+  function remove(name) {
+    const k = lower(cleanName(name)), u = data.users[k];
+    if (!u) return null;
+    delete data.users[k]; dirty = true;
+    return { name: u.name, key: u.key };
+  }
+
   function save() {
     if (!file || !dirty) return; dirty = false;
     try { fs.mkdirSync(path.dirname(file), { recursive: true }); const tmp = file + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(data)); fs.renameSync(tmp, file); } catch (e) { dirty = true; console.error('accounts not saved:', e.message); }
   }
-  return { register, login, byKey, find, save, count: () => Object.keys(data.users).length };
+  return { register, login, byKey, find, list, setPass, remove, save, count: () => Object.keys(data.users).length };
 }

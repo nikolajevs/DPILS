@@ -11,7 +11,9 @@
        unchanged files are answered 304, the text and the models go compressed in brotli or gzip — compress.mjs),
      DAY_MIN (the length of the day of the game in minutes, default 120: the sun rises and sets over the city; 0 = no clock, see daycycle.mjs;
        the match lasts one day — 120 minutes without the clock),
-     MATCH (off = no matches: endless rounds to the kill target, no storm) */
+     MATCH (off = no matches: endless rounds to the kill target, no storm),
+     ADMIN_PASS (the password of the admin panel /admin — admin.mjs, admin.html; without it the panel is off: players, accounts,
+       the leaderboard, the teams, the bots and the cargo from one page) */
 import http from 'node:http';
 import fs from 'node:fs';
 import { WebSocketServer } from 'ws';
@@ -22,15 +24,20 @@ import { createBoard } from './leaderboard.mjs';
 import { createAccounts } from './accounts.mjs';
 import { createTeams } from './teams.mjs';
 import { createSocial } from './social.mjs';
+import { createAdmin } from './admin.mjs';
 import { compressible, encodingFor, packed, warm } from './compress.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const PORT = +process.env.PORT || 8787, WORLD = loadWorld();
-const LB = process.env.LEADERBOARD === 'off' ? null : createBoard({ file: process.env.LEADERBOARD || path.join(path.dirname(fileURLToPath(import.meta.url)), 'data', 'leaderboard.json') });
-const ACC = process.env.ACCOUNTS === 'off' ? null : createAccounts({ file: process.env.ACCOUNTS || path.join(path.dirname(fileURLToPath(import.meta.url)), 'data', 'accounts.json') });
+const DATA = path.join(path.dirname(fileURLToPath(import.meta.url)), 'data');
+const LB_FILE = process.env.LEADERBOARD || path.join(DATA, 'leaderboard.json');
+const ACC_FILE = process.env.ACCOUNTS || path.join(DATA, 'accounts.json');
+const TM_FILE = process.env.TEAMS || path.join(DATA, 'teams.json');
+const LB = process.env.LEADERBOARD === 'off' ? null : createBoard({ file: LB_FILE });
+const ACC = process.env.ACCOUNTS === 'off' ? null : createAccounts({ file: ACC_FILE });
 // the teams of the players (teams.mjs) live on the accounts: a fight reads the tag and the allies of a nick through clans
-const TM = !ACC || process.env.TEAMS === 'off' ? null : createTeams({ file: process.env.TEAMS || path.join(path.dirname(fileURLToPath(import.meta.url)), 'data', 'teams.json') });
+const TM = !ACC || process.env.TEAMS === 'off' ? null : createTeams({ file: TM_FILE });
 const clans = TM ? name => { const t = TM.of(name); return t && { id: t.id, tag: t.tag, name: t.name }; } : null;
 const DAY_LEN = (+process.env.DAY_MIN || 120) * 60000;   // one match is one day of the game: midnight to midnight
 const game = createGame({ board: LB, accounts: ACC, clans, world: WORLD, mode: process.env.MODE === 'ffa' ? 'ffa' : 'team', win: +process.env.WIN_SCORE || 0, name: String(process.env.SERVER_NAME || 'Даугавпилс').slice(0, 40), arena: ARENAS[process.env.ARENA] || null, level: process.env.BOT_LEVEL || 'normal',
@@ -39,6 +46,10 @@ for (let i = 0; i < Math.max(0, Math.min(63, +process.env.BOTS || 0)); i++) game
 
 // the live side of the teams (social.mjs): a team changed — the fight takes the new tags and allies at once
 const social = TM ? createSocial({ accounts: ACC, teams: TM, onTeams: () => game.refreshClans() }) : null;
+// the admin panel (admin.mjs): the page /admin and its api; off until ADMIN_PASS is set. clients() reads the WebSocket
+// crowd lazily — wss below is ready by the time the first request comes
+const ADMIN = createAdmin({ pass: process.env.ADMIN_PASS || '', game, accounts: ACC, board: LB, teams: TM, social, clients: () => wss.clients.size,
+  files: [{ name: 'accounts.json', path: ACC_FILE }, { name: 'leaderboard.json', path: LB_FILE }, { name: 'teams.json', path: TM_FILE }] });
 
 /* the page itself (STATIC=dist): files of the folder, / is index.html; the bundle in assets/ has hashes in its names
    and is cached for long, the rest (the page, the city data) is checked every time */
@@ -118,6 +129,7 @@ function authRoute(req, res) {
 }
 
 const server = http.createServer((req, res) => {
+  if (ADMIN.route(req, res)) return;
   if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' }); res.end(JSON.stringify(game.health())); return; }
   if (req.url.split('?')[0].startsWith('/auth/')) { authRoute(req, res); return; }
   if (LB && req.url.startsWith('/leaderboard')) {   // ?period=all|week&sort=kills|kd|acc|wins&limit=50&me=<id: sha256 of the key, 32 hex>
