@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Claude | claude/avatar-culling-679bcb | Боты вне поля зрения не рисуются (отсечение аватаров по пирамиде видимости) | src/game/avatar.js, src/game/mp.js |
 
 ## Автономный цикл улучшений
 
