@@ -46,7 +46,7 @@ function makeBody() {
 }
 // the beacon pillar and the pickup ring appear when the crate lands
 function makeBeacon() {
-  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.55, 70, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xff6a2a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.8, 70, 10, 1, true), new THREE.MeshBasicMaterial({ color: 0xff6a2a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
   beam.position.y = 35; beam.userData.noProbe = true; beam.renderOrder = 5;
   const ring = new THREE.Mesh(new THREE.RingGeometry(2.3, 2.6, 32), new THREE.MeshBasicMaterial({ color: 0xffb02a, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }));
   ring.rotation.x = -Math.PI / 2; ring.position.y = 0.06; ring.userData.noProbe = true;
@@ -118,7 +118,7 @@ export function cargoTick(dt) {
       const k = c.collapse * c.collapse * (3 - 2 * c.collapse);
       if (c.chute) { c.chute.scale.set(1 - 0.38 * k, 1 - 0.93 * k, 1 - 0.38 * k); c.chute.position.y = 1.3 * k; }
     }
-    const pulse = 0.16 + 0.07 * Math.sin(t * 0.004);
+    const pulse = 0.24 + 0.09 * Math.sin(t * 0.004);
     c.beam.material.opacity = Math.min(1, c.beam.material.opacity + dt * 0.8) * pulse / 0.2;
     c.ring.material.opacity = 0.4 + 0.15 * Math.sin(t * 0.005);
     const rs = 1 + 0.04 * Math.sin(t * 0.005); c.ring.scale.set(rs, rs, 1);
@@ -145,7 +145,7 @@ export function cargoTick(dt) {
   } else label.hidden = true;
   // the screen-edge pointer when the crate is off screen (or behind): an arrow with the distance
   if (c.state !== 'gone' && !STATE.mpDead) {
-    V.set(c.x, c.gy + 2, c.z).project(camera);
+    V.set(c.x, c.group.position.y + 1.5, c.z).project(camera);   // the crate itself, in the air or on the ground
     const behind = V.z > 1;
     let sx = (V.x + 1) / 2 * w, sy = (1 - V.y) / 2 * h;
     if (behind) { sx = w - sx; sy = h - sy; }

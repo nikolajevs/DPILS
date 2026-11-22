@@ -338,7 +338,7 @@ function addZone(m) {
     scorch(m.x, m.y, m.z, false);
     glow.x = m.x; glow.y = m.y + 0.6; glow.z = m.z; glow.t = 0;   // the ignition lights the street for a moment (blastGlow)
   } else if (m.kind === 'beacon') {   // the cargo's signal smoke: a red-orange plume rising tall over the landing
-    for (let i = 0; i < 22; i++) { const a = rnd(0, 6.283), r = rnd(0, z.r * 0.3); emit(SMOKE, { x: m.x + Math.cos(a) * r, y: m.y + rnd(0.1, 0.8), z: m.z + Math.sin(a) * r, vx: Math.cos(a) * rnd(0.3, 1), vy: rnd(1.5, 3), vz: Math.sin(a) * rnd(0.3, 1), drag: 1.2, rise: rnd(2.2, 3.6), wind: 0.35, life: rnd(4, 7), s0: rnd(0.8, 1.2), s1: rnd(3, 5), grow: 2.2, roll: rnd(0, 6.28), spin: rnd(-0.3, 0.3), c0: [1, 0.34, 0.16], c1: [0.82, 0.2, 0.1], op: rnd(0.75, 0.9), fin: 0.12, fout: 0.3, floor: m.y, frame: i % 3 }); }
+    for (let i = 0; i < 22; i++) { const a = rnd(0, 6.283), r = rnd(0, z.r * 0.3); emit(SMOKE, { x: m.x + Math.cos(a) * r, y: m.y + rnd(0.1, 0.8), z: m.z + Math.sin(a) * r, vx: Math.cos(a) * rnd(0.3, 1), vy: rnd(1.5, 3), vz: Math.sin(a) * rnd(0.3, 1), drag: 1.2, rise: rnd(2.2, 3.6), wind: 0.35, life: rnd(4, 7), s0: rnd(0.8, 1.2), s1: rnd(3, 5), grow: 2.2, roll: rnd(0, 6.28), spin: rnd(-0.3, 0.3), c0: [1, 0.42, 0.22], c1: [0.9, 0.28, 0.14], op: rnd(0.75, 0.9), fin: 0.12, fout: 0.3, floor: m.y, frame: i % 3 }); }
   } else {
     for (let i = 0; i < 26; i++) { const a = rnd(0, 6.283), r = rnd(0, z.r * 0.5); emit(SMOKE, { x: m.x + Math.cos(a) * r, y: m.y + rnd(0.1, 0.8), z: m.z + Math.sin(a) * r, vx: Math.cos(a) * rnd(0.5, 2), vy: rnd(0.3, 1), vz: Math.sin(a) * rnd(0.5, 2), drag: 1.6, rise: rnd(0.3, 0.7), wind: 0.6, life: rnd(3.5, 6), s0: rnd(0.8, 1.3), s1: rnd(3.5, 5.5), grow: 2.5, roll: rnd(0, 6.28), spin: rnd(-0.4, 0.4), c0: [0.86, 0.86, 0.84], c1: [0.72, 0.72, 0.7], op: rnd(0.8, 0.95), fin: 0.15, fout: 0.35, floor: m.y, frame: i % 3 }); }
   }
@@ -360,7 +360,7 @@ function tickZones(dt) {
       z.acc += (z.t < 2 ? 40 : 14) * fade * dt;
       while (z.acc >= 1) {
         z.acc--; const a = rnd(0, 6.283), r = rnd(0, z.r * 0.25);
-        emit(SMOKE, { x: z.x + Math.cos(a) * r, y: z.y + rnd(0.1, 0.6), z: z.z + Math.sin(a) * r, vx: Math.cos(a) * rnd(0.2, 0.8), vy: rnd(1.5, 3), vz: Math.sin(a) * rnd(0.2, 0.8), drag: 1.2, rise: rnd(2.2, 3.6), wind: 0.35, life: rnd(5, 8), s0: rnd(0.7, 1.1), s1: rnd(3.5, 6), grow: 2.2, roll: rnd(0, 6.28), spin: rnd(-0.3, 0.3), c0: [1, 0.34, 0.16], c1: [0.82, 0.2, 0.1], op: rnd(0.75, 0.9), fin: 0.12, fout: 0.3, floor: z.y, frame: (Math.random() * 3) | 0 });
+        emit(SMOKE, { x: z.x + Math.cos(a) * r, y: z.y + rnd(0.1, 0.6), z: z.z + Math.sin(a) * r, vx: Math.cos(a) * rnd(0.2, 0.8), vy: rnd(1.5, 3), vz: Math.sin(a) * rnd(0.2, 0.8), drag: 1.2, rise: rnd(2.2, 3.6), wind: 0.35, life: rnd(5, 8), s0: rnd(0.7, 1.1), s1: rnd(3.5, 6), grow: 2.2, roll: rnd(0, 6.28), spin: rnd(-0.3, 0.3), c0: [1, 0.42, 0.22], c1: [0.9, 0.28, 0.14], op: rnd(0.75, 0.9), fin: 0.12, fout: 0.3, floor: z.y, frame: (Math.random() * 3) | 0 });
       }
       if (Math.random() < dt * 5) emit(FIRE, { x: z.x + rnd(-0.4, 0.4), y: z.y + 0.3, z: z.z + rnd(-0.4, 0.4), vy: rnd(2, 4), life: rnd(0.3, 0.6), s0: 0.05, s1: 0.1, c0: [4, 2.2, 0.8], c1: [2, 0.7, 0.2], fout: 0.3, frame: 2 });   // the embers the bloom takes
     } else {

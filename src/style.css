@@ -953,6 +953,7 @@ body.mp:not(:has(#view.locked)) .mp-sys { bottom: 64px; }   /* above the returne
    The server drops a supply crate on a parachute every few minutes (server/game.mjs, CARGO); a smoke beacon marks
    the landing, the taker is marked for everyone for a minute. The banner rides under the team score, the red chip
    under it counts the mark's minute down, the gold arrow at the screen edge points at the crate when it is off screen. */
+.cargo-banner[hidden], .cargo-self[hidden], .cargo-point[hidden] { display: none; }
 .cargo-banner { position: fixed; left: 50%; top: 58px; transform: translateX(-50%); z-index: 6; display: flex; gap: 10px; align-items: center; padding: 8px 14px; border-radius: 8px; background: rgba(16, 13, 8, .74); border: 1px solid rgba(255, 176, 42, .4); border-left: 3px solid #ffb02a; backdrop-filter: blur(6px); pointer-events: none; animation: cargo-in .3s ease-out; max-width: min(480px, 92vw); }
 .cargo-banner svg { flex: none; width: 24px; height: 24px; fill: none; stroke: #ffb02a; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .cargo-banner b { display: block; font: 700 14px/1.2 var(--f-display); color: #ffd98a; letter-spacing: .02em; }
