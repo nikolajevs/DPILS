@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Claude | claude/electrostorm-effect-80ff85 | Эффект электрошторма: 3D-молнии, дуги, искры, свет вспышек, гул | src/game/storm.js, src/game/storm-fx.js, src/game/sfx.js |
 
 ## Автономный цикл улучшений
 
