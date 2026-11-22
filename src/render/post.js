@@ -3,12 +3,14 @@ import { STATE } from '../core/state.js';
 import { clock } from '../game/loop.js';
 import { QUALITY, TOD, qi, timeI } from './lighting.js';
 import { P } from '../game/player.js';
-import { treeTiles } from '../world/trees.js';
+import { IMP_HI, IMP_U, ITILE, impTiles, treeTiles } from '../world/trees.js';
+import { floraLod } from '../landmarks/flora.js';
 import { tiles } from '../buildings/walls.js';
 import { terrainH } from '../world/terrain.js';
 import { GPU, LIGHTDIR, POST, U, camera, renderer, scene, sun } from './renderer.js';
 import { PU, updateProbes } from './cityprobe.js';
 import { mirrorPass } from './mirror.js';
+import { isStandIn } from './batch.js';
 import { waterSsr } from '../world/water.js';
 import { TILE, TTILE, reduceMotion } from '../core/env.js';
 
@@ -332,8 +334,9 @@ function renderFrame() {
 async function warmUp(report, nextFrame) {
   const seen = new Set(), objs = [];
   scene.traverse(o => {
+    if (!o.layers.mask || isStandIn(o)) return;   // not drawn: a mesh cut into tiles, a piece drawn by its batch (src/render/batch.js)
     const ms = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
-    for (const m of ms) { const k = m.uuid + (o.isInstancedMesh ? 'i' : '') + (o.receiveShadow ? 'r' : '') + (o.isPoints ? 'p' : o.isLine ? 'l' : o.isSprite ? 's' : ''); if (!seen.has(k)) { seen.add(k); objs.push(o); } }
+    for (const m of ms) { const k = m.uuid + (o.isInstancedMesh ? 'i' : o.isBatchedMesh ? 'b' : '') + (o.receiveShadow ? 'r' : '') + (o.isPoints ? 'p' : o.isLine ? 'l' : o.isSprite ? 's' : ''); if (!seen.has(k)) { seen.add(k); objs.push(o); } }
   });
   const all = scene.children, lights = all.filter(o => o.isLight);
   const target = () => { if (!POST) return; renderer.getDrawingBufferSize(PXV); ppTargets(PXV.x, PXV.y, QUALITY[qi].msaa); renderer.setRenderTarget(PP.rt); };
@@ -377,12 +380,23 @@ function updateLod() {
   const q = QUALITY[qi], x = camera.position.x, z = camera.position.z, y = Math.max(0, camera.position.y - terrainH(x, z));
   const dist = (x0, z0, s) => { const dx = Math.max(x0 - x, 0, x - x0 - s), dz = Math.max(z0 - z, 0, z - z0 - s); return Math.hypot(dx, dz, y * 0.5); };
   for (const t of tiles.values()) { const v = dist(t.x0, t.z0, TILE) < q.det; for (const m of t.det) m.visible = v; }
+  floraLod(x, z, y, q.tree);   // the flowers of the parks: drawn as far as the near trees (src/landmarks/flora.js)
   // Far-tree impostors fade into the haze and their tiles stop drawing past impFar: at eye level a few hundred tile
   // draws of sub-pixel trees in fog were a large share of the frame (worst on Firefox, slow per draw). The radius
   // grows with height so a flight still sees the forest out to where the haze closes; the shader fades over the last
   // 500 m (uImpFar) so the cull is never a visible pop.
+  // A tree tile near the eye shows its trees as models; the impostors are drawn by tiles of 2 × 2 tree tiles
+  // (src/world/trees.js), and the shader folds those of a tile shown as models into a point (IMP_U: their keys).
   const impFar = Math.min(q.far, 2600 + y * 6); U.impFar.value = impFar;
-  for (const t of treeTiles.values()) { const d = dist(t.x0, t.z0, TTILE), v = d < q.tree; if (t.hi.length && t.hi[0].visible !== v) STATE.shadowDirty = true; for (const m of t.hi) m.visible = v; const lo = !v && d < impFar; for (const m of t.lo) m.visible = lo; }
+  const hiKeys = IMP_U.hi.value; let nHi = 0;
+  for (const t of treeTiles.values()) {
+    const v = dist(t.x0, t.z0, TTILE) < q.tree; t.near = v;
+    if (t.hi.length && t.hi[0].visible !== v) STATE.shadowDirty = true; for (const m of t.hi) m.visible = v;
+    if (v) { if (nHi < IMP_HI) hiKeys[nHi++] = t.key; else if (!lodWarned) { lodWarned = true; console.warn('updateLod: more tree tiles near than IMP_HI, their impostors stay'); } }
+  }
+  IMP_U.n.value = nHi;
+  for (const it of impTiles) { let lo = false; if (dist(it.x0, it.z0, ITILE) < impFar) for (const t of it.subs) if (!t.near) { lo = true; break; } it.lo.visible = lo; }
 }
+let lodWarned = false;
 
 export { PP, renderFrame, updateLod, updateSun, warmUp };
