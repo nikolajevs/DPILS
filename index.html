@@ -28,6 +28,7 @@
     <button class="btn" id="bHint" title="Все клавиши, F1">Клавиши<kbd>F1</kbd></button>
     <button class="btn" id="bStats" title="Ваша статистика за всё время">Статистика</button>
     <button class="btn" id="bLeaders" title="Таблица лидеров сервера">Лидеры</button>
+    <button class="btn" id="bTeam" title="Команда: состав, приглашения, чат" disabled>Команда<kbd id="bTeamKey">P</kbd><em class="tm-badge" id="teamBadgeHud" hidden></em></button>
     <button class="btn" id="bSet" title="Чувствительность, громкость, клавиши">Настройки<kbd>O</kbd></button>
     <button class="btn" id="bLeave">Выйти из игры</button>
   </div>
@@ -58,6 +59,7 @@
         <button class="choice storm-choice" id="chStorm" type="button" disabled><i class="ch-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5z"/></svg></i><b>Ивент «Шторм»</b><span>battle royale: зона сужается 30 минут, побеждает последний выживший</span><i class="ch-num" aria-hidden="true">03</i><em class="ch-badge" id="chStormBadge" hidden></em></button>
       </div>
       <div class="acct"><i class="acct-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 5-5.5 8-5.5s6.5 1.5 8 5.5"/></svg></i><span id="acctState">Аккаунт обязателен: создайте его или войдите, чтобы играть.</span><button class="btn" id="bAuth" type="button">Войти / регистрация</button></div>
+      <div class="acct team-row" id="teamRow"><i class="acct-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><circle cx="16.6" cy="9.4" r="2.5"/><path d="M3 19.5c.9-3.3 3.3-4.9 6-4.9s5.1 1.6 6 4.9M15 14.4c2.7-.5 5 .9 6 3.9"/></svg></i><span id="teamRowText">Команды: играйте вместе с друзьями</span><button class="btn" id="bTeamStart" type="button" disabled><span id="bTeamStartL">Команда</span><em class="tm-badge" id="teamBadge" hidden></em></button></div>
       <div class="sec-btns">
         <button class="btn" id="bSetStart" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9.6M18.4 7H20M4 17h3.6M12.4 17H20"/><circle cx="16" cy="7" r="2.4"/><circle cx="10" cy="17" r="2.4"/></svg>Настройки</button>
         <button class="btn" id="bStatsStart" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16M7 20v-6M12 20V9M17 20v-9"/></svg>Моя статистика</button>
@@ -139,6 +141,7 @@
             </div>
             <label class="lb-field" id="mpSpawnRow">Где появиться<select id="mpSpawn"></select></label>
           </fieldset>
+          <div class="lobby-team step-part" data-for="online storm"><span id="lobbyTeamText"></span><button class="btn" id="bTeamLobby" type="button" disabled>Команда<em class="tm-badge" id="teamBadgeLobby" hidden></em></button></div>
           <div class="step-part" data-for="online storm"><label class="chk"><input type="checkbox" id="mpNoBoard"> Не участвовать в таблице лидеров</label></div>
           <button class="go step-part" id="goTrain" data-for="train" disabled>Тренироваться</button>
           <button class="go step-part" id="goPlay" data-for="online" disabled>Играть</button>
@@ -224,6 +227,8 @@
 <div class="nade-warn" id="nadeWarn" hidden data-edge="0" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="14" r="7"/><path d="M10 7h4v3h-4zM14 5l3-2"/></svg><i></i></div>
 <div class="nade-ui" id="nadeUi" hidden data-full="0"><svg class="ng" viewBox="0 0 120 120" aria-hidden="true"><defs><linearGradient id="ngGrad" gradientUnits="userSpaceOnUse" x1="0" y1="88" x2="0" y2="32"><stop offset="0" stop-color="#fff1c4"/><stop offset=".55" stop-color="#ffc24d"/><stop offset="1" stop-color="#ff5a24"/></linearGradient></defs><path class="ng-track" d="M81.85 86.05A34 34 0 0 0 81.85 33.95"/><path class="ng-track" d="M38.15 86.05A34 34 0 0 1 38.15 33.95"/><path class="ng-tick" d="M94.89 76.27L96.71 77.12M25.11 76.27L23.29 77.12M98.5 60L102 60M21.5 60L18 60M94.89 43.73L96.71 42.88M25.11 43.73L23.29 42.88"/><path class="ng-fill" d="M81.85 86.05A34 34 0 0 0 81.85 33.95"/><path class="ng-fill" d="M38.15 86.05A34 34 0 0 1 38.15 33.95"/></svg><b class="nade-kind" id="nadeKind">Граната</b><div class="nade-read"><b id="nadeDist">0</b><i>м</i></div><em class="nade-max">макс</em><small class="nade-hint" id="nadeHint">ЛКМ — замах и сила · отпустить — бросок · ПКМ или G — убрать</small></div>
 <div class="mp-hints" id="mpHints" hidden></div>
+<div class="mp-settings team-modal" id="teamPanel" hidden><div class="panel" role="dialog" aria-modal="true" aria-labelledby="teamTitle"><header><h2 id="teamTitle">Команда</h2><button class="btn" id="teamClose" type="button">Закрыть <kbd>Esc</kbd></button></header><div class="tm-body" id="teamBody"></div></div></div>
+<div class="tm-toasts" id="teamToasts" aria-live="polite"></div>
 <div class="mp-settings" id="mpLeaders" hidden><div class="panel"><header><h2>Таблица лидеров</h2><button class="btn" id="mpLeadersClose">Закрыть</button></header><div id="mpLeadersBody" class="st"></div></div></div>
 <div class="mp-settings" id="mpStats" hidden><div class="panel"><header><h2>Статистика</h2><button class="btn" id="mpStatsClose">Закрыть</button></header><div id="mpStatsBody" class="st"></div><footer><button class="btn" id="mpStatsReset">Сбросить статистику</button></footer></div></div>
 <div class="mp-settings" id="mpHelp" hidden><div class="panel"><header><h2>Клавиши</h2><button class="btn" id="mpHelpClose">Закрыть</button></header><div id="mpHelpBody" class="help-grid"></div></div></div>

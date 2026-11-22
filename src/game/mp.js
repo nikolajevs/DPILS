@@ -32,6 +32,7 @@ import { $, reduceMotion } from '../core/env.js';
 import { boomSound, burnSound, crackSound, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeHiss, stepSound, stormZap, thunderSound } from './sfx.js';
 import { clearStorm, setStorm, stormAudio, stormMapOverlay, stormState, stormTick } from './storm.js';
 import { carAt, carPath } from '../world/car-hit.js';
+import { setWhere } from './social.js';
 import { fxSamples, tracerShot, bindTracer, hitTracer, tickFx, clearFx, dmgFloat, ejectShell, onShellBounce, muzzleSmoke } from './impacts.js';
 import { WEAPONS as WSRV, SMOKE, bulletAt, bulletDrop } from '../../server/combat.mjs';   // the server's own ballistics: the muzzle velocities, the drag and the bullet's fall
 import { makePhysics } from '../../server/physics.mjs';   // the server's own shot scan: the page predicts the punched walls by the same code
@@ -68,7 +69,7 @@ const DMG = [
   { dmg: 24, head: 44 },
   { dmg: 22, head: 42 },
 ];
-const MP = { ffa: false, storm: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, smokes: 1, napalms: 1, lastNade: 0, burnAt: 0, lastBurnSnd: 0, spec: 0, specMode: 0, scope: false, zoom: 0, opticMag: 8, dotBoost: 0, dotBoostAt: 0, dotBoostCd: 0, ammo: [30, 6, 5, 12, 100, 30, 30, 30], reserve: [90, 24, 15, 36, 200, 90, 90, 90], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, rtts: [], pingT: 0, server: '', kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0, sights: { sight: 0, optic: 0 }, attach: [null, null, null, null, null, null, null, null], loadout: [0, 3], pack: [1, 2, 4, 5, 6, 7, ...Array(24).fill(null)] };   // two equipped guns + the ten-cell backpack (server/combat.mjs LOADOUT/PACK): a cell holds a gun index or a stored item ('sight', 'optic', 'med', 'nade'); sights: loose in the pack, attach: mounted per weapon
+const MP = { ffa: false, storm: false, on: false, ws: null, id: 0, name: '', clan: '', tag: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, smokes: 1, napalms: 1, lastNade: 0, burnAt: 0, lastBurnSnd: 0, spec: 0, specMode: 0, scope: false, zoom: 0, opticMag: 8, dotBoost: 0, dotBoostAt: 0, dotBoostCd: 0, ammo: [30, 6, 5, 12, 100, 30, 30, 30], reserve: [90, 24, 15, 36, 200, 90, 90, 90], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, rtts: [], pingT: 0, server: '', kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0, sights: { sight: 0, optic: 0 }, attach: [null, null, null, null, null, null, null, null], loadout: [0, 3], pack: [1, 2, 4, 5, 6, 7, ...Array(24).fill(null)] };   // two equipped guns + the ten-cell backpack (server/combat.mjs LOADOUT/PACK): a cell holds a gun index or a stored item ('sight', 'optic', 'med', 'nade'); sights: loose in the pack, attach: mounted per weapon
 // the pockets (keep server/combat.mjs in step: RESERVE and INV): the server owns them, the page only shows and predicts
 const RESERVE = [90, 24, 15, 36, 200, 90, 90, 90], NADE_MAX = 2, MED_MAX = 3;   // the ready belt caps: the surplus rides in the pack and refills the belt as it is spent
 // the aimed grenade throw: G takes the grenade in hand, the mouse aims it, the left button held down charges the power
@@ -254,8 +255,12 @@ function markRemote(id, on) {
   if (on && !r.markBeam) { r.markBeam = new THREE.Mesh(MARK_GEO, MARK_MAT); r.markBeam.position.y = 16; r.markBeam.renderOrder = 6; r.markBeam.userData.noProbe = true; r.group.add(r.markBeam); }
   else if (!on && r.markBeam) { r.group.remove(r.markBeam); r.markBeam = null; }
 }
-function nameOf(id) { const b = MP.board.find(e => e.id === id); return b ? b.name : '?'; }
-const isMate = r => !MP.ffa && r.team === MP.team;   // in the free-for-all nobody is a teammate
+// the nick as the fight shows it: the tag of the player's team before it (server/teams.mjs) — [DVN] Nick
+const label = e => (e.tag ? '[' + e.tag + '] ' : '') + e.name;
+function nameOf(id) { const b = MP.board.find(e => e.id === id); return b ? label(b) : '?'; }
+const labelOf = (id, name) => { const b = MP.board.find(e => e.id === id); return b ? label(b) : name; };
+// a teammate: the own side in the team fight; in the free-for-all and the storm — a member of the own team of the players
+const isMate = r => (MP.ffa ? !!(MP.clan && r.clan === MP.clan) : r.team === MP.team);
 function teamOf(id) { const b = MP.board.find(e => e.id === id); return b ? b.team : 0; }
 // the body of a killed remote: its last snapshot, the speed it had, and the throw of the killing blow —
 // along the bullet's own tangent at the hit (m.bd of the server's kill), or along the blast's normal (−m.dx/dz);
@@ -563,7 +568,7 @@ function updatePanel() {
   const gunInfo = i => ({ i, name: WEAPONS[i].name, mag: MP.ammo[i], magSize: WEAPONS[i].mag, reserve: MP.reserve[i], on: i === MP.weapon, key: keyName(SET.keys['w' + (i + 1)]), dmg: DMG[i].dmg, head: DMG[i].head, pellets: WEAPONS[i].pellets, gapMs: WEAPONS[i].gapMs, range: WEAPONS[i].range, reloadMs: WEAPONS[i].reloadMs, auto: WEAPONS[i].auto, scope: !!WEAPONS[i].scope, attach: MP.attach[i] });
   renderInv({ weapons: MP.loadout.map(gunInfo), pack: MP.pack.map(w => w == null ? null : typeof w === 'number' ? gunInfo(w) : { kind: w, name: KINDS[w].name }), nades: MP.nades, smokes: MP.smokes, napalms: MP.napalms, nadeMax: NADE_MAX, meds: MP.meds, medMax: MED_MAX, sights: MP.sights, hp: MP.hp, medKey: keyName(SET.keys.med), nadeKey: keyName(SET.keys.grenade), smokeKey: keyName(SET.keys.smoke), napalmKey: keyName(SET.keys.napalm), reloadKey: keyName(SET.keys.reload), reloadW: MP.reloadAt ? MP.loadout.indexOf(MP.reloadW) : -1, reloadAt: MP.reloadAt, name: MP.name, team: MP.team, ffa: MP.ffa, kills: MP.kills, deaths: MP.deaths });
   el('mpScore').textContent = MP.kills + ' · ' + MP.deaths; el('mpFps').textContent = PERF.fps + ' кадр/с' + (PERF.scale < 1 ? ' · разрешение ' + Math.round(PERF.scale * 100) + ' %' : '');
-  el('mpMeName').textContent = MP.name || 'Вы'; el('mpMeDot').className = 'dot ' + (MP.ffa ? 'tf' : 't' + MP.team);
+  el('mpMeName').textContent = MP.name ? (MP.tag ? '[' + MP.tag + '] ' : '') + MP.name : 'Вы'; el('mpMeDot').className = 'dot ' + (MP.ffa ? 'tf' : 't' + MP.team);
   const tm = el('mpTeams'); tm.textContent = '';
   if (MP.ffa) { const lead = [...MP.board].sort((a, b) => b.kills - a.kills)[0], me = document.createElement('b'), ld = document.createElement('b'), lim = document.createElement('small'); me.className = 'me'; me.textContent = 'Вы ' + MP.kills; ld.className = 'lead'; ld.textContent = lead ? lead.name + ' ' + lead.kills : ''; lim.textContent = MP.storm ? 'в живых ' + stormState.alive : 'до ' + MP.win; tm.append(me, ld, lim); } else { const chip = (i, t, s) => { const e = document.createElement('b'), n = document.createElement('small'), v = document.createElement('span'); e.className = 't' + i; n.textContent = t; v.textContent = s; e.append(n, v); return e; };
   const lim = document.createElement('small'); lim.textContent = 'до ' + MP.win; tm.append(chip(0, MP.teams[0], MP.score[0]), lim, chip(1, MP.teams[1], MP.score[1])); }
@@ -597,12 +602,12 @@ function drawBoard() {
   const byScore = (a, b) => b.kills - a.kills || (b.dmg || 0) - (a.dmg || 0) || a.deaths - b.deaths;
   const row = (e, rank) => {
     const r = document.createElement('div');
-    r.className = 'bd-row ' + (MP.ffa ? 'tf' : 't' + e.team) + (e.id === MP.id ? ' me' : '') + (e.alive === false ? ' dead' : '');
+    r.className = 'bd-row ' + (MP.ffa ? 'tf' : 't' + e.team) + (e.id === MP.id ? ' me' : '') + (e.alive === false ? ' dead' : '') + (e.id !== MP.id && MP.clan && e.clan === MP.clan ? ' ally' : '');
     if (rank) r.append(cell('c-rank', rank));
     const n = document.createElement('span'); n.className = 'c-name';
     const st = document.createElement('i'); st.className = 'bd-st'; st.title = e.alive === false ? 'погиб' : 'в строю';
-    const nm = document.createElement('b'); nm.textContent = e.name; nm.title = e.name;
-    n.append(st, nm);
+    const nm = document.createElement('b'); nm.textContent = e.name; nm.title = label(e);
+    if (e.tag) { const tg = document.createElement('em'); tg.className = 'bd-tag'; tg.textContent = e.tag; tg.title = 'Команда игрока'; n.append(st, tg, nm); } else n.append(st, nm);
     if (e.id === MP.id) { const you = document.createElement('em'); you.className = 'bd-you'; you.textContent = 'вы'; n.append(you); }
     if (e.bot) { const bot = document.createElement('em'); bot.className = 'bd-bot'; bot.textContent = 'бот'; n.append(bot); }
     if (e.mark) { const mk = document.createElement('em'); mk.className = 'bd-mark'; mk.textContent = '🎯 груз'; mk.title = 'Носитель груза — помечен для всех'; n.append(mk); }
@@ -673,9 +678,9 @@ function showSummary(m) {
 }
 // the end of the storm round: the places of the fallen and the last survivor, not the kill race
 function showStormSummary(m) {
-  const won = m.mvp === MP.id, my = m.rows.find(r => r.id === MP.id), title = el('mpEndTitle');
+  const won = m.mvp === MP.id || (!!m.clan && m.clan === MP.clan), my = m.rows.find(r => r.id === MP.id), title = el('mpEndTitle');   // a team wins together
   title.className = 'tf storm-title';
-  title.textContent = won ? 'ПОБЕДА — вы последний выживший' : 'Шторм завершён: победил ' + m.name;
+  title.textContent = won ? (m.clan ? 'ПОБЕДА — ваша команда выжила последней' : 'ПОБЕДА — вы последний выживший') : 'Шторм завершён: ' + (m.clan ? 'победила команда ' : 'победил ') + m.name;
   const mvp = m.rows.find(r => r.id === m.mvp);
   el('mpEndMvp').textContent = mvp ? '★ Последний выживший: ' + mvp.name + ' — ' + mvp.kills + ' убийств, ' + mvp.dmg + ' урона' : 'Выживших нет — шторм забрал всех';
   if (my && !won) el('mpEndMvp').textContent += ' · Ваше место: ' + my.place + ' из ' + m.rows.length;
@@ -814,7 +819,7 @@ function respawn() {
 /* ---------- messages from the server ---------- */
 function onMsg(m) {
   switch (m.t) {
-    case 'hello': dayOf(m); MP.storm = m.mode === 'storm'; MP.ffa = m.mode === 'ffa' || MP.storm; document.body.classList.toggle('ffa', MP.ffa); document.body.classList.toggle('storm', MP.storm); if (MP.storm && m.storm) { setStorm(m.storm); feed('Ивент «Шторм»: одна жизнь, зона сужается — последний выживший побеждает', 'sys'); } if (MP.ffa) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.server = m.server || ''; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team, e.char); document.body.dataset.team = m.team;
+    case 'hello': dayOf(m); MP.storm = m.mode === 'storm'; MP.ffa = m.mode === 'ffa' || MP.storm; document.body.classList.toggle('ffa', MP.ffa); document.body.classList.toggle('storm', MP.storm); if (MP.storm && m.storm) { setStorm(m.storm); feed('Ивент «Шторм»: одна жизнь, зона сужается — последний выживший побеждает', 'sys'); } MP.clan = m.clan ? m.clan.id : ''; MP.tag = m.clan ? m.clan.tag : ''; if (MP.ffa && (MP.storm || !MP.clan)) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } setWhere(MP.local ? 'train' : MP.storm ? 'storm' : 'game'); voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.server = m.server || ''; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team, e.char); document.body.dataset.team = m.team;
       MP.arena = m.arena || null; clearFx(); clearBlasts(); stopZoneSounds(); setItems(m.items); for (const z of m.zones || []) { addZone(z); if (z.kind === 'smoke') zoneSound(z); }   // the screens and patches already burning when we joined
       cargoClock(m.now || Date.now()); clearCargo(); for (const id of [...marks.keys()]) markRemote(id, false); marks.clear();
       if (m.cargo) { cargoDrop(m.cargo); if (m.cargo.state === 'landed') cargoLand(m.cargo); }
@@ -892,10 +897,12 @@ function onMsg(m) {
       P.vy = Math.min(P.vy + m.vy, 16);
       break;
     }
-    case 'kill': { feed(m.w === 12 ? m.vn + '  ⚡ поглощён штормом' : m.kn + '  ➜  ' + m.vn + (m.w === 9 ? '  (граната)' : m.w === 11 ? '  (напалм)' : m.w === 10 ? '  (падение)' : m.head ? '  (в голову)' : ''), m.killer === MP.id ? 'mine' : m.victim === MP.id ? 'dead' : ''); if (m.killer === MP.id) { MP.kills++; if (m.victim !== MP.id) statEvent('kill', m, !!MP.local); } if (m.victim === MP.id) { MP.deaths++; statEvent('death', {}, !!MP.local); if (!MP.dead) die(m.w === 10 ? '' : m.kn, m.killer); } else { const rv = remotes.get(m.victim); if (rv && rv.buf.length) { rv.fallT = performance.now(); rv.corpse = corpseOf(rv, m); } } updatePanel(); break; }
+    case 'kill': { feed(m.w === 12 ? labelOf(m.victim, m.vn) + '  ⚡ поглощён штормом' : labelOf(m.killer, m.kn) + '  ➜  ' + labelOf(m.victim, m.vn) + (m.w === 9 ? '  (граната)' : m.w === 11 ? '  (напалм)' : m.w === 10 ? '  (падение)' : m.head ? '  (в голову)' : ''), m.killer === MP.id ? 'mine' : m.victim === MP.id ? 'dead' : ''); if (m.killer === MP.id) { MP.kills++; if (m.victim !== MP.id) statEvent('kill', m, !!MP.local); } if (m.victim === MP.id) { MP.deaths++; statEvent('death', {}, !!MP.local); if (!MP.dead) die(m.w === 10 ? '' : m.kn, m.killer); } else { const rv = remotes.get(m.victim); if (rv && rv.buf.length) { rv.fallT = performance.now(); rv.corpse = corpseOf(rv, m); } } updatePanel(); break; }
     case 'alive': { const r = remotes.get(m.id); if (r) { r.buf.length = 0; r.fallT = 0; } break; }
-    case 'board': MP.board = m.board; MP.score = m.score; for (const e of m.board) { const r = addRemote(e.id, e.name, e.team, e.char); if (r) { r.name = e.name; r.tag.textContent = e.name; const char = parseChar(e.char); if (char !== r.char) { r.char = char; rebuildAvatar(r); } } if (e.id === MP.id) { MP.kills = e.kills; MP.deaths = e.deaths; } } for (const id of [...remotes.keys()]) if (!m.board.some(e => e.id === id)) dropRemote(id); drawBoard(); updatePanel(); if (voice) voice.setPeers(m.board.filter(e => e.id !== MP.id && !e.bot).map(e => e.id)); break;
+    case 'board': MP.board = m.board; MP.score = m.score; { const me = m.board.find(e => e.id === MP.id); if (me) { MP.clan = me.clan || ''; MP.tag = me.tag || ''; } }   // the own team first: the others' tags are read against it
+      for (const e of m.board) { const r = addRemote(e.id, e.name, e.team, e.char); if (r) { r.name = label(e); r.clan = e.clan || ''; r.tag.textContent = r.name; r.tag.classList.toggle('clan', !!MP.clan && r.clan === MP.clan); if (!MP.ffa && r.team !== e.team) { r.team = e.team; r.tag.classList.remove('t0', 't1'); r.tag.classList.add('t' + e.team); } const char = parseChar(e.char); if (char !== r.char) { r.char = char; rebuildAvatar(r); } } if (e.id === MP.id) { MP.kills = e.kills; MP.deaths = e.deaths; } } for (const id of [...remotes.keys()]) if (!m.board.some(e => e.id === id)) dropRemote(id); drawBoard(); updatePanel(); if (voice) voice.setPeers(m.board.filter(e => e.id !== MP.id && !e.bot).map(e => e.id)); break;
     case 'left': dropRemote(m.id); break;
+    case 'side': MP.team = m.team; document.body.dataset.team = m.team; feed('Вы переходите к своей команде: ' + MP.teams[m.team], 'sys'); updatePanel(); break;   // a member of a team on the other side joins his teammates (server/game.mjs)
     case 'nade': { const own = m.by === MP.id && !!NTHROW.at; addNade(m, own ? (vm && vm.canNade ? vm.nadeAt(MV) : nadeBall.getWorldPosition(MV)) : null); if (own) NTHROW.gone = true; } if (m.by !== MP.id) { const rt = remotes.get(m.by); if (rt) rt.throwAt = performance.now(); const dd = Math.hypot(m.p[0] - P.x, m.p[2] - P.z); if (dd < 40) tone(500, 300, 0.08, 0.1 * (1 - dd / 40), 'triangle'); } break;
     case 'zone': {   // the smoke screen or the burning patch: the grenade's copy goes into it (nades.js)
       addZone(m);
@@ -974,7 +981,7 @@ function join(local, storm) {   // local: { bots, level, mode, arena, time } for
   ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, team: MP.wantTeam, char: el('mpChar').value || undefined, key: local ? undefined : playerKey() || undefined, board: local ? undefined : boardOn(), ...s })); };
   ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (err) { console.error(err); } };
   ws.onerror = () => { if (!MP.started) msg.textContent = 'Не удалось подключиться к ' + url; };
-  ws.onclose = () => { nadeCancel(); el('nadeWarn').hidden = true; clearStorm(); document.body.classList.remove('storm', 'storm-out'); stopStormAuto(); if (MP.started) { el('mpDead').hidden = true; el('stormDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; el('goStorm').disabled = false; if (!msg.textContent.startsWith('На сервере') && !msg.textContent.startsWith('Не удалось') && !msg.textContent.startsWith('Сервер пускает') && !msg.textContent.startsWith('Шторм')) msg.textContent = 'Соединение закрыто.'; } };
+  ws.onclose = () => { setWhere('lobby'); nadeCancel(); el('nadeWarn').hidden = true; clearStorm(); document.body.classList.remove('storm', 'storm-out'); stopStormAuto(); if (MP.started) { el('mpDead').hidden = true; el('stormDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; el('goStorm').disabled = false; if (!msg.textContent.startsWith('На сервере') && !msg.textContent.startsWith('Не удалось') && !msg.textContent.startsWith('Сервер пускает') && !msg.textContent.startsWith('Шторм')) msg.textContent = 'Соединение закрыто.'; } };
 }
 let uiReady = false;
 function initUi() {   // the fields of the player and of the training: once, when the start card first needs them (or when the city is ready)
@@ -1025,7 +1032,7 @@ window.addEventListener('keydown', e => {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;   // typing in the chat box
   if (!MP.on || e.repeat) return;
   if (e.code === SET.keys.voice && voice) { if (!voice.hasMic) { voice.enableMic().then(ok => { el('mpVoice').dataset.mic = ok ? 'on' : 'denied'; }); } else voice.talk(true); }
-  else if (!MP.dead && (e.code === SET.keys.chat || e.code === SET.keys.teamChat || e.code === 'Enter')) { e.preventDefault(); nadeCancel(); openChat(e.code === SET.keys.teamChat && !MP.ffa); }
+  else if (!MP.dead && (e.code === SET.keys.chat || e.code === SET.keys.teamChat || e.code === 'Enter')) { e.preventDefault(); nadeCancel(); openChat(e.code === SET.keys.teamChat && (!MP.ffa || !!MP.clan)); }
   else if (MP.dead && MP.specMode !== 2 && (e.code === 'ArrowRight' || e.code === 'KeyE')) specNext(1);   // in the free camera E / Q are up / down
   else if (MP.dead && MP.specMode !== 2 && (e.code === 'ArrowLeft' || e.code === 'KeyQ')) specNext(-1);
   else if (MP.dead && e.code === 'KeyF') specCam();

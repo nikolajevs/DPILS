@@ -9,6 +9,7 @@ import './game/mirror-self.js';
 import { MP, enablePlay, loadModels, warmSamples } from './game/mp.js';
 import { stormState } from './game/storm.js';
 import './ui/start.js';
+import './ui/team.js';
 import { ambProbe, ambStatus } from './game/ambience.js';
 import { statEvent, statsOf } from './game/stats.js';
 import './game/input.js';

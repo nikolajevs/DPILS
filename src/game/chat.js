@@ -10,7 +10,8 @@ const box = $('mpChat'), log = $('mpChatLog'), inp = $('mpChatIn');
 const SHOW_MS = 9000, KEEP = 40;
 function addLine(m, myId) {
   const row = document.createElement('div'); row.className = 'line' + (m.teamOnly ? ' team' : '');
-  const name = document.createElement('b'); name.className = 't' + (m.team === 1 ? 1 : 0); name.textContent = (m.teamOnly ? '[команда] ' : '') + m.name + ': ';
+  const name = document.createElement('b'); name.className = m.clanChat ? 'clan' : 't' + (m.team === 1 ? 1 : 0); name.textContent = (m.teamOnly ? '[команда] ' : '') + (m.tag ? '[' + m.tag + '] ' : '') + m.name + ': ';   // clanChat: a line of the team panel's chat (src/ui/team.js)
+  if (m.clanChat) row.classList.add('clan');
   const text = document.createElement('span'); text.textContent = m.text; if (m.id === myId) row.classList.add('me');
   row.append(name, text); log.append(row); while (log.children.length > KEEP) log.firstChild.remove(); log.scrollTop = log.scrollHeight;
   setTimeout(() => row.classList.add('old'), SHOW_MS);
