@@ -1,13 +1,14 @@
 import * as THREE from 'three';
 import { buildingAt, onRoad } from '../world/data.js';
-import { terrainH, walkLift } from '../world/terrain.js';
+import { sky, terrainH, walkLift } from '../world/terrain.js';
 import { STATE } from '../core/state.js';
-import { camera, scene } from '../render/renderer.js';
+import { U, camera, scene } from '../render/renderer.js';
 import { worldSpace } from '../render/world-space.js';
 import { reduceMotion } from '../core/env.js';
 import { fbm } from './muzzle.js';
 import { prop, onProps } from './props.js';
 import { makePhysics } from '../../server/physics.mjs';
+import { SMOKE as SMK, smokeCore, smokeDepth } from '../../server/combat.mjs';
 
 /* ---------- grenades ----------
    The server flies every grenade and says where and when it goes off (server/game.mjs, damage and all). Each page
@@ -200,14 +201,30 @@ const SCORCH_TEX = paint(1, (i, x, y, out) => {
   out[0] = 0.25 + 0.5 * grain * clamp(r / R); out[1] = Math.max(body, streak) * clamp((1 - r) * 5) * (0.75 + 0.25 * grain);
 });
 // the opacity and the glow of a particle (x, y) and the corner of its atlas cell (z, w) ride one instanced attribute aP;
-// the glow is the light of the fire inside the smoke, added to what the scene lights
-function particleMat(m, key) {
+// the glow is the light of the fire inside the smoke, added to what the scene lights.
+// The smoke scatters (scatter): a cloud is not lit like a wall — it sends the light all round, and seen against the sun
+// it glows through. So the sun does not light it as a surface (a puff turned to the camera with the sun behind it went
+// black-brown at sunset); it takes the colours the sky's own clouds have at this hour instead (world/terrain.js, set by
+// lighting.js): the lit one on its side to the sun, the dark one on the far side, and the lit one again through the
+// puff when the camera looks into the sun. The lamps, the hemisphere and the flash of a blast (point lights) light it
+// as before.
+const SMK_LIT = { value: new THREE.Vector3(1.35, 1.3, 1.22) }, SMK_DARK = { value: new THREE.Vector3(0.36, 0.43, 0.56) };   // the day's, till the sky is there
+const NO_SUN = THREE.ShaderChunk.lights_fragment_begin.replace('#if ( NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct )', '#if 0');
+function particleMat(m, key, scatter = false) {
   const base = THREE.Material.prototype.onBeforeCompile;   // the page's own patch (world/terrain.js) stays: these are worldSpace, it lifts nothing
   m.onBeforeCompile = function (s) {
     base.call(this, s);
     s.vertexShader = 'attribute vec4 aP;\nvarying vec2 vP;\n' + s.vertexShader.replace('#include <uv_vertex>', '#include <uv_vertex>\nvMapUv = vMapUv * 0.5 + aP.zw;\nvP = aP.xy;');
     s.fragmentShader = 'varying vec2 vP;\n' + s.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.a *= vP.x;')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vP.y * vec3(2.4, 1.0, 0.3);');
+    if (!scatter) return;
+    const su = sky && sky.material && sky.material.uniforms;
+    s.uniforms.uSmkLit = su && su.uCloudLit ? su.uCloudLit : SMK_LIT; s.uniforms.uSmkDark = su && su.uCloudDark ? su.uCloudDark : SMK_DARK; s.uniforms.uSmkSun = U.sunDir;
+    s.fragmentShader = 'uniform vec3 uSmkLit, uSmkDark, uSmkSun;\n' + s.fragmentShader
+      .replace('#include <lights_fragment_begin>', NO_SUN)
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n{ vec3 sv = normalize((viewMatrix * vec4(uSmkSun, 0.0)).xyz);\n'
+        + '  float k = 0.5 + 0.5 * dot(normal, sv), f = pow(max(0.0, dot(normalize(-vViewPosition), sv)), 5.0);\n'
+        + '  totalEmissiveRadiance += diffuseColor.rgb * (mix(uSmkDark, uSmkLit, k) + uSmkLit * f * 0.6); }');
   };
   m.customProgramCacheKey = () => key;
   return worldSpace(m);
@@ -225,7 +242,7 @@ function cloud(geo, mat, max, order) {
   mesh.userData.noProbe = true; scene.add(mesh);
   return { mesh, aP, list: [], free: Array.from({ length: max }, () => ({})) };
 }
-const smokeMat = particleMat(new THREE.MeshLambertMaterial({ map: SMOKE_TEX, transparent: true, depthWrite: false }), 'nade-smoke');
+const smokeMat = particleMat(new THREE.MeshLambertMaterial({ map: SMOKE_TEX, transparent: true, depthWrite: false }), 'nade-smoke', true);
 const fireMat = particleMat(new THREE.MeshBasicMaterial({ map: FIRE_TEX, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }), 'nade-fire');
 const SMOKE = cloud(bentQuad(), smokeMat, 900, 1), FIRE = cloud(new THREE.PlaneGeometry(1, 1), fireMat, 320, 2);
 // the napalm's carpet of flame: ordinary blending, not additive — added light washes out on a sunlit street, while
@@ -237,8 +254,13 @@ const WHITE = [1, 1, 1];
 // drag towards the air around (rise: the speed it climbs at, wind: how much of the wind takes it), gravity, colour from
 // c0 to c1, opacity (fin: the fade-in, fout: the share of its life before it fades out), the glow of the fire for heatT
 // seconds, the atlas cell; len and w make a streak along the flight; a clod falls to the ground and may trail dust
-const PD = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, t: 0, life: 1, s0: 1, s1: 1, grow: 2, roll: 0, spin: 0, drag: 0, rise: 0, wind: 0, grav: 0, c0: WHITE, c1: WHITE, op: 1, fin: 0, fout: 0.5, heat: 0, heatT: 0.25, frame: 0, len: 0, w: 0, floor: -1e9, clod: false, roof: 0, trail: 0, tt: 0, dust: WHITE, d: 0 };
-function emit(sys, o) { const p = sys.free.pop() || sys.list.shift(); Object.assign(p, PD, o); sys.list.push(p); return p; }
+const PD = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, t: 0, life: 1, s0: 1, s1: 1, grow: 2, roll: 0, spin: 0, drag: 0, rise: 0, wind: 0, grav: 0, c0: WHITE, c1: WHITE, op: 1, fin: 0, fout: 0.5, heat: 0, heatT: 0.25, frame: 0, len: 0, w: 0, floor: -1e9, clod: false, roof: 0, trail: 0, tt: 0, dust: WHITE, d: 0, zone: null, body: false };
+// zone: the smoke screen a puff belongs to (it thins with it, see drawCloud); body: it is one of the screen's own count
+function emit(sys, o) {
+  const p = sys.free.pop() || sys.list.shift();
+  if (p.body && p.zone) p.zone.n--;   // the oldest taken from a screen: the screen makes it up
+  Object.assign(p, PD, o); sys.list.push(p); return p;
+}
 const lin = hex => { const c = new THREE.Color(hex); return [c.r, c.g, c.b]; };
 // the colours of what a blast throws up, by what it went off on: the dust, the clods, the soot of the first cloud
 const SURF = {
@@ -321,43 +343,172 @@ function scorch(x, y, z, roof) {
 }
 /* ---------- the zones: the smoke screen and the burning patch ----------
    The server lays them where the special grenade went off ('zone', server/game.mjs) and says when they are out
-   ('zoneEnd'); the page breathes them out of the same two particle clouds the blast uses. The smoke is a white-grey
-   screen that swells to its radius and hangs for the zone's life; the napalm is a carpet of flame with dark smoke
-   above and sparks jumping out, lit by one flickering light that follows the nearest patch. A late joiner gets the
-   live zones with their remaining time in 'hello'. */
+   ('zoneEnd'); the page breathes them out of the same particle clouds the blast uses. The napalm is a carpet of flame
+   with dark smoke above and sparks jumping out, lit by one flickering light that follows the nearest patch. A late
+   joiner gets the live zones with their age in 'hello'.
+   The smoke screen follows the server's own shape of it (smokeCore, server/combat.mjs), which hides the street from the
+   bots and the name tags: the M18 lies on its side where it went off and pours a jet of white smoke out of its head —
+   hard for the first second and a half, then steady while it burns; the screen swells out of it to its full width in
+   2.5 s, a low dome of dense billows that hardly drifts, wisps fraying off its top and going with the wind; over the
+   last 3.5 s the canister is spent and the screen thins from the edge in, gone when the server says. Inside it the
+   camera is wrapped in smoke (the veil below), so a screen is as blind from within as from without. */
 const zones = new Map();
 const fireLight = new THREE.PointLight(0xff7a2a, 0, 24, 1.8); fireLight.userData.noProbe = true; scene.add(fireLight);
+const SMOKE_C0 = [0.86, 0.86, 0.84], SMOKE_C1 = [0.76, 0.76, 0.74], JET_C = [0.93, 0.93, 0.91];
+const SCREEN_N = 90;   // the billows a screen keeps in its body (the pool holds 900: two screens and a fight fit)
+const FADE = SMK.fadeMs / 1000, GROW = SMK.growMs / 1000;
+// the spent canister on its side; its size, measured once from the model in its flight scale
+const QZ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2), YA = new THREE.Vector3(0, 1, 0);
+let canSize = null;
+function layCanister(z, n) {
+  let m = n && n.model ? n.mesh : null;
+  if (n && !n.model) scene.remove(n.mesh);   // the ball stand-in is not laid down
+  if (!m) { m = flyNade('smoke'); if (!m) return; m.userData.noProbe = true; scene.add(m); }
+  if (!canSize) { const t = flyNade('smoke'); canSize = new THREE.Box3().setFromObject(t).getSize(new THREE.Vector3()); }
+  const a = rnd(0, 6.283), r = Math.max(canSize.x, canSize.z) / 2, h = canSize.y / 2;
+  m.quaternion.setFromAxisAngle(YA, a).multiply(QZ);   // the long axis (y of the model) laid level, the head towards (−cos a, 0, sin a)
+  m.position.set(z.x, z.y + r, z.z);
+  z.can = m; z.hx = -Math.cos(a); z.hz = Math.sin(a);
+  z.nx = z.x + z.hx * h * 0.95; z.ny = z.y + r * 1.2; z.nz = z.z + z.hz * h * 0.95;   // the nozzle at its head
+}
 function addZone(m) {
-  const n = list.get(m.id); if (n) { scene.remove(n.mesh); freeTrail(n.trail); list.delete(m.id); }   // the flying copy goes into its zone
-  const dur = (m.durMs != null ? m.durMs : m.left != null ? m.left : 8000) / 1000;
-  const z = { kind: m.kind, x: m.x, y: m.y, z: m.z, r: m.r || 4, t: 0, dur, acc: 0, acc2: 0, acc3: 0 };
+  const n = list.get(m.id); if (n) { freeTrail(n.trail); list.delete(m.id); if (m.kind !== 'smoke') scene.remove(n.mesh); }   // the flying copy goes into its zone
+  const durMs = m.durMs != null ? m.durMs : m.left != null ? m.left : 8000, age = m.left != null && m.durMs != null ? Math.max(0, m.durMs - m.left) : 0;
+  // born: the zone's clock runs by the wall clock, not by the sum of the frames: a tab left in the background (its
+  // frames held back) or a hitch would leave it behind the server's, and the server's zoneEnd would cut it off unfaded
+  const z = { kind: m.kind, x: m.x, y: m.y, z: m.z, r: m.r || 4, t: age / 1000, born: performance.now() - age, dur: durMs / 1000, acc: 0, acc2: 0, acc3: 0, n: 0, fk: 1, core: null, can: null, nx: m.x, ny: m.y + 0.1, nz: m.z, hx: 1, hz: 0 };
   zones.set(m.id, z);
   if (m.kind === 'fire') {
     emit(FIRE, { x: m.x, y: m.y + 0.4, z: m.z, life: 0.12, s0: 2.5, s1: 4, grow: 1, c0: [5, 3, 1.2], c1: [2.5, 1, 0.3], fout: 0, frame: 2 });   // the pop of ignition
     for (let i = 0; i < 16; i++) { const a = rnd(0, 6.283), r = rnd(0.2, z.r * 0.8); emit(FIRE, { x: m.x + Math.cos(a) * r, y: m.y + 0.15, z: m.z + Math.sin(a) * r, vy: rnd(1, 3), life: rnd(0.3, 0.6), s0: rnd(0.5, 0.9), s1: rnd(1.4, 2.2), grow: 2, c0: [4.5, 2.2, 0.7], c1: [1.6, 0.4, 0.06], op: 0.9, fout: 0.3, frame: i & 1 }); }
     scorch(m.x, m.y, m.z, false);
     glow.x = m.x; glow.y = m.y + 0.6; glow.z = m.z; glow.t = 0;   // the ignition lights the street for a moment (blastGlow)
-  } else if (m.kind === 'beacon') {   // the cargo's signal smoke: a red-orange plume rising tall over the landing
+    return;
+  }
+  if (m.kind === 'beacon') {   // the cargo's signal smoke: a red-orange plume rising tall over the landing
     const near = Math.max(0.12, Math.min(1, (Math.hypot(camera.position.x - m.x, camera.position.z - m.z) - 10) / 25));   // thin smoke at the crate itself: the taker must see it
     for (let i = 0; i < Math.round(22 * near); i++) { const a = rnd(0, 6.283), r = rnd(0, z.r * 0.3); emit(SMOKE, { x: m.x + Math.cos(a) * r, y: m.y + rnd(0.1, 0.8), z: m.z + Math.sin(a) * r, vx: Math.cos(a) * rnd(0.3, 1), vy: rnd(1.5, 3), vz: Math.sin(a) * rnd(0.3, 1), drag: 1.2, rise: rnd(2.2, 3.6), wind: 0.35, life: rnd(4, 7), s0: rnd(0.8, 1.2), s1: rnd(3, 5), grow: 2.2, roll: rnd(0, 6.28), spin: rnd(-0.3, 0.3), c0: [1, 0.42, 0.22], c1: [0.9, 0.28, 0.14], op: rnd(0.75, 0.9), fin: 0.12, fout: 0.3, floor: m.y, frame: i % 3 }); }
-  } else {
-    for (let i = 0; i < 26; i++) { const a = rnd(0, 6.283), r = rnd(0, z.r * 0.5); emit(SMOKE, { x: m.x + Math.cos(a) * r, y: m.y + rnd(0.1, 0.8), z: m.z + Math.sin(a) * r, vx: Math.cos(a) * rnd(0.5, 2), vy: rnd(0.3, 1), vz: Math.sin(a) * rnd(0.5, 2), drag: 1.6, rise: rnd(0.3, 0.7), wind: 0.6, life: rnd(3.5, 6), s0: rnd(0.8, 1.3), s1: rnd(3.5, 5.5), grow: 2.5, roll: rnd(0, 6.28), spin: rnd(-0.4, 0.4), c0: [0.86, 0.86, 0.84], c1: [0.72, 0.72, 0.7], op: rnd(0.8, 0.95), fin: 0.15, fout: 0.35, floor: m.y, frame: i % 3 }); }
+    return;
+  }
+  layCanister(z, n);
+  if (z.t > 0.3) return;   // joined late: the screen is already standing, its body comes up at once (tickSmoke)
+  // the ignition: a pop of smoke round the canister and a few sparks of the burning filler at its head
+  for (let i = 0; i < 10; i++) { const a = rnd(0, 6.283), sp = rnd(1, 2.5); emit(SMOKE, { x: z.nx, y: z.ny, z: z.nz, vx: Math.cos(a) * sp, vy: rnd(0.4, 1.2), vz: Math.sin(a) * sp, drag: 2.5, rise: 0.3, wind: 0.3, life: rnd(1.2, 2), s0: 0.2, s1: rnd(0.9, 1.4), grow: 2.5, roll: rnd(0, 6.28), spin: rnd(-0.6, 0.6), c0: JET_C, c1: SMOKE_C0, op: 0.8, fin: 0.03, fout: 0.4, floor: z.y, frame: i % 3, zone: z }); }
+  for (let i = 0; i < 7; i++) emit(FIRE, { x: z.nx, y: z.ny, z: z.nz, vx: z.hx * rnd(2, 4) + rnd(-1, 1), vy: rnd(1, 3), vz: z.hz * rnd(2, 4) + rnd(-1, 1), grav: -9.8, life: rnd(0.15, 0.35), s0: 0.03, s1: 0.05, c0: [4, 2.6, 1], c1: [2, 0.8, 0.2], fout: 0.3, frame: 2 });
+}
+// the spent canisters lie a while after their screen is gone
+const spent = [], SPENT_LIFE = 20;
+function dropZone(id) {
+  const z = zones.get(id); if (!z) return;
+  zones.delete(id); z.fk = 0; z.core = null;   // its last puffs go with it
+  if (z.can) { spent.push({ m: z.can, t: 0 }); z.can = null; }
+}
+const endZone = id => dropZone(id);
+// the screen's shape now (the server's), and how far it has run out (fk 1 → 0 over the last FADE seconds)
+function screenShape(z) {
+  const c = smokeCore(z.r, z.t * 1000, z.dur * 1000);
+  z.core = c; z.fk = Math.max(0, Math.min(1, (z.dur - z.t) / FADE));
+  return c;
+}
+// the thinning of a running-out screen: the puffs past its shrinking edge fade
+function screenMask(p) {
+  const z = p.zone; if (!(z.fk > 0)) return 0;
+  const rv = z.r * z.fk + 0.8, hv = SMK.height * (0.4 + 0.6 * z.fk) + 0.8;
+  const rho = Math.hypot((p.x - z.x) / rv, (p.y - z.y) / hv, (p.z - z.z) / rv);
+  return clamp((1.05 - rho) / 0.35) * clamp(z.fk * 4);
+}
+function tickSmoke(z, dt) {
+  const c = screenShape(z); if (!c) return;
+  const g = Math.min(1, z.t / GROW), grow = 1 - (1 - g) * (1 - g);
+  if (z.t >= z.dur - FADE) return;   // spent: nothing more comes out, the screen thins (screenMask)
+  // the jet out of the nozzle, along the canister and up
+  z.acc += (z.t < 1.5 ? 36 : 11) * dt;
+  while (z.acc >= 1) {
+    z.acc--; const sp = rnd(3.5, 7) * (z.t < 1.5 ? 1 : 0.7), up = rnd(0.25, 0.7);
+    emit(SMOKE, { x: z.nx, y: z.ny, z: z.nz, vx: (z.hx + rnd(-0.35, 0.35)) * sp, vy: up * sp, vz: (z.hz + rnd(-0.35, 0.35)) * sp, drag: 2.4, rise: rnd(0.2, 0.45), wind: 0.35, life: rnd(1.6, 2.8), s0: 0.14, s1: rnd(1.3, 2.3), grow: 2.2, roll: rnd(0, 6.28), spin: rnd(-0.8, 0.8), c0: JET_C, c1: SMOKE_C0, op: rnd(0.75, 0.9), fin: 0.04, fout: 0.45, floor: z.y, frame: (Math.random() * 3) | 0, zone: z });
+  }
+  // the body: kept at its count, each new billow somewhere inside the dome as wide as the screen is now; it swells in,
+  // and while the screen grows it is pushed out just as far as the dome has still to go (the drag stops it there: a
+  // throw of v goes v/drag metres), so the billows born small end up spread over the whole width; then it hangs, the
+  // wind barely moving it
+  const want = Math.round(SCREEN_N * (0.25 + 0.75 * grow)), rx = c.rc * 0.95 + 0.2, ry = c.hc * 0.78;
+  const RX = z.r * 0.85 * 0.95 + 0.2, RY = SMK.height * 0.78, DR = 1.1;
+  for (let k = 0, most = z.t > 0.3 && z.n < want * 0.5 ? 14 : 6; z.n < want && k < most; k++) {
+    let u, v, w, l; do { u = rnd(-1, 1); v = Math.sqrt(Math.random()); w = rnd(-1, 1); l = u * u + v * v + w * w; } while (l > 1);   // the dome filled up to its crown, not heaped at its foot
+    emit(SMOKE, { x: z.x + u * rx, y: z.y + 0.3 + v * ry, z: z.z + w * rx, vx: (u * (RX - rx) + rnd(-0.15, 0.15)) * DR, vy: v * (RY - ry) * DR, vz: (w * (RX - rx) + rnd(-0.15, 0.15)) * DR, drag: DR, rise: rnd(0.03, 0.12), wind: 0.12, life: Math.min(rnd(5, 8), z.dur - z.t + 0.2), s0: rnd(1.2, 1.8), s1: rnd(3.8, 5.4), grow: 3, roll: rnd(0, 6.28), spin: rnd(-0.12, 0.12), c0: SMOKE_C0, c1: SMOKE_C1, op: rnd(0.88, 1), fin: 0.6, fout: 0.75, floor: z.y, frame: (Math.random() * 3) | 0, zone: z, body: true });
+    z.n++;
+  }
+  // wisps fraying off the top and drifting off with the wind
+  if (z.t > 1) {
+    z.acc2 += 3.5 * dt;
+    while (z.acc2 >= 1) {
+      z.acc2--; const a = rnd(0, 6.283), r = rnd(0, c.rc * 0.6);
+      emit(SMOKE, { x: z.x + Math.cos(a) * r, y: z.y + c.hc * rnd(0.6, 0.85), z: z.z + Math.sin(a) * r, vy: rnd(0.2, 0.5), drag: 0.8, rise: rnd(0.35, 0.7), wind: 1, life: rnd(4, 6.5), s0: rnd(1.6, 2.2), s1: rnd(3.5, 5), grow: 2, roll: rnd(0, 6.28), spin: rnd(-0.2, 0.2), c0: SMOKE_C0, c1: SMOKE_C1, op: rnd(0.35, 0.5), fin: 0.8, fout: 0.35, floor: z.y, frame: (Math.random() * 3) | 0, zone: z });
+    }
   }
 }
-const endZone = id => { zones.delete(id); };
+// the napalm's patch: flame, dark smoke over it, sparks
+function tickFire(z, dt, fade) {
+  z.acc += 100 * fade * dt;
+  while (z.acc >= 1) {
+    z.acc--; const a = rnd(0, 6.283), r = Math.sqrt(Math.random()) * z.r * 0.9;
+    const x = z.x + Math.cos(a) * r, zz = z.z + Math.sin(a) * r;
+    emit(FLAME, { x, y: z.y + 0.08, z: zz, vx: rnd(-0.3, 0.3), vy: rnd(1.2, 2.8), vz: rnd(-0.3, 0.3), drag: 1.2, life: rnd(0.35, 0.8), s0: rnd(0.5, 0.8), s1: rnd(1.4, 2.3), grow: 2, roll: rnd(0, 6.28), spin: rnd(-2, 2), c0: [1, 0.45, 0.12], c1: [0.8, 0.18, 0.02], op: 0.95, fout: 0.25, floor: z.y, frame: (Math.random() * 2) | 0 });
+    if (Math.random() < 0.3) emit(FIRE, { x, y: z.y + 0.3, z: zz, vy: rnd(1, 2), life: rnd(0.2, 0.4), s0: rnd(0.5, 0.9), s1: rnd(1, 1.6), grow: 2, c0: [2.5, 1.2, 0.4], c1: [1.2, 0.4, 0.1], op: 0.5, fout: 0.3, frame: 2 });   // the glow the bloom takes
+  }
+  z.acc2 += 10 * fade * dt;
+  while (z.acc2 >= 1) {
+    z.acc2--; const a = rnd(0, 6.283), r = rnd(0, z.r * 0.7);
+    emit(SMOKE, { x: z.x + Math.cos(a) * r, y: z.y + rnd(0.8, 1.6), z: z.z + Math.sin(a) * r, vx: rnd(-0.3, 0.3), vy: rnd(1, 2), vz: rnd(-0.3, 0.3), drag: 1.2, rise: rnd(0.8, 1.6), wind: 0.8, life: rnd(2.5, 4.5), s0: rnd(0.7, 1), s1: rnd(2.5, 4), grow: 2.5, roll: rnd(0, 6.28), spin: rnd(-0.5, 0.5), c0: [0.16, 0.14, 0.12], c1: [0.35, 0.33, 0.3], op: 0.5, fin: 0.1, fout: 0.3, floor: z.y, frame: (Math.random() * 3) | 0 });
+  }
+  z.acc3 += 6 * fade * dt;
+  while (z.acc3 >= 1) {
+    z.acc3--; const a = rnd(0, 6.283), r = rnd(0, z.r * 0.8);
+    emit(FIRE, { x: z.x + Math.cos(a) * r, y: z.y + 0.2, z: z.z + Math.sin(a) * r, vx: rnd(-1.5, 1.5), vy: rnd(2, 5), vz: rnd(-1.5, 1.5), grav: -9.8, life: rnd(0.2, 0.5), s0: 0.04, s1: 0.07, c0: [4, 2.6, 1], c1: [2, 0.8, 0.2], fout: 0.3, frame: 2 });
+  }
+}
+/* ---------- the veil: inside a smoke screen ----------
+   Three big billows of the smoke's own atlas, lit by the scene like the rest of it, ride on the camera half a metre, a
+   metre and two metres ahead, turning slowly against each other; their dense middles cover the whole view. They thicken as the
+   camera goes into a screen's core (a little past its edge already) and thin as it comes out or the screen runs out.
+   They sit behind the arms in hand (drawn over everything, viewmodel.js), so the gun and the grenade stay in sight. */
+const VEIL = cloud(bentQuad(), smokeMat, 3, 3), VEIL_D = [2, 1, 0.5];   // the far one first
+scene.remove(VEIL.mesh); camera.add(VEIL.mesh);
+let veil = 0;
+function veilTarget() {
+  const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z;
+  let v = 0;
+  for (const z of zones.values()) {
+    const c = z.kind === 'smoke' && z.core; if (!c || cy < z.y - 0.5) continue;
+    const rho = Math.hypot((cx - z.x) / (c.rc + 0.7), (cy - z.y) / (c.hc + 0.7), (cz - z.z) / (c.rc + 0.7));
+    const k = clamp((1 - rho) / 0.55); v = Math.max(v, k * k * (3 - 2 * k));
+  }
+  return v;
+}
+function drawVeil(dt) {
+  const want = veilTarget(); veil += (want - veil) * Math.min(1, dt * (want > veil ? 5 : 3));
+  const mesh = VEIL.mesh;
+  if (veil < 0.01) { veil = 0; mesh.count = 0; return; }
+  const diag = Math.tan(camera.fov * Math.PI / 360) * Math.hypot(1, camera.aspect), col = mesh.instanceColor.array, ap = VEIL.aP.array;
+  for (let i = 0; i < 3; i++) {
+    const d = VEIL_D[i], s = 4.8 * d * diag, sw = clock * (0.07 + 0.02 * i);
+    PV.set(Math.sin(sw * 1.3 + i) * 0.12 * d, Math.cos(sw + i * 2) * 0.08 * d, -d);
+    QR.setFromAxisAngle(ZA, (i & 1 ? -1 : 1) * clock * (0.04 + 0.01 * i) + i * 1.7); PS.set(s, s, s);
+    M.compose(PV, QR, PS); mesh.setMatrixAt(i, M);
+    col[i * 3] = SMOKE_C0[0]; col[i * 3 + 1] = SMOKE_C0[1]; col[i * 3 + 2] = SMOKE_C0[2];
+    ap[i * 4] = veil * 0.85; ap[i * 4 + 1] = 0; ap[i * 4 + 2] = (i & 1) * 0.5; ap[i * 4 + 3] = 0.5 - (i >> 1) * 0.5;
+  }
+  mesh.count = 3; mesh.instanceMatrix.needsUpdate = true; mesh.instanceColor.needsUpdate = true; VEIL.aP.needsUpdate = true;
+}
 function tickZones(dt) {
   let lit = null, ld = 1e9;
+  const now = performance.now();
   for (const [id, z] of zones) {
-    z.t += dt;
-    if (z.t >= z.dur) { zones.delete(id); continue; }
+    z.t = (now - z.born) / 1000;
+    if (z.t >= z.dur) { dropZone(id); continue; }
+    if (z.kind === 'smoke') { tickSmoke(z, dt); continue; }
     const fade = Math.min(1, z.t * 3) * Math.min(1, (z.dur - z.t) / 1.5 + 0.15);   // breathes in, dies out
-    if (z.kind === 'smoke') {
-      z.acc += (z.t < 1.5 ? 55 : 16) * fade * dt;
-      while (z.acc >= 1) {
-        z.acc--; const a = rnd(0, 6.283), r = rnd(0, z.r * 0.4);
-        emit(SMOKE, { x: z.x + Math.cos(a) * r, y: z.y + rnd(0.05, 0.5), z: z.z + Math.sin(a) * r, vx: Math.cos(a) * rnd(0.2, 1.2), vy: rnd(0.2, 0.8), vz: Math.sin(a) * rnd(0.2, 1.2), drag: 1.6, rise: rnd(0.35, 0.8), wind: 0.6, life: rnd(3.5, 6), s0: rnd(0.7, 1.1), s1: rnd(3.5, 5.5), grow: 2.5, roll: rnd(0, 6.28), spin: rnd(-0.4, 0.4), c0: [0.86, 0.86, 0.84], c1: [0.72, 0.72, 0.7], op: rnd(0.8, 0.95), fin: 0.15, fout: 0.35, floor: z.y, frame: (Math.random() * 3) | 0 });
-      }
-    } else if (z.kind === 'beacon') {   // the cargo's signal plume: red-orange smoke climbing tall, seen across the city
+    if (z.kind === 'beacon') {   // the cargo's signal plume: red-orange smoke climbing tall, seen across the city
       const near = Math.max(0.12, Math.min(1, (Math.hypot(camera.position.x - z.x, camera.position.z - z.z) - 10) / 25));   // up close the smoke thins: the crate stays visible to its taker
       z.acc += (z.t < 2 ? 40 : 14) * fade * near * dt;
       while (z.acc >= 1) {
@@ -365,37 +516,33 @@ function tickZones(dt) {
         emit(SMOKE, { x: z.x + Math.cos(a) * r, y: z.y + rnd(0.1, 0.6), z: z.z + Math.sin(a) * r, vx: Math.cos(a) * rnd(0.2, 0.8), vy: rnd(1.5, 3), vz: Math.sin(a) * rnd(0.2, 0.8), drag: 1.2, rise: rnd(2.2, 3.6), wind: 0.35, life: rnd(5, 8), s0: rnd(0.7, 1.1), s1: rnd(3.5, 6), grow: 2.2, roll: rnd(0, 6.28), spin: rnd(-0.3, 0.3), c0: [1, 0.42, 0.22], c1: [0.9, 0.28, 0.14], op: rnd(0.75, 0.9), fin: 0.12, fout: 0.3, floor: z.y, frame: (Math.random() * 3) | 0 });
       }
       if (Math.random() < dt * 5) emit(FIRE, { x: z.x + rnd(-0.4, 0.4), y: z.y + 0.3, z: z.z + rnd(-0.4, 0.4), vy: rnd(2, 4), life: rnd(0.3, 0.6), s0: 0.05, s1: 0.1, c0: [4, 2.2, 0.8], c1: [2, 0.7, 0.2], fout: 0.3, frame: 2 });   // the embers the bloom takes
-    } else {
-      z.acc += 100 * fade * dt;
-      while (z.acc >= 1) {
-        z.acc--; const a = rnd(0, 6.283), r = Math.sqrt(Math.random()) * z.r * 0.9;
-        const x = z.x + Math.cos(a) * r, zz = z.z + Math.sin(a) * r;
-        emit(FLAME, { x, y: z.y + 0.08, z: zz, vx: rnd(-0.3, 0.3), vy: rnd(1.2, 2.8), vz: rnd(-0.3, 0.3), drag: 1.2, life: rnd(0.35, 0.8), s0: rnd(0.5, 0.8), s1: rnd(1.4, 2.3), grow: 2, roll: rnd(0, 6.28), spin: rnd(-2, 2), c0: [1, 0.45, 0.12], c1: [0.8, 0.18, 0.02], op: 0.95, fout: 0.25, floor: z.y, frame: (Math.random() * 2) | 0 });
-        if (Math.random() < 0.3) emit(FIRE, { x, y: z.y + 0.3, z: zz, vy: rnd(1, 2), life: rnd(0.2, 0.4), s0: rnd(0.5, 0.9), s1: rnd(1, 1.6), grow: 2, c0: [2.5, 1.2, 0.4], c1: [1.2, 0.4, 0.1], op: 0.5, fout: 0.3, frame: 2 });   // the glow the bloom takes
-      }
-      z.acc2 += 10 * fade * dt;
-      while (z.acc2 >= 1) {
-        z.acc2--; const a = rnd(0, 6.283), r = rnd(0, z.r * 0.7);
-        emit(SMOKE, { x: z.x + Math.cos(a) * r, y: z.y + rnd(0.8, 1.6), z: z.z + Math.sin(a) * r, vx: rnd(-0.3, 0.3), vy: rnd(1, 2), vz: rnd(-0.3, 0.3), drag: 1.2, rise: rnd(0.8, 1.6), wind: 0.8, life: rnd(2.5, 4.5), s0: rnd(0.7, 1), s1: rnd(2.5, 4), grow: 2.5, roll: rnd(0, 6.28), spin: rnd(-0.5, 0.5), c0: [0.16, 0.14, 0.12], c1: [0.35, 0.33, 0.3], op: 0.5, fin: 0.1, fout: 0.3, floor: z.y, frame: (Math.random() * 3) | 0 });
-      }
-      z.acc3 += 6 * fade * dt;
-      while (z.acc3 >= 1) {
-        z.acc3--; const a = rnd(0, 6.283), r = rnd(0, z.r * 0.8);
-        emit(FIRE, { x: z.x + Math.cos(a) * r, y: z.y + 0.2, z: z.z + Math.sin(a) * r, vx: rnd(-1.5, 1.5), vy: rnd(2, 5), vz: rnd(-1.5, 1.5), grav: -9.8, life: rnd(0.2, 0.5), s0: 0.04, s1: 0.07, c0: [4, 2.6, 1], c1: [2, 0.8, 0.2], fout: 0.3, frame: 2 });
-      }
-      const d = camera.position.distanceTo(V.set(z.x, z.y + 1, z.z));
-      if (d < ld) { ld = d; lit = z; }
+      continue;
     }
+    tickFire(z, dt, fade);
+    const d = camera.position.distanceTo(V.set(z.x, z.y + 1, z.z));   // the nearest patch takes the flickering light
+    if (d < ld) { ld = d; lit = z; }
   }
   if (lit) { fireLight.position.set(lit.x, lit.y + 1.1, lit.z); fireLight.intensity = (26 + 10 * Math.sin(clock * 31) * Math.sin(clock * 17 + 1)) * Math.min(1, lit.t * 3) * Math.min(1, (lit.dur - lit.t) / 1.5 + 0.2); }
   else fireLight.intensity = 0;
+  for (let i = spent.length - 1; i >= 0; i--) { const c = spent[i]; if ((c.t += dt) > SPENT_LIFE) { scene.remove(c.m); spent.splice(i, 1); } }
+  drawVeil(dt);
 }
+// the screens now, for the page's own judgements: whether a sight line is blind (the name tags, mp.js — the bots of the
+// server judge theirs by the same smokeCore), how deep the camera is in one (the sounds), and where they lie (the map)
+function smokeCores() {
+  const out = [];
+  for (const z of zones.values()) if (z.kind === 'smoke' && z.core) out.push({ x: z.x, y: z.y, z: z.z, rc: z.core.rc, hc: z.core.hc });
+  return out;
+}
+const smokeHides = (a, b, cores = smokeCores()) => cores.length > 0 && smokeDepth(cores, a, b) >= SMK.hide;
+const liveZones = () => [...zones.values()].map(z => ({ kind: z.kind, x: z.x, z: z.z, r: z.kind === 'smoke' ? (z.core ? z.core.rc / 0.85 : 0) : z.r, t: z.t, n: z.n }));
+const inSmoke = () => veil;
 /* ---------- the frame ---------- */
 function stepCloud(sys, dt) {
   const L = sys.list;
   for (let i = L.length - 1; i >= 0; i--) {
     const p = L[i]; p.t += dt;
-    if (p.t >= p.life) { L.splice(i, 1); sys.free.push(p); continue; }
+    if (p.t >= p.life) { L.splice(i, 1); sys.free.push(p); if (p.body && p.zone) p.zone.n--; p.zone = null; continue; }
     if (p.drag) {   // the air takes the particle: towards its climb and the wind (which takes hold as the burst slows)
       const e = Math.exp(-p.drag * dt), wk = p.wind * Math.min(1, p.t / 1.5), tx = WIND[0] * wk, tz = WIND[1] * wk;
       p.vx = tx + (p.vx - tx) * e; p.vy = p.rise + (p.vy - p.rise) * e; p.vz = tz + (p.vz - tz) * e;
@@ -426,6 +573,7 @@ function drawCloud(sys, sort) {
     const p = L[i], k = p.t / p.life;
     let a = p.op * (p.fin ? Math.min(1, p.t / p.fin) : 1);
     if (k > p.fout) { const f = (k - p.fout) / (1 - p.fout); a *= 1 - f * f * (3 - 2 * f); }
+    if (p.zone && p.zone.fk < 1) a *= screenMask(p);   // a smoke screen running out thins from its edge in
     const m = k ** 0.35, c0 = p.c0, c1 = p.c1;
     col[i * 3] = c0[0] + (c1[0] - c0[0]) * m; col[i * 3 + 1] = c0[1] + (c1[1] - c0[1]) * m; col[i * 3 + 2] = c0[2] + (c1[2] - c0[2]) * m;
     const h = p.heat * Math.max(0, 1 - p.t / p.heatT) ** 2;
@@ -439,6 +587,7 @@ function drawCloud(sys, sort) {
     } else {
       let s = p.s0 + (p.s1 - p.s0) * (1 - (1 - k) ** p.grow), y = p.y;
       if (y < p.floor + s * 0.28) y = p.floor + s * 0.28;   // a puff does not sink into the ground it rolls on
+      if (sort) { const dd = Math.sqrt(p.d); if (dd < 0.35 + 0.45 * s) ap[i * 4] *= clamp((dd - 0.35) / (0.45 * s)); }   // a puff the camera walks into melts away instead of cutting the near plane
       QR.setFromAxisAngle(ZA, p.roll); Q.copy(camera.quaternion).multiply(QR); PS.set(s, s, s); PV.set(p.x, y, p.z);
     }
     M.compose(PV, Q, PS); mesh.setMatrixAt(i, M);
@@ -496,7 +645,9 @@ function clearNades() { for (const n of list.values()) { scene.remove(n.mesh); f
 function clearBlasts() {
   for (const s of [SMOKE, FIRE, FLAME]) { s.free.push(...s.list); s.list.length = 0; s.mesh.count = 0; }
   for (const d of scorches) { scene.remove(d.mesh); d.mesh.material.dispose(); } scorches.length = 0;
-  zones.clear(); fireLight.intensity = 0;
+  for (const z of zones.values()) if (z.can) scene.remove(z.can);
+  for (const c of spent) scene.remove(c.m); spent.length = 0;
+  zones.clear(); fireLight.intensity = 0; veil = 0; VEIL.mesh.count = 0;
   glow.t = shake.t = 9;
 }
 
@@ -661,4 +812,4 @@ function nadeSamples() {
   return [flyNade() || new THREE.Mesh(GEO, MAT), flyNade('smoke'), flyNade('napalm'), cloudSample(SMOKE), cloudSample(FIRE), cloudSample(FLAME), new THREE.Mesh(scorchGeo, scorchMat()), ...aim, new THREE.Mesh(trails[0].geo, trailMat), new THREE.Mesh(spoonLong, spoonMat)];
 }
 
-export { nadeSamples, addNade, addZone, endZone, boomNade, blastGlow, camShake, clearBlasts, clearNades, tickNades, onNadeBounce, setNadeBodies, syncNade, liveNades, NADE_THROW, showNadePreview, hideNadePreview };
+export { nadeSamples, addNade, addZone, endZone, boomNade, blastGlow, camShake, clearBlasts, clearNades, tickNades, onNadeBounce, setNadeBodies, syncNade, liveNades, liveZones, smokeCores, smokeHides, inSmoke, NADE_THROW, showNadePreview, hideNadePreview };

@@ -14,7 +14,7 @@ import { SET, keyName, onChange } from './settings.js';
 import { firstGames } from './help.js';
 import { requireAccount } from '../ui/auth.js';
 import { serverUrl } from './server.js';
-import { addNade, addZone, endZone, blastGlow, boomNade, clearBlasts, clearNades, nadeSamples, tickNades, onNadeBounce, setNadeBodies, syncNade, liveNades, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
+import { addNade, addZone, endZone, blastGlow, boomNade, clearBlasts, clearNades, nadeSamples, tickNades, onNadeBounce, setNadeBodies, syncNade, liveNades, liveZones, smokeCores, smokeHides, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
 import { KINDS, SLOT_SVG, bindInv, setItems, itemBack, itemTook, tickItems, renderInv, invTick, closeInv, toggleInv } from './inventory.js';
 import { cargoDrop, cargoLand, cargoTook, cargoEnd, cargoSelf, cargoTick, cargoMap, cargoClock, clearCargo } from './cargo.js';
 import { terrainH } from '../world/terrain.js';
@@ -29,11 +29,11 @@ import { playerKey, boardOn, setBoardOn, account } from './identity.js';
 import { initLeaders } from './leaders.js';
 import { rest } from '../core/pause.js';
 import { $, reduceMotion } from '../core/env.js';
-import { boomSound, burnSound, crackSound, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeSound, stepSound, stormZap, thunderSound } from './sfx.js';
+import { boomSound, burnSound, crackSound, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeHiss, stepSound, stormZap, thunderSound } from './sfx.js';
 import { clearStorm, setStorm, stormAudio, stormMapOverlay, stormState, stormTick } from './storm.js';
 import { carAt, carPath } from '../world/car-hit.js';
 import { fxSamples, tracerShot, bindTracer, hitTracer, tickFx, clearFx, dmgFloat, ejectShell, onShellBounce, muzzleSmoke } from './impacts.js';
-import { WEAPONS as WSRV, bulletAt, bulletDrop } from '../../server/combat.mjs';   // the server's own ballistics: the muzzle velocities, the drag and the bullet's fall
+import { WEAPONS as WSRV, SMOKE, bulletAt, bulletDrop } from '../../server/combat.mjs';   // the server's own ballistics: the muzzle velocities, the drag and the bullet's fall
 import { makePhysics } from '../../server/physics.mjs';   // the server's own shot scan: the page predicts the punched walls by the same code
 
 /* ---------- online shooter: deathmatch on the city map ----------
@@ -396,6 +396,27 @@ function bang(vol, low) {
 }
 // where a sound comes from: its distance (m) and side (-1 left … 1 right) for the camera
 const SV = new THREE.Vector3();
+// the burning smoke canisters: their hiss lasts while they burn (sfx.js smokeHiss), so its loudness and side follow
+// the listener every frame (zoneSoundTick) instead of being fixed at the moment it lit
+const zoneSnd = new Map(), ZONE_HEAR = 90;
+function zoneSound(m) {
+  try {
+    const durMs = m.durMs ?? SMOKE.durMs, age = m.left != null ? Math.max(0, durMs - m.left) / 1000 : 0, burn = (durMs - SMOKE.fadeMs) / 1000;
+    if (age >= burn) return;
+    const h = smokeHiss(ac(), actx.master, burn, age); if (!h) return;
+    h.x = m.x; h.y = m.y + 0.2; h.z = m.z; zoneSnd.set(m.id, h); zoneSoundTick(true);
+  } catch (e) {}
+}
+function zoneSoundTick(now0 = false) {
+  if (!zoneSnd.size || !actx) return;
+  const now = performance.now(), t = actx.currentTime;
+  for (const [id, h] of zoneSnd) {
+    if (now > h.until) { zoneSnd.delete(id); continue; }
+    const s = spot(h.x, h.y, h.z), k = Math.max(0, 1 - s.d / ZONE_HEAR), v = 0.85 * k * k;
+    if (now0) { h.pos.gain.value = v; h.pan.pan.value = s.pan; } else { h.pos.gain.setTargetAtTime(v, t, 0.08); h.pan.pan.setTargetAtTime(s.pan, t, 0.08); }
+  }
+}
+function stopZoneSounds() { for (const h of zoneSnd.values()) h.stop(); zoneSnd.clear(); }
 function spot(x, y, z) { SV.set(x, y, z).applyMatrix4(camera.matrixWorldInverse); const d = SV.length(); return { d, pan: d > 0.5 ? 0.85 * SV.x / Math.max(0.5, Math.hypot(SV.x, SV.z)) : 0 }; }
 // the recorded shots are louder than the old synthetic bang: their own volumes, in the order of WEAPONS
 const SHOT_VOL = [0.55, 0.7, 0.75, 0.45, 0.55, 0.5, 0.6, 0.5];
@@ -794,7 +815,7 @@ function respawn() {
 function onMsg(m) {
   switch (m.t) {
     case 'hello': dayOf(m); MP.storm = m.mode === 'storm'; MP.ffa = m.mode === 'ffa' || MP.storm; document.body.classList.toggle('ffa', MP.ffa); document.body.classList.toggle('storm', MP.storm); if (MP.storm && m.storm) { setStorm(m.storm); feed('Ивент «Шторм»: одна жизнь, зона сужается — последний выживший побеждает', 'sys'); } if (MP.ffa) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.server = m.server || ''; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team, e.char); document.body.dataset.team = m.team;
-      MP.arena = m.arena || null; clearFx(); clearBlasts(); setItems(m.items); for (const z of m.zones || []) addZone(z);   // the screens and patches already burning when we joined
+      MP.arena = m.arena || null; clearFx(); clearBlasts(); stopZoneSounds(); setItems(m.items); for (const z of m.zones || []) { addZone(z); if (z.kind === 'smoke') zoneSound(z); }   // the screens and patches already burning when we joined
       cargoClock(m.now || Date.now()); clearCargo(); for (const id of [...marks.keys()]) markRemote(id, false); marks.clear();
       if (m.cargo) { cargoDrop(m.cargo); if (m.cargo.state === 'landed') cargoLand(m.cargo); }
       for (const mk of m.marks || []) { marks.set(mk.id, mk.until); if (mk.id === MP.id) cargoSelf(mk.until); else markRemote(mk.id, true); }
@@ -879,7 +900,8 @@ function onMsg(m) {
     case 'zone': {   // the smoke screen or the burning patch: the grenade's copy goes into it (nades.js)
       addZone(m);
       const dd = Math.hypot(m.x - P.x, m.z - P.z), hear = 120;
-      if (dd < hear) { const v = 1 - dd / hear, s = spot(m.x, P.y, m.z); try { if (m.kind === 'fire') fireSound(ac(), actx.master, 0.9 * v, dd, s.pan); else smokeSound(ac(), actx.master, 0.8 * v, dd, s.pan); } catch (e) {} }
+      if (m.kind === 'smoke') zoneSound(m);
+      else if (dd < hear) { const v = 1 - dd / hear, s = spot(m.x, P.y, m.z); try { fireSound(ac(), actx.master, 0.9 * v, dd, s.pan); } catch (e) {} }
       break;
     }
     case 'zoneEnd': endZone(m.id); break;
@@ -1156,7 +1178,7 @@ function mpTick(dt) {
     if (scoped && !dot) { scopeBdc(fov); if (at === 'optic') { scopeMag.hidden = false; const lbl = MP.opticMag + '×'; if (scopeMag.textContent !== lbl) scopeMag.textContent = lbl; } else scopeMag.hidden = true; }
     if (dot) { dotHint.hidden = !!MP.dotBoostAt; dotHint.classList.toggle('cd', !MP.dotBoostAt && now < MP.dotBoostCd); }   // the hint dims while the peek recharges
     gun.visible = !MP.dead && !nv && (mode === 'sight' || MP.zoom < 0.5); }   // the grenade in hand (and the throw) replaces the gun; the long zoom hides the arms, the red dot keeps them
-  ownSteps(dt); tickNades(dt); nadeWarnTick(); tickItems(dt, now); cargoTick(dt); spectate(dt, now); nadeAimTick(now); nadeHandTick(nv);
+  ownSteps(dt); tickNades(dt); zoneSoundTick(); nadeWarnTick(); tickItems(dt, now); cargoTick(dt); spectate(dt, now); nadeAimTick(now); nadeHandTick(nv);
   if (marks.size) MARK_MAT.opacity = 0.26 + 0.1 * Math.sin(now * 0.006);   // the mark's pillar breathes
   if (P.landH > 0) { const h = P.landH; P.landH = 0; if (h > FALL.safe && !MP.dead && MP.ws.readyState === 1) MP.ws.send(JSON.stringify({ t: 'fall', h: +h.toFixed(2) })); }   // a hard landing: the height goes to the server, which owns the damage
   if (MP.reloadAt && now - MP.reloadAt >= WEAPONS[MP.reloadW].reloadMs) {   // the local picture of the reload; the server's 'inv' message is the truth. It finishes on the weapon that started it, even if another is in hand now
@@ -1275,13 +1297,16 @@ function remoteSteps(r, p, now) {
 }
 function mpLabels() {
   if (!MP.on) return;
-  const w = window.innerWidth, h = window.innerHeight;
+  const w = window.innerWidth, h = window.innerHeight, cores = smokeCores();
   for (const r of remotes.values()) {
     const g = r.group; if (!g.visible) { r.tag.hidden = true; continue; }
     V.set(g.position.x, g.position.y + 2.0, g.position.z).project(camera);
     const d = Math.hypot(g.position.x - P.x, g.position.z - P.z), mate = isMate(r), marked = marks.has(r.id);
     if (V.z > 1 || d > (marked ? 600 : mate ? 250 : 90) || MP.dead || r.fallT) { r.tag.hidden = true; continue; }   // teammates are shown through walls, enemies only in the line of sight; the cargo mark is for everyone
-    if (!mate && !marked) { const dy = g.position.y + 1.6 - P.y, l = Math.hypot(d, dy) || 1, dir = [(g.position.x - P.x) / l, dy / l, (g.position.z - P.z) / l]; if (freePath([P.x, P.y, P.z], dir, l) < l - 2) { r.tag.hidden = true; continue; } }
+    if (!mate && !marked) {   // an enemy's tag only in the line of sight: not through a wall, nor through a smoke screen (the bots' own rule, nades.js smokeHides)
+      const dy = g.position.y + 1.6 - P.y, l = Math.hypot(d, dy) || 1, dir = [(g.position.x - P.x) / l, dy / l, (g.position.z - P.z) / l];
+      if (freePath([P.x, P.y, P.z], dir, l) < l - 2 || (cores.length && smokeHides([P.x, P.y, P.z], [g.position.x, g.position.y + 1.3, g.position.z], cores))) { r.tag.hidden = true; continue; }
+    }
     r.tag.hidden = false; r.tag.style.transform = 'translate(-50%,-100%) translate(' + ((V.x + 1) / 2 * w).toFixed(0) + 'px,' + ((1 - V.y) / 2 * h).toFixed(0) + 'px)';
   }
 }
@@ -1303,6 +1328,12 @@ STATE.mapOverlay = (ctx, cx, cz, ppm, w, h) => {
     const A = MP.arena; ctx.save(); ctx.beginPath(); ctx.arc(w / 2 + (A.cx - cx) * ppm, h / 2 + (A.cz - cz) * ppm, A.r * ppm, 0, 6.283); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(200, 40, 40, .75)'; ctx.setLineDash([8, 6]); ctx.stroke(); ctx.setLineDash([]);
     A.bases.forEach((b, t) => { if (MP.ffa && t) return; for (const [bx, bz] of b) { const x = w / 2 + (bx - cx) * ppm, y = h / 2 + (bz - cz) * ppm; if (x < 4 || y < 4 || x > w - 4 || y > h - 4) continue; ctx.fillStyle = MP.ffa ? '#e8a317' : t ? '#2f78d8' : '#d8392f'; ctx.fillRect(x - 5, y - 5, 10, 10); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.strokeRect(x - 5, y - 5, 10, 10); } });
     ctx.restore();
+  }
+  for (const z of liveZones()) {   // the smoke screens (grey, as wide as they stand now) and the burning patches; the cargo's beacon has its own mark
+    if (z.kind === 'beacon' || !(z.r > 0.3)) continue;
+    const x = w / 2 + (z.x - cx) * ppm, y = h / 2 + (z.z - cz) * ppm, r = Math.max(3, z.r * ppm); if (x < -r || y < -r || x > w + r || y > h + r) continue;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fillStyle = z.kind === 'smoke' ? 'rgba(225, 230, 235, .62)' : 'rgba(255, 110, 30, .5)'; ctx.fill();
+    ctx.lineWidth = 1.2; ctx.strokeStyle = z.kind === 'smoke' ? 'rgba(120, 130, 140, .8)' : 'rgba(200, 60, 10, .8)'; ctx.stroke();
   }
   for (const r of remotes.values()) {
     const p = r.buf[r.buf.length - 1]; if (!p || !r.group.visible || r.fallT) continue;

@@ -53,8 +53,39 @@ export const NADE = { count: 2, speed: 15, minSpeed: 6, maxSpeed: 24, loft: 0.17
 // that hides the street for `durMs` — no damage, but the bots cannot see through it; the napalm (AN-M14) bursts into a
 // burning patch that costs `dps` health a second to whoever stands in it (the thrower included, teammates spared),
 // judged every `tickMs`. `count` is what the ready belt holds at spawn, one of each kind; the belt cap is INV.nadeMax.
-export const SMOKE = { count: 1, fuseMs: 2000, radius: 6, durMs: 12000 };
+// The screen is not a ball that is there at once: it swells out of the canister over `growMs`, holds, and over the last
+// `fadeMs` thins from the edge in (smokeCore below); `height` is how high its dense core stands over the surface, and a
+// sight line that crosses `hide` metres of that core or more is blind (smokeDepth) — the bots, the name tags and the
+// screen the page draws all go by this one shape.
+export const SMOKE = { count: 1, fuseMs: 2000, radius: 6, height: 3.6, durMs: 15000, growMs: 2500, fadeMs: 3500, hide: 1.2 };
 export const NAPALM = { count: 1, fuseMs: 2000, radius: 4, durMs: 8000, dps: 30, tickMs: 250 };
+// the dense core of a smoke screen of radius r, ageMs after it was laid, of durMs in all: half an ellipsoid standing
+// on the surface, rc across and hc up, or null when it is out. It swells out of the canister — a puff of a quarter of the
+// width at once, the full width by growMs — holds, and over the last fadeMs shrinks to nothing as the screen thins
+export function smokeCore(r, ageMs, durMs) {
+  const left = durMs - ageMs; if (ageMs < 0 || left <= 0) return null;
+  const g = Math.min(1, ageMs / SMOKE.growMs), grow = 1 - (1 - g) * (1 - g), fade = Math.min(1, left / SMOKE.fadeMs);
+  return { rc: r * 0.85 * (0.25 + 0.75 * grow) * fade, hc: SMOKE.height * (0.35 + 0.65 * grow) * (0.4 + 0.6 * fade) };
+}
+// how many metres of dense smoke the sight line from a to b goes through: its chords through the screens' cores, summed
+// (cores: { x, y, z, rc, hc } — y the surface the screen lies on, the half under it is not smoke). SMOKE.hide or more
+// and the far end is hidden
+export function smokeDepth(cores, a, b) {
+  const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], L = Math.hypot(dx, dy, dz);
+  if (L < 1e-6) return 0;
+  let sum = 0;
+  for (const c of cores) {
+    if (!c || !(c.rc > 0) || !(c.hc > 0)) continue;
+    const ox = (a[0] - c.x) / c.rc, oy = (a[1] - c.y) / c.hc, oz = (a[2] - c.z) / c.rc, ux = dx / c.rc, uy = dy / c.hc, uz = dz / c.rc;   // into the unit sphere
+    const A = ux * ux + uy * uy + uz * uz, B = ox * ux + oy * uy + oz * uz, C = ox * ox + oy * oy + oz * oz - 1, D = B * B - A * C;
+    if (D <= 0) continue;
+    const q = Math.sqrt(D); let s0 = Math.max(0, (-B - q) / A), s1 = Math.min(1, (-B + q) / A);
+    if (Math.abs(uy) > 1e-9) { const s = -oy / uy; if (uy > 0) s0 = Math.max(s0, s); else s1 = Math.min(s1, s); }   // above the surface only
+    else if (oy < 0) continue;
+    if (s1 > s0) sum += (s1 - s0) * L;
+  }
+  return sum;
+}
 export const NADE_KINDS = ['nade', 'smoke', 'napalm'];   // the frag, the smoke, the incendiary — the 'throw' message's kind
 // the cargo event (server/game.mjs, src/game/cargo.js): a supply crate parachutes into a random open spot every few
 // minutes — meds, grenades and the rare 8× optic inside, a smoke beacon marks the landing. Whoever takes the loot is

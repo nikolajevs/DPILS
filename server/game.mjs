@@ -136,11 +136,12 @@ export function createGame(opts) {
   }
   // the smoke and the napalm go off into a zone lying on the surface under them (the ground, or the roof they reached);
   // the zone lives in `zones` until its time is out — the fire burns whoever stands in it (stepZones), the smoke hides
-  // the street from the bots' eyes (bots.mjs). The page draws both from the 'zone' message (src/game/nades.js).
+  // the street from the bots' eyes (bots.mjs; its shape at a moment is smokeCore of combat.mjs, by t0 and dur). The page
+  // draws both from the 'zone' message (src/game/nades.js); a late joiner gets durMs and what is left in 'hello'.
   const surfaceAt = (x, y, z) => { const g = world.ground(x, z), b = world.buildingAt(x, z, y); return b && y > g + (b.top || 12) - 0.6 ? g + (b.top || 12) : g; };
   function layZone(n) {
     const K = n.kind === 'smoke' ? SMOKE : NAPALM, y = surfaceAt(n.p[0], n.p[1], n.p[2]);
-    const z = { id: n.id, kind: n.kind === 'smoke' ? 'smoke' : 'fire', x: n.p[0], y, z: n.p[2], r: K.radius, until: now() + K.durMs, by: n.by, lastTick: 0 };
+    const t0 = now(), z = { id: n.id, kind: n.kind === 'smoke' ? 'smoke' : 'fire', x: n.p[0], y, z: n.p[2], r: K.radius, t0, dur: K.durMs, until: t0 + K.durMs, by: n.by, lastTick: 0 };
     zones.set(z.id, z);
     all({ t: 'zone', id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, r: z.r, durMs: K.durMs });
   }
@@ -482,7 +483,7 @@ export function createGame(opts) {
           if (STORM && storm && (storm.phase === 'sudden' || storm.phase === 'end')) { send(p, { t: 'stormBusy', phase: storm.phase, left: Math.max(0, storm.t1 - now()) }); conn.close(); return; }   // the final and the victory table: the next gathering is the way in
           if (lb && m.board !== false && validKey(m.key) && ![...players.values()].some(q => q.key === m.key)) { p.key = m.key; const r = lb.identify(m.key, nameBase(m.name), n => !taken(n)); p.name = r.name; p.prof = r.prof; } else p.name = cleanName(m.name);
           p.team = pickTeam(m.team, p.id); p.char = cleanChar(m.char); p.joined = true; players.set(p.id, p);
-          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, now: now(), arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, day: dayNow() || undefined, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), zones: [...zones.values()].map(z => ({ id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, r: z.r, left: Math.max(0, z.until - now()) })), cargo: cargoMsg(), marks: marks(), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])), storm: STORM ? stormPublic() : undefined });
+          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, now: now(), arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, day: dayNow() || undefined, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), zones: [...zones.values()].map(z => ({ id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, r: z.r, durMs: z.dur, left: Math.max(0, z.until - now()) })), cargo: cargoMsg(), marks: marks(), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])), storm: STORM ? stormPublic() : undefined });
           if (STORM) { const [sx, sz, syaw] = storm.phase === 'play' ? stormSpawnPoint() : areaPoint(); spawn(p, sx, sz, syaw); } else spawn(p, m.x, m.z, m.yaw);
           sendBoard(); all({ t: 'chat', text: p.name + (STORM ? ' в шторме' : FFA ? ' в игре' : ' в игре, ' + TEAMS[p.team]) });
           return;
