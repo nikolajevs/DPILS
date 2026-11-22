@@ -3,7 +3,8 @@
    fill the empty places). This file is the network: WebSockets for the players and /health for the page.
      PORT, SERVER_NAME, MODE, WIN_SCORE, ARENA, BOTS, BOT_LEVEL, LEADERBOARD (file of the leaderboard, default server/data/leaderboard.json; off = none),
      ACCOUNTS (file of the accounts, default server/data/accounts.json; off = none: joins are not checked, but the page's mandatory gate cannot register on such a server),
-     STATIC (a folder, e.g. dist after npm run build: the server also gives out the page, so the city and its server live on one address),
+     STATIC (a folder, e.g. dist after npm run build: the server also gives out the page, so the city and its server live on one address;
+       unchanged files are answered 304, the text and the models go compressed in brotli or gzip — compress.mjs),
      DAY_MIN (the length of the day of the game in minutes, default 120: the sun rises and sets over the city; 0 = no clock, see daycycle.mjs) */
 import http from 'node:http';
 import fs from 'node:fs';
