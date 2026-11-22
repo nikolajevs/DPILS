@@ -75,9 +75,14 @@ const loading = {
     const v = step.a + (step.b - step.a) * Math.max(0, Math.min(1, f));
     if (v > shown) { move([[0.25, v]]); percent(at()); }
   },
+  /** The city is ready. Without a text there is no summary line: the label empties, the bar and the percent fade
+      out (style.css, .load.done), and once they are gone the whole block leaves the card. */
   done(text) {
-    finishStep(); move([[0.35, 1]], true); percent(1); label.textContent = text;
+    finishStep(); move([[0.35, 1]], true); percent(1);
     box.classList.add('done');
+    if (text != null) { label.textContent = text; return; }
+    label.textContent = '';
+    setTimeout(() => { box.hidden = true; }, 1200);   // the fade takes .6s of delay + .5s
   },
   fail(text) {
     finishStep(); const p = at(); if (anim) anim.cancel(); track = null; shown = p; fill.style.transform = `scaleX(${p.toFixed(4)})`; label.textContent = text;

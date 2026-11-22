@@ -5,7 +5,7 @@ import { $ } from '../core/env.js';
    bots. Counted: shots and hits, kills (by weapon, in the head, with a grenade), deaths, damage given and taken, the
    best series of kills without a death, rounds and wins, the best round, the time in the game. The window opens with the
    "Статистика" buttons. */
-const KEY = 'dpils.stats', WEAPON_NAMES = { 0: 'Автомат', 1: 'Дробовик', 2: 'Снайперская', 3: 'Пистолет', 4: 'Пулемёт', 9: 'Граната' };
+const KEY = 'dpils.stats', WEAPON_NAMES = { 0: 'Автомат', 1: 'Дробовик', 2: 'Снайперская', 3: 'Пистолет', 4: 'Пулемёт', 5: 'M4A1', 6: 'SCAR-L', 7: 'AR-15', 9: 'Граната' };
 const zero = () => ({ kills: 0, deaths: 0, heads: 0, shots: 0, hits: 0, dmg: 0, taken: 0, rounds: 0, wins: 0, secs: 0, best: 0, bestRound: 0, by: {} });
 let S = { all: zero(), train: zero(), since: Date.now() }, streak = 0, dirty = false, saveT = 0;
 try { const j = JSON.parse(localStorage.getItem(KEY) || 'null'); if (j && j.all && j.train) { S = { all: { ...zero(), ...j.all }, train: { ...zero(), ...j.train }, since: j.since || Date.now() }; } } catch (e) {}

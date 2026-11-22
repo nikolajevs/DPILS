@@ -194,7 +194,7 @@ export function createGame(opts) {
     for (let i = 0; i < p.pack.length && n < cap; i++) if (p.pack[i] === kind) { p.pack[i] = null; n++; }
     p[field] = n;
   }
-  // ---- the loadout: two equipped guns (loadout) and a backpack of 27 cells (pack). A weapon index lives in exactly one
+  // ---- the loadout: two equipped guns (loadout) and a backpack of 30 cells (pack). A weapon index lives in exactly one
   // place. A human swaps a pack cell with a loadout slot ('swap'); a bot equips a gun by pulling it into a slot (equip).
   const held = (p, w) => p.loadout.includes(w);
   function swapWeapon(p, w, slot) {

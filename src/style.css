@@ -499,8 +499,8 @@ label.chk { display: flex; align-items: center; gap: 8px; font-size: 13px; color
 .inv-b.empty > .inv-pic { opacity: .25; filter: grayscale(1); }
 .inv-b.empty .inv-cnt { color: rgba(255, 255, 255, .4); }
 
-/* the backpack: a grid of square cells (nine to a row) */
-.inv-pack { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 6px; }
+/* the backpack: a grid of square cells in three rows (--cols from inventory.js: ten to a row for 30 cells) */
+.inv-pack { display: grid; grid-template-columns: repeat(var(--cols, 10), minmax(0, 1fr)); gap: 6px; }
 .inv-c { aspect-ratio: 1; }
 .inv-c > .inv-pic { position: absolute; inset: 7px 7px 16px; }
 .inv-c[data-kind="gun"] > .inv-pic { inset: 8px 3px 15px; }
@@ -556,7 +556,7 @@ label.chk { display: flex; align-items: center; gap: 8px; font-size: 13px; color
   .inv-w-mag { right: 68px; }
   .inv-nick, .inv-me .kd, .inv-hpbar, #mpInv .btn kbd { display: none; }
   .inv-ws { grid-template-columns: minmax(0, 1fr); }
-  .inv-pack { gap: 3px; }
+  .inv-pack { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
   .inv-lbl, .inv-c .inv-key { display: none; }
   .inv-c > .inv-pic, .inv-c[data-kind="gun"] > .inv-pic { inset: 3px; }
   .inv-card { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 120px; }

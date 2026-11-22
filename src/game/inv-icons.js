@@ -11,9 +11,9 @@ import { akReady } from './viewmodel.js';
    with the muzzle to the right, the items three quarters from above, on a transparent ground, lit by a little studio of
    three lights — and the pixels are kept as a picture (an object URL). Taken one at a time, a few milliseconds each,
    when the panel first wants them; until a picture is ready (or if a model never comes) the SVG of the slot stands in.
-   Keys: 'g0'…'g4' — the guns in the order of WEAPONS (mp.js), the item kinds ('nade', 'smoke', 'napalm', 'med',
+   Keys: 'g0'…'g7' — the guns in the order of WEAPONS (mp.js), the item kinds ('nade', 'smoke', 'napalm', 'med',
    'sight', 'optic'). */
-const KEYS = ['g0', 'g1', 'g2', 'g3', 'g4', 'nade', 'smoke', 'napalm', 'med', 'sight', 'optic'];
+const KEYS = ['g0', 'g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'nade', 'smoke', 'napalm', 'med', 'sight', 'optic'];
 const SIZE = { gun: [480, 150], item: [192, 192] };   // ≈3× the size they are shown at: sharp on a dense screen
 // where the camera looks from (towards the middle of the model): the guns from their right side (+z, the muzzle, goes
 // to the right of the picture), a little from above; the items three quarters, the optic more from the side (a tube)

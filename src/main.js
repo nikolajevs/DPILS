@@ -66,7 +66,7 @@ import './world/overpass.js';
 import './world/bridge-vienibas.js';
 import { buildLines } from './world/streets.js';
 import { buildGround, groundDepth } from './world/ground.js';
-import { BLD, LINES, makeMaterials } from './world/data.js';
+import { makeMaterials } from './world/data.js';
 import './world/palette.js';
 import './render/materials.js';
 import './render/textures.js';
@@ -109,10 +109,10 @@ const step = (text, w, reported) => {
     await step('Строю Дом Единства, «Латголу», университет и школы…', W.landmarks); await buildLandmarks();
     await step('Насыпаю валы и копаю рвы крепости…', W.fortress); await buildFortress();
     await groundDepth();   // the depth grids under the ground layers, now that all of them are drawn (src/world/ground.js)
-    await rest(); const lamps = await buildLamps(); relight();
-    await step('Сажаю деревья…', W.trees); const trees = await buildTrees();
+    await rest(); await buildLamps(); relight();
+    await step('Сажаю деревья…', W.trees); await buildTrees();
     await step('Сажаю цветы в парках…', W.flora); await plantFlora();   // their files were asked for with the parks
-    await step('Выпускаю трамваи и автобусы на линии…', W.transit); const tripsN = await buildTransit();
+    await step('Выпускаю трамваи и автобусы на линии…', W.transit); await buildTransit();
     await step('Делю землю и улицы на участки…', W.split); await splitBigMeshes(scene);   // the meshes over the whole city, cut into tiles that can be culled (src/render/chunks.js)
     if (TERR.on) {
       const ms = []; scene.traverse(o => { if (o.isMesh && o.frustumCulled && o.geometry) ms.push(o); });
@@ -128,7 +128,7 @@ const step = (text, w, reported) => {
     await step('Рисую первый кадр…', W.frame); frame(performance.now());
     await loading.frame(); warmSamples(false);
     freezeWorld();   // the built city keeps its matrices: three stops recomputing ~6600 of them every frame (src/render/static-world.js)
-    loading.done('Готово: ' + BLD.length.toLocaleString('ru') + ' зданий, ' + LINES.length.toLocaleString('ru') + ' улиц и дорожек, ' + trees.toLocaleString('ru') + ' деревьев, ' + lamps.toLocaleString('ru') + ' фонарей' + (tripsN ? ', ' + tripsN.toLocaleString('ru') + ' рейсов в расписании' : '') + '.');
+    loading.done();   // no summary line: the bar fades out and the load block leaves the start card
     if (document.body.classList.contains('mp')) $('view').classList.add('shown');   // the city fades in only in a fight; src/ui/startfx.js owns the rule
     enablePlay(); $('chTrain').focus();
     window.__city = { PERF, ambProbe, ambStatus, statEvent, statsOf, MP, STATE, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, P, setTime, setCycle, dayInfo, showTime: t => (/^h/i.test(String(t)) ? setCycle(+String(t).slice(1) / 24, Infinity) : setTime(+t)), fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, setQualityMode, qualityMode: () => (qAuto ? 'auto' : qi), scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU, probeState, mirror: MIRROR, mirrorCity: MIRROR_CITY, staticWorld: STATIC_WORLD, batch: BATCH };

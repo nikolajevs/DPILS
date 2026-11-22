@@ -103,13 +103,16 @@ function tickItems(dt, now) {
    gun, a stored grenade into its pocket. The server owns the contents (server/game.mjs); mp.js passes them and the
    actions through bindInv. The slots are built once per opening; renderInv repaints them in place on every change,
    invTick moves the reload bar every frame. */
-// silhouettes in the order of WEAPONS in mp.js: the AK, the shotgun, the SVD, the pistol, the machine gun
+// silhouettes in the order of WEAPONS in mp.js: the AK, the shotgun, the SVD, the pistol, the machine gun, the M4A1, the SCAR-L, the AR-15
 const SLOT_SVG = [
   '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="24" y="9" width="14" height="2"/><rect x="8" y="8" width="17" height="5"/><polygon points="1,9 8,8 8,13 3,14"/><polygon points="14,13 19,13 17,19 13,19"/><polygon points="20,13 23,13 22,17 19,17"/><rect x="26" y="7" width="2" height="2"/></svg>',
   '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="14" y="9" width="24" height="2.5"/><rect x="18" y="11.5" width="7" height="3"/><polygon points="1,9 14,9 14,13 4,15"/><rect x="10" y="8.5" width="8" height="4"/></svg>',
   '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="20" y="9.5" width="18" height="1.8"/><rect x="12" y="6" width="8" height="3"/><rect x="14" y="9" width="2" height="1.5"/><rect x="8" y="9" width="14" height="4"/><polygon points="1,9 8,9 8,14 3,15"/><rect x="14" y="13" width="4" height="4"/></svg>',
   '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="10" y="7" width="18" height="5"/><polygon points="12,12 19,12 17,19 11,19"/><rect x="28" y="8" width="2" height="3"/></svg>',
   '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="6" y="8" width="20" height="6"/><rect x="26" y="9" width="12" height="2.5"/><polygon points="1,9 6,8 6,14 2,15"/><rect x="12" y="14" width="8" height="5"/><rect x="10" y="6" width="8" height="2"/><path d="M30 11l-2 7M33 11l2 7" stroke="rgba(255,255,255,.62)" stroke-width="1.4" fill="none"/></svg>',
+  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="25" y="9" width="13" height="2"/><rect x="9" y="8" width="17" height="5"/><rect x="4" y="9" width="6" height="2.5"/><polygon points="1,8 4,8 4,14 1,14"/><polygon points="14,13 18,13 17,19 13,19"/><polygon points="20,13 23,13 22,17 19,17"/><rect x="13" y="6" width="5" height="2"/><rect x="27" y="7" width="2" height="2"/></svg>',   // M4A1: telescoping stock, flat top with a red dot, straight magazine
+  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="25" y="9" width="13" height="2"/><rect x="9" y="7.5" width="17" height="5.5"/><polygon points="1,7 9,7.5 9,14 3,15"/><rect x="9" y="6" width="17" height="1.5"/><path d="M14 13h4l-1.5 6h-3z"/><polygon points="20,13 23,13 22,17 19,17"/><rect x="11" y="13" width="3" height="4"/></svg>',   // SCAR-L: the tall butt, the full-length top rail, the curved magazine
+  '<svg viewBox="0 0 40 20" aria-hidden="true"><rect x="25" y="9" width="13" height="2"/><rect x="9" y="8" width="17" height="5"/><polygon points="1,8 9,8 9,14 2,15"/><rect x="12" y="5" width="7" height="3"/><polygon points="14,13 18,13 17,19 13,19"/><polygon points="20,13 23,13 22,17 19,17"/><rect x="27" y="7" width="2" height="2"/></svg>',   // AR-15: the fixed stock, the ACOG hump, the straight magazine
 ];
 const ITEM_SVG = {   // stroke icons of the items (the gun silhouettes are filled)
   nade: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="14" r="7"/><path d="M10 7h4v3h-4zM14 5l3-2"/></svg>',
@@ -241,6 +244,7 @@ function build() {
   const fill = mk('small', 'inv-fill');
   const psec = sec('Рюкзак', fill);
   const grid = mk('div', 'inv-pack');
+  grid.style.setProperty('--cols', Math.max(1, Math.ceil((data.pack || []).length / 3)));   // three rows: 30 cells are ten to a row
   for (let n = 0; n < (data.pack || []).length; n++) {
     const c = slot('div', 'inv-c', 'pack', n);
     const key = mk('kbd', 'inv-key'), pic = mk('span', 'inv-pic'), lbl = mk('small', 'inv-lbl');
@@ -386,7 +390,7 @@ function showCard() {
   }
   card.append(pic, txt, hint);
 }
-const AMMO_GIVE = [30, 8, 5, 12, 50];   // keep server/combat.mjs ITEMS.ammo.give in step
+const AMMO_GIVE = [30, 8, 5, 12, 50, 30, 30, 30];   // keep server/combat.mjs ITEMS.ammo.give in step
 
 /* ---------- the pointer: hover shows the card, a click acts, a drag moves ---------- */
 const sameSlot = (a, b) => (a && b ? a.z === b.z && a.i === b.i : a === b);

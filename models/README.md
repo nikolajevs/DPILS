@@ -37,6 +37,27 @@ This work is based on the models above, each by its author, licensed under [CC-B
 
 Итог: дробовик 0.19 МБ / 6.2 тыс. треугольников, снайперская 1.40 МБ / 40.4 тыс., пистолет 0.60 МБ / 12.1 тыс., пулемёт 0.63 МБ / 26.8 тыс. Модели в метрах (в отличие от старых моделей Quaternius в «единицах солдата»). Где на каждой рукоятка и цевьё, записано в таблице `HOLD` в [src/game/viewmodel.js](../src/game/viewmodel.js). По ней стволы держат обеими руками и руки в перчатках из `fp_ak47.glb` (вид от первого лица), и другие игроки ([src/game/avatar.js](../src/game/avatar.js)). Вспышка выстрела ставится у края дула. Для скачивания с Sketchfab нужен аккаунт и его API-токен.
 
+## Три автомата (`fp_m4.glb`, `fp_scar.glb`, `fp_ar15.glb`)
+
+Все три — **CC BY 4.0**, атрибуции обязательны:
+
+| Слот | Файл | Модель | Автор | Лицензия |
+|---|---|---|---|---|
+| 5 M4A1 | `fp_m4.glb` | [Assault rifle M4A1](https://sketchfab.com/3d-models/none-1b858701dd7142d9b82bbe3fd121a97b) | bobeer | [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/) |
+| 6 SCAR-L | `fp_scar.glb` | [FN Scar-L Assault Rifle](https://sketchfab.com/3d-models/none-ea1823de59684fd596d9f6726382f948) | Hitansh 3D | [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/) |
+| 7 AR-15 | `fp_ar15.glb` | [AR-15 style rifle](https://sketchfab.com/3d-models/none-50d33435445e439c95e3b36e9d4bd798) | SpatialNeglect | [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/) |
+
+This work is based on the models above, each by its author, licensed under [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/).
+
+Собираются тем же [tools/fp-weapons.mjs](../tools/fp-weapons.mjs) (`node tools/fp-weapons.mjs <m4|scar|ar15> <каталог>`; каталог содержит подпапки `m4/`, `scar/`, `ar15/` с `scene.gltf` после распаковки zip со Sketchfab, скачивание — [tools/sf-dl.mjs](../tools/sf-dl.mjs)). Особенности источников:
+
+- M4A1 приходит в сантиметрах (104 см по стволу) и дулом на +z файла: масштаб 0,0085 (≈0,89 м в игре), поворота нет; начало координат — верх пистолетной рукояти у ствольной коробки;
+- SCAR-L уже в метрах (0,98 м), дуло на −z: поворот на 180°; рукоять в начале координат;
+- AR-15 в произвольных единицах (6,79 по стволу → 0,90 м, масштаб 0,133), дуло на −z (поворот 180°); из сцены удалены отдельные патроны (`bullets`) и GPS-приёмник (`gps`), прицел ACOG оставлен как часть ствола;
+- текстуры 4096 px сжаты в WebP 1024 (карты metal/rough и emissive — 512), геометрия упакована `EXT_meshopt_compression`.
+
+Итог: M4A1 2,04 МБ / 58,6 тыс. треугольников, SCAR-L 0,86 МБ / 21,4 тыс., AR-15 1,07 МБ / 28,5 тыс. Хват обеих рук и площадка коллиматора для каждого — в таблицах `HOLD` и `SIGHT_MOUNT` ([src/game/viewmodel.js](../src/game/viewmodel.js)); статы — в `WEAPONS` ([server/combat.mjs](../server/combat.mjs) и [src/game/mp.js](../src/game/mp.js)). Все три лежат в рюкзаке с начала боя (`PACK`) и меняются с экипированным стволом клавишами 6–8 или из инвентаря. Для скачивания с Sketchfab нужен аккаунт и его API-токен.
+
 ## Персонажи
 
 Четыре выбираемых персонажа игры (прежние мужчина и женщина Quaternius и пешеходы удалены). Тела и анимации — **CC BY 4.0** (Sketchfab), атрибуции ниже. Сборка — [tools/character.mjs](../tools/character.mjs) (обобщён из [tools/soldier.mjs](../tools/soldier.mjs)): штатное оружие и витринные подставки вырезаны, текстуры сжаты в WebP ≤1024 px, клипы ретаргетятся на скелет каждого тела (Mixamo напрямую, 2B — через таблицу костей 3ds Max biped; руки клипа Carry — по абсолютной мировой ориентации источника), файл пакуется meshopt. Клипы тела после этого пересобраны [tools/char-clips.mjs](../tools/char-clips.mjs) (от bind-позы, с клипами шагов во все стороны и приседа — ниже). **Модели не перекрашиваются** — текстуры сохраняются как есть ради качества; в будущем у двух команд будут свои модели.

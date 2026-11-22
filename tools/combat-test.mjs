@@ -841,7 +841,7 @@ console.log('bullet drag (v(s), damage, flight time):');
   g.stop();
 }
 
-/* ---------- 2k. the loadout: two equipped guns, a 27-cell backpack, swapping ---------- */
+/* ---------- 2k. the loadout: two equipped guns, a 30-cell backpack, swapping ---------- */
 console.log('the loadout (two guns + the backpack):');
 {
   let clock = 1e6;
@@ -850,7 +850,7 @@ console.log('the loadout (two guns + the backpack):');
   msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
   const p = A.handle.player;
   ok(p.loadout.length === 2 && p.loadout.join() === '0,3', 'the player spawns with two guns equipped (rifle + pistol)', p.loadout.join());
-  ok(p.pack.length === 27 && p.pack.filter(w => w !== null).length === 3 && p.pack.filter(w => w === null).length === 24, 'the backpack has 27 cells: three guns and 24 free', JSON.stringify(p.pack));
+  ok(p.pack.length === 30 && p.pack.filter(w => w !== null).length === 6 && p.pack.filter(w => w === null).length === 24, 'the backpack has 30 cells: six guns and 24 free', JSON.stringify(p.pack));
   const sp = A.last('spawn');
   ok(sp && Array.isArray(sp.loadout) && Array.isArray(sp.pack), 'the spawn message carries the loadout and the pack');
   clock += 3000;
@@ -860,7 +860,7 @@ console.log('the loadout (two guns + the backpack):');
   msg(A, { t: 'swap', w: 1, slot: 0 });
   ok(p.loadout[0] === 1 && p.pack.includes(0) && !p.pack.includes(1), 'the swap exchanges the pack gun with the equipped slot', p.loadout.join() + ' / ' + JSON.stringify(p.pack));
   ok(A.last('inv') && A.last('inv').loadout[0] === 1, 'the swap is reported in the inv message');
-  ok(new Set([...p.loadout, ...p.pack.filter(w => w !== null)]).size === 5, 'every gun lives in exactly one place after the swap');
+  ok(new Set([...p.loadout, ...p.pack.filter(w => w !== null)]).size === 8, 'every gun lives in exactly one place after the swap');
   msg(A, { t: 'swap', w: 1, slot: 1 });   // already equipped: ignored
   ok(p.loadout[1] === 3, 'swapping an already-equipped gun does nothing', p.loadout.join());
   msg(A, { t: 'swap', w: 9, slot: 0 });   // not a weapon: ignored
@@ -899,6 +899,9 @@ console.log('the ready belt and the backpack stores:');
   msg(A, { t: 'throw', dx: 0, dy: 0.3, dz: -1 });
   ok(p.nades === 2 && p.pack.filter(k => k === 'nade').length === 1, 'a thrown grenade is replaced from the pack', p.nades + ' / ' + JSON.stringify(p.pack));
   ok(A.last('inv') && A.last('inv').nades === 2 && A.last('inv').pack.filter(k => k === 'nade').length === 1, 'the throw reports the refilled belt and the pack');
+  clock += 1000;   // the throw cooldown (NADE.cooldownMs)
+  msg(A, { t: 'throw', dx: 0, dy: 0.3, dz: -1 });   // the second stored grenade goes too: its cell frees up for the kits below
+  ok(p.nades === 2 && p.pack.filter(k => k === 'nade').length === 0, 'the last stored grenade is thrown and its cell frees', JSON.stringify(p.pack));
   // the sights ride in the pack: mounting frees the cell, taking off returns the sight
   const free0 = p.pack.filter(k => k === null).length;
   pick('sight');
@@ -925,11 +928,12 @@ console.log('the ready belt and the backpack stores:');
   p.meds = 1;
   msg(A, { t: 'ready', kind: 'med' });
   ok(p.meds === 2 && p.pack.filter(k => k === 'med').length === mBefore - 1, 'the ready message moves a stored kit to the belt');
-  // the respawn tops the belt up from the pack
+  // the respawn tops the belt up from the pack (the belt is born empty and refilled from what is stored)
+  const medsStored = p.pack.filter(k => k === 'med').length;
   p.hp = 0; p.alive = false; p.diedAt = clock;
   clock += 3100;
   msg(A, { t: 'respawn' });
-  ok(p.alive && p.meds === 3 && p.nades === 2, 'the respawn tops the belt up from the pack', p.meds + '/' + p.nades);
+  ok(p.alive && p.meds === Math.min(INV.medMax, medsStored) && p.nades === 2, 'the respawn tops the belt up from the pack', p.meds + '/' + p.nades);
   ok(p.attach[0] === 'optic' && p.pack.includes('sight'), 'the mounted sight and the stored one survive the death');
   g.stop();
 }
