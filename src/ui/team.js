@@ -38,6 +38,7 @@ function openTeam() {
   if (document.pointerLockElement) document.exitPointerLock();
   keys.clear();   // the keys held when the panel came up must not keep the player running
   panel.hidden = false; SOC.unread = 0; badges();
+  toasts.textContent = '';   // the panel says the same and more: the cards in the corner would cover its head
   render(true);
   askOnline(); clearInterval(onlineTimer); onlineTimer = setInterval(askOnline, 15000);
 }
@@ -244,6 +245,7 @@ onSocial((ev, m) => {
     badges(); return;
   }
   if (ev === 'invited') {
+    if (!panel.hidden) return;   // the open panel lists the invitation itself
     toast('invite', [h('b', { text: m.from }), ' приглашает вас в команду ', tagChip(m.tag), ' ', h('b', { text: m.name })],
       [['Принять', 'go', () => socialSend({ t: 'accept', team: m.team })], ['Отклонить', 'btn', () => socialSend({ t: 'decline', team: m.team })]], 25000);
     return;
