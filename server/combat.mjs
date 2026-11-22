@@ -118,6 +118,24 @@ export const HOLY = {
     { name: 'Ново-Строенская церковь', short: 'Ново-Строенская', faith: 'Старообрядие', x: -15, z: 1086, buff: 'reload', bell: 329.63 },
   ],
 };
+// the «Штурм Динабурга» event (server/game.mjs, src/game/siege.js): the reconstruction of the 1812 siege — Napoleon
+// besieged the fortress and never took it. Registration opens regMs before the assault (the sides are chosen by hand,
+// the balance keeps them within `balance` of each other); then the registered are teleported in — the garrison inside
+// the walls, the attackers to the staging ground outside — and the protective dome goes up for prepMs: it lets nobody
+// in or out and the guns are cold. Then the dome falls and the assault runs durMs. The altar is the cannon fountain
+// in the fortress garden (the four barrels of src/fortress/monuments.js): the attackers hold its ring alone for holdMs
+// to win; the garrison wins by holding out to the last second (the historical outcome) or by wiping the attackers.
+// The fallen leave the event at once — the teleport back to the city; the survivors of the winning side take the rare
+// loot (the 8× optic, the red dot, double reserve, the full belt) and prizeKills each. The dome stands over the main
+// rampart (its polygon in fortress.js reaches 450 m from the centre), the fight is kept within r of the same centre.
+// The admin panel's «Ивенты» tab tunes the timings and the prize live (server/events.mjs).
+export const SIEGE = {
+  firstMs: 480000, gapMs: 1200000, regMs: 600000, prepMs: 120000, durMs: 1500000, warnMs: 60000,   // the first call, the gap after one ends, registration 10 min, the dome 2 min, the assault 25 min
+  holdMs: 60000, capR: 12, balance: 3, prizeKills: 8,   // the altar: a minute alone in the 12 m ring; the sides within 3; +8 kills to each survivor
+  cx: -2817.4, cz: -218.1, domeR: 470, r: 560,   // the centre of the main rampart, the dome over it, the edge of the fight
+  altar: { x: -2815.6, z: -442.5 },   // the cannon fountain in the fortress garden (FORT_FOUNTAIN, src/fortress/monuments.js)
+  names: { a: 'Штурмующие', d: 'Гарнизон' },
+};
 // the inventory (keep src/game/mp.js and src/game/inventory.js in step): the reserve each weapon starts with, the time
 // of its reload, and the items that lie on the map and are picked up by walking over them
 export const RESERVE = [90, 24, 15, 36, 200, 90, 90, 90];

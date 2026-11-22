@@ -461,6 +461,37 @@ pre.dump { background: #070b11; border: 1px solid var(--seam); border-radius: 8p
         </div>
         <div class="ev-note">Шторм — финал катки: одна жизнь, сужающийся круг. Настройки применяются со <b>следующей</b> катки; текущая идёт по своему расписанию. Длина катки — переменная сервера DAY_MIN, бесконечные раунды без шторма — MATCH=off.</div>
       </div>
+
+      <div class="card brick" id="ev-siege">
+        <h3>🏰 Штурм Динабурга</h3>
+        <div class="ev-status" id="evSiegeStatus"></div>
+        <div class="controls" style="margin-top:12px">
+          <span class="hint">Автозапуск:</span>
+          <span class="seg" data-seg="siege"><button data-on="1">Вкл</button><button data-on="0">Выкл</button></span>
+          <div class="grow"></div>
+          <button class="btn btn-plate btn-sm" data-act="ev-start" data-kind="siege">▶ Открыть регистрацию</button>
+          <button class="btn btn-sm btn-danger" data-act="ev-stop" data-kind="siege">⏹ Завершить</button>
+          <button class="btn btn-sm" data-act="ev-next" data-kind="siege" title="Следующий запуск — через обычную паузу после изменений">⏭ Отложить</button>
+        </div>
+        <div class="ev-grid">
+          <label>Первый запуск, мин<input type="number" data-key="firstMs" data-unit="min" step="0.5" min="0.2" max="360"></label>
+          <label>Пауза между, мин<input type="number" data-key="gapMs" data-unit="min" step="0.5" min="0.5" max="1440"></label>
+          <label>Регистрация, мин<input type="number" data-key="regMs" data-unit="min" step="0.5" min="0.5" max="30"></label>
+          <label>Подготовка (купол), мин<input type="number" data-key="prepMs" data-unit="min" step="0.5" min="0.2" max="10"></label>
+          <label>Штурм, мин<input type="number" data-key="durMs" data-unit="min" step="0.5" min="1" max="60"></label>
+          <label>Предупреждение, с<input type="number" data-key="warnMs" data-unit="sec" step="5" min="5" max="600"></label>
+          <label>Удержание алтаря, с<input type="number" data-key="holdMs" data-unit="sec" step="5" min="10" max="600"></label>
+          <label>Радиус алтаря, м<input type="number" data-key="capR" step="1" min="3" max="50"></label>
+          <label>Баланс сторон, чел<input type="number" data-key="balance" step="1" min="0" max="20"></label>
+          <label>Приз выжившему, очк<input type="number" data-key="prizeKills" step="1" min="0" max="100"></label>
+        </div>
+        <div class="controls" style="margin-top:12px">
+          <button class="btn btn-brick btn-sm" data-act="ev-apply" data-kind="siege">Применить</button>
+          <button class="btn btn-sm" data-act="ev-reset" data-kind="siege">По умолчанию</button>
+          <span class="hint">применяются сразу, сохраняются между перезапусками</span>
+        </div>
+        <div class="ev-note">Реконструкция осады 1812 года: регистрация сторон → телепорт и защитный купол на подготовке → штурм. Алтарь — пушка в саду крепости: штурмующие удерживают его минуту, гарнизон побеждает, выстояв всё время. Погибшие выбывают в город; выжившие победители получают редкий лут (оптика 8×, коллиматор, двойной боезапас).</div>
+      </div>
     </section>
 
     <section class="tab" id="tab-debug" hidden>
@@ -732,7 +763,7 @@ async function loadTeams() {
 /* ---- events: the schedule and the rules of the city's three events ---- */
 const cfgGet = (o, k) => k.split('.').reduce((a, p) => (a == null ? a : a[p]), o);
 function cfgSet(o, k, v) { const ps = k.split('.'); let t = o; for (let i = 0; i < ps.length - 1; i++) t = t[ps[i]] = t[ps[i]] || {}; t[ps[ps.length - 1]] = v; }
-const EV_NAME = { holy: 'Царь горы', cargo: 'Груз', storm: 'Шторм' };
+const EV_NAME = { holy: 'Царь горы', cargo: 'Груз', storm: 'Шторм', siege: 'Штурм Динабурга' };
 async function loadEvents() {
   const j = await api('events');
   state.events = j;
@@ -763,8 +794,18 @@ async function loadEvents() {
   else if (s.match.phase === 'over') ss = '<span class="phase over">Итоги</span><span class="hint">катка завершена — шторм в следующей</span>';
   else ss = '<span class="phase fight">Бой</span><span class="big num">' + fmtLeft(s.match.stormIn) + '</span><span class="hint">до шторма · катка №' + s.match.n + '</span>';
   $('#evStormStatus').innerHTML = ss;
+  // the siege: registration, the dome, the assault, or the wait
+  const sg = t.siege;
+  let gs = '';
+  if (sg.active) {
+    const ph = sg.phase === 'reg' ? 'Регистрация' : sg.phase === 'prep' ? 'Подготовка · купол' : 'Штурм';
+    gs = '<span class="phase ' + (sg.phase === 'assault' ? 'storm' : 'fight') + '">' + ph + '</span><span class="big num">' + fmtLeft(sg.left) + '</span><span class="hint">до ' + (sg.phase === 'reg' ? 'подготовки' : sg.phase === 'prep' ? 'штурма' : 'конца') + ' · ⚔ ' + sg.counts.a + ' / 🛡 ' + sg.counts.d + '</span>';
+    if (sg.phase === 'assault') gs += '<span class="chip mark">алтарь: ' + Math.round(sg.prog * 100) + '%' + (sg.contest === 'd' ? ' · гарнизон отбивает' : sg.contest === 'a' ? ' · штурмующие держат' : '') + '</span>';
+  } else if (!on('siege')) gs = '<span class="phase over">Выключен</span><span class="hint">автозапуск остановлен — можно запустить вручную</span>';
+  else gs = '<span class="phase fight">Ожидание</span><span class="big num">' + fmtLeft(sg.nextIn) + '</span><span class="hint">до регистрации</span>';
+  $('#evSiegeStatus').innerHTML = gs;
   // the settings into the inputs (the one being edited is left alone), the auto-run segments, the buttons' availability
-  for (const kind of ['holy', 'cargo', 'storm']) {
+  for (const kind of ['holy', 'cargo', 'storm', 'siege']) {
     const card = document.getElementById('ev-' + kind);
     for (const inp of card.querySelectorAll('input[data-key]')) {
       if (inp === document.activeElement) continue;
@@ -780,6 +821,9 @@ async function loadEvents() {
   setDis('ev-drop', 'cargo', c.active);
   setDis('ev-remove', 'cargo', !c.active);
   setDis('ev-next', 'cargo', c.active);
+  setDis('ev-start', 'siege', sg.active || !!s.live || h.active);
+  setDis('ev-stop', 'siege', !sg.active);
+  setDis('ev-next', 'siege', sg.active);
 }
 
 /* ---- the actions (one delegated listener) ---- */
@@ -820,11 +864,11 @@ document.addEventListener('click', e => {
     if (!ok) return;
     await api('events/reset', { method: 'POST', body: { kind } }); toast('Настройки по умолчанию: ' + EV_NAME[kind]); loadEvents();
   });
-  if (act === 'ev-start') return run(async () => { await api('events/holy/start', { method: 'POST', body: {} }); toast('🔔 Царь горы начался — все на Церковную горку'); loadEvents(); });
+  if (act === 'ev-start') return run(async () => { await api('events/' + kind + '/start', { method: 'POST', body: {} }); toast(kind === 'siege' ? '🏰 Регистрация на штурм Динабурга открыта' : '🔔 Царь горы начался — все на Церковную горку'); loadEvents(); });
   if (act === 'ev-stop') return run(async () => {
-    const ok = await ask({ title: 'Завершить ивент', text: '«Царь горы» завершится сейчас: игроки вернутся на свои места, баффы пропадут.', okText: 'Завершить', danger: true });
+    const ok = await ask({ title: 'Завершить ивент', text: '«' + EV_NAME[kind] + '» завершится сейчас: игроки вернутся на свои места.', okText: 'Завершить', danger: true });
     if (!ok) return;
-    await api('events/holy/stop', { method: 'POST', body: {} }); toast('Царь горы завершён'); loadEvents();
+    await api('events/' + kind + '/stop', { method: 'POST', body: {} }); toast(EV_NAME[kind] + ' завершён'); loadEvents();
   });
   if (act === 'ev-next') return run(async () => { await api('events/' + kind + '/next', { method: 'POST', body: {} }); toast('Следующий запуск отложен на паузу: ' + EV_NAME[kind]); loadEvents(); });
   if (act === 'ev-drop') return run(async () => { await api('events/cargo/drop', { method: 'POST', body: {} }); toast('📦 Груз сброшен — ищите дым-маяк'); loadEvents(); });

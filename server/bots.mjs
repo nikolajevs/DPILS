@@ -8,7 +8,7 @@
    cover when hurt or reloading a slow gun, crouches behind the wall and peeks out, chases an enemy that broke the line
    of sight to where it was last seen, turns on an unseen attacker that hit it, picks up the kits and ammo it needs,
    reloads when safe, throws a grenade at a cluster and comes back after the death by itself. */
-import { FALL, HIT, INV, NADE, SMOKE, bulletDrop, smokeCore, smokeDepth } from './combat.mjs';
+import { FALL, HIT, INV, NADE, SIEGE, SMOKE, bulletDrop, smokeCore, smokeDepth } from './combat.mjs';
 const NAMES = ['Андрис', 'Янис', 'Артур', 'Лиена', 'Виктор', 'Ольга', 'Эдгар', 'Дайна', 'Максим', 'Илзе', 'Роман', 'Кристап', 'Анна', 'Игорь', 'Мартиньш', 'Светлана'];
 // sigma: the aim error in radians — tuned for the small hitboxes (a torso half a metre wide, a head 0.36 m), so the
 // error is about half of what it was against the old metre-wide capsule; head: the share of shots aimed at the head
@@ -115,7 +115,7 @@ export function createBrain(g) {
     }
     for (let k = 0; k < 24; k++) {
       let x, z;
-      const hunt = !g.enemyBase(p) && Math.random() < 0.7 && [...g.players.values()].filter(q => q !== p && q.alive && (g.FFA || q.team !== p.team));   // no bases: go where an enemy is
+      const hunt = !g.enemyBase(p) && Math.random() < 0.7 && [...g.players.values()].filter(q => q !== p && q.alive && !g.ally(p, q));   // no bases: go where an enemy is
       if (hunt && hunt.length) { const q = hunt[Math.floor(Math.random() * hunt.length)]; x = q.x + rnd(-50, 50); z = q.z + rnd(-50, 50); }
       else if (Math.random() < 0.6 && g.enemyBase(p)) { const b = g.enemyBase(p); x = b[0] + rnd(-90, 90); z = b[1] + rnd(-90, 90); }
       else { const ar = g.area, a = rnd(0, 6.283), r = Math.sqrt(Math.random()) * (ar.r - 30); x = ar.cx + Math.cos(a) * r; z = ar.cz + Math.sin(a) * r; }
@@ -172,8 +172,11 @@ export function createBrain(g) {
     }
     hx += sx * 2; hz += sz * 2;
     const want = Math.atan2(hz - p.z, hx - p.x);
+    const dm = g.dome;   // the siege's dome: no step across it, in or out (the players are held by the server's 'state' check)
+    const dSide = dm ? Math.hypot(p.x - dm.cx, p.z - dm.cz) < dm.r : false;
     for (const off of [0, 0.5, -0.5, 1, -1, 1.6, -1.6, 2.4, 3, -3]) {
       const a = want + off, nx = p.x + Math.cos(a) * v * dt * 2.5, nz = p.z + Math.sin(a) * v * dt * 2.5;
+      if (dm && (Math.hypot(nx - dm.cx, nz - dm.cz) < dm.r) !== dSide) continue;
       if (world.walkable(nx, nz) && inArea(nx, nz)) { p.x += Math.cos(a) * v * dt; p.z += Math.sin(a) * v * dt; b.moving = true; return; }
     }
     b.moving = false;
@@ -205,7 +208,7 @@ export function createBrain(g) {
   function think(p, dt) {
     const b = p.bot, L = b0(p), now = g.now();
     if (!p.alive) {   // back to the game after the respawn time, the favourite gun in hand again
-      if (g.storm) return;   // the storm does not respawn: the fallen wait for the next match
+      if (g.storm || g.siege) return;   // the storm and the siege do not respawn: the fallen wait out the event
       if (!g.roundOver() && now - p.diedAt >= g.R.respawnMs + b.respawnExtra) { g.spawn(p); b.target = 0; b.path = null; b.cover = null; b.lastSeen = null; b.alert = null; g.equip(p, b.role); p.wep = b.role; b.switchAt = now + 400; b.lastHp = p.hp; b.respawnExtra = rnd(0, 2500); }
       return;
     }
@@ -240,7 +243,7 @@ export function createBrain(g) {
     if (!stormRun && (b.look -= dt) <= 0) {   // the storm run ignores the fight: the circle first
       b.look = 0.25; let best = 0, bd = 1e9, markedAt = null; const cores = smokeCores(now);
       for (const q of g.players.values()) {
-        if (q === p || !q.alive || (!g.FFA && q.team === p.team) || now <= q.protectUntil) continue;
+        if (q === p || !q.alive || g.ally(p, q) || now <= q.protectUntil) continue;   // the siege draws its own allies: the side, not the team
         if (q.markUntil > now) {   // the cargo carrier is marked for everyone: the position is known even through walls
           const dm = Math.hypot(q.x - p.x, q.z - p.z);
           if (dm < L.sight * 1.8) markedAt = { x: q.x, z: q.z, at: now };
@@ -340,12 +343,19 @@ export function createBrain(g) {
         aimPitch = 0;
       } else {
         b.alertCover = null;
-        const hl = g.holy;
+        const hl = g.holy, sg = g.siege;
         if (hl && now - (b.holyAt || 0) > 4000) { b.holyAt = now; b.path = null; }   // the race: rethink the point every few seconds (it may have changed hands)
+        if (sg && now - (b.siegeAt || 0) > 4000) { b.siegeAt = now; b.path = null; }   // the siege: the altar's hold may have changed
         const stale = !b.path || b.pi >= b.path.length || now - b.wpAt > 60000;
         if (stale && now - lastRoute >= 45) {
           lastRoute = now; b.path = null;
           let goal = needItem(p);   // a kit or ammo first
+          if (!goal && sg) {   // the siege: the attackers storm the cannon fountain, the garrison holds the garden round it
+            const ax = SIEGE.altar.x, az = SIEGE.altar.z;
+            if (sg.phase === 'prep' && p.siege === 'a') goal = [p.x + rnd(-20, 20), p.z + rnd(-20, 20)];   // wait out the dome at the staging ground
+            else if (p.siege === 'a' || sg.prog > 0.12) goal = [ax + rnd(-4, 4), az + rnd(-4, 4)];   // the hold is on: retake the altar
+            else { const a = (p.id * 2.399) % 6.283, r = 9 + (p.id % 4) * 5; goal = [ax + Math.cos(a) * r, az + Math.sin(a) * r]; }   // spread round the garden
+          }
           if (!goal && hl) {   // the bell towers draw the bots in: take what is not ours, hold what is, spread round the hill
             const my = g.holyUnit(p); let best = null, bs = -1e9;
             for (const pt of hl.points) {
@@ -405,7 +415,7 @@ export function createBrain(g) {
     if (now < b.switchAt) return;   // still bringing the new gun up
     // a grenade at a cluster of enemies (or now and then at one), never into one's own feet
     if (L.nades && p.nades > 0 && dist > 10 && dist < 28 && now - p.lastNade > NADE.cooldownMs) {
-      let cluster = 0; for (const r of g.players.values()) if (r !== p && r.alive && (g.FFA || r.team !== p.team) && Math.hypot(r.x - q.x, r.z - q.z) < 6) cluster++;
+      let cluster = 0; for (const r of g.players.values()) if (r !== p && r.alive && !g.ally(p, r) && Math.hypot(r.x - q.x, r.z - q.z) < 6) cluster++;
       if (cluster >= 2 || Math.random() < L.nades * 3) { const d = [q.x - p.x, 0.28 * dist / 20, q.z - p.z], l = Math.hypot(...d); g.throwNade(p, d.map(x => x / l)); return; }
     }
     if (now < b.pauseUntil || now < b.nextShot) return;

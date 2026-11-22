@@ -27,7 +27,7 @@ import util from 'node:util';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { idOf } from './leaderboard.mjs';
-import { CARGO, HOLY } from './combat.mjs';
+import { CARGO, HOLY, SIEGE } from './combat.mjs';
 
 const TTL = 12 * 3600 * 1000, MAX_SESSIONS = 64, LOG_CAP = 1000;
 const ENV_KEYS = ['PORT', 'SERVER_NAME', 'MODE', 'ARENA', 'BOTS', 'BOT_LEVEL', 'WIN_SCORE', 'MATCH', 'DAY_MIN', 'LEADERBOARD', 'ACCOUNTS', 'TEAMS', 'EVENTS', 'STATIC', 'NODE_ENV'];
@@ -150,26 +150,31 @@ export function createAdmin({ pass, game, accounts = null, board = null, teams =
     // the events: the settings and the auto-run flag (events.mjs), the live state from the game
     'GET /events': () => {
       if (!events) return { code: 501, error: 'off' };
-      const t = Date.now(), h = game.holyState(), c = game.cargoState(), hs = game.health();
+      const t = Date.now(), h = game.holyState(), c = game.cargoState(), sg = game.siegeState(), hs = game.health();
       return {
         ...events.view(),
         state: {
           holy: h ? { active: true, id: h.id, left: h.left, until: h.until, held: h.points.filter(p => p.owner).length, hold: h.hold, points: h.points.map(p => ({ i: p.i, temple: HOLY.temples[p.i].short, owner: p.owner, name: p.name, prog: p.prog })) } : { active: false, nextIn: Math.max(0, game.holyNextAt - t) },
           cargo: c ? { active: true, id: c.id, state: c.state, x: Math.round(c.x), z: Math.round(c.z), left: Math.max(0, (c.until || c.landAt) - t) } : { active: false, nextIn: Math.max(0, game.cargoNextAt - t) },
           storm: { match: hs.match || null, live: hs.storm || null },
+          siege: sg ? { active: true, id: sg.id, phase: sg.phase, left: sg.left, counts: sg.counts, prog: sg.prog, contest: sg.contest } : { active: false, nextIn: Math.max(0, game.siegeNextAt - t) },
         },
       };
     },
     'POST /events/holy': m => evSet('holy', m),
     'POST /events/cargo': m => evSet('cargo', m),
     'POST /events/storm': m => evSet('storm', m),
+    'POST /events/siege': m => evSet('siege', m),
+    'POST /events/siege/start': () => { const r = game.siegeStart(); return r === 'ok' ? { ok: true } : { code: 409, error: r }; },
+    'POST /events/siege/stop': () => game.siegeStop() ? { ok: true } : { code: 409, error: 'idle' },
+    'POST /events/siege/next': m => game.siegeNext(clampMs(m.inMs, SIEGE.gapMs)) ? { ok: true } : { code: 409, error: 'active' },
     'POST /events/holy/start': () => { const r = game.holyStart(); return r === 'ok' ? { ok: true } : { code: 409, error: r }; },
     'POST /events/holy/stop': () => game.holyStop() ? { ok: true } : { code: 409, error: 'idle' },
     'POST /events/holy/next': m => game.holyNext(clampMs(m.inMs, HOLY.gapMs)) ? { ok: true } : { code: 409, error: 'active' },
     'POST /events/cargo/drop': () => game.cargo ? { code: 409, error: 'active' } : (game.cargoDrop(), { ok: true }),
     'POST /events/cargo/remove': () => game.cargoRemove() ? { ok: true } : { code: 409, error: 'idle' },
     'POST /events/cargo/next': m => game.cargoNext(clampMs(m.inMs, CARGO.gapMs)) ? { ok: true } : { code: 409, error: 'active' },
-    'POST /events/reset': m => { const k = ['holy', 'cargo', 'storm', 'all'].includes(m.kind) ? m.kind : 'all'; events.reset(k); return { ok: true, kind: k }; },
+    'POST /events/reset': m => { const k = ['holy', 'cargo', 'storm', 'siege', 'all'].includes(m.kind) ? m.kind : 'all'; events.reset(k); return { ok: true, kind: k }; },
     'GET /accounts': (m, q) => {
       if (!accounts) return { code: 501, error: 'off' };
       const r = accounts.list({ q: q.get('q') || '', limit: +q.get('limit') || 200 });

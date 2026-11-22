@@ -29,7 +29,7 @@
       go cold until the next match, which brings everybody back with the door open; a bot outside runs in.
    3. A real bot fight on a flat arena (12 s of real time): with the small hitboxes the bots must still see,
       shoot and kill each other. */
-import { BULLET_G, CARGO, FALL, HIT, HOLY, INV, WEAPONS, NADE, RESERVE, SMOKE, W_FALL, bulletAt, bulletDir, bulletDrop, dragDist, dragTime, dragVel, rayHit, smokeCore, smokeDepth } from '../server/combat.mjs';
+import { BULLET_G, CARGO, FALL, HIT, HOLY, INV, WEAPONS, NADE, RESERVE, SIEGE, SMOKE, W_FALL, bulletAt, bulletDir, bulletDrop, dragDist, dragTime, dragVel, rayHit, smokeCore, smokeDepth } from '../server/combat.mjs';
 import { createGame, MUZZLE } from '../server/game.mjs';
 import { makePhysics } from '../server/physics.mjs';
 import { MATCH as MATCHC, STORM as STORMC, matchAt, pickFinal, stageCircle, stormField, stormPlan, stormRadii } from '../server/storm.mjs';
@@ -1464,6 +1464,110 @@ console.log('king of the hill event (createGame, controlled clock):');
   // an untaken race expires on its own
   tick(HOLY.durMs + 200);
   ok(!g.holy && A.last('holyEnd') && A.last('holyEnd').reason === 'time', 'the untaken race expires');
+  g.stop();
+}
+
+/* ---------- 2p. the «Штурм Динабурга» event: the registration, the dome, the assault, the altar, the loot ---------- */
+console.log('siege of Dinaburg event (createGame, controlled clock):');
+{
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), mode: 'team', now: () => clock, name: 'siege', itemCount: 4 });
+  const tick = ms => { const n = Math.max(1, Math.ceil(ms / 200)); for (let k = 0; k < n; k++) { clock += ms / n; g.stepSiege(); } };   // the siege ticks every 200 ms, as on the server
+  const A = seat(g, conn()); msg(A, { t: 'join', name: 'Штурмовик', team: 0, x: -2700, z: -200, yaw: 0 });
+  const B = seat(g, conn()); msg(B, { t: 'join', name: 'Гарнизонный', team: 1, x: -2700, z: -200, yaw: 0 });
+  const p = A.handle.player, q = B.handle.player, altar = SIEGE.altar;
+  const stand = (pl, x, z) => { pl.x = x; pl.z = z; pl.y = 1.7; };
+  ok(!g.siege, 'no siege before the first call is due');
+  msg(A, { t: 'siegeJoin', side: 'a' });
+  ok(A.last('siegeDeny') && A.last('siegeDeny').reason === 'closed', 'the registration is closed before the call');
+  ok(g.siegeStart() === 'ok', 'the admin opens the registration');
+  ok(g.siege && g.siege.phase === 'reg', 'the registration phase begins');
+  ok(A.last('siege') && A.last('siege').phase === 'reg' && A.last('siege').counts.a === 0, 'the call went to everybody with the counts');
+  // the sides by hand, the balance keeps them even
+  msg(A, { t: 'siegeJoin', side: 'a' });
+  ok(p.siege === 'a' && A.last('siegeYou').side === 'a', 'the side is chosen by hand');
+  msg(B, { t: 'siegeJoin', side: 'd' });
+  ok(q.siege === 'd', 'the other side too');
+  const extras = [];
+  for (let i = 0; i < SIEGE.balance; i++) { const c = seat(g, conn()); msg(c, { t: 'join', name: 'Лишний' + i, team: 0, x: -2700, z: -200, yaw: 0 }); extras.push(c); msg(c, { t: 'siegeJoin', side: 'a' }); }
+  const X = seat(g, conn()); msg(X, { t: 'join', name: 'Отказник', team: 0, x: -2700, z: -200, yaw: 0 });
+  msg(X, { t: 'siegeJoin', side: 'a' });
+  ok(X.last('siegeDeny') && X.last('siegeDeny').reason === 'balance' && !X.handle.player.siege, 'the balance refuses the overfull side');
+  msg(X, { t: 'siegeJoin', side: 'd' });
+  ok(X.handle.player.siege === 'd', 'the smaller side takes him');
+  msg(X, { t: 'siegeJoin', side: null });
+  ok(!X.handle.player.siege, 'the registration can be withdrawn');
+  // the prep: the teleport each side its own place, the dome up, the guns cold
+  tick(SIEGE.regMs + 100);
+  ok(g.siege && g.siege.phase === 'prep', 'the prep begins after the registration');
+  ok(Math.hypot(p.x - SIEGE.cx, p.z - SIEGE.cz) > SIEGE.domeR, 'the attacker stands outside the dome');
+  ok(Math.hypot(q.x - SIEGE.cx, q.z - SIEGE.cz) < SIEGE.domeR, 'the defender stands inside the dome');
+  ok(p.siegeBack && q.siegeBack, 'the way back is remembered');
+  ok(A.last('siege').dome && A.last('siege').dome.r === SIEGE.domeR, 'the dome went to everybody');
+  q.x = SIEGE.cx; q.z = SIEGE.cz + SIEGE.domeR - 1; q.y = 1.7;   // the defender at the inner edge tries to step out
+  msg(B, { t: 'state', x: SIEGE.cx, y: 1.7, z: SIEGE.cz + SIEGE.domeR + 5, yaw: 0, pitch: 0 });
+  ok(B.last('correct') && B.last('correct').dome && q.z === SIEGE.cz + SIEGE.domeR - 1, 'the dome lets nobody out');
+  msg(A, { t: 'shoot', w: 0, rays: [[1, 0, 0]] });
+  ok(!A.all('shot').length, 'the guns are cold under the dome');
+  // the assault: the dome falls, the altar ring fills while the attackers hold it alone
+  tick(SIEGE.prepMs + 100);
+  ok(g.siege && g.siege.phase === 'assault', 'the dome falls: the assault begins');
+  ok(A.last('siege').dome === null, 'the dome is down in the message');
+  stand(p, altar.x, altar.z); stand(q, SIEGE.cx, SIEGE.cz);
+  tick(SIEGE.holdMs - 500);
+  ok(g.siege && g.siege.prog > 0.9, 'the ring fills while the attackers hold it alone', 'prog ' + g.siege.prog);
+  stand(q, altar.x + 2, altar.z);   // the garrison steps in: the hold is beaten back twice as fast
+  tick(4000);
+  ok(g.siege && g.siege.prog < 0.9 && g.siege.contest === 'd', 'the garrison in the ring beats the hold back', 'prog ' + g.siege.prog);
+  stand(q, SIEGE.cx, SIEGE.cz);
+  tick(SIEGE.holdMs + 500);
+  ok(!g.siege, 'the minute held wins the siege');
+  ok(A.last('siegeWin') && A.last('siegeWin').side === 'a' && A.last('siegeWin').reason === 'hold', 'the win went to everybody');
+  ok(p.kills >= SIEGE.prizeKills, 'the survivor got the prize kills');
+  ok(p.reserve[0] === RESERVE[0] * INV.reserveCap && p.meds === INV.medMax && p.nades === INV.nadeMax, 'the survivor got the double reserve and the full belt');
+  ok(p.pack.includes('optic') || p.attach.includes('optic'), 'the rare optic came with the loot');
+  ok(A.last('siegeEnd') && A.last('siegeEnd').reason === 'win', 'the end went to everybody with the reason');
+  ok(Math.hypot(p.x - -2700, p.z - -200) < 3, 'the survivor was teleported back to his place');
+  ok(!p.siege && !p.siegeBack, 'the siege let him go');
+  g.stop();
+}
+{
+  let clock = 2e6;
+  const g = createGame({ world: flatWorld(), mode: 'team', now: () => clock, name: 'siege2', itemCount: 4 });
+  const tick = ms => { const n = Math.max(1, Math.ceil(ms / 200)); for (let k = 0; k < n; k++) { clock += ms / n; g.stepSiege(); } };   // the siege ticks every 200 ms, as on the server
+  const C = seat(g, conn()); msg(C, { t: 'join', name: 'Защитник', team: 1, x: -2700, z: -200, yaw: 0 });
+  const D = seat(g, conn()); msg(D, { t: 'join', name: 'Атакующий', team: 0, x: -2700, z: -200, yaw: 0 });
+  const E = seat(g, conn()); msg(E, { t: 'join', name: 'Зевака', team: 0, x: -2700, z: -200, yaw: 0 });   // a bystander: not registered
+  const c = C.handle.player, d = D.handle.player, e = E.handle.player, altar = SIEGE.altar;
+  const stand = (pl, x, z) => { pl.x = x; pl.z = z; pl.y = 1.7; };
+  g.siegeStart(); msg(C, { t: 'siegeJoin', side: 'd' }); msg(D, { t: 'siegeJoin', side: 'a' });
+  tick(SIEGE.regMs + SIEGE.prepMs + 200);
+  ok(g.siege && g.siege.phase === 'assault', 'the second siege reaches the assault');
+  ok(!e.siege, 'the bystander is not in the siege');
+  // the bystander is spared by the event: the attacker's shot does not hurt him
+  stand(d, altar.x, altar.z); stand(e, altar.x + 3, altar.z); stand(c, SIEGE.cx, SIEGE.cz);
+  const el = Math.hypot(3, 0.6);
+  msg(D, { t: 'shoot', w: 0, rays: [[3 / el, -0.6 / el, 0]] }); clock += 150; g.stepBullets();
+  ok(e.hp === 100, 'the event spares the bystander');
+  // the fallen leaves at once: the teleport back to the city, no respawn in the siege
+  stand(c, altar.x + 10, altar.z); d.hp = 1;
+  const cl = Math.hypot(10, 0.6);
+  msg(C, { t: 'shoot', w: 0, rays: [[-10 / cl, -0.6 / cl, 0]] }); clock += 150; g.stepBullets();
+  ok(!d.alive || d.siege === null, 'the fallen attacker is out of the siege');
+  ok(D.last('siegeOut') && D.last('siegeOut').reason === 'dead', 'the fall went to him');
+  ok(d.alive && Math.hypot(d.x - -2700, d.z - -200) < 3, 'the fallen was teleported back to the city at once');
+  tick(400);
+  ok(!g.siege && C.last('siegeWin') && C.last('siegeWin').side === 'd' && C.last('siegeWin').reason === 'wipe', 'the wiped attackers lose the fortress');
+  // the historical outcome: nobody holds the altar, the garrison wins by holding out
+  g.siegeStart(); msg(C, { t: 'siegeJoin', side: 'd' }); msg(D, { t: 'siegeJoin', side: 'a' });
+  tick(SIEGE.regMs + SIEGE.prepMs + 200);
+  ok(g.siege && g.siege.phase === 'assault', 'the third siege reaches the assault');
+  const F = seat(g, conn()); msg(F, { t: 'join', name: 'Поздний', team: 0, x: -2700, z: -200, yaw: 0 });
+  ok(F.last('hello').siege && F.last('hello').siege.phase === 'assault', 'a late joiner gets the siege in hello');
+  stand(c, SIEGE.cx, SIEGE.cz); stand(d, SIEGE.cx, SIEGE.cz + SIEGE.domeR + 30);
+  tick(SIEGE.durMs + 500);
+  ok(!g.siege && C.last('siegeWin') && C.last('siegeWin').side === 'd' && C.last('siegeWin').reason === 'time', 'the garrison wins by holding out to the last second');
+  ok(C.last('siegeEnd') && C.last('siegeEnd').winner === 'd', 'the end names the winning side');
   g.stop();
 }
 

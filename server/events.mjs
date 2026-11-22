@@ -10,15 +10,16 @@
    no file, the changes stay in memory). Values are clamped to sane ranges, an unknown key is refused. */
 import fs from 'node:fs';
 import path from 'node:path';
-import { HOLY, CARGO } from './combat.mjs';
+import { HOLY, CARGO, SIEGE } from './combat.mjs';
 import { MATCH, STORM } from './storm.mjs';
 
-export const EVENT_KINDS = ['holy', 'cargo', 'storm'];
+export const EVENT_KINDS = ['holy', 'cargo', 'storm', 'siege'];
 // the defaults: the rules as written in combat.mjs and storm.mjs, captured before any override
 const DEF = {
   holy: { firstMs: HOLY.firstMs, gapMs: HOLY.gapMs, durMs: HOLY.durMs, warnMs: HOLY.warnMs, capMs: HOLY.capMs, capR: HOLY.capR, holdMs: HOLY.holdMs, prizeScore: HOLY.prizeScore, prizeKills: HOLY.prizeKills, buffs: { ...HOLY.buffs } },
   cargo: { firstMs: CARGO.firstMs, gapMs: CARGO.gapMs, groundMs: CARGO.groundMs, markMs: CARGO.markMs, alt: CARGO.alt, speed: CARGO.speed, pickR: CARGO.pickR, beaconR: CARGO.beaconR, loot: Object.fromEntries(CARGO.loot) },
   storm: { share: MATCH.stormShare, suddenMs: STORM.suddenMs, suddenDps: STORM.suddenDps, rEnd: STORM.rEnd },
+  siege: { firstMs: SIEGE.firstMs, gapMs: SIEGE.gapMs, regMs: SIEGE.regMs, prepMs: SIEGE.prepMs, durMs: SIEGE.durMs, warnMs: SIEGE.warnMs, holdMs: SIEGE.holdMs, capR: SIEGE.capR, balance: SIEGE.balance, prizeKills: SIEGE.prizeKills },
 };
 const DEF_BUFFNAME = { ...HOLY.buffName };
 // the sane ranges of every tunable value (nested keys as 'buffs.dmg'); the panel's inputs carry the same bounds
@@ -26,6 +27,7 @@ const RANGE = {
   holy: { firstMs: [10000, 21600000], gapMs: [30000, 86400000], durMs: [60000, 21600000], warnMs: [5000, 600000], capMs: [1000, 120000], capR: [3, 50], holdMs: [10000, 1800000], prizeScore: [0, 100], prizeKills: [0, 100], 'buffs.dmg': [1, 3], 'buffs.regen': [0, 20], 'buffs.speed': [1, 2], 'buffs.reload': [0.3, 1], 'buffs.rate': [0.3, 1] },
   cargo: { firstMs: [10000, 21600000], gapMs: [30000, 86400000], groundMs: [10000, 21600000], markMs: [0, 1800000], alt: [20, 500], speed: [1, 30], pickR: [1, 10], beaconR: [1, 30], 'loot.med': [0, 9], 'loot.nade': [0, 9], 'loot.smoke': [0, 9], 'loot.napalm': [0, 9], 'loot.optic': [0, 9] },
   storm: { share: [0.05, 0.5], suddenMs: [0, 300000], suddenDps: [1, 100], rEnd: [5, 100] },
+  siege: { firstMs: [10000, 21600000], gapMs: [30000, 86400000], regMs: [30000, 1800000], prepMs: [10000, 600000], durMs: [60000, 3600000], warnMs: [5000, 600000], holdMs: [10000, 600000], capR: [3, 50], balance: [0, 20], prizeKills: [0, 100] },
 };
 const clone = o => JSON.parse(JSON.stringify(o));
 function put(o, k, v) { const ps = k.split('.'); let t = o; for (let i = 0; i < ps.length - 1; i++) t = t[ps[i]] = t[ps[i]] || {}; t[ps[ps.length - 1]] = v; }
@@ -52,6 +54,8 @@ function apply(kind, cfg) {
     CARGO.loot = Object.entries(cfg.loot).filter(([, n]) => n > 0);
   } else if (kind === 'storm') {
     MATCH.stormShare = cfg.share; STORM.suddenMs = cfg.suddenMs; STORM.suddenDps = cfg.suddenDps; STORM.rEnd = cfg.rEnd;
+  } else if (kind === 'siege') {
+    for (const k of ['firstMs', 'gapMs', 'regMs', 'prepMs', 'durMs', 'warnMs', 'holdMs', 'capR', 'balance', 'prizeKills']) SIEGE[k] = cfg[k];
   }
 }
 
@@ -72,7 +76,7 @@ export function createEvents({ file = null } = {}) {
     for (const [key, v] of Object.entries(flat)) {
       const r = RANGE[kind][key];
       if (!r || typeof v !== 'number' || !Number.isFinite(v)) return { error: 'bad-cfg' };
-      put(st[kind].cfg, key, clamp(key === 'capR' || key === 'prizeScore' || key === 'prizeKills' || key.startsWith('loot.') || key === 'rEnd' ? Math.round(v) : v, r));
+      put(st[kind].cfg, key, clamp(key === 'capR' || key === 'prizeScore' || key === 'prizeKills' || key.startsWith('loot.') || key === 'rEnd' || key === 'balance' ? Math.round(v) : v, r));
     }
     apply(kind, st[kind].cfg); save();
     return { ok: true };
