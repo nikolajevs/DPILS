@@ -339,7 +339,7 @@ function scorch(x, y, z, roof) {
 const zones = new Map();
 const fireLight = new THREE.PointLight(0xff7a2a, 0, 24, 1.8); fireLight.userData.noProbe = true; scene.add(fireLight);
 const SMOKE_C0 = [0.86, 0.86, 0.84], SMOKE_C1 = [0.76, 0.76, 0.74], JET_C = [0.93, 0.93, 0.91];
-const SCREEN_N = 64;   // the billows a screen keeps in its body (the pool holds 900: two screens and a fight fit)
+const SCREEN_N = 90;   // the billows a screen keeps in its body (the pool holds 900: two screens and a fight fit)
 const FADE = SMK.fadeMs / 1000, GROW = SMK.growMs / 1000;
 // the spent canister on its side; its size, measured once from the model in its flight scale
 const QZ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2), YA = new THREE.Vector3(0, 1, 0);
@@ -405,12 +405,14 @@ function tickSmoke(z, dt) {
     emit(SMOKE, { x: z.nx, y: z.ny, z: z.nz, vx: (z.hx + rnd(-0.35, 0.35)) * sp, vy: up * sp, vz: (z.hz + rnd(-0.35, 0.35)) * sp, drag: 2.4, rise: rnd(0.2, 0.45), wind: 0.35, life: rnd(1.6, 2.8), s0: 0.14, s1: rnd(1.3, 2.3), grow: 2.2, roll: rnd(0, 6.28), spin: rnd(-0.8, 0.8), c0: JET_C, c1: SMOKE_C0, op: rnd(0.75, 0.9), fin: 0.04, fout: 0.45, floor: z.y, frame: (Math.random() * 3) | 0, zone: z });
   }
   // the body: kept at its count, each new billow somewhere inside the dome as wide as the screen is now; it swells in,
-  // rolls slowly outward and hangs, the wind barely moving it
-  const want = Math.round(SCREEN_N * (0.25 + 0.75 * grow)), rx = c.rc * 0.95 + 0.2, ry = c.hc * 0.62;
-  for (let k = 0, most = z.t > 0.3 && z.n < want * 0.5 ? 12 : 5; z.n < want && k < most; k++) {
-    let u, v, w, l; do { u = rnd(-1, 1); v = rnd(0, 1); w = rnd(-1, 1); l = u * u + v * v + w * w; } while (l > 1);
-    const out = rnd(0.2, 0.7) * (1 - grow * 0.6);
-    emit(SMOKE, { x: z.x + u * rx, y: z.y + 0.3 + v * ry, z: z.z + w * rx, vx: u * out * 2, vy: rnd(0, 0.2), vz: w * out * 2, drag: 1.1, rise: rnd(0.03, 0.12), wind: 0.12, life: Math.min(rnd(5, 8), z.dur - z.t + 0.2), s0: rnd(1, 1.6), s1: rnd(3.2, 4.6), grow: 3, roll: rnd(0, 6.28), spin: rnd(-0.12, 0.12), c0: SMOKE_C0, c1: SMOKE_C1, op: rnd(0.8, 0.95), fin: 0.7, fout: 0.75, floor: z.y, frame: (Math.random() * 3) | 0, zone: z, body: true });
+  // and while the screen grows it is pushed out just as far as the dome has still to go (the drag stops it there: a
+  // throw of v goes v/drag metres), so the billows born small end up spread over the whole width; then it hangs, the
+  // wind barely moving it
+  const want = Math.round(SCREEN_N * (0.25 + 0.75 * grow)), rx = c.rc * 0.95 + 0.2, ry = c.hc * 0.78;
+  const RX = z.r * 0.85 * 0.95 + 0.2, RY = SMK.height * 0.78, DR = 1.1;
+  for (let k = 0, most = z.t > 0.3 && z.n < want * 0.5 ? 14 : 6; z.n < want && k < most; k++) {
+    let u, v, w, l; do { u = rnd(-1, 1); v = Math.sqrt(Math.random()); w = rnd(-1, 1); l = u * u + v * v + w * w; } while (l > 1);   // the dome filled up to its crown, not heaped at its foot
+    emit(SMOKE, { x: z.x + u * rx, y: z.y + 0.3 + v * ry, z: z.z + w * rx, vx: (u * (RX - rx) + rnd(-0.15, 0.15)) * DR, vy: v * (RY - ry) * DR, vz: (w * (RX - rx) + rnd(-0.15, 0.15)) * DR, drag: DR, rise: rnd(0.03, 0.12), wind: 0.12, life: Math.min(rnd(5, 8), z.dur - z.t + 0.2), s0: rnd(1.2, 1.8), s1: rnd(3.8, 5.4), grow: 3, roll: rnd(0, 6.28), spin: rnd(-0.12, 0.12), c0: SMOKE_C0, c1: SMOKE_C1, op: rnd(0.88, 1), fin: 0.6, fout: 0.75, floor: z.y, frame: (Math.random() * 3) | 0, zone: z, body: true });
     z.n++;
   }
   // wisps fraying off the top and drifting off with the wind
@@ -443,11 +445,11 @@ function tickFire(z, dt, fade) {
   }
 }
 /* ---------- the veil: inside a smoke screen ----------
-   Two big billows of the smoke's own atlas, lit by the scene like the rest of it, ride on the camera half a metre and
-   a metre ahead, turning slowly against each other; their dense middles cover the whole view. They thicken as the
+   Three big billows of the smoke's own atlas, lit by the scene like the rest of it, ride on the camera half a metre, a
+   metre and two metres ahead, turning slowly against each other; their dense middles cover the whole view. They thicken as the
    camera goes into a screen's core (a little past its edge already) and thin as it comes out or the screen runs out.
    They sit behind the arms in hand (drawn over everything, viewmodel.js), so the gun and the grenade stay in sight. */
-const VEIL = cloud(bentQuad(), smokeMat, 2, 3);
+const VEIL = cloud(bentQuad(), smokeMat, 3, 3), VEIL_D = [2, 1, 0.5];   // the far one first
 scene.remove(VEIL.mesh); camera.add(VEIL.mesh);
 let veil = 0;
 function veilTarget() {
@@ -465,15 +467,15 @@ function drawVeil(dt) {
   const mesh = VEIL.mesh;
   if (veil < 0.01) { veil = 0; mesh.count = 0; return; }
   const diag = Math.tan(camera.fov * Math.PI / 360) * Math.hypot(1, camera.aspect), col = mesh.instanceColor.array, ap = VEIL.aP.array;
-  for (let i = 0; i < 2; i++) {   // the far one first
-    const d = i ? 0.5 : 1, s = 4.8 * d * diag, sw = clock * (i ? 0.11 : 0.07);
+  for (let i = 0; i < 3; i++) {
+    const d = VEIL_D[i], s = 4.8 * d * diag, sw = clock * (0.07 + 0.02 * i);
     PV.set(Math.sin(sw * 1.3 + i) * 0.12 * d, Math.cos(sw + i * 2) * 0.08 * d, -d);
-    QR.setFromAxisAngle(ZA, (i ? -1 : 1) * clock * (i ? 0.06 : 0.04) + i * 1.7); PS.set(s, s, s);
+    QR.setFromAxisAngle(ZA, (i & 1 ? -1 : 1) * clock * (0.04 + 0.01 * i) + i * 1.7); PS.set(s, s, s);
     M.compose(PV, QR, PS); mesh.setMatrixAt(i, M);
     col[i * 3] = SMOKE_C0[0]; col[i * 3 + 1] = SMOKE_C0[1]; col[i * 3 + 2] = SMOKE_C0[2];
-    ap[i * 4] = veil * 0.74; ap[i * 4 + 1] = 0; ap[i * 4 + 2] = i * 0.5; ap[i * 4 + 3] = 0.5;
+    ap[i * 4] = veil * 0.85; ap[i * 4 + 1] = 0; ap[i * 4 + 2] = (i & 1) * 0.5; ap[i * 4 + 3] = 0.5 - (i >> 1) * 0.5;
   }
-  mesh.count = 2; mesh.instanceMatrix.needsUpdate = true; mesh.instanceColor.needsUpdate = true; VEIL.aP.needsUpdate = true;
+  mesh.count = 3; mesh.instanceMatrix.needsUpdate = true; mesh.instanceColor.needsUpdate = true; VEIL.aP.needsUpdate = true;
 }
 function tickZones(dt) {
   let lit = null, ld = 1e9;
@@ -499,7 +501,7 @@ function smokeCores() {
   return out;
 }
 const smokeHides = (a, b, cores = smokeCores()) => cores.length > 0 && smokeDepth(cores, a, b) >= SMK.hide;
-const liveZones = () => [...zones.values()].map(z => ({ kind: z.kind, x: z.x, z: z.z, r: z.kind === 'smoke' ? (z.core ? z.core.rc / 0.85 : 0) : z.r }));
+const liveZones = () => [...zones.values()].map(z => ({ kind: z.kind, x: z.x, z: z.z, r: z.kind === 'smoke' ? (z.core ? z.core.rc / 0.85 : 0) : z.r, t: z.t, n: z.n }));
 const inSmoke = () => veil;
 /* ---------- the frame ---------- */
 function stepCloud(sys, dt) {
