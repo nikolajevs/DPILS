@@ -13,6 +13,7 @@ import { ARENAS } from './arenas.mjs';
 import { createGame } from './game.mjs';
 import { createBoard } from './leaderboard.mjs';
 import { createAccounts } from './accounts.mjs';
+import { compressible, encodingFor, packed, warm } from './compress.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -37,13 +38,27 @@ function serveFile(req, res) {
     if (err || !st.isFile()) { res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }); res.end('Not found'); return; }
     // no-cache: the browser asks every time whether its copy is still good; a file that has not changed is answered
     // 304 without its body. Without that every visit downloaded the city data and the models (~25 MB) again.
+    // The text and the models go compressed (compress.mjs); the tag of a compressed copy has its encoding at the end,
+    // and any copy of an unchanged file is still good.
     const etag = 'W/"' + st.size.toString(16) + '-' + Math.floor(st.mtimeMs).toString(16) + '"';
     const cache = { 'cache-control': rel.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache', 'last-modified': st.mtime.toUTCString(), etag };
+    if (compressible(file)) cache.vary = 'Accept-Encoding';
     const inm = req.headers['if-none-match'], ims = Date.parse(req.headers['if-modified-since'] || '');
-    if (inm ? inm.split(',').some(t => t.trim() === etag || t.trim() === '*') : Math.floor(st.mtimeMs / 1000) <= Math.floor(ims / 1000)) { res.writeHead(304, cache); res.end(); return; }
-    res.writeHead(200, { 'content-type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', 'content-length': st.size, ...cache });
-    if (req.method === 'HEAD') { res.end(); return; }
-    fs.createReadStream(file).on('error', () => res.destroy()).pipe(res);
+    const good = inm && inm.split(',').map(t => t.trim()).find(t => t === '*' || t.replace(/-(br|gzip)"$/, '"') === etag);
+    if (inm ? good : Math.floor(st.mtimeMs / 1000) <= Math.floor(ims / 1000)) { res.writeHead(304, { ...cache, etag: good && good !== '*' ? good : etag }); res.end(); return; }
+    const type = TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream';
+    const plain = () => {
+      res.writeHead(200, { 'content-type': type, 'content-length': st.size, ...cache });
+      if (req.method === 'HEAD') { res.end(); return; }
+      fs.createReadStream(file).on('error', () => res.destroy()).pipe(res);
+    };
+    const enc = encodingFor(file, req.headers['accept-encoding']);
+    if (!enc) { plain(); return; }
+    packed(file, st, enc).then(z => {
+      if (!z) { plain(); return; }
+      res.writeHead(200, { 'content-type': type, 'content-encoding': enc, 'content-length': z.length, ...cache, etag: etag.slice(0, -1) + '-' + enc + '"' });
+      res.end(req.method === 'HEAD' ? undefined : z);
+    });
   });
 }
 
@@ -109,6 +124,7 @@ wss.on('connection', ws => {
 });
 setInterval(() => { for (const c of wss.clients) { if (!c.h.joined && Date.now() - c.since > 15000) { c.terminate(); continue; } if (!c.live) { c.terminate(); continue; } c.live = false; c.ping(); } }, 15000);
 server.listen(PORT, () => console.log('Daugavpils shooter server on :' + PORT + (game.arena ? ', arena ' + game.arena.name : '') + (process.env.BOTS ? ', bots ' + process.env.BOTS : '')));
+if (STATIC) warm(STATIC);   // the compressed copies of the page's files, made in the background (compress.mjs)
 
 if (LB || ACC) {   // the table and the accounts are saved every 20 s and when the server is stopped
   setInterval(() => { if (LB) LB.save(); if (ACC) ACC.save(); }, 20000);

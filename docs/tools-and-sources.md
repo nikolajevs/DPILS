@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Claude | claude/static-compression | Сжатие статики сервером (brotli/gzip) для первого визита | server/index.mjs, server/compress.mjs |
 
 ## Автономный цикл улучшений
 
