@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Chatbox | chatbox/tab-board | Таблица игроков по Tab: живой счёт, урон, точность, пинг, статус | server/game.mjs, src/game/mp.js, index.html, src/style.css |
 
 ## Автономный цикл улучшений
 
