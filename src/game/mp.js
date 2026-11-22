@@ -16,6 +16,7 @@ import { requireAccount } from '../ui/auth.js';
 import { serverUrl } from './server.js';
 import { addNade, addZone, endZone, blastGlow, boomNade, clearBlasts, clearNades, nadeSamples, tickNades, onNadeBounce, setNadeBodies, syncNade, liveNades, liveZones, smokeCores, smokeHides, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
 import { KINDS, SLOT_SVG, bindInv, setItems, itemBack, itemTook, tickItems, renderInv, invTick, closeInv, toggleInv } from './inventory.js';
+import { cargoDrop, cargoLand, cargoTook, cargoEnd, cargoSelf, cargoTick, cargoMap, cargoClock, clearCargo } from './cargo.js';
 import { terrainH } from '../world/terrain.js';
 import { camera, canvas, renderer, scene } from '../render/renderer.js';
 import { setCycle, setTime } from '../render/lighting.js';
@@ -98,6 +99,7 @@ function useMed() {
 STATE.mp = false;
 let voice = null;
 const remotes = new Map();   // id → { name, group, buf: [{ t, x, y, z, yaw, pitch }], tag }
+const marks = new Map();   // id → until: the cargo carriers marked for everyone (server/game.mjs, 'marked'/'unmark')
 
 /* ---------- geometry ---------- */
 // the server's shot scan over the page's own city data: fire() predicts the wall (and the walls punched through by the
@@ -241,7 +243,16 @@ function upgradeAK() {
   if (vm) return; vm = makeViewmodel(camera); if (!vm) return;
   models[0].clear(); MP.vm = vm; vm.setWeapon(MP.weapon); syncVm(); if (vm.has(MP.weapon) && !MP.dead) vm.equip();
 }
-function dropRemote(id) { const r = remotes.get(id); if (!r) return; scene.remove(r.group); r.tag.remove(); remotes.delete(id); }
+function dropRemote(id) { const r = remotes.get(id); if (!r) return; scene.remove(r.group); r.tag.remove(); remotes.delete(id); marks.delete(id); }
+// the cargo mark over a carrier: a red pillar seen through walls (the mark is for everyone) and the 🎯 chip on the tag
+const MARK_GEO = new THREE.CylinderGeometry(0.16, 0.34, 30, 8, 1, true);
+const MARK_MAT = new THREE.MeshBasicMaterial({ color: 0xff3b2a, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, side: THREE.DoubleSide, fog: false });
+function markRemote(id, on) {
+  const r = remotes.get(id); if (!r) return;
+  r.tag.classList.toggle('marked', on);
+  if (on && !r.markBeam) { r.markBeam = new THREE.Mesh(MARK_GEO, MARK_MAT); r.markBeam.position.y = 16; r.markBeam.renderOrder = 6; r.markBeam.userData.noProbe = true; r.group.add(r.markBeam); }
+  else if (!on && r.markBeam) { r.group.remove(r.markBeam); r.markBeam = null; }
+}
 function nameOf(id) { const b = MP.board.find(e => e.id === id); return b ? b.name : '?'; }
 const isMate = r => !MP.ffa && r.team === MP.team;   // in the free-for-all nobody is a teammate
 function teamOf(id) { const b = MP.board.find(e => e.id === id); return b ? b.team : 0; }
@@ -590,6 +601,7 @@ function drawBoard() {
     n.append(st, nm);
     if (e.id === MP.id) { const you = document.createElement('em'); you.className = 'bd-you'; you.textContent = 'вы'; n.append(you); }
     if (e.bot) { const bot = document.createElement('em'); bot.className = 'bd-bot'; bot.textContent = 'бот'; n.append(bot); }
+    if (e.mark) { const mk = document.createElement('em'); mk.className = 'bd-mark'; mk.textContent = '🎯 груз'; mk.title = 'Носитель груза — помечен для всех'; n.append(mk); }
     r.append(n);
     r.append(cell('c-k', e.kills), cell('c-d', e.deaths));
     const dmg = cell('c-dmg', e.dmg || 0); dmg.title = 'урон за раунд'; r.append(dmg);
@@ -768,6 +780,9 @@ function onMsg(m) {
   switch (m.t) {
     case 'hello': dayOf(m); MP.ffa = m.mode === 'ffa'; document.body.classList.toggle('ffa', MP.ffa); if (MP.ffa) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.server = m.server || ''; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team, e.char); document.body.dataset.team = m.team;
       MP.arena = m.arena || null; clearFx(); clearBlasts(); stopZoneSounds(); setItems(m.items); for (const z of m.zones || []) { addZone(z); if (z.kind === 'smoke') zoneSound(z); }   // the screens and patches already burning when we joined
+      cargoClock(m.now || Date.now()); clearCargo(); for (const id of [...marks.keys()]) markRemote(id, false); marks.clear();
+      if (m.cargo) { cargoDrop(m.cargo); if (m.cargo.state === 'landed') cargoLand(m.cargo); }
+      for (const mk of m.marks || []) { marks.set(mk.id, mk.until); if (mk.id === MP.id) cargoSelf(mk.until); else markRemote(mk.id, true); }
       for (const [id, a] of Object.entries(m.attach || {})) { const r = remotes.get(+id); if (r && Array.isArray(a)) { r.attach = a; if (r.av) a.forEach((k, w) => r.av.setAttach(w, k)); } } if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
       if (MP.local) feed('Тренировка с ботами: ' + MP.board.filter(e => e.bot).length + ', уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || '') + '»', 'sys'); break;
     case 'spawn': {
@@ -785,6 +800,7 @@ function onMsg(m) {
     }
     case 'correct': P.x = m.x; P.z = m.z; if (m.out) edgeNotice(); break;
     case 'snap': {
+      cargoClock(m.now);
       const t = performance.now(), seen = new Set();
       for (const [id, x, y, z, yaw, pitch, h, w] of m.p) { if (id === MP.id) continue; seen.add(id); const r = remotes.get(id) || addRemote(id, nameOf(id), teamOf(id)); r.buf.push({ t, x, y, z, yaw, pitch, h, w }); if (r.buf.length > 12) r.buf.shift(); }
       for (const [id, r] of remotes) if (!seen.has(id) && !r.fallT) { r.group.visible = false; r.buf.length = 0; }
@@ -848,6 +864,12 @@ function onMsg(m) {
       break;
     }
     case 'zoneEnd': endZone(m.id); break;
+    case 'cargo': cargoDrop(m); tone(520, 780, 0.22, 0.28, 'triangle'); tone(780, 1040, 0.28, 0.22, 'triangle', 0.16); break;   // the event's own chime, over the chat line
+    case 'cargoLand': cargoLand(m); tone(75, 34, 0.4, 0.35, 'sine'); break;   // the thud of the landing, heard across the city
+    case 'cargoTook': cargoTook(m, m.to === MP.id); if (m.to === MP.id) { tone(660, 990, 0.12, 0.3, 'triangle'); tone(990, 1320, 0.2, 0.28, 'triangle', 0.1); } break;
+    case 'cargoEnd': cargoEnd(m); break;
+    case 'marked': marks.set(m.id, m.until); if (m.id === MP.id) { cargoSelf(m.until); tone(320, 150, 0.45, 0.4, 'sawtooth'); feed('Вы помечены для всех — 60 секунд', 'dead'); } else markRemote(m.id, true); break;
+    case 'unmark': marks.delete(m.id); if (m.id === MP.id) cargoSelf(0); else markRemote(m.id, false); break;
     case 'item': itemBack(m); break;
     case 'took': itemTook(m.id); if (m.to === MP.id) { feed('+ ' + KINDS[m.kind].name + (m.where === 'pack' ? ' · в рюкзак' : ''), 'sys'); tone(660, 990, 0.09, 0.22, 'triangle'); } break;
     case 'inv': MP.ammo = m.mag.slice(); MP.reserve = m.reserve.slice(); MP.nades = m.nades; MP.smokes = m.smokes ?? MP.smokes; MP.napalms = m.napalms ?? MP.napalms; MP.meds = m.meds; if (m.sights) MP.sights = { ...m.sights }; if (Array.isArray(m.attach)) { MP.attach = m.attach.slice(); syncVm(); } if (Array.isArray(m.loadout)) MP.loadout = m.loadout.slice(); if (Array.isArray(m.pack)) MP.pack = m.pack.slice(); if (!MP.loadout.includes(MP.weapon)) { MP.weapon = MP.loadout[0]; models.forEach((mm, k) => { mm.visible = k === MP.weapon; }); if (vm) { vm.setWeapon(MP.weapon); vm.equip(); } } updatePanel(); break;
@@ -865,7 +887,7 @@ function onMsg(m) {
     case 'say': addLine(m, MP.id); if (m.id !== MP.id) tone(900, 700, 0.05, 0.08, 'sine'); break;
     case 'rtc': if (voice) voice.signal(m.from, m.d); break;
     case 'win': { nadeCancel(); const mine = m.mode === 'ffa' ? m.mvp === MP.id : m.team === MP.team, row = m.rows.find(r => r.id === MP.id); statEvent('round', { win: mine, kills: row ? row.kills : 0 }, !!MP.local); showSummary(m); break; }
-    case 'round': el('mpEnd').hidden = true; clearInterval(endTimer); break;
+    case 'round': el('mpEnd').hidden = true; clearInterval(endTimer); clearCargo(); for (const id of [...marks.keys()]) markRemote(id, false); marks.clear(); cargoSelf(0); break;
     case 'chat': feed(m.text, 'sys'); break;
     case 'full': el('mpMsg').textContent = 'На сервере нет мест.'; break;
     case 'auth-required': el('mpMsg').textContent = 'Сервер пускает только игроков с аккаунтом: войдите или зарегистрируйтесь.'; requireAccount(); break;
@@ -1099,7 +1121,8 @@ function mpTick(dt) {
     if (scoped && !dot) { scopeBdc(fov); if (at === 'optic') { scopeMag.hidden = false; const lbl = MP.opticMag + '×'; if (scopeMag.textContent !== lbl) scopeMag.textContent = lbl; } else scopeMag.hidden = true; }
     if (dot) { dotHint.hidden = !!MP.dotBoostAt; dotHint.classList.toggle('cd', !MP.dotBoostAt && now < MP.dotBoostCd); }   // the hint dims while the peek recharges
     gun.visible = !MP.dead && !nv && (mode === 'sight' || MP.zoom < 0.5); }   // the grenade in hand (and the throw) replaces the gun; the long zoom hides the arms, the red dot keeps them
-  ownSteps(dt); tickNades(dt); zoneSoundTick(); nadeWarnTick(); tickItems(dt, now); spectate(dt, now); nadeAimTick(now); nadeHandTick(nv);
+  ownSteps(dt); tickNades(dt); zoneSoundTick(); nadeWarnTick(); tickItems(dt, now); cargoTick(dt); spectate(dt, now); nadeAimTick(now); nadeHandTick(nv);
+  if (marks.size) MARK_MAT.opacity = 0.26 + 0.1 * Math.sin(now * 0.006);   // the mark's pillar breathes
   if (P.landH > 0) { const h = P.landH; P.landH = 0; if (h > FALL.safe && !MP.dead && MP.ws.readyState === 1) MP.ws.send(JSON.stringify({ t: 'fall', h: +h.toFixed(2) })); }   // a hard landing: the height goes to the server, which owns the damage
   if (MP.reloadAt && now - MP.reloadAt >= WEAPONS[MP.reloadW].reloadMs) {   // the local picture of the reload; the server's 'inv' message is the truth. It finishes on the weapon that started it, even if another is in hand now
     const rw = MP.reloadW; MP.reloadAt = 0; const k = Math.min(WEAPONS[rw].mag - MP.ammo[rw], MP.reserve[rw]);
@@ -1221,9 +1244,9 @@ function mpLabels() {
   for (const r of remotes.values()) {
     const g = r.group; if (!g.visible) { r.tag.hidden = true; continue; }
     V.set(g.position.x, g.position.y + 2.0, g.position.z).project(camera);
-    const d = Math.hypot(g.position.x - P.x, g.position.z - P.z), mate = isMate(r);
-    if (V.z > 1 || d > (mate ? 250 : 90) || MP.dead || r.fallT) { r.tag.hidden = true; continue; }   // teammates are shown through walls, enemies only in the line of sight
-    if (!mate) {   // an enemy's tag only in the line of sight: not through a wall, nor through a smoke screen (the bots' own rule, nades.js smokeHides)
+    const d = Math.hypot(g.position.x - P.x, g.position.z - P.z), mate = isMate(r), marked = marks.has(r.id);
+    if (V.z > 1 || d > (marked ? 600 : mate ? 250 : 90) || MP.dead || r.fallT) { r.tag.hidden = true; continue; }   // teammates are shown through walls, enemies only in the line of sight; the cargo mark is for everyone
+    if (!mate && !marked) {   // an enemy's tag only in the line of sight: not through a wall, nor through a smoke screen (the bots' own rule, nades.js smokeHides)
       const dy = g.position.y + 1.6 - P.y, l = Math.hypot(d, dy) || 1, dir = [(g.position.x - P.x) / l, dy / l, (g.position.z - P.z) / l];
       if (freePath([P.x, P.y, P.z], dir, l) < l - 2 || (cores.length && smokeHides([P.x, P.y, P.z], [g.position.x, g.position.y + 1.3, g.position.z], cores))) { r.tag.hidden = true; continue; }
     }
@@ -1248,18 +1271,21 @@ STATE.mapOverlay = (ctx, cx, cz, ppm, w, h) => {
     A.bases.forEach((b, t) => { if (MP.ffa && t) return; for (const [bx, bz] of b) { const x = w / 2 + (bx - cx) * ppm, y = h / 2 + (bz - cz) * ppm; if (x < 4 || y < 4 || x > w - 4 || y > h - 4) continue; ctx.fillStyle = MP.ffa ? '#e8a317' : t ? '#2f78d8' : '#d8392f'; ctx.fillRect(x - 5, y - 5, 10, 10); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.strokeRect(x - 5, y - 5, 10, 10); } });
     ctx.restore();
   }
-  for (const z of liveZones()) {   // the smoke screens (grey, as wide as they stand now) and the burning patches
-    if (!(z.r > 0.3)) continue;
+  for (const z of liveZones()) {   // the smoke screens (grey, as wide as they stand now) and the burning patches; the cargo's beacon has its own mark
+    if (z.kind === 'beacon' || !(z.r > 0.3)) continue;
     const x = w / 2 + (z.x - cx) * ppm, y = h / 2 + (z.z - cz) * ppm, r = Math.max(3, z.r * ppm); if (x < -r || y < -r || x > w + r || y > h + r) continue;
     ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fillStyle = z.kind === 'smoke' ? 'rgba(225, 230, 235, .62)' : 'rgba(255, 110, 30, .5)'; ctx.fill();
     ctx.lineWidth = 1.2; ctx.strokeStyle = z.kind === 'smoke' ? 'rgba(120, 130, 140, .8)' : 'rgba(200, 60, 10, .8)'; ctx.stroke();
   }
   for (const r of remotes.values()) {
     const p = r.buf[r.buf.length - 1]; if (!p || !r.group.visible || r.fallT) continue;
-    if (!isMate(r) && now - (r.shotAt || 0) > 2000) continue;
+    const marked = marks.has(r.id);
+    if (!isMate(r) && !marked && now - (r.shotAt || 0) > 2000) continue;   // the cargo carrier is on the map for everyone
     const x = w / 2 + (p.x - cx) * ppm, y = h / 2 + (p.z - cz) * ppm; if (x < 4 || y < 4 || x > w - 4 || y > h - 4) continue;
-    ctx.beginPath(); ctx.arc(x, y, 5, 0, 6.3); ctx.fillStyle = MP.ffa ? '#e8a317' : r.team === 1 ? '#2f78d8' : '#d8392f'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, 5, 0, 6.3); ctx.fillStyle = marked ? '#ff3b2a' : MP.ffa ? '#e8a317' : r.team === 1 ? '#2f78d8' : '#d8392f'; ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.6; ctx.stroke();
+    if (marked) { ctx.beginPath(); ctx.arc(x, y, 8 + 2.5 * Math.sin(now * 0.006), 0, 6.3); ctx.strokeStyle = 'rgba(255, 59, 42, .85)'; ctx.lineWidth = 2; ctx.stroke(); }
   }
+  cargoMap(ctx, cx, cz, ppm, w, h);
 };
 PERF.notice = text => feed(text, 'sys');
 function enablePlay() { initUi(); el('goPlay').disabled = false; el('goTrain').disabled = false; }

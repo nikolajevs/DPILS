@@ -385,6 +385,11 @@ function addZone(m) {
     glow.x = m.x; glow.y = m.y + 0.6; glow.z = m.z; glow.t = 0;   // the ignition lights the street for a moment (blastGlow)
     return;
   }
+  if (m.kind === 'beacon') {   // the cargo's signal smoke: a red-orange plume rising tall over the landing
+    const near = Math.max(0.12, Math.min(1, (Math.hypot(camera.position.x - m.x, camera.position.z - m.z) - 10) / 25));   // thin smoke at the crate itself: the taker must see it
+    for (let i = 0; i < Math.round(22 * near); i++) { const a = rnd(0, 6.283), r = rnd(0, z.r * 0.3); emit(SMOKE, { x: m.x + Math.cos(a) * r, y: m.y + rnd(0.1, 0.8), z: m.z + Math.sin(a) * r, vx: Math.cos(a) * rnd(0.3, 1), vy: rnd(1.5, 3), vz: Math.sin(a) * rnd(0.3, 1), drag: 1.2, rise: rnd(2.2, 3.6), wind: 0.35, life: rnd(4, 7), s0: rnd(0.8, 1.2), s1: rnd(3, 5), grow: 2.2, roll: rnd(0, 6.28), spin: rnd(-0.3, 0.3), c0: [1, 0.42, 0.22], c1: [0.9, 0.28, 0.14], op: rnd(0.75, 0.9), fin: 0.12, fout: 0.3, floor: m.y, frame: i % 3 }); }
+    return;
+  }
   layCanister(z, n);
   if (z.t > 0.3) return;   // joined late: the screen is already standing, its body comes up at once (tickSmoke)
   // the ignition: a pop of smoke round the canister and a few sparks of the burning filler at its head
@@ -503,6 +508,16 @@ function tickZones(dt) {
     if (z.t >= z.dur) { dropZone(id); continue; }
     if (z.kind === 'smoke') { tickSmoke(z, dt); continue; }
     const fade = Math.min(1, z.t * 3) * Math.min(1, (z.dur - z.t) / 1.5 + 0.15);   // breathes in, dies out
+    if (z.kind === 'beacon') {   // the cargo's signal plume: red-orange smoke climbing tall, seen across the city
+      const near = Math.max(0.12, Math.min(1, (Math.hypot(camera.position.x - z.x, camera.position.z - z.z) - 10) / 25));   // up close the smoke thins: the crate stays visible to its taker
+      z.acc += (z.t < 2 ? 40 : 14) * fade * near * dt;
+      while (z.acc >= 1) {
+        z.acc--; const a = rnd(0, 6.283), r = rnd(0, z.r * 0.25);
+        emit(SMOKE, { x: z.x + Math.cos(a) * r, y: z.y + rnd(0.1, 0.6), z: z.z + Math.sin(a) * r, vx: Math.cos(a) * rnd(0.2, 0.8), vy: rnd(1.5, 3), vz: Math.sin(a) * rnd(0.2, 0.8), drag: 1.2, rise: rnd(2.2, 3.6), wind: 0.35, life: rnd(5, 8), s0: rnd(0.7, 1.1), s1: rnd(3.5, 6), grow: 2.2, roll: rnd(0, 6.28), spin: rnd(-0.3, 0.3), c0: [1, 0.42, 0.22], c1: [0.9, 0.28, 0.14], op: rnd(0.75, 0.9), fin: 0.12, fout: 0.3, floor: z.y, frame: (Math.random() * 3) | 0 });
+      }
+      if (Math.random() < dt * 5) emit(FIRE, { x: z.x + rnd(-0.4, 0.4), y: z.y + 0.3, z: z.z + rnd(-0.4, 0.4), vy: rnd(2, 4), life: rnd(0.3, 0.6), s0: 0.05, s1: 0.1, c0: [4, 2.2, 0.8], c1: [2, 0.7, 0.2], fout: 0.3, frame: 2 });   // the embers the bloom takes
+      continue;
+    }
     tickFire(z, dt, fade);
     const d = camera.position.distanceTo(V.set(z.x, z.y + 1, z.z));   // the nearest patch takes the flickering light
     if (d < ld) { ld = d; lit = z; }
