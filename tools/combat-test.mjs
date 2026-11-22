@@ -29,7 +29,7 @@
       go cold until the next match, which brings everybody back with the door open; a bot outside runs in.
    3. A real bot fight on a flat arena (12 s of real time): with the small hitboxes the bots must still see,
       shoot and kill each other. */
-import { BULLET_G, CARGO, FALL, HIT, INV, WEAPONS, NADE, SMOKE, W_FALL, bulletAt, bulletDir, bulletDrop, dragDist, dragTime, dragVel, rayHit, smokeCore, smokeDepth } from '../server/combat.mjs';
+import { BULLET_G, CARGO, FALL, HIT, HOLY, INV, WEAPONS, NADE, RESERVE, SMOKE, W_FALL, bulletAt, bulletDir, bulletDrop, dragDist, dragTime, dragVel, rayHit, smokeCore, smokeDepth } from '../server/combat.mjs';
 import { createGame, MUZZLE } from '../server/game.mjs';
 import { makePhysics } from '../server/physics.mjs';
 import { MATCH as MATCHC, STORM as STORMC, matchAt, pickFinal, stageCircle, stormField, stormPlan, stormRadii } from '../server/storm.mjs';
@@ -1393,6 +1393,77 @@ console.log('cargo event (createGame, controlled clock):');
   clock += CARGO.groundMs; g.stepCargo();
   ok(!g.cargo && A.last('cargoEnd') && A.last('cargoEnd').id === c2.id, 'the untaken crate expires');
   ok(![...g.zones.values()].some(z => z.kind === 'beacon'), 'its beacon is out too');
+  g.stop();
+}
+
+/* ---------- 2o. the «Святая гонка» event: the call to the hill, the capture, the bell, the buff, the prize ---------- */
+console.log('holy race event (createGame, controlled clock):');
+{
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), mode: 'team', now: () => clock, name: 'holy', itemCount: 4 });
+  const tick = ms => { const n = Math.max(1, Math.ceil(ms / 200)); for (let k = 0; k < n; k++) { clock += ms / n; g.stepHoly(); } };   // the race ticks every 200 ms, as on the server
+  const A = seat(g, conn()); msg(A, { t: 'join', name: 'Красный', team: 0, x: 0, z: 0, yaw: 0 });
+  const B = seat(g, conn()); msg(B, { t: 'join', name: 'Синий', team: 1, x: 50, z: 50, yaw: 0 });
+  const p = A.handle.player, q = B.handle.player;
+  const stand = (pl, pt) => { pl.x = pt.x; pl.z = pt.z; pl.y = pt.gy + 1.7; };
+  const away = pl => { pl.x = 56; pl.z = 1214; pl.y = 1.7; };   // the middle of the hill, out of every ring
+  clock += 3000;
+  ok(!g.holy, 'no race before the first call is due');
+  tick(HOLY.firstMs - HOLY.warnMs - 3000);
+  ok(A.all('chat').some(m => /Святая гонка через 30/.test(m.text)), 'the chat warns of the race half a minute ahead');
+  tick(HOLY.warnMs + 100);
+  ok(g.holy && g.holy.points.length === 4, 'the race begins with four bell towers');
+  ok(A.last('holy') && A.last('holy').arena && A.last('holy').arena.name === 'Церковная горка', 'the call went to everybody with the hill arena');
+  ok(g.health().arena === 'Церковная горка', 'the field is the hill during the race');
+  ok(Math.hypot(p.x - 56, p.z - 1214) < 260, 'the players were called to the hill');
+  // one side alone in the ring takes the point: the cathedral falls to the reds
+  const pt0 = g.holy.points[0];
+  stand(p, pt0); away(q);
+  tick(HOLY.capMs - 200);
+  ok(!pt0.owner && pt0.prog > 0.9, 'the ring fills while one side stands in it', 'prog ' + pt0.prog);
+  tick(400);
+  ok(pt0.owner === 't0' && pt0.team === 0, 'the cathedral is taken by the red team');
+  ok(A.last('bell') && A.last('bell').i === 0 && A.last('bell').side === 't0', 'the bell went to everybody');
+  ok(A.all('chat').some(m => /захватили Собор/.test(m.text)), 'the chat names the taken temple and its buff');
+  // the cathedral buff: +25% damage. A body shot at 20 m deals ~26 against the plain ~21 (a head would be ~38)
+  q.x = p.x + 20; q.z = p.z; q.y = p.y;
+  const ql = Math.hypot(20, 0.6);
+  msg(A, { t: 'shoot', w: 0, rays: [[20 / ql, -0.6 / ql, 0]] }); clock += 120; g.stepBullets();
+  const dealt = 100 - q.hp;
+  ok(dealt >= 25 && dealt <= 29, 'the cathedral buff raises the body damage', 'dealt ' + dealt);
+  // any one member takes a point for the whole team: a second red takes the catholic church alone
+  const C = seat(g, conn()); msg(C, { t: 'join', name: 'Красный2', team: 0, x: 0, z: 0, yaw: 0 });
+  const r = C.handle.player, pt1 = g.holy.points[1];
+  stand(r, pt1); away(p); away(q);
+  tick(HOLY.capMs + 200);
+  ok(pt1.owner === 't0', 'any one member takes the point for the whole team');
+  // the remaining two fall to the reds: the lutheran speed and the old believers' reload
+  for (const idx of [2, 3]) { const tp = g.holy.points[idx]; stand(p, tp); away(q); away(r); tick(HOLY.capMs + 200); ok(tp.owner === 't0', 'temple ' + idx + ' taken by the reds'); }
+  // the old believers' buff: the reload is 30% quicker
+  p.reloadDone = 0; p.mag[0] = 5;
+  msg(A, { t: 'reload', w: 0 });
+  ok(p.reloadDone === clock + Math.round(1800 * HOLY.buffs.reload), 'the old believers hasten the reload');
+  // all four in one hand: the three-minute hold begins
+  ok(g.holy.holdSide === 't0', 'holding all four starts the three-minute hold');
+  ok(A.last('holy').hold && A.last('holy').hold.side === 't0', 'the hold went to everybody');
+  tick(HOLY.holdMs - 1000);
+  ok(g.holy, 'still racing a moment before the prize');
+  tick(1500);
+  ok(!g.holy, 'the race ends with the grand prize');
+  ok(A.last('holyWin') && A.last('holyWin').side === 't0', 'the prize went to everybody');
+  ok(g.health().score[0] >= HOLY.prizeScore, 'the winning team got the prize score');
+  ok(p.hp === 100 && p.reserve[0] === RESERVE[0] && p.nades === NADE.count, 'the winners are healed and re-armed');
+  ok(g.health().arena === null, 'the field is released after the race');
+  ok(A.last('holyEnd') && A.last('holyEnd').reason === 'win', 'the end went to everybody with the reason');
+  // the next race comes after the gap; a late joiner gets it in hello
+  tick(HOLY.gapMs + 100);
+  ok(g.holy, 'the next race comes after the gap');
+  const D = seat(g, conn()); msg(D, { t: 'join', name: 'Поздний', team: 0, x: 0, z: 0, yaw: 0 });
+  ok(D.last('hello').holy && D.last('hello').holy.id === g.holy.id, 'a late joiner gets the race in hello');
+  ok(D.last('hello').arena && D.last('hello').arena.name === 'Церковная горка', 'a late joiner gets the hill arena');
+  // an untaken race expires on its own
+  tick(HOLY.durMs + 200);
+  ok(!g.holy && A.last('holyEnd') && A.last('holyEnd').reason === 'time', 'the untaken race expires');
   g.stop();
 }
 
