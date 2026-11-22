@@ -104,6 +104,8 @@ export function cargoTick(dt) {
   if (flashUntil && now > flashUntil) { flashUntil = 0; banner.hidden = true; }
   if (!cur) { if (!label.hidden) label.hidden = true; if (!point.hidden) point.hidden = true; return; }
   const c = cur, t = serverNow();
+  const d = Math.hypot(c.x - P.x, c.z - P.z);
+  const near = Math.max(0, Math.min(1, (d - 12) / 30));   // the pillar blinds whoever stands at the crate: it fades out close by
   // the descent along the server's timeline; the sway of a load under a canopy
   if (c.state === 'fall') {
     const y = Math.max(c.gy, c.y0 - c.speed * (t - c.t0) / 1000);
@@ -119,7 +121,7 @@ export function cargoTick(dt) {
       if (c.chute) { c.chute.scale.set(1 - 0.38 * k, 1 - 0.93 * k, 1 - 0.38 * k); c.chute.position.y = 1.3 * k; }
     }
     const pulse = 0.24 + 0.09 * Math.sin(t * 0.004);
-    c.beam.material.opacity = Math.min(1, c.beam.material.opacity + dt * 0.8) * pulse / 0.2;
+    c.beam.material.opacity = Math.min(1, c.beam.material.opacity + dt * 0.8) * pulse / 0.2 * near;
     c.ring.material.opacity = 0.4 + 0.15 * Math.sin(t * 0.005);
     const rs = 1 + 0.04 * Math.sin(t * 0.005); c.ring.scale.set(rs, rs, 1);
     if (c.flash > 0) { c.flash = Math.max(0, c.flash - dt * 1.6); c.ring.scale.setScalar(1 + (1 - c.flash) * 1.6); c.ring.material.opacity = c.flash * 0.8; }
@@ -129,7 +131,6 @@ export function cargoTick(dt) {
     c.beam.material.opacity *= c.fade; c.ring.material.opacity *= c.fade;
     if (c.fade <= 0) { scene.remove(c.group); cur = null; label.hidden = true; point.hidden = true; return; }
   }
-  const d = Math.hypot(c.x - P.x, c.z - P.z);
   // the banner's live line: the state and the distance
   if (!flashUntil) {
     const sub = c.state === 'fall' ? 'Снижается · ' + Math.max(1, Math.round(d)) + ' м' : c.state === 'landed' ? (d < 30 ? 'Подойдите, чтобы забрать · ' + Math.max(1, Math.round(d)) + ' м' : 'Дымит · ' + Math.max(1, Math.round(d)) + ' м') : '';
