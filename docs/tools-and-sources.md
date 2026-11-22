@@ -9,8 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Claude | claude/glass-window-reflections-0f47f6 | Живые отражения в стекле: плоское зеркало стены, свой персонаж в нём | src/render/mirror.js, mirror-city.js, materials.js, post.js, src/buildings/series.js, src/landmarks/index.js |
-
 ## Автономный цикл улучшений
 
 Бесконечный конвейер «улучшать то, что есть»: драйвер `tools/improve-loop.ps1` запускает итерации агента, каждая берёт задачу из [docs/improvement-backlog.md](improvement-backlog.md) и доводит её до смерженного PR; когда очередь пустеет — итерация аудирует город (кадры, ошибки консоли, замеры) и наполняет очередь снова. Запуск `npm run loop`, остановка — файл `LOOP-STOP` в корне. Полная документация: [docs/autoloop.md](autoloop.md). Ветки `chatbox/loop-*` зарезервированы за циклом.
