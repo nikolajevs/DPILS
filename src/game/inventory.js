@@ -307,7 +307,7 @@ function paint() {
     r.lbl.textContent = !it ? '' : isGun(it) ? it.mag + '/' + it.reserve : SHORT[it.kind];
   });
   R.fill.textContent = pk.filter(Boolean).length + ' / ' + pk.length;
-  R.dot.className = 'dot ' + (data.ffa ? 'tf' : 't' + data.team);
+  R.dot.className = 'dot tf';
   R.name.textContent = data.name || 'Вы';
   R.kd.textContent = data.kills + ' · ' + data.deaths; R.kd.title = 'убийства · смерти';
   const hp = Math.max(0, Math.ceil(data.hp));

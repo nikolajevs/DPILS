@@ -6,9 +6,10 @@
    2. The live side (server/social.mjs) over fake connections: the key proves the account, the invitation reaches the
       invited at once, the members see each other online and where they are, the team chat, the list of the online,
       the fights are told about every change.
-   3. The fight (server/game.mjs with clans): a team joins one side and the bots even the sides out; a member on the
-      other side crosses over at the respawn; in the free-for-all the team's bullets, grenades and chat spare each
-      other and reach only them; the tag rides the board; the storm is won by the last team standing. */
+   3. The fight (server/game.mjs with clans): there are no sides — everybody for himself, the team is the only ally:
+      its members appear together and respawn beside each other, a new member is an ally at once, the team's
+      bullets, grenades and chat spare each other and reach only them; the tag rides the board; the storm is won by
+      the last team standing. */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -155,11 +156,11 @@ function flatWorld() {
 }
 const seat = (g, c) => { c.handle = g.attach(c); return c; };
 const msg = (c, m) => c.handle.message(JSON.stringify(m));
-function setup(mode, extra = {}) {
+function setup(extra = {}) {
   let clock = 1e6;
   const names = ['Аня', 'Боря', 'Вика', 'Гоша'], A = fakeAccounts(names), team = new Map([['Аня', 'DVN'], ['Боря', 'DVN']]);
   const clans = n => (team.has(n) ? { id: 't-' + team.get(n), tag: team.get(n), name: 'Команда ' + team.get(n) } : null);
-  const g = createGame({ world: flatWorld(), accounts: A, clans, mode, area: { cx: 0, cz: 0, r: 3300 }, now: () => clock, name: 'clans', itemCount: 0, ...extra });
+  const g = createGame({ world: flatWorld(), accounts: A, clans, area: { cx: 0, cz: 0, r: 3300 }, now: () => clock, name: 'clans', itemCount: 0, ...extra });
   g.stop();
   const join = (name, m = {}) => { const c = seat(g, conn()); msg(c, { t: 'join', name, key: A.keyOf(name), x: 0, z: 0, yaw: 0, ...m }); return c; };
   return { g, join, team, tick: ms => { clock += ms; }, get clock() { return clock; } };
@@ -173,39 +174,38 @@ function shootAt(T, a, b) {
   return pb.hp < hp;
 }
 {
-  // the team fight: Аня and Боря are one team; Вика and Гоша have none
-  const T = setup('team');
-  const an = T.join('Аня', { team: 0 }), vi = T.join('Вика'), go = T.join('Гоша');
-  ok(an.handle.player.team === 0 && vi.handle.player.team === 1, 'the sides by the balance');
+  // no sides: Аня and Боря are one team; Вика and Гоша have none and fight for themselves
+  const T = setup();
+  T.g.addBot();
+  const an = T.join('Аня', { team: 0 }), vi = T.join('Вика', { team: 1 }), go = T.join('Гоша');   // an old page may still ask for a side: it is ignored
   const bo = T.join('Боря', { team: 1 });
-  ok(bo.handle.player.team === 0, 'Боря joins the side of his team, not the one he asked for');
-  ok(bo.last('hello').clan && bo.last('hello').clan.tag === 'DVN', 'hello carries his team');
-  const row = bo.last('board').board.find(e => e.name === 'Боря');
-  ok(row.tag === 'DVN' && row.clan === 't-DVN' && !bo.last('board').board.find(e => e.name === 'Вика').tag, 'the board carries the tag of the team members only');
+  ok([an, vi, go, bo].every(c => !('team' in c.handle.player)) && [...T.g.players.values()].every(p => !('team' in p)), 'nobody is put on a side, the bots neither');
+  const hello = bo.last('hello');
+  ok(hello.mode === 'ffa' && !('teams' in hello) && !('team' in hello) && !('score' in hello), 'hello says everybody for himself: no sides, no side score');
+  ok(hello.clan && hello.clan.tag === 'DVN', 'hello carries his team');
+  const board = bo.last('board').board, row = board.find(e => e.name === 'Боря');
+  ok(row.tag === 'DVN' && row.clan === 't-DVN' && !board.find(e => e.name === 'Вика').tag, 'the board carries the tag of the team members only');
+  ok(board.every(e => !('team' in e)) && !('score' in bo.last('board')), 'the board carries no side and no side score');
   const pa = an.handle.player, pb = bo.handle.player;
   ok(Math.hypot(pa.x - pb.x, pa.z - pb.z) < 12, 'Боря appears next to Аня');
-  ok(go.handle.player.team === 0 || go.handle.player.team === 1, 'Гоша has a side');
-  // bots even the sides out after a team took one
-  const T2 = setup('team');
-  T2.g.addBot(); T2.g.addBot();
-  const a2 = T2.join('Аня', { team: 0 }), b2 = T2.join('Боря', { team: 1 }), v2 = T2.join('Вика'); void a2; void b2; void v2;
-  const side = k => [...T2.g.players.values()].filter(p => p.team === k).length;
-  ok(Math.abs(side(0) - side(1)) <= 1, 'the bots cross so the sides differ by one at most', side(0) + ' : ' + side(1));
-  // the crossing at the respawn: Вика joins a team on the other side, dies, comes back on her team's side
+  T.tick(3000);
+  ok(shootAt(T, vi, go) && shootAt(T, go, vi), 'two without a team are foes to each other');
+  // Вика joins the team: refreshClans puts the tag on the board, and she is an ally at once
   T.team.set('Вика', 'DVN'); T.g.refreshClans();
   ok(vi.last('board').board.find(e => e.name === 'Вика').tag === 'DVN', 'refreshClans puts the new tag on the board');
-  const pv = vi.handle.player; pv.hp = 1; T.tick(3000);
-  msg(go, { t: 'state', x: go.handle.player.x, y: 1.7, z: go.handle.player.z, yaw: 0, pitch: 0 });
-  pv.alive = false; pv.diedAt = T.clock; T.tick(5000);
-  msg(vi, { t: 'respawn' });
-  ok(pv.team === 0 && vi.last('side') && vi.last('side').team === 0 && pv.alive, 'at the respawn she crosses to her team', 'team ' + pv.team);
-  // the team chat of the side still reaches the whole side (the team is inside it)
+  ok(!shootAt(T, an, vi) && shootAt(T, an, go), 'the new member is spared at once, the one without a team is not');
+  // the respawn beside a teammate: no side to cross to any more
+  const pv = vi.handle.player; pv.alive = false; pv.diedAt = T.clock; T.tick(5000);
+  pa.x = 300; pa.z = 300; pb.x = 305; pb.z = 300;
+  msg(vi, { t: 'respawn', mate: true });
+  ok(pv.alive && !vi.last('side') && Math.min(Math.hypot(pv.x - pa.x, pv.z - pa.z), Math.hypot(pv.x - pb.x, pv.z - pb.z)) < 15, 'the respawn puts her beside a teammate', pv.x.toFixed(1) + ', ' + pv.z.toFixed(1));
+  // the team chat: the team only, with the tag
   msg(an, { t: 'chat', text: 'вперёд', team: true });
-  ok(bo.last('say') && bo.last('say').tag === 'DVN' && [an, bo, vi, go].every(c => c.all('say').some(s => s.text === 'вперёд') === (c.handle.player.team === 0)), 'the team chat goes to the whole side, the tag with it');
+  ok(bo.last('say') && bo.last('say').tag === 'DVN' && !('team' in bo.last('say')) && vi.all('say').some(s => s.text === 'вперёд') && !go.all('say').some(s => s.text === 'вперёд'), 'the team chat goes to the team only, the tag with it');
 }
 {
   // the free-for-all: the team is one, the others are foes
-  const T = setup('ffa');
+  const T = setup();
   const an = T.join('Аня'), bo = T.join('Боря'), vi = T.join('Вика');
   T.tick(3000);
   ok(!shootAt(T, an, bo), 'a teammate is not hurt by her bullet');
@@ -223,7 +223,7 @@ function shootAt(T, a, b) {
 }
 {
   // the storm of the match (the last twenty minutes): the last team standing wins
-  const T = setup('ffa', { match: { len: 7200000, graceMs: 0 } });
+  const T = setup({ match: { len: 7200000, graceMs: 0 } });
   const an = T.join('Аня'), bo = T.join('Боря'), vi = T.join('Вика');
   const pa = an.handle.player, pb = bo.handle.player;
   ok(Math.hypot(pa.x - pb.x, pa.z - pb.z) < 12, 'the team gathers in one place');

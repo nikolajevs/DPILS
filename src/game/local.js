@@ -14,12 +14,12 @@ import { walkLift } from '../world/terrain.js';
 // by one already on it). Bullets, grenades and bots therefore meet the city the body stands in, not the raw lidar grid.
 const ground = (x, z, y = null) => walkLift(x, z, y == null ? null : y - 1.7);
 const world = { ...makePhysics(buildingAt, ground), buildingAt, ground };
-// opts: { bots, level: easy | normal | hard, mode: team | ffa, arena: center | fortress | station | '', time: auto | 0 | 1 | 2 }
+// opts: { bots, level: easy | normal | hard, arena: center | fortress | station | '', time: auto | 0 | 1 | 2 }
 // time 'auto': the game keeps the clock of the server's day (server/daycycle.mjs); a fixed time of day needs no clock
 class LocalSocket {
   constructor(opts) {
     this.readyState = 0; this.closed = false;
-    this.game = createGame({ world, mode: opts.mode, arena: ARENAS[opts.arena] || null, level: opts.level, name: 'Тренировка с ботами', maxPlayers: 64, day: opts.time === 'auto' ? { len: DAY_MS } : null });
+    this.game = createGame({ world, arena: ARENAS[opts.arena] || null, level: opts.level, name: 'Тренировка с ботами', maxPlayers: 64, day: opts.time === 'auto' ? { len: DAY_MS } : null });
     this.h = this.game.attach({ send: s => this.deliver(s), close: () => this.close() });
     for (let i = 0; i < Math.max(0, Math.min(63, opts.bots | 0)); i++) this.game.addBot(opts.level);   // 63 bots + you = the 64 places
     setTimeout(() => { if (this.closed) return; this.readyState = 1; if (this.onopen) this.onopen(); }, 0);

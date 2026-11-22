@@ -30,7 +30,7 @@ import { idOf } from './leaderboard.mjs';
 import { CARGO, HOLY, SIEGE } from './combat.mjs';
 
 const TTL = 12 * 3600 * 1000, MAX_SESSIONS = 64, LOG_CAP = 1000;
-const ENV_KEYS = ['PORT', 'SERVER_NAME', 'MODE', 'ARENA', 'BOTS', 'BOT_LEVEL', 'WIN_SCORE', 'MATCH', 'DAY_MIN', 'LEADERBOARD', 'ACCOUNTS', 'TEAMS', 'EVENTS', 'STATIC', 'NODE_ENV'];
+const ENV_KEYS = ['PORT', 'SERVER_NAME', 'ARENA', 'BOTS', 'BOT_LEVEL', 'WIN_SCORE', 'MATCH', 'DAY_MIN', 'LEADERBOARD', 'ACCOUNTS', 'TEAMS', 'EVENTS', 'STATIC', 'NODE_ENV'];
 const mb = b => Math.round(b / 1048576 * 10) / 10;
 
 export function createAdmin({ pass, game, accounts = null, board = null, teams = null, social = null, events = null, clients = () => 0, sockets = () => [], files = [] }) {
@@ -123,12 +123,12 @@ export function createAdmin({ pass, game, accounts = null, board = null, teams =
         http: { total: http.total, perMin: perMin(), s4: http.s4, s5: http.s5 },
         counts: { accounts: accounts ? accounts.count() : null, board: board ? board.count() : null, teams: teams ? teams.count() : null, online: social ? social.online() : null },
         files: files.map(f => { try { const st = fs.statSync(f.path); return { name: f.name, size: st.size, mtime: st.mtimeMs }; } catch (e) { return { name: f.name, size: 0, mtime: 0 }; } }),
-        env: { name: process.env.SERVER_NAME || 'Даугавпилс', mode: process.env.MODE === 'ffa' ? 'ffa' : 'team', arena: process.env.ARENA || '', bots: process.env.BOTS || '0', level: process.env.BOT_LEVEL || 'normal', match: process.env.MATCH === 'off' ? 'off' : 'on', day: process.env.DAY_MIN || '120' },
+        env: { name: process.env.SERVER_NAME || 'Даугавпилс', arena: process.env.ARENA || '', bots: process.env.BOTS || '0', level: process.env.BOT_LEVEL || 'normal', match: process.env.MATCH === 'off' ? 'off' : 'on', day: process.env.DAY_MIN || '120' },
       };
     },
     'GET /players': () => ({
       rows: [...game.players.values()].map(p => ({
-        id: p.id, name: p.name, acct: p.acct || '', tag: p.clan ? p.clan.tag : '', team: p.team, bot: !!p.bot, char: p.char,
+        id: p.id, name: p.name, acct: p.acct || '', tag: p.clan ? p.clan.tag : '', bot: !!p.bot, char: p.char,
         kills: p.kills, deaths: p.deaths, dmg: Math.round(p.st.dmg), acc: p.st.shots ? Math.round(100 * p.st.hitShots / p.st.shots) : 0,
         ping: p.bot ? null : Math.round(p.rtt), hp: Math.max(0, Math.round(p.hp)), alive: p.alive, x: Math.round(p.x), z: Math.round(p.z),
         wep: p.wep, mark: p.markUntil > Date.now(), since: p.joinedAt || 0,
@@ -269,7 +269,7 @@ export function createAdmin({ pass, game, accounts = null, board = null, teams =
       const p = game.players.get(+q.get('id')); if (!p) return { code: 404, error: 'no-player' };
       const t = Date.now(), r2 = v => Math.round(v * 100) / 100;
       return { player: {
-        id: p.id, name: p.name, acct: p.acct || '', clan: p.clan || null, team: p.team, bot: !!p.bot, char: p.char,
+        id: p.id, name: p.name, acct: p.acct || '', clan: p.clan || null, bot: !!p.bot, char: p.char,
         joinedAt: p.joinedAt, alive: p.alive, hp: r2(p.hp), diedAt: p.diedAt,
         x: r2(p.x), y: r2(p.y), z: r2(p.z), yaw: r2(p.yaw), pitch: r2(p.pitch), eye: p.eye, free: !!p.free, fallTop: p.fallTop == null ? null : r2(p.fallTop),
         wep: p.wep, loadout: p.loadout, attach: p.attach, mag: p.mag, reserve: p.reserve, pack: p.pack,

@@ -11,10 +11,11 @@ import { $, reduceMotion } from '../core/env.js';
    over the city's, created only when the lobby first opens and paused whenever the card is away. The figure turns
    by itself, the pointer turns it by hand, the wheel brings it closer. The four characters are chosen on cards under
    the stage; each card carries a portrait rendered once from its own model (a 2× supersampled shot of the same
-   scene), so the choice is a face, not a name in a list. The hidden selects (#mpChar, #trMode, #trLevel, #trTime, #mpTeam)
+   scene), so the choice is a face, not a name in a list. The hidden selects (#mpChar, #trLevel, #trTime)
    stay the source of truth: the cards and the segment buttons write them and fire 'change', exactly as the old form
-   did — src/game/mp.js reads them on join without knowing the lobby exists. The pedestal ring and the chip over the
-   stage take the team's colour (amber while the team is not chosen or everyone fights for himself).
+   did — src/game/mp.js reads them on join without knowing the lobby exists. There are no sides to choose: everybody
+   fights for himself (the only allies are the own team of the players), so the pedestal ring and the chip over the
+   stage are amber, the colour of the free-for-all.
    Every material here is worldSpace: the page lifts all shaders by the terrain height (world/terrain.js), and the
    lobby scene stands at its own origin, not in the city. If the models or WebGL cannot come, the cards and the
    settings still work; a silhouette stands in for the figure.
@@ -242,14 +243,8 @@ function cycle(d) {
   select(CHAR_KEYS[(i + d + CHAR_KEYS.length) % CHAR_KEYS.length]);
 }
 
-/* ---------- the team: the ring, the glow and the chip take its colour ---------- */
-function teamInfo() {
-  if (step === 'train' && $('trMode').value === 'ffa') return { c: 0xf0b429, css: '#f0b429', label: 'Каждый сам за себя' };
-  const t = $('mpTeam').value;
-  if (t === '0') return { c: 0xe0463a, css: '#e0463a', label: 'Красные' };
-  if (t === '1') return { c: 0x3b86e8, css: '#3b86e8', label: 'Синие' };
-  return { c: 0xf0b429, css: '#f0b429', label: step === 'train' ? 'Команды · по балансу' : 'По балансу' };
-}
+/* ---------- the ring, the glow and the chip: the amber of the free-for-all ---------- */
+function teamInfo() { return { c: 0xf0b429, css: '#f0b429', label: 'Каждый сам за себя' }; }
 function updateTeam() {
   const i = teamInfo();
   if (ring) ring.material.color.setHex(i.c);
@@ -273,13 +268,9 @@ function bindSeg(segId, selId) {
   painters.push(paint);
   paint();
 }
-bindSeg('trModeSeg', 'trMode');
 bindSeg('trLevelSeg', 'trLevel');
 bindSeg('trTimeSeg', 'trTime');
-bindSeg('mpTeamSeg', 'mpTeam');
 $('mpChar').addEventListener('change', refresh);
-$('mpTeam').addEventListener('change', updateTeam);
-$('trMode').addEventListener('change', updateTeam);
 $('lobbyPrev').addEventListener('click', () => cycle(-1));
 $('lobbyNext').addEventListener('click', () => cycle(1));
 
@@ -336,7 +327,7 @@ setInterval(() => { if (matchLast && !$('start').hidden) paintMatch(); }, 1000);
 function openLobby(s) {
   step = s; open = true;
   for (const p of painters) p();   // prepareUi restored the selects from localStorage without a 'change'
-  buildCards(); ensureRenderer(); refresh(); updateTeam();   // the renderer first: the ring takes the team's colour, refresh asks for the figure
+  buildCards(); ensureRenderer(); refresh(); updateTeam();   // the renderer first: the ring takes its colour, refresh asks for the figure
   if (!raf) { lastT = performance.now(); raf = requestAnimationFrame(tick); }
   if (!matchPoll) { matchStatus(); matchPoll = setInterval(matchStatus, 10000); }
 }

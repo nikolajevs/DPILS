@@ -96,12 +96,6 @@
           <div class="step-part lobby-sec" data-for="train">
             <h3>Параметры боя</h3>
             <label class="lb-field">Карта<select id="trArena"><option value="">открытый город</option><option value="center" selected>арена: Центр города</option><option value="fortress">арена: крепость</option><option value="station">арена: вокзал</option><option value="park">арена: Центральный парк</option><option value="church">арена: Церковная горка</option><option value="pond">арена: Пороховка (пруд)</option><option value="speedway">арена: спидвей</option><option value="culture">арена: Дворец культуры</option><option value="griva">арена: Грива, левый берег</option></select></label>
-            <div class="lb-field"><span class="lb-l">Режим</span>
-              <select id="trMode" class="sr-only"><option value="team" selected>команды</option><option value="ffa">каждый сам за себя</option></select>
-              <div class="seg" id="trModeSeg" role="group" aria-label="Режим боя">
-                <button type="button" data-v="team">Команды</button><button type="button" data-v="ffa">Каждый сам за себя</button>
-              </div>
-            </div>
             <div class="lb-2col">
               <label class="lb-field">Ботов<select id="trBots"><option>2</option><option>4</option><option selected>6</option><option>8</option><option>12</option><option>16</option><option>24</option><option>32</option><option>48</option><option>63</option></select></label>
               <div class="lb-field"><span class="lb-l">Сложность</span>
@@ -126,18 +120,12 @@
               <li><b>2 часа</b> — одна катка, одни сутки: рассвет, день, закат и ночь</li>
               <li><b>Вход</b> — первые 30 минут, дальше только вернуться в свою катку</li>
               <li><b>Последние 20 минут</b> — шторм: зона сужается, снаружи урон, без возрождения</li>
-              <li><b>Победа</b> — последний выживший; в командном бою — последняя сторона</li>
+              <li><b>Победа</b> — последний выживший или последняя выжившая команда</li>
             </ul>
           </div>
           <fieldset class="player step-part lobby-sec" data-for="train online">
             <legend>Игрок</legend>
             <label class="lb-field">Ник<input id="mpName" maxlength="16" autocomplete="off"></label>
-            <div class="lb-field" id="mpTeamRow"><span class="lb-l">Команда</span>
-              <select id="mpTeam" class="sr-only"><option value="-1">Любая (по балансу)</option><option value="0">Красные</option><option value="1">Синие</option></select>
-              <div class="seg seg-team" id="mpTeamSeg" role="group" aria-label="Команда">
-                <button type="button" data-v="-1"><i class="dot any"></i>По балансу</button><button type="button" data-v="0"><i class="dot t0"></i>Красные</button><button type="button" data-v="1"><i class="dot t1"></i>Синие</button>
-              </div>
-            </div>
             <label class="lb-field" id="mpSpawnRow">Где появиться<select id="mpSpawn"></select></label>
           </fieldset>
           <div class="lobby-team step-part" id="lobbyTeam" data-for="online"><span id="lobbyTeamText"></span><button class="btn" id="bTeamLobby" type="button" disabled>Команда<em class="tm-badge" id="teamBadgeLobby" hidden></em></button></div>

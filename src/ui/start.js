@@ -7,9 +7,9 @@ import { openLobby, closeLobby } from './lobby.js';
 /* ---------- the start card, in steps ----------
    First a choice: a training against bots or a game on a server (the city walk was removed — the city is the arena of
    the fight). Only then the settings of
-   that choice, with a way back; and within them, a setting shows only when it means something: the team not in a
-   training where everyone is for himself, the place to appear only in the open city (in an arena you appear on your
-   base). There is one server — the page's own address (src/game/server.js) — so there is nothing to choose.
+   that choice, with a way back; and within them, a setting shows only when it means something: the place to appear
+   only in the open city (in an arena you appear on its base points). There are no sides to choose: everybody fights
+   for himself, the only allies are the own team of the players (src/ui/team.js). There is one server — the page's own address (src/game/server.js) — so there is nothing to choose.
    The keys live in the fight («Клавиши», F1), not on the start card; the card's footer link opens the credits
    modal with the data sources and licences. The time of day is a setting of the training (авто, день, вечер, ночь),
    kept in localStorage; online the server's day runs (server/daycycle.mjs) and there is nothing to choose. The storm is
@@ -17,8 +17,8 @@ import { openLobby, closeLobby } from './lobby.js';
    card shows the match live (src/ui/lobby.js). */
 const card = $('startCard'), home = $('stepHome'), form = $('play');
 const STEPS = {
-  train: { title: 'Тренировка с ботами', hint: 'Бой против ботов прямо в браузере, по правилам сервера. Выберите карту, режим и соперников.' },
-  online: { title: 'Играть онлайн', hint: 'Катка на сервере: 2 часа боя, вход в первые 30 минут, в последние 20 минут — шторм до последнего выжившего. Командный бой или каждый сам за себя — режим выбирает сервер.' }
+  train: { title: 'Тренировка с ботами', hint: 'Бой против ботов прямо в браузере, по правилам сервера: каждый сам за себя. Выберите карту и соперников.' },
+  online: { title: 'Играть онлайн', hint: 'Катка на сервере: 2 часа боя, вход в первые 30 минут, в последние 20 минут — шторм до последнего выжившего. Каждый сам за себя, союзники — только ваша команда.' }
 };
 let came = null;   // the choice the card came back from, to put the focus on it again
 function showStep(step) {
@@ -36,10 +36,9 @@ function showStep(step) {
 // the settings that depend on others
 function follow() {
   const step = card.dataset.step, train = step === 'train';
-  $('mpTeamRow').hidden = train && $('trMode').value === 'ffa';
   $('mpSpawnRow').hidden = train && $('trArena').value !== '';
 }
-$('trMode').addEventListener('change', follow); $('trArena').addEventListener('change', follow);
+$('trArena').addEventListener('change', follow);
 $('chTrain').onclick = () => showStep('train'); $('chOnline').onclick = () => showStep('online'); $('stepBack').onclick = () => showStep('home');
 // the time of day of the training: remembered for the next visit and shown at once on the city behind the card
 const timeSel = $('trTime');
