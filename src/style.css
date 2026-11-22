@@ -948,3 +948,85 @@ body.mp:not(:has(#view.locked)) .mp-sys { bottom: 64px; }   /* above the returne
 .credits-card .credit a { color: var(--ink); text-decoration-color: color-mix(in srgb, var(--brick) 55%, transparent); text-underline-offset: 2px; }
 .credits-card .credit a:hover { color: var(--brick); }
 @media (prefers-reduced-motion: reduce) { .credits-card { animation: none; } .choice, .choice::after { transition: none; } }
+
+/* ---------- the «Шторм» event ----------
+   The third door of the start card (the battle royale), its lobby card with the live status, the storm HUD in the
+   fight (the phase, the countdown, the living, the radar and the way in), the electric edge of the burn outside the
+   circle, and the dead man's way back to the lobby. The storm's own colour: electric cyan on deep indigo, the gold
+   of the final beacon. The lobby shell repeats the dark console of the train and online steps. */
+.card[data-step="storm"] { width: min(1080px, 100%); background: #0d1219; border-color: rgba(255, 255, 255, .14); color: #fff; gap: 12px; }
+.card[data-step="storm"] h1, .card[data-step="storm"] .card-top { display: none; }
+.card[data-step="storm"] .progress { color: rgba(255, 255, 255, .55); }
+.card[data-step="storm"] .load-pct { color: #fff; }
+.card[data-step="storm"] .load-bar { background: rgba(255, 255, 255, .12); }
+.card[data-step="storm"] .load-bar i { background: var(--warn); }
+.card[data-step="storm"] .start-foot { border-color: rgba(255, 255, 255, .12); }
+.card[data-step="storm"] .foot-link { color: rgba(255, 255, 255, .55); }
+.card[data-step="storm"] .foot-link:hover { color: var(--warn); }
+.card[data-step="storm"] .foot-note { color: rgba(255, 255, 255, .4); }
+@media (max-width: 900px) { .card[data-step="storm"] { width: min(660px, 100%); } }
+/* the home door */
+.choice.storm-choice { border-color: rgba(87, 200, 255, .35); background: linear-gradient(135deg, rgba(23, 37, 84, .55), rgba(13, 18, 25, .2)); }
+.choice.storm-choice .ch-ico { background: rgba(87, 200, 255, .14); color: #57c8ff; }
+.choice.storm-choice .ch-ico svg { fill: currentColor; stroke: none; }
+.choice.storm-choice:hover:not(:disabled) { border-color: #57c8ff; background: linear-gradient(135deg, rgba(31, 52, 110, .65), rgba(13, 18, 25, .3)); }
+.choice.storm-choice:hover:not(:disabled)::after { color: #57c8ff; }
+.ch-badge { position: absolute; right: 34px; top: 10px; font: 700 9px/1 var(--f-body); font-style: normal; letter-spacing: .08em; text-transform: uppercase; padding: 4px 7px; border-radius: 999px; background: rgba(87, 200, 255, .22); color: #0f6ea8; border: 1px solid rgba(29, 127, 184, .5); }
+.ch-badge[data-phase="play"], .ch-badge[data-phase="sudden"] { background: rgba(255, 90, 77, .18); color: #c2372b; border-color: rgba(194, 55, 43, .5); animation: storm-blink 1.6s ease-in-out infinite; }
+@keyframes storm-blink { 50% { opacity: .55; } }
+/* the lobby event card */
+.storm-sec h3 { color: #57c8ff; }
+.storm-lore { margin: 0; font: 400 12.5px/1.5 var(--f-body); color: rgba(255, 255, 255, .68); }
+.storm-status { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(87, 200, 255, .3); background: rgba(87, 200, 255, .07); font: 600 12.5px/1.35 var(--f-body); color: #bfe7ff; }
+.storm-pulse { width: 9px; height: 9px; border-radius: 50%; background: #57c8ff; box-shadow: 0 0 10px #57c8ff; flex: none; animation: storm-blink 1.6s ease-in-out infinite; }
+.storm-rules { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.storm-rules li { position: relative; padding-left: 16px; font: 400 12px/1.4 var(--f-body); color: rgba(255, 255, 255, .6); }
+.storm-rules li::before { content: "⚡"; position: absolute; left: 0; top: 0; font-size: 10px; color: #57c8ff; }
+.storm-rules b { color: #fff; font-weight: 600; }
+.lobby .go.storm-go { background: linear-gradient(180deg, #7fd8ff, #2f9dd8); color: #06121f; box-shadow: 0 4px 0 rgba(0, 0, 0, .35), 0 8px 24px rgba(87, 200, 255, .25); }
+/* the storm HUD over the fight */
+.storm-hud { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 7; display: grid; justify-items: center; gap: 8px; pointer-events: none; }
+.storm-top { display: flex; align-items: center; gap: 16px; padding: 9px 14px; background: rgba(9, 13, 26, .78); border: 1px solid rgba(87, 200, 255, .35); border-radius: 12px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 6px 24px rgba(0, 0, 0, .35); }
+.storm-phase { display: flex; align-items: center; gap: 10px; }
+.storm-ico { width: 22px; height: 22px; fill: #57c8ff; filter: drop-shadow(0 0 6px rgba(87, 200, 255, .8)); flex: none; }
+.storm-ph-t { display: grid; gap: 2px; }
+.storm-ph-t b { font: 700 13px/1 var(--f-display); letter-spacing: .06em; color: #fff; }
+.storm-ph-t b[data-kind="shrink"] { color: #7fd8ff; }
+.storm-ph-t b[data-kind="sudden"] { color: #ff8a7a; }
+.storm-ph-t small { font: 500 10px/1.2 var(--f-body); color: rgba(255, 255, 255, .55); }
+.storm-timer { font: 700 22px/1 var(--f-display); color: #7fd8ff; font-variant-numeric: tabular-nums; text-shadow: 0 0 14px rgba(87, 200, 255, .5); min-width: 64px; text-align: center; }
+.storm-hud[data-phase="sudden"] .storm-timer { color: #ff8a7a; text-shadow: 0 0 14px rgba(255, 90, 77, .5); }
+.storm-alive { display: grid; justify-items: center; gap: 1px; padding-left: 14px; border-left: 1px solid rgba(255, 255, 255, .14); }
+.storm-alive b { font: 700 20px/1 var(--f-display); color: #ffd24d; }
+.storm-alive small { font: 600 8.5px/1 var(--f-body); letter-spacing: .14em; text-transform: uppercase; color: rgba(255, 255, 255, .5); }
+.storm-radar { width: 76px; height: 76px; border-radius: 50%; border: 1px solid rgba(87, 200, 255, .3); background: rgba(8, 12, 24, .6); }
+.storm-dist { display: flex; align-items: center; gap: 9px; padding: 7px 13px; background: rgba(30, 10, 40, .8); border: 1px solid rgba(255, 90, 77, .5); border-radius: 10px; animation: storm-blink 1.2s ease-in-out infinite; }
+.storm-dist svg { width: 20px; height: 20px; fill: #ff8a7a; transition: transform .12s linear; }
+.storm-dist b { font: 700 14px/1 var(--f-display); color: #fff; display: block; }
+.storm-dist small { font: 500 9.5px/1.2 var(--f-body); color: rgba(255, 255, 255, .6); }
+/* the burn outside: the electric edge of the screen and the cold tint of the storm */
+.storm-hurt { position: fixed; inset: 0; z-index: 6; pointer-events: none; background: radial-gradient(ellipse at center, transparent 42%, rgba(64, 40, 160, .38) 78%, rgba(120, 60, 220, .62)); animation: storm-edge 1.1s ease-in-out infinite; }
+.storm-hurt.hit { animation: storm-edge 1.1s ease-in-out infinite, storm-hit .45s ease-out; }
+@keyframes storm-edge { 50% { opacity: .72; } }
+@keyframes storm-hit { 0% { filter: brightness(2.1); } 100% { filter: brightness(1); } }
+.storm-tint { position: fixed; inset: 0; z-index: 5; pointer-events: none; background: rgba(30, 40, 110, .14); }
+.storm-flash { position: fixed; inset: 0; z-index: 6; pointer-events: none; background: rgba(190, 225, 255, .9); transition: opacity .16s ease-out; }
+/* the storm banner and the victory table */
+.mp-banner.storm { background: linear-gradient(135deg, #172554, #2f9dd8); border: 1px solid rgba(87, 200, 255, .6); box-shadow: 0 0 34px rgba(87, 200, 255, .35), var(--shadow); letter-spacing: .05em; }
+.mp-end h2.storm-title { background: linear-gradient(135deg, #172554, #2f9dd8); letter-spacing: .03em; }
+body.storm .mp-end .panel { border-color: rgba(87, 200, 255, .4); }
+/* the dead of the storm: the place and the way back to the lobby */
+.mp-dead.storm-dead { background: radial-gradient(ellipse at center, transparent 30%, rgba(24, 16, 64, .72)); }
+.mp-dead.storm-dead:not(#mpOver) .panel { background: rgba(12, 10, 30, .88); border-color: rgba(87, 200, 255, .4); text-align: center; display: grid; gap: 10px; justify-items: center; min-width: 320px; }
+.storm-dead:not(#mpOver) h2 { font-size: 18px; color: #fff; }
+.storm-place { font: 700 26px/1 var(--f-display); color: #ffd24d; text-shadow: 0 0 18px rgba(255, 210, 77, .4); }
+.storm-deadby { font: 500 13px/1.4 var(--f-body); color: rgba(255, 255, 255, .65); }
+.storm-dead .go { background: linear-gradient(180deg, #7fd8ff, #2f9dd8); color: #06121f; width: 100%; }
+.storm-auto { font: 500 11px/1.2 var(--f-body); color: rgba(255, 255, 255, .45); }
+@media (max-width: 700px) {
+  .storm-top { gap: 10px; padding: 7px 10px; }
+  .storm-radar { display: none; }
+  .storm-timer { font-size: 18px; min-width: 52px; }
+  .storm-ph-t b { font-size: 11px; }
+}
+@media (prefers-reduced-motion: reduce) { .storm-hurt, .storm-dist, .storm-pulse, .ch-badge { animation: none; } }

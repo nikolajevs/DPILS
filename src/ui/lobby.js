@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CHARS, CHAR_KEYS, hasChar, loadAvatar, loadChar, makeAvatar, parseChar } from '../game/avatar.js';
 import { akReady, loadAK } from '../game/viewmodel.js';
 import { worldSpace } from '../render/world-space.js';
+import { serverHttp } from '../game/server.js';
 import { $, reduceMotion } from '../core/env.js';
 
 /* ---------- the lobby (src/ui/start.js opens it once a game mode is chosen) ----------
@@ -243,6 +244,7 @@ function cycle(d) {
 
 /* ---------- the team: the ring, the glow and the chip take its colour ---------- */
 function teamInfo() {
+  if (step === 'storm') return { c: 0x57c8ff, css: '#57c8ff', label: 'Каждый сам за себя' };   // the storm: no teams, the electric colour of the zone
   if (step === 'train' && $('trMode').value === 'ffa') return { c: 0xf0b429, css: '#f0b429', label: 'Каждый сам за себя' };
   const t = $('mpTeam').value;
   if (t === '0') return { c: 0xe0463a, css: '#e0463a', label: 'Красные' };
@@ -294,12 +296,47 @@ function tick(t) {
   renderer.render(scene, camera);
 }
 
+/* ---------- the «Шторм» event card: the live status of the server's battle royale ----------
+   The lobby polls /storm-health (server/index.mjs) while it is open: the home door carries a live badge (the countdown
+   to the start, or the living in the fight), the event card — the full status and the door in. The door opens during
+   the gathering and the fight (a late join appears inside the circle); the final and the victory table refuse it
+   (the server answers stormBusy). The city's own readiness gates the door too: enablePlay fires 'dpils-ready'. */
+let stormPoll = 0, stormLast = null;
+async function stormStatus() {
+  try {
+    const r = await fetch(serverHttp() + '/storm-health', { cache: 'no-store' });
+    const j = r.ok ? await r.json() : null;
+    stormLast = j && j.ok && j.storm ? j : null;
+  } catch (e) { stormLast = null; }
+  paintStorm();
+}
+function paintStorm() {
+  const badge = $('chStormBadge'), txt = $('stormStatusText'), go = $('goStorm');
+  const j = stormLast;
+  if (!j) { badge.hidden = true; txt.textContent = 'Ивент недоступен на этом сервере'; go.disabled = true; return; }
+  const s = j.storm, left = Math.max(0, Math.ceil(s.left / 1000)), mm = Math.floor(left / 60), ss = String(left % 60).padStart(2, '0');
+  const label = s.phase === 'wait' ? 'Сбор игроков · старт через ' + mm + ':' + ss
+    : s.phase === 'play' ? 'Идёт бой · ' + s.alive + ' в живых · этап ' + (s.pi + 1) + '/9 · до конца раунда ' + mm + ':' + ss
+    : s.phase === 'sudden' ? 'Финал · зона исчезает · ' + s.alive + ' в живых'
+    : 'Раунд завершён · новый заход через ' + mm + ':' + ss;
+  txt.textContent = label + ' · участников: ' + s.total;
+  badge.hidden = false;
+  badge.textContent = s.phase === 'wait' ? 'старт ' + mm + ':' + ss : s.phase === 'play' || s.phase === 'sudden' ? s.alive + ' в живых' : 'скоро новый заход';
+  badge.dataset.phase = s.phase;
+  const can = s.phase === 'wait' || s.phase === 'play';
+  go.disabled = !can || $('goPlay').disabled;   // the city must be ready too (enablePlay enables goPlay)
+  go.textContent = s.phase === 'play' ? 'Войти в бой' : 'Войти в шторм';
+}
+window.addEventListener('dpils-ready', paintStorm);
+stormStatus(); stormPoll = setInterval(stormStatus, 5000);   // the poll lives from the first frame: the home door's badge and the event door's readiness must not wait for the lobby to open
+
 /* ---------- open / close (src/ui/start.js) ---------- */
 function openLobby(s) {
   step = s; open = true;
   for (const p of painters) p();   // prepareUi restored the selects from localStorage without a 'change'
   buildCards(); ensureRenderer(); refresh(); updateTeam();   // the renderer first: the ring takes the team's colour, refresh asks for the figure
   if (!raf) { lastT = performance.now(); raf = requestAnimationFrame(tick); }
+  if (!stormPoll) { stormStatus(); stormPoll = setInterval(stormStatus, 5000); }
 }
 function closeLobby() {
   open = false;

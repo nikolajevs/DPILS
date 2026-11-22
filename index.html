@@ -55,6 +55,7 @@
         <button class="choice main" id="go" hidden><i class="ch-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="currentColor" stroke="none"/></svg></i><b>Вернуться в игру</b><span>бой продолжится с того же места</span></button>
         <button class="choice main" id="chTrain" type="button" disabled><i class="ch-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/></svg></i><b>Тренировка с ботами</b><span>бой прямо в браузере, без сервера</span><i class="ch-num" aria-hidden="true">01</i></button>
         <button class="choice" id="chOnline" type="button" disabled><i class="ch-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3.5 3.8 3.5 14.2 0 18M12 3c-3.5 3.8-3.5 14.2 0 18"/></svg></i><b>Играть онлайн</b><span>команды или каждый сам за себя на сервере</span><i class="ch-num" aria-hidden="true">02</i></button>
+        <button class="choice storm-choice" id="chStorm" type="button" disabled><i class="ch-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5z"/></svg></i><b>Ивент «Шторм»</b><span>battle royale: зона сужается 30 минут, побеждает последний выживший</span><i class="ch-num" aria-hidden="true">03</i><em class="ch-badge" id="chStormBadge" hidden></em></button>
       </div>
       <div class="acct"><i class="acct-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 5-5.5 8-5.5s6.5 1.5 8 5.5"/></svg></i><span id="acctState">Аккаунт обязателен: создайте его или войдите, чтобы играть.</span><button class="btn" id="bAuth" type="button">Войти / регистрация</button></div>
       <div class="sec-btns">
@@ -116,7 +117,18 @@
               </div>
             </div>
           </div>
-          <fieldset class="player step-part lobby-sec" data-for="train online">
+          <div class="step-part lobby-sec storm-sec" data-for="storm">
+            <h3>Ивент «Шторм»</h3>
+            <p class="storm-lore">Безопасный круг начинается за пределами города и за 30 минут девятью этапами сжимается к случайной точке. Снаружи — шторм бьёт током, дальше — больнее. Все бегут в центр: бойня гарантирована. Побеждает последний выживший; погибшие возвращаются в лобби.</p>
+            <div class="storm-status" id="stormStatus" role="status"><i class="storm-pulse" aria-hidden="true"></i><span id="stormStatusText">Подключаюсь к ивенту…</span></div>
+            <ul class="storm-rules">
+              <li><b>30 минут</b> — девять этапов сжатия, затем финал: круг исчезает</li>
+              <li><b>Снаружи</b> — периодический урон, от 2 до 35 HP/с</li>
+              <li><b>Одна жизнь</b> — без возрождения, погибший уходит в лобби</li>
+              <li><b>Финал</b> — последний выживший забирает раунд</li>
+            </ul>
+          </div>
+          <fieldset class="player step-part lobby-sec" data-for="train online storm">
             <legend>Игрок</legend>
             <label class="lb-field">Ник<input id="mpName" maxlength="16" autocomplete="off"></label>
             <div class="lb-field" id="mpTeamRow"><span class="lb-l">Команда</span>
@@ -127,9 +139,10 @@
             </div>
             <label class="lb-field" id="mpSpawnRow">Где появиться<select id="mpSpawn"></select></label>
           </fieldset>
-          <div class="step-part" data-for="online"><label class="chk"><input type="checkbox" id="mpNoBoard"> Не участвовать в таблице лидеров</label></div>
+          <div class="step-part" data-for="online storm"><label class="chk"><input type="checkbox" id="mpNoBoard"> Не участвовать в таблице лидеров</label></div>
           <button class="go step-part" id="goTrain" data-for="train" disabled>Тренироваться</button>
           <button class="go step-part" id="goPlay" data-for="online" disabled>Играть</button>
+          <button class="go storm-go step-part" id="goStorm" data-for="storm" disabled>Войти в шторм</button>
           <div class="mp-msg" id="mpMsg" role="status"></div>
         </section>
       </div>
@@ -191,6 +204,17 @@
   <div class="mp-sys"><span id="mpPing"></span><span id="mpFps"></span></div>
   <div class="mp-feed" id="mpFeed" aria-live="polite"></div>
 </div>
+<div class="storm-hud" id="stormHud" hidden>
+  <div class="storm-top panel">
+    <div class="storm-phase"><svg class="storm-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4.5 13.5H11L9.5 22 19 10h-6.5z"/></svg><div class="storm-ph-t"><b id="stormPhase">СБОР ИГРОКОВ</b><small id="stormSub">бой начнётся по таймеру</small></div><span class="storm-timer" id="stormTimer">1:00</span></div>
+    <div class="storm-alive"><b id="stormAlive">0</b><small>в живых</small></div>
+    <canvas class="storm-radar" id="stormRadar" width="120" height="120" aria-label="Радар зоны: текущий круг, следующий и вы"></canvas>
+  </div>
+  <div class="storm-dist panel" id="stormDist" hidden><svg id="stormArrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 19 15h-4.5v6h-5v-6H5z"/></svg><div><b id="stormDistN">0 м</b><small>до безопасной зоны</small></div></div>
+</div>
+<div class="storm-tint" id="stormTint" hidden aria-hidden="true"></div>
+<div class="storm-hurt" id="stormHurt" hidden aria-hidden="true"></div>
+<div class="storm-flash" id="stormFlash" hidden aria-hidden="true"></div>
 <div class="mp-banner" id="mpBanner" hidden></div>
 <div class="mp-flash" id="mpFlash" hidden></div>
 <div class="mp-burn" id="mpBurn" hidden aria-hidden="true"></div>
@@ -209,6 +233,13 @@
 <div class="mp-voice" id="mpVoice" data-mic="off" data-talk="0"><span class="mic">V — рация</span><small class="denied">микрофон не разрешён</small><span id="mpVoiceList"></span></div>
 <div class="mp-board" id="mpBoard" hidden><div class="panel"><header class="bd-head"><div class="bd-title"><h2 id="mpBoardTitle">Счёт</h2><small id="mpBoardSub"></small></div><div class="bd-score" id="mpBoardScore"></div></header><div class="bd-cols" id="mpBoardCols"></div><div class="bd-body" id="mpBoardList"></div><footer class="bd-foot"><span id="mpBoardCount"></span><span class="bd-hint">удерживайте <kbd id="mpBoardKey">Tab</kbd></span></footer></div></div>
 <div class="mp-dead" id="mpDead" hidden><div class="panel"><h2 id="mpDeadBy">Вы погибли</h2><div id="mpSpec" class="mp-spec"></div><button class="btn" id="mpSpecCam" aria-pressed="true">Из-за спины (F)</button><label class="mp-at">Возродиться<select id="mpRespawnAt"></select></label><button class="go" id="mpRespawn" disabled>…</button><button class="btn" id="mpLeave">Выйти</button></div></div>
+<div class="mp-dead storm-dead" id="stormDead" hidden><div class="panel">
+  <h2 id="stormDeadTitle">Вы погибли в шторме</h2>
+  <div class="storm-place" id="stormPlace"></div>
+  <div class="storm-deadby" id="stormDeadBy"></div>
+  <button class="go" id="stormLobby">В лобби</button>
+  <small class="storm-auto" id="stormAuto">Возврат в лобби через 10 с</small>
+</div></div>
 <div class="mp-dead" id="mpOver" hidden><div class="panel"><h2>Соединение с сервером потеряно</h2><button class="go" id="mpOverBtn">Начать заново</button></div></div>
 <div class="joy" id="joy" hidden><i id="joyKnob"></i></div>
 

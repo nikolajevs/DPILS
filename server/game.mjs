@@ -47,7 +47,7 @@ export function createGame(opts) {
   // the arena: its bases stood on something walkable; without an arena bots roam round the square
   const walkSpot = (x, z) => { if (world.walkable(x, z)) return [x, z]; for (let r = 4; r < 80; r += 4) for (let k = 0; k < 12; k++) { const a = k / 12 * 6.283, nx = x + Math.cos(a) * r, nz = z + Math.sin(a) * r; if (world.walkable(nx, nz)) return [nx, nz]; } return [x, z]; };
   const arena = opts.arena ? { ...opts.arena, bases: opts.arena.bases.map(b => b.map(([x, z]) => walkSpot(x, z))) } : null;
-  const area = arena || opts.area || { cx: -1487, cz: 1263, r: 450 };
+  const area = arena || (opts.area ? { cx: opts.area.cx ?? -1487, cz: opts.area.cz ?? 1263, r: opts.area.r ?? 450 } : { cx: -1487, cz: 1263, r: 450 });   // the storm gives the whole city as its area; a centre alone keeps the default radius
   const send = (p, m) => { if (p.conn) p.conn.send(JSON.stringify(m)); };
   const all = m => { const s = JSON.stringify(m); for (const p of players.values()) if (p.conn) p.conn.send(s); };
   const humans = () => [...players.values()].filter(p => !p.bot);
@@ -111,7 +111,7 @@ export function createGame(opts) {
   function hurt(p, v, dmg, zone, w, from, bd, vf) {
     if (!v.alive || dmg <= 0) return; const t0 = now(), head = zone === 1;
     if (v.bot && p !== v) v.bot.hurtFrom = { x: p.x, z: p.z, at: t0, id: p.id };   // the bot turns on an attacker it cannot see (think in bots.mjs)
-    v.hp -= dmg; if (p !== v) { const d = dmg + Math.min(0, v.hp); p.st.dmg += d; if (p.prof) p.prof.add('dmg', d); } send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: from[0] - v.x, dz: from[2] - v.z, bd: r3(bd), vf: vf == null ? undefined : +vf.toFixed(3), fall: w === W_FALL ? 1 : undefined, fire: w === W_FIRE ? 1 : undefined }); if (p !== v) send(p, { t: 'hit', id: v.id, head, zone, kill: v.hp <= 0, dmg: Math.min(dmg, dmg + Math.min(0, v.hp)) });
+    v.hp -= dmg; if (p !== v) { const d = dmg + Math.min(0, v.hp); p.st.dmg += d; if (p.prof) p.prof.add('dmg', d); } send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: from[0] - v.x, dz: from[2] - v.z, bd: r3(bd), vf: vf == null ? undefined : +vf.toFixed(3), fall: w === W_FALL ? 1 : undefined, fire: w === W_FIRE ? 1 : undefined, storm: w === W_STORM ? 1 : undefined }); if (p !== v) send(p, { t: 'hit', id: v.id, head, zone, kill: v.hp <= 0, dmg: Math.min(dmg, dmg + Math.min(0, v.hp)) });
     if (v.hp > 0) return;
     v.alive = false; v.deaths++; v.diedAt = t0; v.streak = 0; if (v.prof) v.prof.add('deaths');
     if (STORM && storm) {   // the event keeps the order of the fallen: the place of the dead goes to his page (back to the lobby)
@@ -531,7 +531,7 @@ export function createGame(opts) {
   const items = new Map(); let nextItem = 1;
   function itemSpots() {
     const spots = [], N = opts.itemCount || INV.itemCount;
-    const add = (x, z) => { if (world.walkable(x, z) && !spots.some(s => Math.hypot(s[0] - x, s[1] - z) < 18)) spots.push([x, z]); };
+    const add = (x, z) => { if (Number.isFinite(x) && Number.isFinite(z) && world.walkable(x, z) && !spots.some(s => Math.hypot(s[0] - x, s[1] - z) < 18)) spots.push([x, z]); };
     if (arena) {
       for (const b of arena.bases) for (const [bx, bz] of b) { const a = Math.random() * 6.283, r = 6 + Math.random() * 12; add(bx + Math.cos(a) * r, bz + Math.sin(a) * r); }
       for (let k = 0; spots.length < N && k < 300; k++) { const a = Math.random() * 6.283, r = arena.r * (0.2 + Math.random() * 0.65); add(arena.cx + Math.cos(a) * r, arena.cz + Math.sin(a) * r); }
