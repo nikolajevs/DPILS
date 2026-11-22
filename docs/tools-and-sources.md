@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Chatbox | chatbox/siege-dinaburg | Ивент «Штурм Динабурга»: регистрация, купол, штурм, алтарь-пушка, лут | server/combat.mjs, server/game.mjs, server/bots.mjs, server/events.mjs, server/admin.mjs, server/admin.html, src/game/siege.js, src/game/mp.js, index.html, src/style.css, tools/combat-test.mjs |
 
 ## Автономный цикл улучшений
 

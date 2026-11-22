@@ -18,6 +18,7 @@ import { addNade, addZone, endZone, blastGlow, boomNade, clearBlasts, clearNades
 import { KINDS, SLOT_SVG, bindInv, setItems, itemBack, itemTook, tickItems, renderInv, invTick, closeInv, toggleInv } from './inventory.js';
 import { cargoDrop, cargoLand, cargoTook, cargoEnd, cargoSelf, cargoTick, cargoMap, cargoClock, clearCargo } from './cargo.js';
 import { setHoly, clearHoly, holyBell, holyWin, holyTick, holyMap, holyMe, holySpeedMul, holyState, holyAudio } from './holy.js';
+import { setSiege, siegeYou, siegeOut, siegeWin, clearSiege, siegeTick, siegeMap, siegeNet } from './siege.js';
 import { terrainH } from '../world/terrain.js';
 import { camera, canvas, renderer, scene } from '../render/renderer.js';
 import { setCycle, setTime } from '../render/lighting.js';
@@ -381,6 +382,7 @@ onChange(() => { if (actx) actx.master.gain.value = SET.vol; if (voice) voice.se
 stormAudio.thunder = (vol, d, pan) => thunderSound(ac(), actx.master, vol, d, pan);   // the storm speaks through the game's own audio: one context, one volume knob
 stormAudio.zap = vol => stormZap(ac(), actx.master, vol);
 holyAudio.bell = (f0, vol, d, pan, delay) => bellSound(ac(), actx.master, f0, vol, d, pan, delay);   // the church bells of the race ring through the same audio
+siegeNet.join = side => { if (MP.ws) MP.ws.send(JSON.stringify({ t: 'siegeJoin', side })); };   // the siege registration buttons send through the socket
 // a blast close by (k: 1 at the heart, 0 at the edge): after its bang the world goes dull and the ears ring, the closer the longer
 function deafen(k, delay) {
   try {
@@ -837,6 +839,7 @@ function freeChoices() {   // the open city (the race ended): the chosen place, 
 }
 const holyUnit = () => MP.ffa ? (MP.clan ? 'c' + MP.clan : 'p' + MP.id) : 't' + MP.team;
 function edgeNotice() { const now = performance.now(); if (now - (MP.edgeAt || 0) > 3000) feed('Граница арены: дальше нельзя', 'sys'); MP.edgeAt = now; }
+function domeNotice() { const now = performance.now(); if (now - (MP.domeAt || 0) > 3000) feed('Защитный купол: не пройти', 'sys'); MP.domeAt = now; }
 function respawn() {
   if (stormOn() || !MP.dead || performance.now() - MP.deadAt < 3000) return;   // the storm does not respawn: one life, the dead watch the end
   const v = el('mpRespawnAt').value; if (v === 'base') { MP.ws.send(JSON.stringify({ t: 'respawn' })); return; }
@@ -852,7 +855,7 @@ function onMsg(m) {
       cargoClock(m.now || Date.now()); clearCargo(); for (const id of [...marks.keys()]) markRemote(id, false); marks.clear();
       if (m.cargo) { cargoDrop(m.cargo); if (m.cargo.state === 'landed') cargoLand(m.cargo); }
       for (const mk of m.marks || []) { marks.set(mk.id, mk.until); if (mk.id === MP.id) cargoSelf(mk.until); else markRemote(mk.id, true); }
-      for (const [id, a] of Object.entries(m.attach || {})) { const r = remotes.get(+id); if (r && Array.isArray(a)) { r.attach = a; if (r.av) a.forEach((k, w) => r.av.setAttach(w, k)); } } clearHoly(); holyMe(holyUnit(), MP.ffa); if (m.holy) setHoly(m.holy); P.speedMul = holySpeedMul(); if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
+      for (const [id, a] of Object.entries(m.attach || {})) { const r = remotes.get(+id); if (r && Array.isArray(a)) { r.attach = a; if (r.av) a.forEach((k, w) => r.av.setAttach(w, k)); } } clearHoly(); holyMe(holyUnit(), MP.ffa); if (m.holy) setHoly(m.holy); P.speedMul = holySpeedMul(); clearSiege(); if (m.siege) setSiege(m.siege, m.mySide); if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
       if (MP.local) feed('Тренировка с ботами: ' + MP.board.filter(e => e.bot).length + ', уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || '') + '»', 'sys'); break;
     case 'spawn': {
       nadeCancel(); punchReset();
@@ -867,7 +870,7 @@ function onMsg(m) {
       const s = MP.rtts; s.push(performance.now() - m.c); if (s.length > 5) s.shift();
       MP.rtt = Math.round(Math.min(...s)); el('mpPing').textContent = 'пинг ' + MP.rtt + ' мс'; updatePanel(); if (!el('mpBoard').hidden) drawBoard(); break;
     }
-    case 'correct': P.x = m.x; P.z = m.z; if (m.out) edgeNotice(); break;
+    case 'correct': P.x = m.x; P.z = m.z; if (m.out) edgeNotice(); else if (m.dome) domeNotice(); break;
     case 'snap': {
       cargoClock(m.now);
       const t = performance.now(), seen = new Set();
@@ -950,6 +953,16 @@ function onMsg(m) {
     case 'bell': holyBell(m); break;   // a temple taken: its bell rings across the city (holy.js sounds it and flashes the map)
     case 'holyWin': holyWin(m); banner((m.name || 'Победитель') + ' — ГЛАВНЫЙ ПРИЗ', 'holy'); break;
     case 'holyEnd': clearHoly(); MP.arena = m.arena || null; P.speedMul = 1; if (MP.arena) arenaChoices(); else freeChoices(); break;
+    case 'siege': { const r = setSiege(m);   // the siege of the fortress: the registration, the dome, the assault
+      if (r && r.first) { banner('ШТУРМ ДИНАБУРГА', 'siege'); tone(392, 392, 0.3, 0.25, 'triangle'); tone(523, 523, 0.35, 0.22, 'triangle', 0.14); tone(659, 659, 0.5, 0.2, 'triangle', 0.28); }
+      else if (r && r.prevPhase === 'reg' && m.phase === 'prep') { banner('КУПОЛ ПОДНЯТ — ПОДГОТОВКА', 'siege'); tone(330, 220, 0.5, 0.25, 'sine'); }
+      else if (r && r.prevPhase === 'prep' && m.phase === 'assault') { banner('КУПОЛ ПАЛ — ШТУРМ!', 'siege'); try { boomSound(ac(), actx.master, 1.1, 0, 0, 0); } catch (e) {} tone(196, 196, 0.4, 0.3, 'sawtooth'); tone(262, 262, 0.5, 0.25, 'triangle', 0.18); }
+      break; }
+    case 'siegeYou': siegeYou(m); feed(m.side ? 'Вы записаны в ' + (m.side === 'a' ? 'штурмующие' : 'гарнизон') : 'Заявка на штурм снята', 'sys'); tone(m.side ? 660 : 440, m.side ? 880 : 330, 0.12, 0.2, 'triangle'); break;
+    case 'siegeDeny': feed(m.reason === 'balance' ? 'Баланс сторон: эта сторона уже полнее — выберите другую' : 'Регистрация на штурм закрыта', 'sys'); break;
+    case 'siegeOut': siegeOut(); feed('Вы выбыли из штурма — возвращение в город', 'dead'); break;
+    case 'siegeWin': { siegeWin(m); banner((m.name || 'Победитель') + ' — ПОБЕДА В ШТУРМЕ', 'siege'); const ln = { optic: 'оптика 8×', sight: 'коллиматор' }; feed('🎁 Редкий лут выжившим: ' + ((m.loot || []).map(k => ln[k] || k).join(', ') || 'полный боезапас') + ', +' + (m.prizeKills || 0) + ' очков', 'sys'); tone(523, 523, 0.25, 0.25, 'triangle'); tone(659, 659, 0.25, 0.25, 'triangle', 0.12); tone(784, 784, 0.4, 0.25, 'triangle', 0.24); tone(1047, 1047, 0.5, 0.2, 'triangle', 0.36); break; }
+    case 'siegeEnd': clearSiege(); break;
     case 'item': itemBack(m); break;
     case 'took': itemTook(m.id); if (m.to === MP.id) { feed('+ ' + KINDS[m.kind].name + (m.where === 'pack' ? ' · в рюкзак' : ''), 'sys'); tone(660, 990, 0.09, 0.22, 'triangle'); } break;
     case 'inv': MP.ammo = m.mag.slice(); MP.reserve = m.reserve.slice(); MP.nades = m.nades; MP.smokes = m.smokes ?? MP.smokes; MP.napalms = m.napalms ?? MP.napalms; MP.meds = m.meds; if (m.sights) MP.sights = { ...m.sights }; if (Array.isArray(m.attach)) { MP.attach = m.attach.slice(); syncVm(); } if (Array.isArray(m.loadout)) MP.loadout = m.loadout.slice(); if (Array.isArray(m.pack)) MP.pack = m.pack.slice(); if (!MP.loadout.includes(MP.weapon)) { MP.weapon = MP.loadout[0]; models.forEach((mm, k) => { mm.visible = k === MP.weapon; }); if (vm) { vm.setWeapon(MP.weapon); vm.equip(); } } updatePanel(); break;
@@ -967,7 +980,7 @@ function onMsg(m) {
     case 'say': addLine(m, MP.id); if (m.id !== MP.id) tone(900, 700, 0.05, 0.08, 'sine'); break;
     case 'rtc': if (voice) voice.signal(m.from, m.d); break;
     case 'win': { nadeCancel(); const mine = m.mode === 'storm' ? stormWon(m) : m.mode === 'ffa' ? m.mvp === MP.id : m.team === MP.team, row = m.rows.find(r => r.id === MP.id); statEvent('round', { win: mine, kills: row ? row.kills : 0 }, !!MP.local); showSummary(m); break; }
-    case 'round': el('mpEnd').hidden = true; el('stormDead').hidden = true; clearInterval(endTimer); stopStormAuto(); clearCargo(); clearHoly(); P.speedMul = 1; for (const id of [...marks.keys()]) markRemote(id, false); marks.clear(); cargoSelf(0); break;
+    case 'round': el('mpEnd').hidden = true; el('stormDead').hidden = true; clearInterval(endTimer); stopStormAuto(); clearCargo(); clearHoly(); clearSiege(); P.speedMul = 1; for (const id of [...marks.keys()]) markRemote(id, false); marks.clear(); cargoSelf(0); break;
     case 'match': setMatch(m); break;
     case 'storm': {
       if (m.phase === 'off') { clearStorm(); document.body.classList.remove('storm', 'storm-out'); if (!MP.local) setWhere('game'); updatePanel(); break; }   // the new match: the storm is gone
@@ -1014,7 +1027,7 @@ function join(local) {   // local: { bots, level, mode, arena, time } for the ga
   ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, team: MP.wantTeam, char: el('mpChar').value || undefined, key: local ? undefined : playerKey() || undefined, board: local ? undefined : boardOn(), ...s })); };
   ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (err) { console.error(err); } };
   ws.onerror = () => { if (!MP.started) msg.textContent = 'Не удалось подключиться к ' + url; };
-  ws.onclose = () => { setWhere('lobby'); nadeCancel(); el('nadeWarn').hidden = true; clearStorm(); document.body.classList.remove('storm', 'storm-out', 'match-soon'); if (MP.started) { el('mpDead').hidden = true; el('stormDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; if (!/^(На сервере|Не удалось|Сервер пускает|Шторм|Катка)/.test(msg.textContent)) msg.textContent = 'Соединение закрыто.'; } };
+  ws.onclose = () => { setWhere('lobby'); nadeCancel(); el('nadeWarn').hidden = true; clearStorm(); clearSiege(); document.body.classList.remove('storm', 'storm-out', 'match-soon'); if (MP.started) { el('mpDead').hidden = true; el('stormDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; if (!/^(На сервере|Не удалось|Сервер пускает|Шторм|Катка)/.test(msg.textContent)) msg.textContent = 'Соединение закрыто.'; } };
 }
 let uiReady = false;
 function initUi() {   // the fields of the player and of the training: once, when the start card first needs them (or when the city is ready)
@@ -1219,7 +1232,7 @@ function mpTick(dt) {
     if (scoped && !dot) { scopeBdc(fov); if (at === 'optic') { scopeMag.hidden = false; const lbl = MP.opticMag + '×'; if (scopeMag.textContent !== lbl) scopeMag.textContent = lbl; } else scopeMag.hidden = true; }
     if (dot) { dotHint.hidden = !!MP.dotBoostAt; dotHint.classList.toggle('cd', !MP.dotBoostAt && now < MP.dotBoostCd); }   // the hint dims while the peek recharges
     gun.visible = !MP.dead && !nv && (mode === 'sight' || MP.zoom < 0.5); }   // the grenade in hand (and the throw) replaces the gun; the long zoom hides the arms, the red dot keeps them
-  ownSteps(dt); tickNades(dt); zoneSoundTick(); nadeWarnTick(); tickItems(dt, now); cargoTick(dt); holyTick(dt); spectate(dt, now); nadeAimTick(now); nadeHandTick(nv);
+  ownSteps(dt); tickNades(dt); zoneSoundTick(); nadeWarnTick(); tickItems(dt, now); cargoTick(dt); holyTick(dt); siegeTick(dt); spectate(dt, now); nadeAimTick(now); nadeHandTick(nv);
   if (marks.size) MARK_MAT.opacity = 0.26 + 0.1 * Math.sin(now * 0.006);   // the mark's pillar breathes
   if (P.landH > 0) { const h = P.landH; P.landH = 0; if (h > FALL.safe && !MP.dead && MP.ws.readyState === 1) MP.ws.send(JSON.stringify({ t: 'fall', h: +h.toFixed(2) })); }   // a hard landing: the height goes to the server, which owns the damage
   if (MP.reloadAt && now - MP.reloadAt >= WEAPONS[MP.reloadW].reloadMs) {   // the local picture of the reload; the server's 'inv' message is the truth. It finishes on the weapon that started it, even if another is in hand now
@@ -1386,6 +1399,7 @@ STATE.mapOverlay = (ctx, cx, cz, ppm, w, h) => {
   }
   cargoMap(ctx, cx, cz, ppm, w, h);
   holyMap(ctx, cx, cz, ppm, w, h);   // the four temples of the race: their owners, the capture arcs and the bell flashes
+  siegeMap(ctx, cx, cz, ppm, w, h);   // the siege: the dome of the prep and the altar of the assault
 };
 PERF.notice = text => feed(text, 'sys');
 function enablePlay() { initUi(); el('goPlay').disabled = false; el('goTrain').disabled = false; window.dispatchEvent(new Event('dpils-ready')); }   // the lobby's match card repaints its door

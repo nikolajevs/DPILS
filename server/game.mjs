@@ -11,7 +11,7 @@
    (WEAPONS.vel) and the damage lands when the bullet arrives, not at the click. The hit is still judged against the target
    as the shooter saw it at the click (the position rewound by the shooter's lag, frozen for the flight), so “shoot where
    you see” holds while the bullet takes its time to get there. */
-import { CARGO, FALL, HIT, HOLY, INV, ITEMS, LOADOUT, NADE, NADE_KINDS, NAPALM, PACK, RELOAD_MS, RESERVE, RULES as R, SMOKE, WEAPONS, W_FALL, W_FIRE, W_NADE, W_STORM, bulletAt, bulletDir, dragDist, dragTime, rayHit, rayToSegment } from './combat.mjs';
+import { CARGO, FALL, HIT, HOLY, INV, ITEMS, LOADOUT, NADE, NADE_KINDS, NAPALM, PACK, RELOAD_MS, RESERVE, RULES as R, SIEGE, SMOKE, WEAPONS, W_FALL, W_FIRE, W_NADE, W_STORM, bulletAt, bulletDir, dragDist, dragTime, rayHit, rayToSegment } from './combat.mjs';
 import { MATCH as MATCHC, STORM as STORMC, matchAt, pickFinal, stageCircle, stormField, stormPlan } from './storm.mjs';
 import { ARENAS } from './arenas.mjs';
 import { LEVELS, botName, createBrain } from './bots.mjs';
@@ -74,7 +74,14 @@ export function createGame(opts) {
   // other, the team chat reaches them, the storm is won by the last team standing. The tag rides the board: [DVN] Nick.
   const clans = opts.clans || null;
   const sameClan = (a, b) => !!(a.clan && b.clan && a.clan.id === b.clan.id);
-  const ally = (a, b) => a !== b && (FFA ? sameClan(a, b) : a.team === b.team);   // who is spared: the side in the team fight, the team of the players elsewhere
+  // who is spared: the side in the team fight, the team of the players elsewhere. The siege draws its own lines: the
+  // participants of one side spare each other whatever their teams, and the bystanders are spared by the event (and
+  // spare it) — the reconstruction is a closed battle (siegeFight below)
+  const ally = (a, b) => {
+    if (a === b) return false;
+    if (siegeFight()) { const sa = a.siege, sb = b.siege; if (sa && sb) return sa === sb; if (sa || sb) return true; }
+    return FFA ? sameClan(a, b) : a.team === b.team;
+  };
   const clanOf = p => { const c = clans && p.acct ? clans(p.acct) : null; return c ? { id: c.id, tag: c.tag, name: c.name } : null; };
   // the chosen character rides the board: a key of CHARS in src/game/avatar.js; empty — the operator
   const CHARS = ['soldier', 'spartan', 'alien', '2b'];
@@ -171,6 +178,7 @@ export function createGame(opts) {
       if (v.conn) send(v, { t: 'stormDead', place: [...players.values()].filter(q => q.alive).length + 1, total: players.size, by: p === v ? (w === W_STORM ? 'storm' : '') : p.name, w });
     }
     if (v.markUntil) { v.markUntil = 0; all({ t: 'unmark', id: v.id }); }   // the cargo mark dies with its carrier
+    if (siegeFight() && v.siege) siegeDrop(v);   // the fallen leaves the siege at once: the teleport back to the city
     if (p !== v) { p.kills++; if (!FFA) teamScore[p.team]++; if (head) p.st.heads++; if (p.prof) { p.prof.add('kills'); if (head) p.prof.add('heads'); p.streak = (p.streak || 0) + 1; p.prof.max('best', p.streak); } }
     all({ t: 'kill', killer: p.id, victim: v.id, kn: p.name, vn: v.name, kt: p.team, vt: v.team, head, w, zone: bd ? zone : undefined, bd: r3(bd), vf: vf == null ? undefined : +vf.toFixed(3), dx: +(from[0] - v.x).toFixed(2), dz: +(from[2] - v.z).toFixed(2) }); sendBoard();   // dx/dz: where the blow came from; bd: the bullet's own way at the hit — the body falls along it (ragdoll.js)
     if (p !== v && (FFA ? p.kills : teamScore[p.team]) >= WIN) endRound(p.team, p);
@@ -375,6 +383,7 @@ export function createGame(opts) {
   function shoot(p, wi, rays, lagMs) {
     const W = WEAPONS[wi], t0 = now(); if (!Array.isArray(rays) || !rays.length || !p.alive) return;
     if (MATCH && roundOver) return;   // the guns are cold after the storm, until the next match
+    if (siege && siege.phase === 'prep' && p.siege) return;   // the dome's minutes: the guns are cold
     if (p.conn && !held(p, wi)) return;   // a human fires only an equipped gun
     if (t0 - p.lastShot < W.gapMs * rateMul(p)) return;
     if (t0 < p.reloadDone) return;   // still reloading
@@ -407,7 +416,7 @@ export function createGame(opts) {
   function throwNade(p, u, sp = NADE.speed, kind = 'nade') {
     if (!NADE_KINDS.includes(kind)) kind = 'nade';
     const [field] = beltOf[kind], t0 = now();
-    if (!p.alive || p[field] <= 0 || t0 - p.lastNade < NADE.cooldownMs || roundOver) return;
+    if (!p.alive || p[field] <= 0 || t0 - p.lastNade < NADE.cooldownMs || roundOver || (siege && siege.phase === 'prep' && p.siege)) return;
     p[field]--; p.lastNade = t0; refill(p, kind); invMsg(p);   // a stored grenade takes the thrown one's place on the belt
     sp = Math.max(NADE.minSpeed, Math.min(NADE.maxSpeed, sp)); const id = nextNade++;   // the charged throw: the client sends the speed it gathered holding the mouse
     const fuse = kind === 'smoke' ? SMOKE.fuseMs : kind === 'napalm' ? NAPALM.fuseMs : NADE.fuseMs;
@@ -417,6 +426,7 @@ export function createGame(opts) {
   // the end of a round: the table of the round goes to everybody, ten seconds later the scores are cleared and the next round starts
   function endRound(team, winner) {
     if (holy) endHoly(now(), null, 'round');   // the race steps aside for the round's end
+    if (siege) endSiege(now(), null, 'round');   // the siege steps aside too
     roundOver = true;
     for (const p of players.values()) if (p.prof) { p.prof.add('rounds'); if (FFA ? p === winner : p.team === team) p.prof.add('wins'); }
     const rows = [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, heads: p.st.heads, dmg: Math.round(p.st.dmg), acc: p.st.shots ? Math.round(100 * p.st.hitShots / p.st.shots) : 0 }));
@@ -434,6 +444,7 @@ export function createGame(opts) {
   // the «Царь горы» event (HOLY, combat.mjs): the fight is called to Church Hill for a few minutes — a tight arena
   // around the four temples, four bell-tower capture points, a buff per taken temple, the grand prize for holding all
   let holy = null, holyArena = null, nextHolyAt = now() + HOLY.firstMs, holySeq = 1, areaRev = 0, holyWarned = false;
+  let siege = null, siegeSeq = 1, nextSiegeAt = now() + SIEGE.firstMs, siegeWarned = false;   // the «Штурм Динабурга» event (SIEGE, combat.mjs)
   const fieldArena = () => holyArena || arena;   // the arena in force: the hill during the race, the chosen one otherwise
   const arenaPub = a => a && { name: a.name, cx: a.cx, cz: a.cz, r: a.r, bases: a.bases };
   const bootAt = now();
@@ -441,6 +452,9 @@ export function createGame(opts) {
   const fmtSpan = ms => ms < 60000 ? Math.round(ms / 1000) + ' с' : fmtMin(ms);   // an event's span in the chat: seconds under a minute
   const evOn = kind => !opts.events || opts.events.enabled(kind);   // the event's auto-run: the admin panel can pause the schedule (events.mjs)
   const stormFight = () => !!storm && (storm.phase === 'play' || storm.phase === 'sudden');
+  const SIEGE_AREA = { name: 'Динабургская крепость', cx: SIEGE.cx, cz: SIEGE.cz, r: SIEGE.r };   // the field of the siege: the fortress and its approaches
+  const siegeFight = () => !!siege && (siege.phase === 'prep' || siege.phase === 'assault');   // the dome is up or the assault runs
+  const siegeCounts = () => { const c = { a: 0, d: 0 }; for (const p of players.values()) if (p.siege) c[p.siege]++; return c; };
   const stormAlive = () => [...players.values()].filter(p => p.alive);
   // the storm is fought by units: a side in the team fight; in the free-for-all a team of the players is one, everybody else his own
   const unitOf = p => (!FFA ? 't' + p.team : p.clan ? 'c' + p.clan.id : 'p' + p.id);
@@ -472,6 +486,7 @@ export function createGame(opts) {
     for (const z of zones.values()) all({ t: 'zoneEnd', id: z.id }); zones.clear();
     if (cargo) { all({ t: 'cargoEnd', id: cargo.id }); cargo = null; } nextCargoAt = now() + CARGO.firstMs;
     if (holy) { holy = null; holyArena = null; areaRev++; all({ t: 'holyEnd', reason: 'match', arena: arenaPub(arena) }); } nextHolyAt = now() + HOLY.firstMs; holyWarned = false;
+    if (siege) endSiege(now(), null, 'match'); nextSiegeAt = now() + SIEGE.firstMs; siegeWarned = false;
     for (const it of items.values()) { it.active = true; it.respawnAt = 0; all(itemMsg(it)); }
     for (const p of players.values()) {
       p.kills = p.deaths = 0; p.streak = 0; p.st = { shots: 0, hitShots: 0, dmg: 0, heads: 0 };
@@ -546,7 +561,7 @@ export function createGame(opts) {
       for (const w of MATCHC.warnMs) if (!match.warned.has(w) && t < match.stormAt && t >= match.stormAt - w && match.stormAt - w > match.start) {
         match.warned.add(w); all({ t: 'chat', text: '⚡ Шторм через ' + fmtMin(w) + ': последние ' + fmtMin(match.stormMs) + ' катки — одна жизнь, зона сужается' }); broadcastMatch();
       }
-      if (t >= match.stormAt) { if (holy) endHoly(t, null, 'storm'); startStorm(t); }
+      if (t >= match.stormAt) { if (holy) endHoly(t, null, 'storm'); if (siege) endSiege(t, null, 'storm'); startStorm(t); }
     }
     if (storm) tickStorm(t);
     if (!match.closedSaid && t >= joinUntil()) { match.closedSaid = true; all({ t: 'chat', text: 'Вход в катку закрыт: новые игроки — в следующей' }); broadcastMatch(); }
@@ -554,12 +569,14 @@ export function createGame(opts) {
   }
   // ---- bots
   const enemyBase = p => { const A = fieldArena(); return A ? (FFA ? A.bases.flat()[Math.floor(Math.random() * A.bases.flat().length)] : A.bases[p.team === 1 ? 0 : 1][Math.floor(Math.random() * A.bases[p.team === 1 ? 0 : 1].length)]) : null; };
-  const brain = createBrain({ players, now, world, get area() { return fieldArena() || area; }, get field() { return !fieldArena(); }, get areaRev() { return areaRev; }, FFA, WEAPONS, R, shoot, throwNade, spawn, fall, roundOver: () => roundOver, enemyBase, reload: beginReload, equip, get items() { return items; }, get zones() { return zones; }, get cargo() { return cargo; }, get holy() { return holy; }, holyUnit: p => unitOf(p), speedMul: p => speedMul(p), get storm() { return stormFight() ? { ...storm.cur, next: storm.phase === 'play' ? storm.to : null } : null; } });   // the safe circle and the next one: the bots roam towards where the storm is going   // items and cargo are declared below: getters read them once the game is built; storm: the safe circle the bots run into
+  const brain = createBrain({ players, now, world, get area() { return siegeFight() ? SIEGE_AREA : (fieldArena() || area); }, get field() { return !fieldArena(); }, get areaRev() { return areaRev; }, FFA, WEAPONS, R, shoot, throwNade, spawn, fall, roundOver: () => roundOver, enemyBase, reload: beginReload, equip, get items() { return items; }, get zones() { return zones; }, get cargo() { return cargo; }, get holy() { return holy; }, holyUnit: p => unitOf(p), speedMul: p => speedMul(p), ally: (a, b) => ally(a, b), get siege() { return siegeFight() ? siege : null; }, get dome() { return siege && siege.phase === 'prep' ? { cx: SIEGE.cx, cz: SIEGE.cz, r: SIEGE.domeR } : null; }, get storm() { return stormFight() ? { ...storm.cur, next: storm.phase === 'play' ? storm.to : null } : null; } });   // the safe circle and the next one: the bots roam towards where the storm is going   // items and cargo are declared below: getters read them once the game is built; storm: the safe circle the bots run into
   let botN = 0;
   function addBot(level) {
     if (players.size >= MAX) return null;
     const p = newPlayer(); let nm = botName(botN++); while ([...players.values()].some(q => q.name === nm)) nm = botName(botN++); p.name = nm; p.char = botChar(); p.team = pickTeam(-1, p.id); p.joined = true; p.joinedAt = now(); brain.make(level || opts.level, p); players.set(p.id, p);
-    spawn(p); sendBoard(); all({ t: 'chat', text: p.name + ' в игре' }); return p;
+    spawn(p);
+    if (siegeFight()) { const c = siegeCounts(); p.siege = c.a <= c.d ? 'a' : 'd'; siegeTeleport(p); }   // a bot added mid-siege joins the smaller side at once
+    sendBoard(); all({ t: 'chat', text: p.name + ' в игре' }); return p;
   }
   function removeBot() { const b = [...players.values()].reverse().find(p => p.bot); if (!b) return false; players.delete(b.id); all({ t: 'left', id: b.id }); sendBoard(); return true; }
   // the admin panel (admin.mjs): a player is put out of the fight (a bot simply goes), and the server says a line to everybody
@@ -597,7 +614,7 @@ export function createGame(opts) {
           p.acct = who ? who.name : ''; p.clan = clanOf(p);
           const side = clanSide(p);   // the team fight: a member of a team joins the side where his teammates are
           p.team = side >= 0 ? side : pickTeam(m.team, p.id); p.char = cleanChar(m.char); p.joined = true; p.joinedAt = t0; players.set(p.id, p);
-          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, clan: p.clan || undefined, now: now(), arena: arenaPub(fieldArena()), holy: holyPublic() || undefined, rules: { hp: R.hp, range: R.range }, day: dayNow() || undefined, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), zones: [...zones.values()].map(z => ({ id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, r: z.r, durMs: z.dur, left: Math.max(0, z.until - now()) })), cargo: cargoMsg(), marks: marks(), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])), match: matchPublic() || undefined, storm: stormPublic() || undefined });
+          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, clan: p.clan || undefined, now: now(), arena: arenaPub(fieldArena()), holy: holyPublic() || undefined, siege: siegePublic() || undefined, mySide: p.siege || undefined, rules: { hp: R.hp, range: R.range }, day: dayNow() || undefined, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), zones: [...zones.values()].map(z => ({ id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, r: z.r, durMs: z.dur, left: Math.max(0, z.until - now()) })), cargo: cargoMsg(), marks: marks(), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])), match: matchPublic() || undefined, storm: stormPublic() || undefined });
           const mate = besideMate(p);   // a team appears together: next to a living teammate (in an arena the base decides)
           if (stormFight()) { const [sx, sz, syaw] = mate || stormSpawnPoint(); spawn(p, sx, sz, syaw, true); }   // a join in the storm appears inside the circle
           else if (mate && !fieldArena()) spawn(p, mate[0], mate[1], mate[2]); else spawn(p, m.x, m.z, m.yaw);
@@ -609,8 +626,12 @@ export function createGame(opts) {
         if (m.t === 'state' && p.alive) {
           const dt = Math.max(0.02, Math.min(0.5, (t0 - p.t) / 1000)); p.t = t0;
           const x = num(m.x, HX), z = num(m.z, HY), y = Math.max(-50, Math.min(400, num(m.y, 400)));
-          const FA = fieldArena();
+          const FA = siegeFight() && p.siege ? SIEGE_AREA : fieldArena();   // the siege keeps its own fighters within the fortress field
           if (FA && Math.hypot(x - FA.cx, z - FA.cz) > FA.r) { send(p, { t: 'correct', x: p.x, y: p.y, z: p.z, out: true }); return; }   // beyond the edge of the arena
+          if (siege && siege.phase === 'prep') {   // the dome lets nobody across, in or out — the bystanders too
+            const d0 = Math.hypot(p.x - SIEGE.cx, p.z - SIEGE.cz), d1 = Math.hypot(x - SIEGE.cx, z - SIEGE.cz);
+            if ((d0 < SIEGE.domeR) !== (d1 < SIEGE.domeR)) { send(p, { t: 'correct', x: p.x, y: p.y, z: p.z, dome: true }); return; }
+          }
           const far = Math.hypot(x - p.x, z - p.z), first = p.free && far < 80; p.free = false;   // right after a spawn the client may nudge itself off a wall or out of the water
           if (!first && far > R.runSpeed * speedMul(p) * dt * 1.6 + 3) send(p, { t: 'correct', x: p.x, y: p.y, z: p.z });   // too fast: put back
           else { p.x = x; p.z = z; p.y = y; }
@@ -628,6 +649,12 @@ export function createGame(opts) {
         else if (m.t === 'fall' && p.alive) fall(p, num(m.h, FALL.maxH));   // the client landed from a height: the damage is the server's
         else if (m.t === 'attach') setSight(p, okWeapon(m.w) ? m.w : p.wep, m.kind === 'sight' || m.kind === 'optic' ? m.kind : null);
         else if (m.t === 'swap' && p.alive) swapWeapon(p, m.w, m.slot);   // exchange a backpack gun with an equipped slot
+        else if (m.t === 'siegeJoin') {   // the registration of the siege: a side by hand, the balance keeps the sides even
+          if (!siege || siege.phase !== 'reg') { send(p, { t: 'siegeDeny', reason: 'closed' }); return; }
+          const side = m.side === 'a' || m.side === 'd' ? m.side : null;
+          if (side) { const c = siegeCounts(); if (c[side] - c[side === 'a' ? 'd' : 'a'] >= SIEGE.balance) { send(p, { t: 'siegeDeny', reason: 'balance' }); return; } }
+          p.siege = side; send(p, { t: 'siegeYou', side }); all({ t: 'siege', ...siegePublic() });
+        }
         else if (m.t === 'chat') {
           const text = String(m.text || '').replace(/[\u0000-\u001f\u007f​-‏‪-‮]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
           if (!text || t0 - p.lastChat < 700) return; p.lastChat = t0;
@@ -741,7 +768,7 @@ export function createGame(opts) {
   function stepCargo(t) {
     for (const p of players.values()) if (p.markUntil && t >= p.markUntil) { p.markUntil = 0; all({ t: 'unmark', id: p.id }); }
     if (roundOver) return;
-    if (!cargo) { if (evOn('cargo') && t >= nextCargoAt && players.size && !storm && !holy) dropCargo(); return; }   // the storm and the race run their own fight: no new crate while they hold the field
+    if (!cargo) { if (evOn('cargo') && t >= nextCargoAt && players.size && !storm && !holy && !siege) dropCargo(); return; }   // the storm, the race and the siege run their own fight: no new crate while they hold the field
     if (cargo.state === 'fall') {
       if (t < cargo.landAt) return;
       cargo.state = 'landed'; cargo.until = t + CARGO.groundMs;
@@ -807,6 +834,7 @@ export function createGame(opts) {
   }
   function startHoly(t) {
     if (holy) return 'active';
+    if (siege) return 'siege';
     if (storm) return 'storm';
     if (roundOver) return 'round';
     if (!players.size) return 'no-players';
@@ -864,8 +892,8 @@ export function createGame(opts) {
     if (roundOver) return;
     if (!holy) {
       if (!evOn('holy')) { holyWarned = false; return; }   // the schedule is paused by the admin panel
-      if (!holyWarned && t >= nextHolyAt - HOLY.warnMs && t < nextHolyAt && players.size && !storm) { holyWarned = true; all({ t: 'chat', text: '⛪ Царь горы через ' + Math.round(HOLY.warnMs / 1000) + ' с — собирайтесь на Церковной горке' }); }
-      if (t >= nextHolyAt && players.size && !storm && !cargo) startHoly(t);
+      if (!holyWarned && t >= nextHolyAt - HOLY.warnMs && t < nextHolyAt && players.size && !storm && !siege) { holyWarned = true; all({ t: 'chat', text: '⛪ Царь горы через ' + Math.round(HOLY.warnMs / 1000) + ' с — собирайтесь на Церковной горке' }); }
+      if (t >= nextHolyAt && players.size && !storm && !cargo && !siege) startHoly(t);
       return;
     }
     const dt = Math.max(0, Math.min(1, (t - holy.lastStep) / 1000)); holy.lastStep = t;
@@ -903,6 +931,159 @@ export function createGame(opts) {
     if (t - holy.lastBeat >= 1000) { holy.lastBeat = t; all({ t: 'holy', ...holyPublic() }); }
   }
   timers.push(setInterval(() => stepHoly(now()), 200));
+  // ---- the «Штурм Динабурга» event (SIEGE, combat.mjs): the reconstruction of the 1812 siege — Napoleon besieged the
+  // fortress and never took it. Registration opens regMs ahead (the sides by hand, the balance keeps them within
+  // SIEGE.balance); then the registered are teleported in — the garrison inside the walls, the attackers to the staging
+  // ground south of them — and the dome goes up for prepMs: nobody crosses it, the guns are cold. Then it falls and the
+  // assault runs durMs. The altar is the cannon fountain in the garden: the attackers hold its ring alone holdMs to win;
+  // the garrison wins by holding out (the historical outcome) or by wiping the attackers. The fallen teleport back to
+  // the city at once; the survivors of the winning side take the rare loot. The page draws the dome, the altar ring and
+  // the HUD (src/game/siege.js); the bots fight for the altar too (bots.mjs).
+  const siegePublic = () => {
+    if (!siege) return null;
+    const t = now();
+    return {
+      id: siege.id, phase: siege.phase, left: Math.max(0, siege.until - t), end: siege.end, t0: siege.t0,
+      counts: siegeCounts(), prog: +siege.prog.toFixed(3), contest: siege.contest, holdMs: SIEGE.holdMs, capR: SIEGE.capR, balance: SIEGE.balance,
+      names: { ...SIEGE.names }, altar: { x: SIEGE.altar.x, z: SIEGE.altar.z, gy: world.ground(SIEGE.altar.x, SIEGE.altar.z) },
+      area: { cx: SIEGE.cx, cz: SIEGE.cz, r: SIEGE.r }, dome: siege.phase === 'prep' ? { cx: SIEGE.cx, cz: SIEGE.cz, r: SIEGE.domeR } : null,
+    };
+  };
+  // where a participant appears: the garrison by the altar and round the fortress inside the dome, the attackers on the
+  // staging ground outside it (the south annulus, the dry land side). The spot must keep its side of the dome
+  function siegeSpot(side) {
+    const inside = (x, z) => Math.hypot(x - SIEGE.cx, z - SIEGE.cz) < SIEGE.domeR - 6;
+    const outside = (x, z) => { const d = Math.hypot(x - SIEGE.cx, z - SIEGE.cz); return d > SIEGE.domeR + 6 && d < SIEGE.r - 10; };
+    const ok = side === 'd' ? inside : outside;
+    if (side === 'd' && Math.random() < 0.45) {   // near the altar: the garden is the heart of the defence
+      for (let k = 0; k < 24; k++) { const a = Math.random() * 6.283, r = 5 + Math.random() * 40, x = SIEGE.altar.x + Math.cos(a) * r, z = SIEGE.altar.z + Math.sin(a) * r; if (world.walkable(x, z) && ok(x, z)) return [x, z]; }
+    }
+    for (let k = 0; k < 40; k++) {
+      const a = side === 'd' ? Math.random() * 6.283 : -Math.PI / 2 + (Math.random() - 0.5) * 1.4;
+      const r = side === 'd' ? 50 + Math.sqrt(Math.random()) * (SIEGE.domeR - 90) : SIEGE.domeR + 18 + Math.random() * (SIEGE.r - SIEGE.domeR - 43);
+      const x = SIEGE.cx + Math.cos(a) * r, z = SIEGE.cz + Math.sin(a) * r;
+      if (world.walkable(x, z) && ok(x, z)) return [x, z];
+    }
+    const [x, z] = side === 'd' ? walkSpot(SIEGE.altar.x + 18, SIEGE.altar.z) : walkSpot(SIEGE.cx, SIEGE.cz + SIEGE.domeR + 30);
+    return ok(x, z) ? [x, z] : [SIEGE.cx + (side === 'd' ? 0 : 0), SIEGE.cz + (side === 'd' ? 60 : SIEGE.domeR + 30)];
+  }
+  function startSiege(t) {
+    if (siege) return 'active';
+    if (storm) return 'storm';
+    if (holy) return 'holy';
+    if (roundOver) return 'round';
+    if (!players.size) return 'no-players';
+    if (cargo) cargoGone(t, 'end');   // the crate steps aside: the fortress is the whole fight now
+    siege = { id: siegeSeq++, phase: 'reg', t0: t, until: t + SIEGE.regMs, end: 0, prog: 0, contest: null, lastStep: t, lastBeat: t, a0: 0, d0: 0 };
+    all({ t: 'siege', ...siegePublic() });
+    all({ t: 'chat', text: '🏰 Штурм Динабурга: регистрация открыта на ' + fmtSpan(SIEGE.regMs) + ' — выберите сторону в панели наверху: штурмующие или гарнизон' });
+    return 'ok';
+  }
+  function siegeTeleport(p) {
+    p.siegeBack = [p.x, p.z, p.yaw];   // where the siege found him: he goes back there when it ends (or falls)
+    const [x, z] = siegeSpot(p.siege);
+    const yaw = p.siege === 'a' ? Math.atan2(x - SIEGE.cx, z - SIEGE.cz) : Math.atan2(SIEGE.cx - x, SIEGE.cz - z);   // the attackers face the fortress, the garrison faces out
+    spawn(p, x, z, yaw, true);
+  }
+  function startPrep(t) {
+    for (const p of players.values()) if (p.bot) { const c = siegeCounts(); p.siege = c.a <= c.d ? 'a' : 'd'; }   // the bots even the sides out
+    for (const p of players.values()) if (p.siege) siegeTeleport(p);   // the registered appear in one place, each side its own
+    siege.phase = 'prep'; siege.t0 = t; siege.until = t + SIEGE.prepMs; siege.lastStep = t; areaRev++;
+    all({ t: 'siege', ...siegePublic() });
+    all({ t: 'chat', text: '🛡 Гарнизон занимает крепость, штурмующие — исходные позиции: защитный купол поднят на ' + fmtSpan(SIEGE.prepMs) + ', оружие на замке' });
+  }
+  function startAssault(t) {
+    siege.phase = 'assault'; siege.t0 = t; siege.until = t + SIEGE.durMs; siege.end = siege.until; siege.prog = 0; siege.contest = null; siege.lastStep = t;
+    const c = siegeCounts(); siege.a0 = c.a; siege.d0 = c.d;
+    all({ t: 'siege', ...siegePublic() });
+    all({ t: 'chat', text: '⚔ Купол пал — штурм Динабурга начался! ' + fmtSpan(SIEGE.durMs) + ' на штурм. Алтарь — пушка в саду крепости: штурмующим удержать его ' + fmtSpan(SIEGE.holdMs) + ', гарнизону — выстоять' });
+  }
+  function siegeDrop(p) {   // the fallen leaves the event at once: the human teleports back to the city, the bot waits out the event dead
+    const back = p.siegeBack; p.siege = null; p.siegeBack = null;
+    if (p.bot) return;
+    send(p, { t: 'siegeOut', reason: 'dead' });
+    const [x, z] = back && world.walkable(back[0], back[1]) ? [back[0], back[1]] : areaPoint();
+    spawn(p, x, z, back ? back[2] : Math.random() * 6.283, true);
+  }
+  // the rare loot of the survivors: the 8× optic and the red dot (if not owned and the pack has room), double reserve,
+  // the full belt and the full magazines — and prizeKills each, counted for the team in the team fight
+  function siegePrize(winners) {
+    const got = new Set();
+    for (const p of winners) {
+      p.hp = R.hp; p.mag = WEAPONS.map(w => w.mag); p.reserve = RESERVE.map(r => r * INV.reserveCap);
+      p.meds = INV.medMax; p.nades = INV.nadeMax; p.smokes = INV.nadeMax; p.napalms = INV.nadeMax; p.reloadDone = 0;
+      for (const k of ['optic', 'sight']) {
+        const owned = p.pack.filter(x => x === k).length + p.attach.filter(a => a === k).length;
+        if (owned >= INV[k + 'Max']) continue;
+        const fi = p.pack.indexOf(null); if (fi < 0) continue;
+        p.pack[fi] = k; got.add(k);
+      }
+      p.kills += SIEGE.prizeKills; if (!FFA) teamScore[p.team] += SIEGE.prizeKills;
+      send(p, { t: 'heal', hp: p.hp, meds: p.meds, quiet: 1 }); invMsg(p);
+    }
+    return { winners: winners.length, loot: [...got] };
+  }
+  function siegeWin(side, reason, t) {
+    const winners = [...players.values()].filter(p => p.siege === side && p.alive);
+    endSiege(t, side, 'win');   // everyone goes back to his place first (the spawn tops the belt up anew)
+    const prize = siegePrize(winners);   // the rare loot lands on top, so the teleport does not wipe it
+    const line = side === 'a' ? (reason === 'wipe' ? 'Гарнизон выбит — крепость пала!' : 'Штурмующие удержали алтарь ' + fmtSpan(SIEGE.holdMs) + ' — пушка Динабурга их!') : (reason === 'wipe' ? 'Штурмующие выбиты — крепость выстояла!' : 'Гарнизон выстоял все ' + fmtSpan(SIEGE.durMs) + ' — Динабург не взят, как в 1812-м!');
+    all({ t: 'siegeWin', side, name: SIEGE.names[side], reason, survivors: prize.winners, loot: prize.loot, prizeKills: SIEGE.prizeKills, score: FFA ? [] : teamScore });
+    all({ t: 'chat', text: '🏆 ' + line + ' Выжившие (' + prize.winners + ') получают редкий лут и +' + SIEGE.prizeKills + ' очков' });
+    sendBoard();
+    if (FFA) { const w = [...players.values()].find(p => p.kills >= WIN); if (w) endRound(w.team, w); }
+    else if (teamScore[0] >= WIN || teamScore[1] >= WIN) { const team = teamScore[0] >= teamScore[1] ? 0 : 1; endRound(team, [...players.values()].find(p => p.team === team)); }
+  }
+  function endSiege(t, winner, reason) {
+    if (!siege) return;
+    siege = null; areaRev++; siegeWarned = false;
+    nextSiegeAt = t + SIEGE.gapMs;
+    for (const p of players.values()) {
+      const was = p.siege; p.siege = null;
+      if (!was || !p.alive) { p.siegeBack = null; continue; }
+      const back = p.siegeBack; p.siegeBack = null;
+      if (back && world.walkable(back[0], back[1])) spawn(p, back[0], back[1], back[2], true);
+      else { const [x, z] = areaPoint(); spawn(p, x, z, Math.random() * 6.283, true); }
+    }
+    all({ t: 'siegeEnd', reason, winner: winner || undefined });
+    if (reason === 'storm') all({ t: 'chat', text: 'Штурм Динабурга прерван штормом' });
+    else if (reason === 'admin') all({ t: 'chat', text: 'Штурм Динабурга остановлен администратором' });
+    else if (reason === 'match') all({ t: 'chat', text: 'Штурм Динабурга прерван новой каткой' });
+    else if (reason === 'round') all({ t: 'chat', text: 'Штурм Динабурга прерван концом раунда' });
+  }
+  function stepSiege(t) {
+    if (roundOver) return;
+    if (!siege) {
+      if (!evOn('siege')) { siegeWarned = false; return; }   // the schedule is paused by the admin panel
+      if (!siegeWarned && t >= nextSiegeAt - SIEGE.warnMs && t < nextSiegeAt && players.size && !storm && !holy) { siegeWarned = true; all({ t: 'chat', text: '🏰 Штурм Динабурга через ' + Math.round(SIEGE.warnMs / 1000) + ' с — откроется регистрация сторон' }); }
+      if (t >= nextSiegeAt && players.size && !storm && !holy) startSiege(t);
+      return;
+    }
+    if (siege.phase === 'reg') { if (t >= siege.until) startPrep(t); }
+    else if (siege.phase === 'prep') { if (t >= siege.until) startAssault(t); }
+    else {
+      const dt = Math.max(0, Math.min(1, (t - siege.lastStep) / 1000)); siege.lastStep = t;
+      const ax = SIEGE.altar.x, az = SIEGE.altar.z, gy = world.ground(ax, az);
+      let na = 0, nd = 0;
+      for (const p of players.values()) {
+        if (!p.alive || !p.siege || Math.hypot(p.x - ax, p.z - az) > SIEGE.capR) continue;
+        if (Math.abs((p.y - p.eye) - gy) > 4) continue;   // on the ground by the fountain, not flying over it
+        if (p.siege === 'a') na++; else nd++;
+      }
+      const was = siege.prog;
+      if (na && !nd) { siege.prog = Math.min(1, siege.prog + dt * 1000 / SIEGE.holdMs); siege.contest = 'a'; }   // the attackers alone: the minute fills
+      else if (nd) { siege.prog = Math.max(0, siege.prog - dt * 1000 / SIEGE.holdMs * 2); siege.contest = 'd'; }   // the garrison in the ring: the hold is beaten back twice as fast
+      else { siege.prog = Math.max(0, siege.prog - dt * 1000 / SIEGE.holdMs); siege.contest = null; }   // left alone: the progress fades
+      if (was > 0.02 && siege.prog <= 0 && siege.contest === 'd') all({ t: 'chat', text: '🛡 Гарнизон отбил алтарь — удержание прервано' });
+      if (siege.prog >= 1) { siegeWin('a', 'hold', t); return; }
+      let la = 0, ld = 0; for (const p of players.values()) { if (p.alive && p.siege === 'a') la++; else if (p.alive && p.siege === 'd') ld++; }
+      if (siege.d0 > 0 && ld === 0) { siegeWin('a', 'wipe', t); return; }   // the garrison wiped: the fortress falls
+      if (siege.a0 > 0 && la === 0) { siegeWin('d', 'wipe', t); return; }   // the attackers wiped: the fortress stands
+      if (t >= siege.until) { siegeWin('d', 'time', t); return; }   // the historical outcome: the siege runs out
+    }
+    if (t - siege.lastBeat >= 1000) { siege.lastBeat = t; all({ t: 'siege', ...siegePublic() }); }
+  }
+  timers.push(setInterval(() => stepSiege(now()), 200));
   // ---- the clock of the game: snapshots of the world, the grenades in the air, the bots
   let last = now();
   timers.push(setInterval(() => {
@@ -947,6 +1128,13 @@ export function createGame(opts) {
     holyNext: ms => { if (holy) return false; nextHolyAt = now() + Math.max(0, ms); holyWarned = false; return true; },   // the next call rescheduled by the admin
     get holyNextAt() { return nextHolyAt; },   // when the next race is due: the admin panel's countdown
     holyState: () => holyPublic(),   // the public picture of the race: the panel reads the points and the hold
+    get siege() { return siege; },   // the siege of the fortress: the tests read the phase, the counts and the altar progress
+    stepSiege: () => stepSiege(now()),   // the registration, the dome, the assault and the prize, for the tests
+    siegeStart: () => startSiege(now()),   // the call to registration on demand: 'ok', or the reason it refused ('active', 'storm', 'holy', 'round', 'no-players')
+    siegeStop: () => { if (!siege) return false; endSiege(now(), null, 'admin'); return true; },   // the admin ends the siege: everyone goes back to his place
+    siegeNext: ms => { if (siege) return false; nextSiegeAt = now() + Math.max(0, ms); siegeWarned = false; return true; },   // the next call rescheduled by the admin
+    get siegeNextAt() { return nextSiegeAt; },   // when the next siege is due: the admin panel's countdown
+    siegeState: () => siegePublic(),   // the public picture of the siege: the panel reads the phase and the altar
     stepBullets: () => advanceBullets(now()),   // the tests drive the flight by their own clock
     stepNades: tickNades,   // the tests drive the fuse and the zones by their own clock too
     stepBots,   // and the bots' think by the test clock, for the fall test
@@ -955,7 +1143,7 @@ export function createGame(opts) {
     get match() { return match; },   // the schedule of the match, its roster and the fallen of its storm
     get storm() { return storm; },   // the storm's state: the tests read the circle and the phase
     stop() { for (const t of timers) { clearInterval(t); clearTimeout(t); } timers.length = 0; },
-    health() { return { ok: true, mode: MODE, name: NAME, players: humans().length, bots: players.size - humans().length, max: MAX, score: teamScore, win: WIN === Infinity ? null : WIN, teams: TEAMS, round: roundOver ? 'end' : 'play', arena: fieldArena() ? fieldArena().name : null, holy: holy ? { left: Math.max(0, holy.until - now()), held: holy.points.filter(pt => pt.owner).length, hold: holy.holdSide ? Math.max(0, holy.holdStart + HOLY.holdMs - now()) : 0 } : undefined, leaderboard: !!lb, day: dayNow(), match: matchPublic() || undefined, storm: storm ? { phase: storm.phase, pi: storm.pi, stages: storm.plan.length, kind: storm.kind, left: Math.max(0, storm.t1 - now()), alive: stormAlive().length, total: players.size } : undefined }; },
+    health() { return { ok: true, mode: MODE, name: NAME, players: humans().length, bots: players.size - humans().length, max: MAX, score: teamScore, win: WIN === Infinity ? null : WIN, teams: TEAMS, round: roundOver ? 'end' : 'play', arena: fieldArena() ? fieldArena().name : null, holy: holy ? { left: Math.max(0, holy.until - now()), held: holy.points.filter(pt => pt.owner).length, hold: holy.holdSide ? Math.max(0, holy.holdStart + HOLY.holdMs - now()) : 0 } : undefined, siege: siege ? { phase: siege.phase, left: Math.max(0, siege.until - now()), counts: siegeCounts(), prog: +siege.prog.toFixed(3) } : undefined, leaderboard: !!lb, day: dayNow(), match: matchPublic() || undefined, storm: storm ? { phase: storm.phase, pi: storm.pi, stages: storm.plan.length, kind: storm.kind, left: Math.max(0, storm.t1 - now()), alive: stormAlive().length, total: players.size } : undefined }; },
   };
 }
 export { LEVELS };
