@@ -60,7 +60,7 @@ const DMG = [
   { dmg: 20, head: 42 },
   { dmg: 16, head: 28 },
 ];
-const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, smokes: 1, napalms: 1, lastNade: 0, burnAt: 0, lastBurnSnd: 0, spec: 0, specMode: 0, scope: false, zoom: 0, opticMag: 8, dotBoost: 0, dotBoostAt: 0, dotBoostCd: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0, sights: { sight: 0, optic: 0 }, attach: [null, null, null, null, null], loadout: [0, 3], pack: [1, 2, 4, null, null, null, null, null, null, null] };   // two equipped guns + the ten-cell backpack (server/combat.mjs LOADOUT/PACK): a cell holds a gun index or a stored item ('sight', 'optic', 'med', 'nade'); sights: loose in the pack, attach: mounted per weapon
+const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, smokes: 1, napalms: 1, lastNade: 0, burnAt: 0, lastBurnSnd: 0, spec: 0, specMode: 0, scope: false, zoom: 0, opticMag: 8, dotBoost: 0, dotBoostAt: 0, dotBoostCd: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, server: '', kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0, sights: { sight: 0, optic: 0 }, attach: [null, null, null, null, null], loadout: [0, 3], pack: [1, 2, 4, null, null, null, null, null, null, null] };   // two equipped guns + the ten-cell backpack (server/combat.mjs LOADOUT/PACK): a cell holds a gun index or a stored item ('sight', 'optic', 'med', 'nade'); sights: loose in the pack, attach: mounted per weapon
 // the pockets (keep server/combat.mjs in step: RESERVE and INV): the server owns them, the page only shows and predicts
 const RESERVE = [90, 24, 15, 36, 200], NADE_MAX = 2, MED_MAX = 3;   // the ready belt caps: the surplus rides in the pack and refills the belt as it is spent
 // the aimed grenade throw: G takes the grenade in hand, the mouse aims it, the left button held down charges the power
@@ -512,9 +512,65 @@ function updatePanel() {
   if (MP.ffa) { const lead = [...MP.board].sort((a, b) => b.kills - a.kills)[0], me = document.createElement('b'), ld = document.createElement('b'), lim = document.createElement('small'); me.className = 'me'; me.textContent = 'Вы ' + MP.kills; ld.className = 'lead'; ld.textContent = lead ? lead.name + ' ' + lead.kills : ''; lim.textContent = 'до ' + MP.win; tm.append(me, ld, lim); } else { const chip = (i, t, s) => { const e = document.createElement('b'), n = document.createElement('small'), v = document.createElement('span'); e.className = 't' + i; n.textContent = t; v.textContent = s; e.append(n, v); return e; };
   const lim = document.createElement('small'); lim.textContent = 'до ' + MP.win; tm.append(chip(0, MP.teams[0], MP.score[0]), lim, chip(1, MP.teams[1], MP.score[1])); }
 }
+/* ---------- the held Tab: the live scoreboard of the round ----------
+   Two team halves (or one free-for-all list with ranks); every player carries the round's kills, deaths, damage,
+   accuracy and ping, the fallen are dimmed, bots wear a badge and your own row is lit. The server resends the board
+   every couple of seconds, so the numbers keep moving while the key is held. */
+const BD_COLS = [['c-k', 'убийств'], ['c-d', 'смертей'], ['c-dmg', 'урон'], ['c-acc', 'точн.'], ['c-ping', 'пинг']];
+const bdPlural = (n, one, few, many) => { const a = n % 10, b = n % 100; return n + ' ' + (a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 12 || b > 14) ? few : many); };
 function drawBoard() {
-  const rows = [...MP.board].sort((a, b) => (MP.ffa ? 0 : a.team - b.team) || b.kills - a.kills || a.deaths - b.deaths), ol = el('mpBoardList'); ol.textContent = '';
-  for (const e of rows) { const li = document.createElement('li'); li.className = (MP.ffa ? 'tf' : 't' + e.team) + (e.id === MP.id ? ' me' : ''); const n = document.createElement('span'), k = document.createElement('b'), dd = document.createElement('i'); n.textContent = e.name; k.textContent = e.kills; dd.textContent = e.deaths; li.append(n, k, dd); ol.append(li); }
+  const box = el('mpBoard'); if (box.hidden) return;
+  box.firstElementChild.classList.toggle('ffa', MP.ffa);
+  el('mpBoardTitle').textContent = MP.local ? 'Тренировка с ботами' : MP.ffa ? 'Каждый сам за себя' : 'Командный бой';
+  const sub = [];
+  if (MP.local) sub.push('уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || 'средний') + '»');
+  else if (MP.server) sub.push(MP.server);
+  if (MP.arena) sub.push('арена: ' + MP.arena.name);
+  el('mpBoardSub').textContent = sub.join(' · ');
+  const sc = el('mpBoardScore'); sc.textContent = '';
+  const chip = (cls, text) => { const b = document.createElement('b'); b.className = cls; b.textContent = text; sc.append(b); };
+  const lim = document.createElement('small'); lim.textContent = 'до ' + MP.win;
+  if (MP.ffa) { const lead = [...MP.board].sort((a, b) => b.kills - a.kills)[0]; if (lead) chip('lead', 'лидер: ' + lead.name + ' — ' + lead.kills); sc.append(lim); }
+  else { chip('t0', MP.teams[0] + ' ' + MP.score[0]); sc.append(lim); chip('t1', MP.score[1] + ' ' + MP.teams[1]); }
+  const cell = (cls, text) => { const s = document.createElement('span'); s.className = cls; s.textContent = text; return s; };
+  const cols = el('mpBoardCols'); cols.textContent = '';
+  if (MP.ffa) cols.append(cell('c-rank', '#'));
+  cols.append(cell('c-name', 'игрок'));
+  for (const [c, t] of BD_COLS) cols.append(cell(c, t));
+  const list = el('mpBoardList'); list.textContent = '';
+  const byScore = (a, b) => b.kills - a.kills || (b.dmg || 0) - (a.dmg || 0) || a.deaths - b.deaths;
+  const row = (e, rank) => {
+    const r = document.createElement('div');
+    r.className = 'bd-row ' + (MP.ffa ? 'tf' : 't' + e.team) + (e.id === MP.id ? ' me' : '') + (e.alive === false ? ' dead' : '');
+    if (rank) r.append(cell('c-rank', rank));
+    const n = document.createElement('span'); n.className = 'c-name';
+    const st = document.createElement('i'); st.className = 'bd-st'; st.title = e.alive === false ? 'погиб' : 'в строю';
+    const nm = document.createElement('b'); nm.textContent = e.name; nm.title = e.name;
+    n.append(st, nm);
+    if (e.id === MP.id) { const you = document.createElement('em'); you.className = 'bd-you'; you.textContent = 'вы'; n.append(you); }
+    if (e.bot) { const bot = document.createElement('em'); bot.className = 'bd-bot'; bot.textContent = 'бот'; n.append(bot); }
+    r.append(n);
+    r.append(cell('c-k', e.kills), cell('c-d', e.deaths));
+    const dmg = cell('c-dmg', e.dmg || 0); dmg.title = 'урон за раунд'; r.append(dmg);
+    const acc = cell('c-acc', (e.acc || 0) + ' %'); acc.title = 'точность: доля попавших выстрелов'; r.append(acc);
+    const pg = cell('c-ping', e.ping == null ? '—' : e.ping); pg.title = 'задержка до сервера, мс';
+    if (e.ping != null) pg.dataset.q = e.ping < 70 ? 'ok' : e.ping < 140 ? 'mid' : 'bad';
+    r.append(pg);
+    return r;
+  };
+  if (MP.ffa) [...MP.board].sort(byScore).forEach((e, i) => list.append(row(e, i + 1)));
+  else for (const t of [0, 1]) {
+    const mine = MP.board.filter(e => e.team === t).sort(byScore);
+    const h = document.createElement('div'); h.className = 'bd-team t' + t;
+    const hn = document.createElement('b'); hn.textContent = MP.teams[t];
+    const hc = document.createElement('small'); hc.textContent = bdPlural(mine.length, 'игрок', 'игрока', 'игроков');
+    h.append(hn, hc); list.append(h);
+    if (mine.length) for (const e of mine) list.append(row(e));
+    else { const em = document.createElement('div'); em.className = 'bd-empty'; em.textContent = 'Пока никого'; list.append(em); }
+  }
+  const bots = MP.board.filter(e => e.bot).length;
+  el('mpBoardCount').textContent = bdPlural(MP.board.length, 'игрок', 'игрока', 'игроков') + (bots ? ' · ' + bdPlural(bots, 'бот', 'бота', 'ботов') : '');
+  el('mpBoardKey').textContent = keyName(SET.keys.board);
 }
 function feed(text, cls) {
   const f = el('mpFeed'), d = document.createElement('div'); d.textContent = text; if (cls) d.className = cls; f.prepend(d); while (f.children.length > 6) f.lastChild.remove(); setTimeout(() => d.remove(), 7000);
@@ -669,7 +725,7 @@ function respawn() {
 /* ---------- messages from the server ---------- */
 function onMsg(m) {
   switch (m.t) {
-    case 'hello': dayOf(m); MP.ffa = m.mode === 'ffa'; document.body.classList.toggle('ffa', MP.ffa); if (MP.ffa) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team, e.char); document.body.dataset.team = m.team;
+    case 'hello': dayOf(m); MP.ffa = m.mode === 'ffa'; document.body.classList.toggle('ffa', MP.ffa); if (MP.ffa) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.server = m.server || ''; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team, e.char); document.body.dataset.team = m.team;
       MP.arena = m.arena || null; clearFx(); clearBlasts(); setItems(m.items); for (const z of m.zones || []) addZone(z);   // the screens and patches already burning when we joined
       for (const [id, a] of Object.entries(m.attach || {})) { const r = remotes.get(+id); if (r && Array.isArray(a)) { r.attach = a; if (r.av) a.forEach((k, w) => r.av.setAttach(w, k)); } } if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
       if (MP.local) feed('Тренировка с ботами: ' + MP.board.filter(e => e.bot).length + ', уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || '') + '»', 'sys'); break;
@@ -682,7 +738,7 @@ function onMsg(m) {
       if (canvas.requestPointerLock) { canvas.focus(); try { const pr = canvas.requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} }
       break;
     }
-    case 'pong': MP.rtt = Math.round(MP.rtt ? MP.rtt * 0.6 + (performance.now() - m.c) * 0.4 : performance.now() - m.c); el('mpPing').textContent = 'пинг ' + MP.rtt + ' мс'; updatePanel(); break;
+    case 'pong': MP.rtt = Math.round(MP.rtt ? MP.rtt * 0.6 + (performance.now() - m.c) * 0.4 : performance.now() - m.c); el('mpPing').textContent = 'пинг ' + MP.rtt + ' мс'; updatePanel(); if (!el('mpBoard').hidden) drawBoard(); break;
     case 'correct': P.x = m.x; P.z = m.z; if (m.out) edgeNotice(); break;
     case 'snap': {
       const t = performance.now(), seen = new Set();
