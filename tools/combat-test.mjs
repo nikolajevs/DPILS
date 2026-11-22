@@ -23,7 +23,7 @@
       frees the cell, a swap returns the old sight to it, a full pack refuses the take-off.
    3. A real bot fight on a flat arena (12 s of real time): with the small hitboxes the bots must still see,
       shoot and kill each other. */
-import { BULLET_G, FALL, HIT, INV, WEAPONS, NADE, W_FALL, bulletAt, bulletDir, bulletDrop, dragDist, dragTime, dragVel, rayHit } from '../server/combat.mjs';
+import { BULLET_G, CARGO, FALL, HIT, INV, WEAPONS, NADE, W_FALL, bulletAt, bulletDir, bulletDrop, dragDist, dragTime, dragVel, rayHit } from '../server/combat.mjs';
 import { createGame, MUZZLE } from '../server/game.mjs';
 import { makePhysics } from '../server/physics.mjs';
 
@@ -1136,6 +1136,74 @@ console.log('bot tactics (roles, weapons, footwork, cover, reaction):');
   ok(retreated, 'the bot falls back while its slow gun reloads with the enemy close');
   ok(covered, 'the bot finds a wall to hide behind');
   ok(crouched, 'the bot crouches behind the cover');
+  g.stop();
+}
+
+/* ---------- 2m. the cargo event: the drop, the beacon, the loot, the mark ---------- */
+console.log('cargo event (createGame, controlled clock):');
+{
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), now: () => clock, name: 'cargo' });
+  const A = seat(g, conn());
+  msg(A, { t: 'join', name: 'Носитель', team: 0, x: 0, z: 0, yaw: 0 });
+  const p = A.handle.player;
+  clock += 3000;
+  ok(!g.cargo, 'no crate before the first drop is due');
+  clock += CARGO.firstMs; g.stepCargo();
+  ok(g.cargo && g.cargo.state === 'fall', 'the first drop is in the air');
+  const c0 = g.cargo;
+  ok(A.last('cargo') && A.last('cargo').id === c0.id, 'the drop went to everybody');
+  ok(c0.y0 === c0.gy + CARGO.alt && c0.landAt === c0.t0 + CARGO.alt / CARGO.speed * 1000, 'the altitude and the landing time of the descent');
+  clock = c0.landAt - 1; g.stepCargo();
+  ok(g.cargo.state === 'fall', 'still falling a moment before the landing');
+  clock = c0.landAt; g.stepCargo();
+  ok(g.cargo.state === 'landed', 'the crate lands on time');
+  const bz = [...g.zones.values()].find(z => z.kind === 'beacon');
+  ok(bz && bz.x === c0.x && bz.z === c0.z, 'the smoke beacon stands at the landing');
+  ok(A.last('cargoLand') && A.last('cargoLand').id === c0.id, 'the landing went to everybody');
+  ok(A.last('zone') && A.last('zone').kind === 'beacon', 'the beacon went to everybody as a zone');
+  // the pickup: stand next to the crate — the loot goes to the belt and the pack, the carrier is marked
+  p.x = c0.x + 1; p.z = c0.z; p.y = 1.7;
+  g.stepCargo();
+  ok(!g.cargo, 'the crate is taken');
+  ok(p.markUntil === clock + CARGO.markMs, 'the carrier is marked for a minute');
+  ok(A.last('marked') && A.last('marked').id === p.id, 'the mark went to everybody');
+  ok(p.pack.includes('optic'), 'the rare optic rides in the pack');
+  ok(p.meds >= 2 && p.nades >= 1, 'the kits and the grenades topped the belt');
+  ok(A.last('inv'), 'the inventory update was sent');
+  ok(A.last('cargoTook') && A.last('cargoTook').to === p.id, 'the pickup went to everybody');
+  ok(![...g.zones.values()].some(z => z.kind === 'beacon'), 'the beacon dies with the taken crate');
+  ok(A.last('board').board.find(e => e.id === p.id).mark, 'the Tab board shows the mark');
+  clock += CARGO.markMs; g.stepCargo();
+  ok(p.markUntil === 0 && A.last('unmark') && A.last('unmark').id === p.id, 'the mark expires after its minute');
+  ok(!g.cargo, 'no crate right after the pickup');
+  clock += CARGO.gapMs; g.stepCargo();
+  ok(g.cargo && g.cargo.state === 'fall', 'the next drop comes after the gap');
+  // a late joiner gets the crate in flight with hello
+  const C = seat(g, conn());
+  msg(C, { t: 'join', name: 'Поздний', team: 0, x: 0, z: 0, yaw: 0 });
+  ok(C.last('hello').cargo && C.last('hello').cargo.id === g.cargo.id, 'a late joiner gets the crate in flight');
+  // the mark dies with its carrier: the second drop is taken, then the carrier is shot
+  const c1 = g.cargo; clock = c1.landAt; g.stepCargo();
+  p.x = c1.x; p.z = c1.z; p.y = 1.7; g.stepCargo();
+  ok(p.markUntil > clock, 'the second pickup marks again');
+  const B = seat(g, conn());
+  msg(B, { t: 'join', name: 'Охотник', team: 1, x: p.x + 10, z: p.z, yaw: 0 });
+  clock += 3000;
+  msg(B, { t: 'state', x: p.x + 10, y: 1.7, z: p.z, yaw: 0, pitch: 0 });
+  const bp = B.handle.player, dx = p.x - bp.x, dz = p.z - bp.z, l = Math.hypot(dx, dz);
+  for (let i = 0; i < 8 && p.alive; i++) { msg(B, { t: 'shoot', w: 0, rays: [[dx / l, -0.6 / l, dz / l]] }); clock += 120; g.stepBullets(); }
+  ok(!p.alive, 'the marked carrier can be killed');
+  ok(p.markUntil === 0 && A.all('unmark').some(m => m.id === p.id), 'the mark dies with the carrier');
+  // the untaken crate expires on its own
+  clock += CARGO.gapMs; g.stepCargo();
+  const c2 = g.cargo;
+  ok(c2 && c2.state === 'fall', 'the third drop comes');
+  clock = c2.landAt; g.stepCargo();
+  ok(g.cargo && g.cargo.state === 'landed', 'the third crate lands');
+  clock += CARGO.groundMs; g.stepCargo();
+  ok(!g.cargo && A.last('cargoEnd') && A.last('cargoEnd').id === c2.id, 'the untaken crate expires');
+  ok(![...g.zones.values()].some(z => z.kind === 'beacon'), 'its beacon is out too');
   g.stop();
 }
 

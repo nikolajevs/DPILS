@@ -8,7 +8,7 @@
    (WEAPONS.vel) and the damage lands when the bullet arrives, not at the click. The hit is still judged against the target
    as the shooter saw it at the click (the position rewound by the shooter's lag, frozen for the flight), so “shoot where
    you see” holds while the bullet takes its time to get there. */
-import { FALL, HIT, INV, ITEMS, LOADOUT, NADE, NADE_KINDS, NAPALM, PACK, RELOAD_MS, RESERVE, RULES as R, SMOKE, WEAPONS, W_FALL, W_FIRE, W_NADE, bulletAt, bulletDir, dragDist, dragTime, rayHit, rayToSegment } from './combat.mjs';
+import { CARGO, FALL, HIT, INV, ITEMS, LOADOUT, NADE, NADE_KINDS, NAPALM, PACK, RELOAD_MS, RESERVE, RULES as R, SMOKE, WEAPONS, W_FALL, W_FIRE, W_NADE, bulletAt, bulletDir, dragDist, dragTime, rayHit, rayToSegment } from './combat.mjs';
 import { LEVELS, botName, createBrain } from './bots.mjs';
 import { DAY_MS, dayPhase } from './daycycle.mjs';
 
@@ -65,14 +65,14 @@ export function createGame(opts) {
   const botChar = () => CHARS[Math.random() * CHARS.length | 0];
   // the Tab scoreboard reads more than the score: the round's damage and accuracy, the ping of a human (a bot has none),
   // and who is on their feet — so the held table shows the live round, not only the kills
-  const board = () => [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, bot: !!p.bot, char: p.char, dmg: Math.round(p.st.dmg), acc: p.st.shots ? Math.round(100 * p.st.hitShots / p.st.shots) : 0, ping: p.bot ? undefined : Math.round(p.rtt), alive: p.alive }));
+  const board = () => [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, bot: !!p.bot, char: p.char, dmg: Math.round(p.st.dmg), acc: p.st.shots ? Math.round(100 * p.st.hitShots / p.st.shots) : 0, ping: p.bot ? undefined : Math.round(p.rtt), alive: p.alive, mark: p.markUntil > now() || undefined }));
   const sendBoard = () => all({ t: 'board', board: board(), score: FFA ? [] : teamScore });
   const count = k => [...players.values()].filter(p => p.team === k).length;
   function pickTeam(want, id) {
     if (FFA) return id; const a = count(0), b = count(1); if (a !== b) return a < b ? 0 : 1; return want === 0 || want === 1 ? want : Math.random() < 0.5 ? 0 : 1;
   }
   const newPlayer = () => ({ id: nextId++, conn: null, bot: null, name: '', char: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, st: { shots: 0, hitShots: 0, dmg: 0, heads: 0 }, wep: 0, lastShot: 0, lastNade: 0, nades: 0, smokes: 0, napalms: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(),
-    mag: WEAPONS.map(w => w.mag), reserve: RESERVE.slice(), meds: 0, reloadDone: 0, reloadW: 0, lastMed: 0,
+    mag: WEAPONS.map(w => w.mag), reserve: RESERVE.slice(), meds: 0, reloadDone: 0, reloadW: 0, lastMed: 0, markUntil: 0,
     attach: WEAPONS.map(() => null),
     loadout: LOADOUT.slice(), pack: PACK.slice() });   // two equipped guns + the backpack (guns and stored items); one sight mounted per weapon
   // where the player stood at time t (the shooter saw the target 120 ms in the past plus half the round trip);
@@ -113,6 +113,7 @@ export function createGame(opts) {
     v.hp -= dmg; if (p !== v) { const d = dmg + Math.min(0, v.hp); p.st.dmg += d; if (p.prof) p.prof.add('dmg', d); } send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: from[0] - v.x, dz: from[2] - v.z, bd: r3(bd), vf: vf == null ? undefined : +vf.toFixed(3), fall: w === W_FALL ? 1 : undefined, fire: w === W_FIRE ? 1 : undefined }); if (p !== v) send(p, { t: 'hit', id: v.id, head, zone, kill: v.hp <= 0, dmg: Math.min(dmg, dmg + Math.min(0, v.hp)) });
     if (v.hp > 0) return;
     v.alive = false; v.deaths++; v.diedAt = t0; v.streak = 0; if (v.prof) v.prof.add('deaths');
+    if (v.markUntil) { v.markUntil = 0; all({ t: 'unmark', id: v.id }); }   // the cargo mark dies with its carrier
     if (p !== v) { p.kills++; if (!FFA) teamScore[p.team]++; if (head) p.st.heads++; if (p.prof) { p.prof.add('kills'); if (head) p.prof.add('heads'); p.streak = (p.streak || 0) + 1; p.prof.max('best', p.streak); } }
     all({ t: 'kill', killer: p.id, victim: v.id, kn: p.name, vn: v.name, kt: p.team, vt: v.team, head, w, zone: bd ? zone : undefined, bd: r3(bd), vf: vf == null ? undefined : +vf.toFixed(3), dx: +(from[0] - v.x).toFixed(2), dz: +(from[2] - v.z).toFixed(2) }); sendBoard();   // dx/dz: where the blow came from; bd: the bullet's own way at the hit — the body falls along it (ragdoll.js)
     if (p !== v && (FFA ? p.kills : teamScore[p.team]) >= WIN) endRound(p.team, p);
@@ -361,11 +362,11 @@ export function createGame(opts) {
     const rows = [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, heads: p.st.heads, dmg: Math.round(p.st.dmg), acc: p.st.shots ? Math.round(100 * p.st.hitShots / p.st.shots) : 0 }));
     rows.sort((a, b) => b.kills - a.kills || b.dmg - a.dmg || a.deaths - b.deaths);
     all({ t: 'win', mode: MODE, team, name: FFA ? winner.name : TEAMS[team], score: FFA ? [] : teamScore, rows, mvp: rows.length ? rows[0].id : 0, nextMs: 10000 });
-    timers.push(setTimeout(() => { teamScore[0] = teamScore[1] = 0; for (const p of players.values()) { p.kills = p.deaths = 0; p.st = { shots: 0, hitShots: 0, dmg: 0, heads: 0 }; } roundOver = false; sendBoard(); all({ t: 'round' }); all({ t: 'chat', text: 'Новый раунд' }); for (const it of items.values()) { it.active = true; it.respawnAt = 0; all(itemMsg(it)); } for (const z of zones.values()) all({ t: 'zoneEnd', id: z.id }); zones.clear(); }, 10000));
+    timers.push(setTimeout(() => { teamScore[0] = teamScore[1] = 0; for (const p of players.values()) { p.kills = p.deaths = 0; p.st = { shots: 0, hitShots: 0, dmg: 0, heads: 0 }; if (p.markUntil) { p.markUntil = 0; all({ t: 'unmark', id: p.id }); } } roundOver = false; sendBoard(); all({ t: 'round' }); all({ t: 'chat', text: 'Новый раунд' }); for (const it of items.values()) { it.active = true; it.respawnAt = 0; all(itemMsg(it)); } for (const z of zones.values()) all({ t: 'zoneEnd', id: z.id }); zones.clear(); if (cargo) { all({ t: 'cargoEnd', id: cargo.id }); cargo = null; } nextCargoAt = now() + CARGO.firstMs; }, 10000));
   }
   // ---- bots
   const enemyBase = p => (arena ? (FFA ? arena.bases.flat()[Math.floor(Math.random() * arena.bases.flat().length)] : arena.bases[p.team === 1 ? 0 : 1][Math.floor(Math.random() * arena.bases[p.team === 1 ? 0 : 1].length)]) : null);
-  const brain = createBrain({ players, now, world, area, FFA, WEAPONS, R, shoot, throwNade, spawn, fall, roundOver: () => roundOver, enemyBase, reload: beginReload, equip, get items() { return items; }, get zones() { return zones; } });   // items is declared below: a getter reads it once the game is built
+  const brain = createBrain({ players, now, world, area, FFA, WEAPONS, R, shoot, throwNade, spawn, fall, roundOver: () => roundOver, enemyBase, reload: beginReload, equip, get items() { return items; }, get zones() { return zones; }, get cargo() { return cargo; } });   // items and cargo are declared below: getters read them once the game is built
   let botN = 0;
   function addBot(level) {
     if (players.size >= MAX) return null;
@@ -389,7 +390,7 @@ export function createGame(opts) {
           if (players.size >= MAX && !removeBot()) { send(p, { t: 'full' }); conn.close(); return; }
           if (lb && m.board !== false && validKey(m.key) && ![...players.values()].some(q => q.key === m.key)) { p.key = m.key; const r = lb.identify(m.key, nameBase(m.name), n => !taken(n)); p.name = r.name; p.prof = r.prof; } else p.name = cleanName(m.name);
           p.team = pickTeam(m.team, p.id); p.char = cleanChar(m.char); p.joined = true; players.set(p.id, p);
-          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, day: dayNow() || undefined, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), zones: [...zones.values()].map(z => ({ id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, r: z.r, left: Math.max(0, z.until - now()) })), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])) });
+          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, now: now(), arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, day: dayNow() || undefined, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), zones: [...zones.values()].map(z => ({ id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, r: z.r, left: Math.max(0, z.until - now()) })), cargo: cargoMsg(), marks: marks(), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])) });
           spawn(p, m.x, m.z, m.yaw); sendBoard(); all({ t: 'chat', text: p.name + (FFA ? ' в игре' : ' в игре, ' + TEAMS[p.team]) });
           return;
         }
@@ -475,6 +476,85 @@ export function createGame(opts) {
     }
   }
   timers.push(setInterval(() => tickItems(now()), 100));
+  // ---- the cargo event: a supply crate parachutes into an open spot, a smoke beacon marks the landing, the loot goes
+  // to whoever reaches it first — and that one is marked for everyone for a minute (CARGO, combat.mjs). The bait is the
+  // fight around the crate: the bots converge on it too (bots.mjs) and hunt the marked carrier afterwards.
+  let cargo = null, nextCargoAt = now() + CARGO.firstMs, cargoSeq = 1;
+  const marks = () => [...players.values()].filter(p => p.markUntil > now()).map(p => ({ id: p.id, until: p.markUntil }));
+  const cargoMsg = () => cargo && { id: cargo.id, x: cargo.x, z: cargo.z, y0: cargo.y0, gy: cargo.gy, t0: cargo.t0, landAt: cargo.landAt, speed: CARGO.speed, state: cargo.state, until: cargo.until };
+  // an open spot: walkable ground with nothing overhead (no roof, no canopy) and not right under someone's feet —
+  // the race to the crate is the point, so it lands at least 25 m from every living player
+  function cargoSpot() {
+    for (let k = 0; k < 80; k++) {
+      const a = Math.random() * 6.283, r = Math.sqrt(Math.random()) * (area.r - 30), x = area.cx + Math.cos(a) * r, z = area.cz + Math.sin(a) * r;
+      if (!world.walkable(x, z) || world.buildingAt(x, z, 200)) continue;
+      if ([...players.values()].some(p => p.alive && Math.hypot(p.x - x, p.z - z) < 25)) continue;
+      return [x, z];
+    }
+    const [x, z] = areaPoint(); return [x, z];
+  }
+  function dropCargo() {
+    const [x, z] = cargoSpot(), gy = world.ground(x, z), t0 = now();
+    cargo = { id: cargoSeq++, x, z, gy, y0: gy + CARGO.alt, t0, landAt: t0 + CARGO.alt / CARGO.speed * 1000, state: 'fall', until: 0, zoneId: 0, tookBy: 0, tookName: '' };
+    all({ t: 'cargo', ...cargoMsg() });
+    all({ t: 'chat', text: '📦 Груз сброшен с парашютом — ищите дым-маяк' });
+  }
+  // the loot into the belt and the pack (the pickup rules of tickItems): what was given, empty when all is full
+  function cargoLoot(p) {
+    const got = [];
+    for (let i = 0; i < WEAPONS.length; i++) { const add = Math.min(ITEMS.ammo.give[i], RESERVE[i] * INV.reserveCap - p.reserve[i]); if (add > 0) { p.reserve[i] += add; got.push('ammo'); } }
+    for (const [kind, n] of CARGO.loot) for (let k = 0; k < n; k++) {
+      if (kind === 'sight' || kind === 'optic') {
+        const owned = p.pack.filter(x => x === kind).length + p.attach.filter(a => a === kind).length;
+        if (owned >= INV[kind + 'Max']) continue;
+        const fi = p.pack.indexOf(null); if (fi < 0) continue;
+        p.pack[fi] = kind; got.push(kind);
+      } else {
+        const [field, cap] = beltOf[kind];
+        if (p[field] < cap) { p[field]++; got.push(kind); }
+        else { const fi = p.pack.indexOf(null); if (fi < 0) continue; p.pack[fi] = kind; got.push(kind); }
+      }
+    }
+    return got;
+  }
+  function cargoGone(t, why) {
+    if (!cargo) return;
+    if (cargo.zoneId) { zones.delete(cargo.zoneId); all({ t: 'zoneEnd', id: cargo.zoneId }); }
+    all({ t: why === 'took' ? 'cargoTook' : 'cargoEnd', id: cargo.id, to: cargo.tookBy || undefined, name: cargo.tookName || undefined });
+    cargo = null; nextCargoAt = t + CARGO.gapMs;
+  }
+  function stepCargo(t) {
+    for (const p of players.values()) if (p.markUntil && t >= p.markUntil) { p.markUntil = 0; all({ t: 'unmark', id: p.id }); }
+    if (roundOver) return;
+    if (!cargo) { if (t >= nextCargoAt && players.size) dropCargo(); return; }
+    if (cargo.state === 'fall') {
+      if (t < cargo.landAt) return;
+      cargo.state = 'landed'; cargo.until = t + CARGO.groundMs;
+      const z = { id: nextNade++, kind: 'beacon', x: cargo.x, y: cargo.gy, z: cargo.z, r: CARGO.beaconR, until: cargo.until, by: 0, lastTick: 0 };
+      cargo.zoneId = z.id; zones.set(z.id, z);
+      all({ t: 'zone', id: z.id, kind: 'beacon', x: z.x, y: z.y, z: z.z, r: z.r, durMs: CARGO.groundMs });
+      all({ t: 'cargoLand', id: cargo.id });
+      all({ t: 'chat', text: '📦 Груз приземлился — дым-маяк виден издалека' });
+      return;
+    }
+    if (t >= cargo.until) { cargoGone(t, 'end'); all({ t: 'chat', text: 'Груз исчез — никто не забрал' }); return; }
+    for (const p of players.values()) {
+      if (!p.alive || Math.hypot(p.x - cargo.x, p.z - cargo.z) > CARGO.pickR) continue;
+      if (Math.abs((p.y - p.eye) - cargo.gy) > 3) continue;   // on the ground next to the crate, not flying over it
+      const got = cargoLoot(p);
+      if (!got.length) continue;   // the belt and the pack are full: the crate stays for someone else
+      cargo.tookBy = p.id; cargo.tookName = p.name;
+      p.markUntil = t + CARGO.markMs;
+      if (p.bot) for (const k of ['sight', 'optic']) if (p.pack.includes(k)) setSight(p, p.wep, k);   // a bot mounts the rare sight at once
+      if (p.conn) invMsg(p);
+      all({ t: 'marked', id: p.id, until: p.markUntil, name: p.name });
+      cargoGone(t, 'took');
+      all({ t: 'chat', text: '🎯 ' + p.name + ' забрал груз — теперь он мишень для всех (60 с)' });
+      sendBoard();
+      return;
+    }
+  }
+  timers.push(setInterval(() => stepCargo(now()), 200));
   // ---- the clock of the game: snapshots of the world, the grenades in the air, the bots
   let last = now();
   timers.push(setInterval(() => {
@@ -501,6 +581,9 @@ export function createGame(opts) {
     attach, addBot, removeBot, players, arena, world, mode: MODE, equip,   // world: the city's physics (freePath, shotPath, stepNade) — the tools and the headless checks probe it
     get items() { return items; },   // the map pickups: the tests place them at a player's feet
     get zones() { return zones; },   // the smoke screens and burning patches: the tests probe them too
+    get cargo() { return cargo; },   // the supply drop in flight or on the ground: the tests drive it by their own clock
+    stepCargo: () => stepCargo(now()),   // the drop, the landing, the pickup and the mark's minute, for the tests
+    cargoDrop: () => dropCargo(),   // and a drop on demand, without waiting out the first minute
     stepBullets: () => advanceBullets(now()),   // the tests drive the flight by their own clock
     stepNades: tickNades,   // the tests drive the fuse and the zones by their own clock too
     stepBots,   // and the bots' think by the test clock, for the fall test

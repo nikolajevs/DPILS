@@ -171,3 +171,15 @@ This work is based on "Soviet Weapons Ammo Crate Box Animated Low Poly" by lil_b
 This work is based on "EoTech EXPS3-0 Holographic Weapon Sight Lowpoly" by valterjherson1 and "Night-Force Scope" by Steven Janes (Sketchfab), licensed under [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/).
 
 Собираются [tools/sights.mjs](../tools/sights.mjs) тем же конвейером, что и предметы: вершины запекаются в мировые координаты с поворотом на игровую конвенцию (смотрит вдоль +z, верх +y, низ крепления в y=0, центр по x/z), сливаются по материалу (alphaMode линзы сохраняется), нормируются в метры (коллиматор 0.16 м в длину, оптика 0.36 м); текстуры WebP 1024 px, геометрия `EXT_meshopt_compression`. Конвейер также сохраняет emissive сетки (`KHR_materials_emissive_strength`, яркость ограничена 2 — иначе ACES уводит красный в белый), запекает альфу декали сетки из яркости её текстуры (в исходнике альфа-канала нет, а factor 0.05 топил бы сетку) и заменяет `KHR_materials_transmission` стекла на BLEND с альфой 0.12. Итог: коллиматор 0.48 МБ / 8.5 тыс. треугольников, оптика 0.29 МБ / 7.4 тыс. Один и тот же файл служит и предметом на карте, и установленным на оружие прицелом (реальный размер); центр окна коллиматора для ADS измерен в [src/game/viewmodel.js](../src/game/viewmodel.js) (`T.set(0.002, 0.089, 0.023)`).
+
+## Груз (`cargo.glb`)
+
+**CC-BY-4.0** со Sketchfab, атрибуция обязательна:
+
+| Файл | Что | Откуда |
+|---|---|---|
+| `cargo.glb` | ящик снабжения на деревянном поддоне под крылом парашюта: зелёный ящик с трафаретом SUPPLIES, ремни, белые стропы и купол | [Supply drop with parashute](https://sketchfab.com/3d-models/supply-drop-with-parashute-9d507612169a421db08833fa4646c72e), автор [hatorya](https://sketchfab.com/hatorya) |
+
+This work is based on "Supply drop with parashute" by hatorya (Sketchfab), licensed under [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/).
+
+Собирается [tools/cargo.mjs](../tools/cargo.mjs) тем же конвейером, что и предметы: исходник — 627 воксельных кубов в трёх материалах, `material_0` — купол и стропы, остальные — ящик с поддоном. Две группы запекаются в мировые координаты и сливаются по материалу в **два именованных узла, `crate` и `chute`**: страница складывает купол на ящик при приземлении, масштабируя узел `chute` ([src/game/cargo.js](../src/game/cargo.js)). Ящик центрируется (дно в y=0, x/z по центру ящика — купол свисает за него) и нормируется так, что ящик стоит 1,35 м, купол наверху ~3 м; alphaMode MASK воксельных текстур сохраняется, текстуры WebP 1024 px, геометрия `EXT_meshopt_compression`. Итог: 0,12 МБ / 5,6 тыс. треугольников. Загружается в [src/game/props.js](../src/game/props.js) (`prop('cargo')`), пока файл не приехал — фолбэк из боксов. Исходник качается `node tools/sf-dl.mjs 9d507612169a421db08833fa4646c72e .claude/cargo-src/hatorya.zip gltf` и распаковывается в `.claude/cargo-src/hatorya` (gitignored); для скачивания нужен аккаунт и его API-токен.
