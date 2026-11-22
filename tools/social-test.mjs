@@ -121,6 +121,7 @@ const say = (c, m) => c.h.message(JSON.stringify(m));
   ok(changes === 2, 'the fights are told about the new member');
   say(bo, { t: 'where', where: 'storm' });
   ok(an.last('state').team.members.find(m => m.name === 'Боря').where === 'storm', 'Боря went to the storm: his team sees it');
+  ok(bo.last('state').team.members.find(m => m.name === 'Боря').where === 'storm', 'and he sees himself there too');
   const bo2 = open('Боря', 'lobby');
   ok(an.last('state').team.members.find(m => m.name === 'Боря').where === 'storm', 'a second tab in the lobby: the busier one counts');
   bo2.h.close();

@@ -44,8 +44,8 @@ export function createSocial({ accounts, teams, now = Date.now, onTeams = () => 
   const changed = () => { try { onTeams(); } catch (e) { console.error(e); } };
   const logOf = id => logs.get(id) || [];
   const waiting = name => { const t = teams.of(name); return t ? teams.invitesFrom(t.id).map(i => i.to) : []; };   // who waits on an invitation of name's team
-  // a member came online, went away or moved between the lobby and a fight: his team sees it
-  function presence(name) { const t = teams.of(name); if (t) for (const m of t.members) if (low(m) !== low(name)) push(m); }
+  // a member came online, went away or moved between the lobby and a fight: his team sees it, and so does he (his other tabs too)
+  function presence(name) { const t = teams.of(name); if (t) pushTeam(t); }
 
   function act(s, m) {
     const me = s.name, fail = code => s.conn.send(enc({ t: 'err', code, text: ERR[code] || ERR.bad, act: m.t }));
