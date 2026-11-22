@@ -274,10 +274,12 @@ const vmSkin = worldSpace(new THREE.MeshLambertMaterial({ color: 0xe0b890 })), v
 const HAND_BOX = [   // [right hand, left hand] on the fallback boxes of each weapon
   [[0, -0.10, 0.14], [0, -0.03, -0.20]], [[0, -0.07, 0.24], [0, -0.03, -0.30]], [[0, -0.08, 0.02], [0, -0.04, -0.30]],
   [[0, -0.05, 0.02], [-0.06, -0.07, 0.0]], [[0, -0.06, 0.05], [0, -0.03, -0.18]],
+  [[0, -0.10, 0.14], [0, -0.03, -0.20]], [[0, -0.10, 0.14], [0, -0.03, -0.22]], [[0, -0.10, 0.14], [0, -0.03, -0.20]],   // M4A1, SCAR-L, AR-15: rifle-like
 ];
 const HAND_REAL = [   // the same on the ready models (their grip is at the holder's origin, shifted in upgradeViewmodels)
   [[0.05, -0.06, 0.12], [0.03, -0.03, -0.18]], [[0.05, -0.05, 0.13], [0.02, -0.04, 0.0]], [[0.05, -0.05, 0.12], [0.02, -0.03, -0.04]],
   [[0.05, 0.045, 0.03], [0.02, 0.025, 0.015]], [[0.05, -0.05, 0.12], [0.02, -0.03, -0.01]],
+  [[0.05, -0.06, 0.12], [0.02, -0.03, -0.01]], [[0.05, -0.06, 0.12], [0.02, -0.03, -0.01]], [[0.05, -0.06, 0.12], [0.02, -0.03, -0.01]],   // M4A1, SCAR-L, AR-15
 ];
 function makeArm(dir) {   // a fist with a wrist and a sleeve reaching toward the elbow (off the frame)
   const g = new THREE.Group(), d = new THREE.Vector3(...dir).normalize(), z = new THREE.Vector3(0, 0, 1);
@@ -739,7 +741,7 @@ function onMsg(m) {
       nadeCancel(); punchReset();
       const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.vx = P.vz = 0; P.kx = P.kz = 0; P.fallTop = 0; P.landH = 0; P.land = 0; P.crouch = false; P.fly = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
-      MP.loadout = Array.isArray(m.loadout) ? m.loadout.slice() : [0, 3]; MP.pack = Array.isArray(m.pack) ? m.pack.slice() : [1, 2, 4, null, null, null, null, null, null, null]; MP.weapon = MP.loadout[0]; MP.scope = false; MP.dotBoostAt = 0; MP.dotBoost = 0; models.forEach((mm, k) => { mm.visible = k === MP.weapon; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; MP.smokes = m.smokes ?? 1; MP.napalms = m.napalms ?? 1; MP.sights = m.sights ? { ...m.sights } : { sight: 0, optic: 0 }; MP.attach = Array.isArray(m.attach) ? m.attach.slice() : [null, null, null, null, null]; syncVm(); clearNades(); gun.visible = true; if (vm) { vm.setWeapon(MP.weapon); vm.equip(); } el('mpDead').hidden = true; slotsT = performance.now() + 2600; updatePanel();   // the belt greets the spawn, then hides
+      MP.loadout = Array.isArray(m.loadout) ? m.loadout.slice() : [0, 3]; MP.pack = Array.isArray(m.pack) ? m.pack.slice() : [1, 2, 4, 5, 6, 7, null, null, null, null]; MP.weapon = MP.loadout[0]; MP.scope = false; MP.dotBoostAt = 0; MP.dotBoost = 0; models.forEach((mm, k) => { mm.visible = k === MP.weapon; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; MP.smokes = m.smokes ?? 1; MP.napalms = m.napalms ?? 1; MP.sights = m.sights ? { ...m.sights } : { sight: 0, optic: 0 }; MP.attach = Array.isArray(m.attach) ? m.attach.slice() : [null, null, null, null, null, null, null, null]; syncVm(); clearNades(); gun.visible = true; if (vm) { vm.setWeapon(MP.weapon); vm.equip(); } el('mpDead').hidden = true; slotsT = performance.now() + 2600; updatePanel();   // the belt greets the spawn, then hides
       MP.ws.send(JSON.stringify({ t: 'state', x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch }));   // the server has the point as asked: tell it where the player really stands
       if (canvas.requestPointerLock) { canvas.focus(); try { const pr = canvas.requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} }
       break;
