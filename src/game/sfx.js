@@ -149,4 +149,22 @@ function fireSound(ctx, out, vol = 1, d = 0, pan = 0) {
 function burnSound(ctx, out, vol = 1) {
   try { for (let i = 0, n = 3 + (Math.random() * 3 | 0); i < n; i++) noisePlay(ctx, out, { type: 'bandpass', freq: 1800 + Math.random() * 2600, q: 1.2, vol: vol * 0.3 * (0.4 + Math.random() * 0.6), dur: 0.04 + Math.random() * 0.05, attack: 0.003, delay: Math.random() * 0.3 }); } catch (e) {}
 }
-export { boomSound, burnSound, crackSound, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeSound, stepSound };
+// the voice of the storm (the «Шторм» event, src/game/storm.js): the thunder rolling over the city — a long low
+// rumble with a crack at its head and a second roll behind, later and duller with distance; and the electric zap of
+// the burn outside the safe circle. No recording of them exists in the sets, so these are always synthesised.
+function thunderSound(ctx, out, vol = 1, d = 0, pan = 0) {
+  try {
+    const dl = d / 340;
+    noisePlay(ctx, out, { type: 'bandpass', freq: 1500, q: 0.7, vol: vol * 0.35, dur: 0.22, attack: 0.005, delay: dl, pan });
+    noisePlay(ctx, out, { type: 'lowpass', freq: 240, vol: vol * 0.9, dur: 2.6, attack: 0.06, delay: dl + 0.02, pan });
+    noisePlay(ctx, out, { type: 'lowpass', freq: 520, vol: vol * 0.45, dur: 1.5, attack: 0.04, delay: dl + 0.09, pan });
+    noisePlay(ctx, out, { type: 'lowpass', freq: 150, vol: vol * 0.55, dur: 2.4, attack: 0.3, delay: dl + 0.5, pan: pan * 0.6 });
+  } catch (e) {}
+}
+function stormZap(ctx, out, vol = 1) {
+  try {
+    noisePlay(ctx, out, { type: 'bandpass', freq: 2600, q: 1.4, vol: vol * 0.35, dur: 0.09, attack: 0.004 });
+    noisePlay(ctx, out, { type: 'highpass', freq: 4200, vol: vol * 0.2, dur: 0.05, attack: 0.002, delay: 0.02 });
+  } catch (e) {}
+}
+export { boomSound, burnSound, crackSound, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeSound, stepSound, stormZap, thunderSound };

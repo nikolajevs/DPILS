@@ -57,6 +57,7 @@ export function createBrain(g) {
   // 4 m clear of a wall), the route is then pulled straight where the straight line is free
   const CELL = 4, okMemo = new Map(); let lastRoute = 0;
   const cellOK = (i, j) => {
+    if (okMemo.size > 200000) okMemo.clear();   // the storm roams the whole city: the memo must not grow without bound
     const k = (i + 4096) * 8192 + (j + 4096); let v = okMemo.get(k); if (v !== undefined) return v;
     const x = i * CELL + CELL / 2, z = j * CELL + CELL / 2, h = 1.8;
     v = inArea(x, z) && world.walkable(x, z) && world.walkable(x + h, z + h) && world.walkable(x - h, z + h) && world.walkable(x + h, z - h) && world.walkable(x - h, z - h); okMemo.set(k, v); return v;
@@ -99,6 +100,11 @@ export function createBrain(g) {
     return best;
   }
   function waypoint(p) {   // somewhere to walk: mostly towards the enemy half of the arena, sometimes anywhere
+    const sz = g.storm;
+    if (sz) {   // the storm: roam inside the safe circle, towards its middle — the fight comes to you
+      for (let k = 0; k < 24; k++) { const a = rnd(0, 6.283), r = Math.sqrt(Math.random()) * Math.max(8, sz.r * 0.75), x = sz.x + Math.cos(a) * r, z = sz.z + Math.sin(a) * r; if (inArea(x, z) && world.walkable(x, z)) return [x, z]; }
+      return [sz.x, sz.z];
+    }
     for (let k = 0; k < 24; k++) {
       let x, z;
       const hunt = !g.enemyBase(p) && Math.random() < 0.7 && [...g.players.values()].filter(q => q !== p && q.alive && (g.FFA || q.team !== p.team));   // no bases: go where an enemy is
@@ -191,6 +197,7 @@ export function createBrain(g) {
   function think(p, dt) {
     const b = p.bot, L = b0(p), now = g.now();
     if (!p.alive) {   // back to the game after the respawn time, the favourite gun in hand again
+      if (g.storm) return;   // the storm does not respawn: the fallen wait for the next round (the page sends its dead to the lobby)
       if (!g.roundOver() && now - p.diedAt >= g.R.respawnMs + b.respawnExtra) { g.spawn(p); b.target = 0; b.path = null; b.cover = null; b.lastSeen = null; b.alert = null; g.equip(p, b.role); p.wep = b.role; b.switchAt = now + 400; b.lastHp = p.hp; b.respawnExtra = rnd(0, 2500); }
       return;
     }
@@ -209,6 +216,10 @@ export function createBrain(g) {
       b.path = null; b.cover = null; b.target = 0;
       return;
     }
+    // the storm outside the safe circle: run in before anything else — the fight waits (the «Шторм» event, storm.mjs)
+    const sz = g.storm;
+    const stormRun = !!sz && Math.hypot(p.x - sz.x, p.z - sz.z) > sz.r * 0.9;
+    if (stormRun) { b.target = 0; b.cover = null; b.alertCover = null; b.crouch = false; }
     // a hit taken: remember the moment (the dodge hop comes sooner), snap the strafe the other way, and turn on an
     // attacker we cannot see — hurtFrom is written by the game when the blow lands (hurt in game.mjs)
     if (b.lastHp == null) b.lastHp = p.hp;   // make() runs before the first spawn (hp 0): take the real hp on the first think
@@ -218,7 +229,7 @@ export function createBrain(g) {
     }
     b.lastHp = p.hp;
     // look for the nearest enemy that can be seen (not every tick); remember where it was last seen to chase it round a corner
-    if ((b.look -= dt) <= 0) {
+    if (!stormRun && (b.look -= dt) <= 0) {   // the storm run ignores the fight: the circle first
       b.look = 0.25; let best = 0, bd = 1e9, markedAt = null;
       for (const q of g.players.values()) {
         if (q === p || !q.alive || (!g.FFA && q.team === p.team) || now <= q.protectUntil) continue;
@@ -238,7 +249,21 @@ export function createBrain(g) {
     const engaged = !!(q && b.target);
     if (engaged || (b.alert && now - b.alert.at < 2200)) b.threatAt = now;
     let aimYaw = p.yaw, aimPitch = 0, dist = 0;
-    if (engaged) {
+    if (stormRun) {   // the sprint into the circle: the route is chained (A* reaches ~600 m), the walk slips round the houses
+      const dx = sz.x - p.x, dz = sz.z - p.z, d = Math.hypot(dx, dz) || 1;
+      const gx = sz.x - dx / d * sz.r * 0.5, gz = sz.z - dz / d * sz.r * 0.5;   // the goal: well inside, on our side of the middle
+      if (!b.path || b.pi >= b.path.length || now - (b.stormRouteAt || 0) > 2500) {
+        b.stormRouteAt = now; b.path = null; b.pi = 0;
+        const far = d > 600, tx = far ? p.x + dx / d * 500 : gx, tz = far ? p.z + dz / d * 500 : gz;
+        if (now - lastRoute >= 45) { lastRoute = now; b.path = route(p.x, p.z, tx, tz); }
+      }
+      const nx = b.path && b.path[b.pi];
+      const hx = nx ? nx[0] : gx, hz = nx ? nx[1] : gz;
+      walk(p, hx, hz, SPD.sprint, dt);
+      if (nx && Math.hypot(nx[0] - p.x, nx[1] - p.z) < 3) b.pi++;
+      aimYaw = Math.atan2(-(hx - p.x), -(hz - p.z)); aimPitch = 0;
+      safeReload(p, now);
+    } else if (engaged) {
       b.path = null;   // after the fight a new route from the new place (the cover is kept while we fall back to it)
       const dx = q.x - p.x, dz = q.z - p.z; dist = Math.hypot(dx, dz);
       b.lastSeen = { x: q.x, z: q.z, at: now };
