@@ -37,7 +37,7 @@ function perfTick(rdt) {   // rdt: the real time of the frame, seconds
   fpsFrames++; fpsSpan += rdt; if (fpsSpan >= 1) { PERF.fps = Math.round(fpsFrames / fpsSpan); fpsFrames = 0; fpsSpan = 0; PERF.cpu = cpuN ? cpuSum / cpuN : 0; PERF.gpu = gpuN ? gpuSum / gpuN : 0; PERF.gpuSeen = gpuN > 0; cpuSum = cpuN = gpuSum = gpuN = 0; }
   dynTick(rdt); PERF.scale = PP.scale;
   if (!qAuto) return;
-  if (STATE.mapOpen) { frames = span = 0; slow = fast = 0; return; }   // the full map hides the city: its frames say nothing
+  if (STATE.mapOpen || STATE.cityHidden) { frames = span = 0; slow = fast = 0; return; }   // the full map hides the city, or the city is not drawn behind the start card (loop.js): its frames say nothing
   if (quiet > 0) { quiet -= rdt; frames = span = 0; slow = fast = 0; return; }
   frames++; span += rdt;
   if (span < 4) return;
@@ -80,7 +80,7 @@ function dynTick(rdt) {
   dWin += rdt; dN++; dMax = Math.max(dMax, rdt);
   if (dWin < 1) return;
   const ft = dWin / dN * 1000, stall = dMax > 0.5 && dMax * 1000 > 3 * ft; dWin = dN = dMax = 0;
-  if (stall || document.hidden || !STATE.started || STATE.mapOpen) return;   // with the full map open the frames say nothing of the city
+  if (stall || document.hidden || !STATE.started || STATE.mapOpen || STATE.cityHidden) return;   // with the full map open the frames say nothing of the city
   if (dTry) {   // the window after a step: did it do what it was for?
     const t = dTry; dTry = null;
     if (t.down && ft > t.ft * 0.93) { setScale(t.from); dLowBlock = dLowWait; dLowWait = Math.min(240, dLowWait * 2); dQuiet = 1; return; }
