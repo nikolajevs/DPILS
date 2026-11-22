@@ -217,11 +217,11 @@ function build() {
   R.med = { ...med, use, note: mnote, pack: mPack };
   const sight = itemCard(SIGHT_SVG, 'Коллиматоры · рюкзак'); sight.pips.append(mk('i'));
   const sNote = mk('small', 'inv-dim', '');
-  sight.card.append(mk('small', '', 'ПКМ — быстрый прицел с красной точкой, разброс уже'), sNote);
+  sight.card.append(mk('small', '', 'ПКМ — красная точка, разброс уже; Shift — короткий зум'), sNote);
   R.sight = { ...sight, note: sNote };
   const optic = itemCard(OPTIC_SVG, 'Оптика 8× · рюкзак'); optic.pips.append(mk('i'));
   const oNote = mk('small', 'inv-dim', '');
-  optic.card.append(mk('small', '', 'ПКМ — сильный зум с сеткой, руки прячутся'), oNote);
+  optic.card.append(mk('small', '', 'ПКМ — зум с сеткой, колесо меняет кратность 4–8×, руки прячутся'), oNote);
   R.optic = { ...optic, note: oNote };
   items.append(nade.card, med.card, sight.card, optic.card);
   isec.append(items);

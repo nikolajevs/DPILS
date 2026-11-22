@@ -60,7 +60,7 @@ const DMG = [
   { dmg: 20, head: 42 },
   { dmg: 16, head: 28 },
 ];
-const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, lastNade: 0, spec: 0, specMode: 0, scope: false, zoom: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0, sights: { sight: 0, optic: 0 }, attach: [null, null, null, null, null], loadout: [0, 3], pack: [1, 2, 4, null, null, null, null, null, null, null] };   // two equipped guns + the ten-cell backpack (server/combat.mjs LOADOUT/PACK): a cell holds a gun index or a stored item ('sight', 'optic', 'med', 'nade'); sights: loose in the pack, attach: mounted per weapon
+const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, lastNade: 0, spec: 0, specMode: 0, scope: false, zoom: 0, opticMag: 8, dotBoost: 0, dotBoostAt: 0, dotBoostCd: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0, sights: { sight: 0, optic: 0 }, attach: [null, null, null, null, null], loadout: [0, 3], pack: [1, 2, 4, null, null, null, null, null, null, null] };   // two equipped guns + the ten-cell backpack (server/combat.mjs LOADOUT/PACK): a cell holds a gun index or a stored item ('sight', 'optic', 'med', 'nade'); sights: loose in the pack, attach: mounted per weapon
 // the pockets (keep server/combat.mjs in step: RESERVE and INV): the server owns them, the page only shows and predicts
 const RESERVE = [90, 24, 15, 36, 200], NADE_MAX = 2, MED_MAX = 3;   // the ready belt caps: the surplus rides in the pack and refills the belt as it is spent
 // the aimed grenade throw: G takes the grenade in hand, the mouse aims it, the left button held down charges the power
@@ -455,7 +455,7 @@ function switchWeapon(i) {
     MP.pack[pi] = MP.loadout[slot]; MP.loadout[slot] = i;   // the old gun takes the cell the new one left
     if (MP.ws && MP.ws.readyState === 1) MP.ws.send(JSON.stringify({ t: 'swap', w: i, slot }));
   }
-  MP.weapon = i; MP.firing = false; MP.scope = false; crossGap = CROSS[i].ring ? 20 : CROSS[i].gap; models.forEach((m, k) => { m.visible = k === i; }); if (vm) { vm.setWeapon(i); vm.equip(); } tone(300, 200, 0.06, 0.15, 'square'); slotsT = performance.now() + 1600; updatePanel();   // the reload keeps running: the server locks every weapon until it ends (server/game.mjs shoot)
+  MP.weapon = i; MP.firing = false; MP.scope = false; MP.dotBoostAt = 0; MP.dotBoost = 0; crossGap = CROSS[i].ring ? 20 : CROSS[i].gap; models.forEach((m, k) => { m.visible = k === i; }); if (vm) { vm.setWeapon(i); vm.equip(); } tone(300, 200, 0.06, 0.15, 'square'); slotsT = performance.now() + 1600; updatePanel();   // the reload keeps running: the server locks every weapon until it ends (server/game.mjs shoot)
 }
 function reload(now) {
   const w = W(); MP.scope = false;
@@ -657,7 +657,7 @@ function onMsg(m) {
       nadeCancel(); punchReset();
       const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.vx = P.vz = 0; P.kx = P.kz = 0; P.fallTop = 0; P.landH = 0; P.land = 0; P.crouch = false; P.fly = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
-      MP.loadout = Array.isArray(m.loadout) ? m.loadout.slice() : [0, 3]; MP.pack = Array.isArray(m.pack) ? m.pack.slice() : [1, 2, 4, null, null, null, null, null, null, null]; MP.weapon = MP.loadout[0]; MP.scope = false; models.forEach((mm, k) => { mm.visible = k === MP.weapon; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; MP.sights = m.sights ? { ...m.sights } : { sight: 0, optic: 0 }; MP.attach = Array.isArray(m.attach) ? m.attach.slice() : [null, null, null, null, null]; syncVm(); clearNades(); gun.visible = true; if (vm) { vm.setWeapon(MP.weapon); vm.equip(); } el('mpDead').hidden = true; slotsT = performance.now() + 2600; updatePanel();   // the belt greets the spawn, then hides
+      MP.loadout = Array.isArray(m.loadout) ? m.loadout.slice() : [0, 3]; MP.pack = Array.isArray(m.pack) ? m.pack.slice() : [1, 2, 4, null, null, null, null, null, null, null]; MP.weapon = MP.loadout[0]; MP.scope = false; MP.dotBoostAt = 0; MP.dotBoost = 0; models.forEach((mm, k) => { mm.visible = k === MP.weapon; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; MP.sights = m.sights ? { ...m.sights } : { sight: 0, optic: 0 }; MP.attach = Array.isArray(m.attach) ? m.attach.slice() : [null, null, null, null, null]; syncVm(); clearNades(); gun.visible = true; if (vm) { vm.setWeapon(MP.weapon); vm.equip(); } el('mpDead').hidden = true; slotsT = performance.now() + 2600; updatePanel();   // the belt greets the spawn, then hides
       MP.ws.send(JSON.stringify({ t: 'state', x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch }));   // the server has the point as asked: tell it where the player really stands
       if (canvas.requestPointerLock) { canvas.focus(); try { const pr = canvas.requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} }
       break;
@@ -784,7 +784,15 @@ function initUi() {   // the fields of the player and of the training: once, whe
 }
 
 /* ---------- input ---------- */
-canvas.addEventListener('wheel', e => { if (MP.on && !MP.dead) { const s = Math.max(0, MP.loadout.indexOf(MP.weapon)); switchWeapon(MP.loadout[(s + (e.deltaY > 0 ? 1 : MP.loadout.length - 1)) % MP.loadout.length]); } }, { passive: true });
+canvas.addEventListener('wheel', e => {
+  if (!MP.on || MP.dead) return;
+  if (MP.scope && MP.attach[MP.weapon] === 'optic' && !MP.reloadAt) {   // scoped through the 8×: the wheel changes the magnification (4×–8×), not the weapon
+    e.preventDefault();
+    MP.opticMag = Math.max(OPTIC_MIN, Math.min(OPTIC_MAX, MP.opticMag + (e.deltaY < 0 ? 1 : -1)));
+    return;
+  }
+  const s = Math.max(0, MP.loadout.indexOf(MP.weapon)); switchWeapon(MP.loadout[(s + (e.deltaY > 0 ? 1 : MP.loadout.length - 1)) % MP.loadout.length]);
+}, { passive: false });
 canvas.addEventListener('contextmenu', e => { if (MP.on) e.preventDefault(); });
 canvas.addEventListener('mousedown', e => {
   if (MP.on && e.button === 2) { if (NAIM.on) { nadeCancel(); return; } if ((W().scope || MP.attach[MP.weapon]) && !MP.dead && !MP.reloadAt) MP.scope = true; }   // right button: the sniper's own scope, or the sight mounted on any weapon
@@ -813,6 +821,7 @@ window.addEventListener('keydown', e => {
   else if (e.code === SET.keys.med) useMed();
   else if (e.code === SET.keys.grenade) { closeInv(); nadePrep(); }
   else if (e.code === SET.keys.reload) { closeInv(); nadeCancel(); reload(performance.now()); }
+  else if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { const t = performance.now(); if (MP.scope && MP.attach[MP.weapon] === 'sight' && !MP.dead && !MP.reloadAt && MP.zoom > 0.6 && !MP.dotBoostAt && t >= MP.dotBoostCd) { MP.dotBoostAt = t; tone(680, 920, 0.06, 0.14, 'sine'); } }   // the red dot's brief extra zoom on Shift, only while aiming through it (a press starts one peek; holding does not extend it)
   else if (e.code === SET.keys.w1) switchWeapon(0); else if (e.code === SET.keys.w2) switchWeapon(1); else if (e.code === SET.keys.w3) switchWeapon(2); else if (e.code === SET.keys.w4) switchWeapon(3); else if (e.code === SET.keys.w5) switchWeapon(4);
   else if (e.code === SET.keys.board) { e.preventDefault(); el('mpBoard').hidden = false; drawBoard(); }
   else if ((e.code === 'Enter' || (e.code === 'Space' && MP.specMode !== 2)) && MP.dead) { e.preventDefault(); respawn(); }   // in the free camera Space is up, Enter respawns
@@ -830,6 +839,7 @@ const CROSS = [
   { gap: 4, len: 7, th: 2 },        // pistol
   { gap: 8, len: 10, th: 2.5 } ];   // machine gun
 const crossEl = $('cross'), crossRe = crossEl.querySelector('.c-re circle');
+const scopeMag = $('mpScopeMag'), dotHint = $('mpDotHint');   // the optic's magnification label, the red dot's Shift hint
 let crossGap = 6, crossKey = '';
 function crossTick(dt, now) {
   const cfg = CROSS[MP.weapon], w = W();
@@ -916,6 +926,9 @@ function nadeWarnTick() {
   w.style.left = x + 'px'; w.style.top = y + 'px';
 }
 
+// the mounted 8× optic: the wheel changes its magnification while scoped (4×–8×). The red dot's Shift peek is a brief
+// extra zoom (~3×) that ends on its own, then a short cooldown before the next press — it cannot be held indefinitely.
+const OPTIC_MIN = 4, OPTIC_MAX = 8, DOT_BOOST_MS = 1300, DOT_BOOST_CD = 700, DOT_BOOST_FOV = 26;
 /* ---------- every frame ---------- */
 function mpTick(dt) {
   if (!MP.on) return;
@@ -927,16 +940,25 @@ function mpTick(dt) {
   invTick(now);   // the reload bar of the inventory panel, if it is open
   el('mpSlots').classList.toggle('show', now < slotsT);   // the belt of weapons: shown by a switch or the wheel, hidden once the choice settles
   const nv = nadeView(now);   // the arms with the grenade, or null
-  // the scope: the picture closes in (the field of view 66° → 20°) and the gun goes out of sight
+  // the scope: the picture closes in and the gun goes out of sight. The mounted 8× optic zooms by its magnification
+  // (the wheel changes it, 4×–8×); the red dot holds ~1.5× and Shift gives it a brief extra peek (~3×) that fades back.
   { const at = MP.attach[MP.weapon], mode = at || (W().scope ? 'optic' : null);   // the mounted sight, or the sniper's own scope
     const want = MP.scope && mode && !MP.dead && !MP.reloadAt ? 1 : 0;
     MP.zoom += (want - MP.zoom) * Math.min(1, dt * (mode === 'sight' ? 18 : 14)); if (Math.abs(MP.zoom - want) < 0.01) MP.zoom = want;   // the red dot comes up quicker than the long scope
-    const fovT = mode === 'sight' ? 50 : at === 'optic' ? 10 : 20;   // red dot ~1.5x, mounted optic ~7x, the sniper's own ~3.5x
+    const dotAim = mode === 'sight' && want === 1;
+    if (!dotAim) MP.dotBoostAt = 0;
+    if (MP.dotBoostAt && now - MP.dotBoostAt >= DOT_BOOST_MS) { MP.dotBoostAt = 0; MP.dotBoostCd = now + DOT_BOOST_CD; }   // the peek ends on its own, then a cooldown before the next press
+    const boostWant = dotAim && MP.dotBoostAt ? 1 : 0;
+    MP.dotBoost += (boostWant - MP.dotBoost) * Math.min(1, dt * (boostWant ? 16 : 10)); if (Math.abs(MP.dotBoost - boostWant) < 0.01) MP.dotBoost = boostWant;
+    const fovDot = 50 - (50 - DOT_BOOST_FOV) * MP.dotBoost;   // the red dot ~1.5×, up to ~3× for the Shift peek
+    const fovOptic = 2 * Math.atan(Math.tan(SET.fov * Math.PI / 360) / MP.opticMag) * 180 / Math.PI;   // true optical magnification of the mounted 8×
+    const fovT = mode === 'sight' ? fovDot : at === 'optic' ? fovOptic : 20;   // red dot, the wheel-adjustable 8×, the sniper's own ~3.5×
     const fov = SET.fov - (SET.fov - fovT) * MP.zoom; if (Math.abs(camera.fov - fov) > 0.05) { camera.fov = fov; camera.updateProjectionMatrix(); }
     const scoped = MP.zoom > 0.6, dot = scoped && mode === 'sight';
     if (el('mpDot').hidden === dot) el('mpDot').hidden = !dot;   // the red dot of the collimator; the crosshair hides itself in crossTick
     if (el('mpScope').hidden === (scoped && !dot)) el('mpScope').hidden = !(scoped && !dot);
-    if (scoped && !dot) scopeBdc(fov);
+    if (scoped && !dot) { scopeBdc(fov); if (at === 'optic') { scopeMag.hidden = false; const lbl = MP.opticMag + '×'; if (scopeMag.textContent !== lbl) scopeMag.textContent = lbl; } else scopeMag.hidden = true; }
+    if (dot) { dotHint.hidden = !!MP.dotBoostAt; dotHint.classList.toggle('cd', !MP.dotBoostAt && now < MP.dotBoostCd); }   // the hint dims while the peek recharges
     gun.visible = !MP.dead && !nv && (mode === 'sight' || MP.zoom < 0.5); }   // the grenade in hand (and the throw) replaces the gun; the long zoom hides the arms, the red dot keeps them
   ownSteps(dt); tickNades(dt); nadeWarnTick(); tickItems(dt, now); spectate(dt, now); nadeAimTick(now); nadeHandTick(nv);
   if (P.landH > 0) { const h = P.landH; P.landH = 0; if (h > FALL.safe && !MP.dead && MP.ws.readyState === 1) MP.ws.send(JSON.stringify({ t: 'fall', h: +h.toFixed(2) })); }   // a hard landing: the height goes to the server, which owns the damage
