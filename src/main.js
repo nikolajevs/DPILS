@@ -16,6 +16,7 @@ import './ui/hud.js';
 import './ui/map.js';
 import { PP, renderFrame, warmUp } from './render/post.js';
 import { captureProbes, probeState } from './render/cityprobe.js';
+import { MIRROR_CITY } from './render/mirror-city.js';
 import { MIRROR } from './render/mirror.js';
 import { splitBigMeshes } from './render/chunks.js';
 import { QUALITY, TIMES, dayInfo, qi, qAuto, relight, setCycle, setQuality, setQualityMode, setTime, setTimePref, timePref } from './render/lighting.js';
@@ -125,6 +126,6 @@ const step = (text, w, reported) => {
     loading.done('Готово: ' + BLD.length.toLocaleString('ru') + ' зданий, ' + LINES.length.toLocaleString('ru') + ' улиц и дорожек, ' + trees.toLocaleString('ru') + ' деревьев, ' + lamps.toLocaleString('ru') + ' фонарей' + (tripsN ? ', ' + tripsN.toLocaleString('ru') + ' рейсов в расписании' : '') + '.');
     if (document.body.classList.contains('mp')) $('view').classList.add('shown');   // the city fades in only in a fight; src/ui/startfx.js owns the rule
     enablePlay(); $('chTrain').focus();
-    window.__city = { PERF, ambProbe, ambStatus, statEvent, statsOf, MP, STATE, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, P, setTime, setCycle, dayInfo, showTime: t => (/^h/i.test(String(t)) ? setCycle(+String(t).slice(1) / 24, Infinity) : setTime(+t)), fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, setQualityMode, qualityMode: () => (qAuto ? 'auto' : qi), scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU, probeState, mirror: MIRROR };
+    window.__city = { PERF, ambProbe, ambStatus, statEvent, statsOf, MP, STATE, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, P, setTime, setCycle, dayInfo, showTime: t => (/^h/i.test(String(t)) ? setCycle(+String(t).slice(1) / 24, Infinity) : setTime(+t)), fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, setQualityMode, qualityMode: () => (qAuto ? 'auto' : qi), scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU, probeState, mirror: MIRROR, mirrorCity: MIRROR_CITY };
   } catch (e) { console.error(e); loading.fail('Ошибка при сборке города: ' + e.message); }
 })();

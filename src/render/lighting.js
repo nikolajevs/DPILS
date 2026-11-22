@@ -190,8 +190,8 @@ function setTimePref(v, keep) {
 // shadow: the map size of EACH sun cascade (the two cascades share one atlas twice as wide, hence the MAXTEX/2 cap);
 // lampSh: how many of the nearest lamps throw shadows from a depth map of their own (src/render/lamp-shadows.js)
 const QUALITY = [
-  { name: 'высокая', shadow: Math.min(4096, MAXTEX >> 1), pr: 2, tree: 300, det: 700, far: 4200, msaa: 4, ao: 1, bloom: 1, ssr: 1, lamps: 16, lampSh: 12, mirror: { scale: 0.5, far: 450 } },
-  { name: 'средняя', shadow: Math.min(2048, MAXTEX >> 1), pr: 1.25, tree: 170, det: 520, far: 3000, msaa: 4, ao: 1, bloom: 1, ssr: 1, lamps: 12, lampSh: 6, mirror: { scale: 0.4, far: 280 } },
+  { name: 'высокая', shadow: Math.min(4096, MAXTEX >> 1), pr: 2, tree: 300, det: 700, far: 4200, msaa: 4, ao: 1, bloom: 1, ssr: 1, lamps: 16, lampSh: 12, mirror: { scale: 0.5, far: 180 } },
+  { name: 'средняя', shadow: Math.min(2048, MAXTEX >> 1), pr: 1.25, tree: 170, det: 520, far: 3000, msaa: 4, ao: 1, bloom: 1, ssr: 1, lamps: 12, lampSh: 6, mirror: { scale: 0.4, far: 120 } },
   { name: 'низкая', shadow: 0, pr: 1, tree: 100, det: 360, far: 2400, msaa: 0, ao: 0, bloom: 0, ssr: 0, lamps: 8, lampSh: 0 },
   { name: 'минимум', shadow: 0, pr: 0.7, tree: 50, det: 200, far: 1500, msaa: 0, ao: 0, bloom: 0, ssr: 0, lamps: 4, lampSh: 0 }   // for weak machines: a smaller picture, near houses only
 ];   // mirror: the glass of the wall in view mirrors the scene drawn at this share of the screen's size, out to far metres (src/render/mirror.js); none on the low levels

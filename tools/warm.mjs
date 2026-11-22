@@ -32,6 +32,8 @@ const serial = fn => { const p = busy.then(fn); busy = p.catch(() => {}); return
 const enterView = () => page.evaluate(() => {   // the free camera of the tools: P.fly, no game (the walk mode was removed)
   document.getElementById('start').hidden = true;
   const c = window.__city; c.STATE.started = true; c.PERF.dyn = false; c.P.fly = true; document.getElementById('hud').hidden = true;
+  // the city shown at once: outside a fight src/ui/startfx.js fades it out, its observer runs after the card is hidden
+  return new Promise(r => setTimeout(() => { const v = document.getElementById('view'); v.style.transition = 'none'; v.classList.add('shown'); r(); }));
 });
 const waitCity = () => page.waitForFunction(() => window.__city, null, { timeout: 600000, polling: 500 });
 

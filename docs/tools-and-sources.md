@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Claude | claude/glass-window-reflections-0f47f6 | Живые отражения в стекле: плоское зеркало стены, свой персонаж в нём | src/render/mirror.js, mirror-city.js, materials.js, post.js, src/buildings/series.js, src/landmarks/index.js |
 
 ## Автономный цикл улучшений
 

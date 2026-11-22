@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { MP } from './mp.js';
 import { makeAvatar, parseChar } from './avatar.js';
 import { P } from './player.js';
-import { onMirror } from '../render/mirror.js';
+import { mirrorShow, onMirror } from '../render/mirror.js';
 import { scene } from '../render/renderer.js';
 import { STATE } from '../core/state.js';
 import { $ } from '../core/env.js';
@@ -23,7 +23,7 @@ onMirror(on => {
   if (!av || k !== key) {
     const a = makeAvatar(k); if (!a) return;   // the files have not come yet
     if (root) { scene.remove(root); root.traverse(o => { if (o.isMesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.dispose(); }); }
-    av = a; key = k; gunW = -1; root = new THREE.Group(); root.add(av.root); root.userData.noProbe = true; scene.add(root);
+    av = a; key = k; gunW = -1; root = new THREE.Group(); root.add(av.root); root.userData.noProbe = true; scene.add(root); mirrorShow(root);
   }
   const now = performance.now(), dt = last ? Math.min(0.1, (now - last) / 1000) : 1 / 60; last = now;
   if (gunW !== MP.weapon) { gunW = MP.weapon; av.setGun(gunW); }
