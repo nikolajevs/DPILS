@@ -3,6 +3,7 @@ import { buildingAt, onRoad } from '../world/data.js';
 import { terrainH, walkLift } from '../world/terrain.js';
 import { STATE } from '../core/state.js';
 import { camera, scene } from '../render/renderer.js';
+import { mirrorHide } from '../render/mirror.js';
 import { worldSpace } from '../render/world-space.js';
 import { reduceMotion } from '../core/env.js';
 import { fbm } from './muzzle.js';
@@ -589,7 +590,7 @@ beam.renderOrder = 5;
 const touch = new THREE.Mesh(new THREE.RingGeometry(0.17, 0.24, 28).rotateX(-Math.PI / 2), worldSpace(new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.85, depthWrite: false, fog: false })));
 touch.renderOrder = 4;
 const aimGroup = new THREE.Group(); aimGroup.add(arcGhost, arcLine, disc, beam, touch); aimGroup.visible = false;
-aimGroup.traverse(o => { o.frustumCulled = false; }); aimGroup.userData.noProbe = true; scene.add(aimGroup);
+aimGroup.traverse(o => { o.frustumCulled = false; }); aimGroup.userData.noProbe = true; scene.add(aimGroup); mirrorHide(aimGroup);   // the aim is for the screen, not for the glass
 // the aim's colours by kind: the frag warms amber to red, the smoke stays pale steel, the napalm burns orange
 const AIM_COLD = { nade: new THREE.Color(1, 0.66, 0.2), smoke: new THREE.Color(0.72, 0.8, 0.88), napalm: new THREE.Color(1, 0.45, 0.12) };
 const AIM_HOT = { nade: new THREE.Color(1, 0.34, 0.07), smoke: new THREE.Color(0.92, 0.96, 1), napalm: new THREE.Color(1, 0.2, 0.03) };

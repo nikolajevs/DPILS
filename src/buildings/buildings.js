@@ -10,6 +10,7 @@ import { shopClaim } from '../landmarks/shops.js';
 import { band, church, flatPlain, flatRoof, roofFace, tileOf, tiles, vband, wallQuad } from './walls.js';
 import { lidarOf } from './lidar.js';
 import { serBuild } from './series.js';
+import { addMirrorWall } from '../render/mirror.js';
 import { addHoledCollision, passageHolesOf } from './passages.js';
 import { footprintHoles } from './passage-holes.mjs';
 import { ovDrops } from '../world/overpass.js';
@@ -114,6 +115,7 @@ async function buildBuildings(from, to) {
         const ext = parapet ? 0.6 : 0;
         const wo = facadeSink(id, nx, nz, x1, z1);
         wallQuad(G.fac, x1 - nx * wo, z1 - nz * wo, x2 - nx * wo, z2 - nz * wo, yb, h + ext, nx, nz, tint, 0, blank ? L / bay : cnt, 0, floors + ext / fh, row, seed, fl | blank);
+        if (!blank) addMirrorWall(x1 - nx * wo, z1 - nz * wo, x2 - nx * wo, z2 - nz * wo, yb, h, nx, nz);   // a wall with windows: a plane the glass mirror may take (src/render/mirror.js)
         if (apart && ri === 0 && L >= 14 && cnt >= 4) {
           const tx = (x2 - x1) / L, tz = (z2 - z1) / L, bw = L / cnt;
           if (rnd(id, 20 + i) < 0.6) { // balconies

@@ -5,9 +5,10 @@ import { QUALITY, TOD, qi, timeI } from './lighting.js';
 import { P } from '../game/player.js';
 import { treeTiles } from '../world/trees.js';
 import { tiles } from '../buildings/walls.js';
-import { terrainH } from '../world/terrain.js';
+import { sky, terrainH } from '../world/terrain.js';
 import { LIGHTDIR, POST, U, camera, renderer, scene, sun } from './renderer.js';
 import { PU, updateProbes } from './cityprobe.js';
+import { mirrorPass } from './mirror.js';
 import { waterSsr } from '../world/water.js';
 import { TILE, TTILE, reduceMotion } from '../core/env.js';
 
@@ -284,9 +285,10 @@ function fsPass(mat, target) { fsQuad.material = mat; renderer.setRenderTarget(t
 function renderFrame() {
   renderer.info.reset();
   updateProbes(camera.position.x, camera.position.z);   // the two nearest city cubes for the water and the glass
-  if (!POST) { renderer.render(scene, camera); return; }
+  if (!POST) { mirrorPass(0); renderer.render(scene, camera); return; }
   const q = QUALITY[qi], T = TOD;   // the light of this moment: a fixed time or the running day (lighting.js)
   renderer.getDrawingBufferSize(PXV); ppTargets(PXV.x, PXV.y, q.msaa);
+  mirrorPass(q.mirror, PP.w, PP.h, STATE.started, sky, terrainH);   // the glass of the wall in view: its mirror, drawn before the scene that samples it (src/render/mirror.js)
   renderer.setRenderTarget(PP.rt); renderer.render(scene, camera);
   const th = Math.tan(camera.fov * Math.PI / 360); PROJ.set(camera.near, camera.far, th * camera.aspect, th);
   if (q.ao) {

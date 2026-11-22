@@ -5,6 +5,8 @@ import { band, flatRoof, roofFace, vband } from './walls.js';
 import { SAMPLE_GLSL, std } from '../render/materials.js';
 import { bakeAO, bakeNormals, mkCanvas, toTex } from '../render/textures.js';
 import { U } from '../render/renderer.js';
+import { PU } from '../render/cityprobe.js';
+import { GLASS_GLSL, MU, addMirrorWall, glassLights } from '../render/mirror.js';
 import { box, polyA } from '../core/geometry.js';
 import { area2, hb, obb, offsetRing, pick, reversed, rnd, sh } from '../core/util.js';
 import { ROAD } from '../world/data.js';
@@ -101,9 +103,10 @@ function seriesAtlas() {
 function seriesMaterial() {
   const m = std({ roughness: 0.9, metalness: 0 }, 'series', s => {
     s.uniforms.uAtlas = { value: STATE.serTex }; s.uniforms.uMask = { value: STATE.serMask }; s.uniforms.uPbr = { value: STATE.serPbr }; s.uniforms.uNrm = { value: STATE.serNrm }; s.uniforms.uNight = U.night;
+    Object.assign(s.uniforms, PU, MU);   // the glass mirrors the city cubes and the wall in view, as the facades do (src/render/mirror.js)
     s.vertexShader = 'attribute vec2 aUv; attribute vec3 aInfo; attribute vec3 aTint;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint;\n' +
       s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvCellUv = aUv; vInfo = aInfo; vTint = pow(aTint, vec3(2.2));');
-    s.fragmentShader = 'uniform sampler2D uAtlas; uniform sampler2D uMask; uniform sampler2D uPbr; uniform sampler2D uNrm; uniform float uNight;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint;\n' + SAMPLE_GLSL +
+    s.fragmentShader = 'uniform sampler2D uAtlas; uniform sampler2D uMask; uniform sampler2D uPbr; uniform sampler2D uNrm; uniform float uNight;\nvarying vec2 vCellUv; varying vec3 vInfo; varying vec3 vTint;\n' + SAMPLE_GLSL + GLASS_GLSL +
       s.fragmentShader.replace('#include <map_fragment>', `
         vec2 cell = floor(vCellUv), f = fract(vCellUv), dX = dFdx(vCellUv), dY = dFdy(vCellUv);
         vec3 inf = floor(vInfo + 0.5);   // interpolated constants drift by an ulp, and the hashes below would turn that into speckle
@@ -137,6 +140,7 @@ function seriesMaterial() {
         diffuseColor.rgb = tcol * mix(vec3(1.0), wtint, wall);
       `).replace('#include <roughnessmap_fragment>', 'float roughnessFactor = mix(pb.r, 0.06, fm.g);')
         .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = pb.g * (1.0 - fm.g);')
+        .replace('#include <lights_fragment_maps>', glassLights('fm.g'))
         .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
         {   // the baked tangent-space normal map (Sobel of the PBR height + brick pores / concrete sand), on a tangent
             // frame from the wall's uv; none on glass, fading out with distance (the blocks are read from farther away)
@@ -180,6 +184,7 @@ function seriesMaterial() {
 }
 // a vertical quad of the series façade; the winding follows the normal
 function serQuad(b, x1, z1, x2, z2, y0, y1, nx, nz, tint, u0, u1, v0, v1, i0, i1, i2) {
+  addMirrorWall(x1, z1, x2, z2, y0, y1, nx, nz);   // a plane the glass mirror may take (src/render/mirror.js)
   const A = b.vert(x1, y0, z1, nx, 0, nz, tint, u0, v0, i0, i1, i2), B = b.vert(x2, y0, z2, nx, 0, nz, tint, u1, v0, i0, i1, i2);
   const Cc = b.vert(x2, y1, z2, nx, 0, nz, tint, u1, v1, i0, i1, i2), D = b.vert(x1, y1, z1, nx, 0, nz, tint, u0, v1, i0, i1, i2);
   if ((z1 - z2) * nx + (x2 - x1) * nz > 0) { b.tri(A, B, Cc); b.tri(A, Cc, D); } else { b.tri(A, Cc, B); b.tri(A, D, Cc); }
