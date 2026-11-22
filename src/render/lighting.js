@@ -32,7 +32,7 @@ const TIMES = [
 ];
 
 /* ---------- the day of the game ----------
-   On the server (and in the training's «авто») the day runs: 45 minutes from midnight to midnight (server/daycycle.mjs).
+   On the server (and in the training's «авто») the day runs: two hours from midnight to midnight (server/daycycle.mjs).
    The sun walks the path it has over Daugavpils (55.9° N) in early May or mid-August: up in the north-east at five, 44°
    over the south at noon, down in the north-west at seven; at night a full moon goes the opposite way, 42° high at
    midnight. The look of the sky and the light is keyed by the height of the sun: the three fixed times and four more
@@ -69,10 +69,10 @@ const KEYS = [...TIMES, SET, BLUE, DAWN, MORN];
 for (const K of KEYS) K.c = { top: lin(K.top), hor: lin(K.hor), gnd: lin(K.gnd), sun: lin(K.sun) };
 // the light of this moment: a key, or a mix of two (post.js takes the exposure, the bloom and the rays from it)
 const TOD = { c: { top: new THREE.Color(), hor: new THREE.Color(), gnd: new THREE.Color(), sun: new THREE.Color() }, glow: [0, 0, 0], cloudLit: [0, 0, 0], cloudDark: [0, 0, 0] };
-const SC = ['sunI', 'disc', 'hemi', 'exp', 'lit', 'cover', 'stars', 'thresh', 'bloom', 'rays', 'lamps', 'nt', 'probe'];
-function mixKeys(A, B, t) {
+const SC = ['sunI', 'disc', 'hemi', 'exp', 'lit', 'cover', 'stars', 'thresh', 'bloom', 'rays', 'lamps', 'nt', 'probe'], SC3 = ['glow', 'cloudLit', 'cloudDark'];
+function mixKeys(A, B, t) {   // every frame of a running day: no allocations
   for (const k in TOD.c) TOD.c[k].copy(A.c[k]).lerp(B.c[k], t);
-  for (const k of ['glow', 'cloudLit', 'cloudDark']) for (let j = 0; j < 3; j++) TOD[k][j] = A[k][j] + (B[k][j] - A[k][j]) * t;
+  for (const k of SC3) for (let j = 0; j < 3; j++) TOD[k][j] = A[k][j] + (B[k][j] - A[k][j]) * t;
   for (const k of SC) TOD[k] = A[k] + (B[k] - A[k]) * t;
   TOD.haze = Math.exp(Math.log(A.haze) + (Math.log(B.haze) - Math.log(A.haze)) * t);   // the haze thins and thickens by factors
 }
@@ -99,7 +99,9 @@ function apply(force) {
 // a key whole, with its own direction of the light
 function show(K) { LIGHTDIR.set(K.dir[0], K.dir[1], K.dir[2]).normalize(); mixKeys(K, K, 0); apply(true); }
 /* The environment (the light of the sky on every material) of a key: filtered once (the GGX filter of three.js is
-   costly on weak GPUs) and kept. Between two keys the day mixes their two environments into one more cube (cubemix.js). */
+   costly on weak GPUs) and kept. Between two keys the day mixes their two environments into one more cube (cubemix.js),
+   anew at every 0.2 % of the way: the dusk keys differ several times in brightness, and the 0.8 % steps there were
+   jumps of the light in the shade by some per cent. */
 const TMPV = new THREE.Vector3();
 function envOf(K) {
   if (K.env) return K.env;
@@ -114,7 +116,7 @@ let envMix = null; const envAt = { a: null, b: null, k: -1 };
 function mixEnv(A, B, k) {
   const a = envOf(A), b = envOf(B);
   if (!envMix) envMix = pmremLike(a);
-  if (a !== envAt.a || b !== envAt.b || Math.abs(k - envAt.k) > 0.008) { envAt.a = a; envAt.b = b; envAt.k = k; mixCube(envMix, a.texture, b.texture, k, a.texture.mipmaps.length); }
+  if (a !== envAt.a || b !== envAt.b || Math.abs(k - envAt.k) > 0.002) { envAt.a = a; envAt.b = b; envAt.k = k; mixCube(envMix, a.texture, b.texture, k, a.texture.mipmaps.length); }
   useEnv(envMix);
 }
 
@@ -129,18 +131,19 @@ function setTime(i) {
 /* The day from the share f of it gone (0 midnight, 0.5 noon), `len` ms long; len = Infinity stops the clock there
    (the tools: a view at a chosen hour). The environments of all the keys are filtered now, not in the middle of a fight. */
 function setCycle(f, len = DAY_MS) {
-  cyc = { f0: f, t0: performance.now(), len, at: -1, f, e: 0 };
+  cyc = { f0: f, t0: performance.now(), len, f, e: 0 };
   for (const K of KEYS) envOf(K);
   dayTick(true);
 }
 const dayShare = () => (((cyc.f0 + (performance.now() - cyc.t0) / cyc.len) % 1) + 1) % 1;
-const SV = new THREE.Vector3(), MV = new THREE.Vector3(), shadowDir = new THREE.Vector3();
-// every frame from the loop; the light is set ten times a second, the sun shadow is redrawn when the light has moved 0.15°
+const SV = new THREE.Vector3(), MV = new THREE.Vector3();
+/* Every frame from the loop: the sun (or the moon), the sky and the light are where the clock says, so the disc, the
+   glow, the rays of the post pass and the shading move a little each frame, not in steps (ten updates a second were
+   visible as a jerky sun). What costs is kept behind thresholds of its own: the environment (mixEnv), the city cubes
+   (cityprobe.js), the lamps and the night of the landmarks (apply); the sun shadow is redrawn by updateSun
+   (src/render/post.js) as soon as the light has turned by a share of a texel of its near cascade. */
 function dayTick(force) {
   if (!cyc) return;
-  const now = performance.now();
-  if (!force && now - cyc.at < 100) return;
-  cyc.at = now;
   const f = dayShare(), H = (f - 0.5) * 2 * Math.PI;
   skyDir(H, DECL, SV); const e = Math.asin(clamp(SV.y, -1, 1)) / DEG;
   const keys = H > 0 ? DUSK : DAWNS;
@@ -158,7 +161,7 @@ function dayTick(force) {
   const night = e < BLUE_E; if (night !== STATE.night) { STATE.night = night; STATE.mapTimer = 0; }
   timeI = TOD.probe < 0.5 ? 0 : TOD.probe < 1.5 ? 1 : 2;
   probeTime(TOD.probe, true, lightForShot);   // the day needs the cubes of all three times: shot one after another, then mixed
-  if (force || LIGHTDIR.angleTo(shadowDir) > 0.0026) { shadowDir.copy(LIGHTDIR); STATE.shadowDirty = true; }
+  if (force) STATE.shadowDirty = true;
   cyc.f = f; cyc.e = e;
 }
 function relight() { if (cyc) dayTick(true); else setTime(fixed); }
