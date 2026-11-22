@@ -2,8 +2,9 @@
 /* Build models/item_{sight,optic}.glb — the two pick-up scope attachments (red dot + 8x optic).
 
    Sources (Sketchfab, CC-BY-4.0, attribution in models/README.md):
-     sight  "FPS Red Dot Sight (Game Model)" by Michael Makivic — hooded reflex sight, transparent lens;
-     optic  "Scope 8x" by ErhanMatur — tactical scope with turrets, rings and flip-up caps.
+     sight  "EoTech EXPS3-0 Holographic Weapon Sight Lowpoly" by valterjherson1 — hooded holographic sight,
+            transparent window and an emissive reticle (KHR_materials_emissive_strength is kept);
+     optic  "Night-Force Scope" by Steven Janes — long tactical scope with numbered turrets and rings.
 
    Same pipeline as tools/items.mjs: kept primitives baked into world space (with a rotY turn onto the game's
    convention: look direction +z, top +y, mount bottom at y=0, x/z centred), merged per material, scaled to game
@@ -15,7 +16,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { NodeIO, Document } from '@gltf-transform/core';
-import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
+import { ALL_EXTENSIONS, KHRMaterialsEmissiveStrength } from '@gltf-transform/extensions';
 import { meshopt, prune, dedup } from '@gltf-transform/functions';
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 import * as THREE from 'three';
@@ -26,8 +27,8 @@ const SRC = process.env.SRC || path.join(ROOT, '.claude', 'sights-src');
 const OUT = process.env.OUT || path.join(ROOT, 'models');
 // size: longest bbox side in metres (sight ~16 cm, optic ~36 cm); rotY turns the objective lens onto +z
 const JOBS = [
-  { kind: 'sight', dir: 'reddot-a', size: 0.16, rotY: Math.PI },
-  { kind: 'optic', dir: 'scope-b', size: 0.36, rotY: Math.PI / 2 },
+  { kind: 'sight', dir: 'reddot-a', size: 0.16, rotY: 0 },
+  { kind: 'optic', dir: 'scope-b', size: 0.36, rotY: 0 },
 ];
 
 await Promise.all([MeshoptDecoder.ready, MeshoptEncoder.ready]);
@@ -79,22 +80,49 @@ for (const job of JOBS) {
     const om = out.createMaterial(name);
     const sm = g.mat;
     if (sm) {
-      om.setBaseColorFactor(sm.getBaseColorFactor()).setMetallicFactor(sm.getMetallicFactor()).setRoughnessFactor(sm.getRoughnessFactor());
-      om.setAlphaMode(sm.getAlphaMode());   // the reflex lens arrives BLEND — keep it transparent
+      const bf = sm.getBaseColorFactor();
+      const glass = sm.getExtension('KHR_materials_transmission');
+      // a BLEND material with an emissive map is the reticle decal: its colour map has no alpha channel and the
+      // factor alpha (0.05) would drown the mark — bake alpha from luminance below and show the mark at full alpha
+      const decal = sm.getAlphaMode() === 'BLEND' && !!sm.getEmissiveTexture() && !glass;
+      om.setBaseColorFactor(glass ? [bf[0], bf[1], bf[2], 0.12] : decal ? [bf[0], bf[1], bf[2], 1] : bf)
+        .setMetallicFactor(sm.getMetallicFactor()).setRoughnessFactor(sm.getRoughnessFactor());
+      om.setAlphaMode(sm.getAlphaMode());   // the reflex lens arrives BLEND — keep it transparent (transmission → 0.12 tint)
+      om.setEmissiveFactor(sm.getEmissiveFactor());   // the holo reticle glows: emissive texture + strength below
+      const es = sm.getExtension('KHR_materials_emissive_strength');
+      // the source reticle glows at 7.7 — ACES rolls that red off to white; cap it so the dot stays red
+      if (es) om.setExtension('KHR_materials_emissive_strength',
+        out.createExtension(KHRMaterialsEmissiveStrength).createEmissiveStrength().setEmissiveStrength(Math.min(2, es.getEmissiveStrength())));
       if (sm.getDoubleSided()) om.setDoubleSided(true);
       const copyTex = async (t, slot) => {
         if (!t) return;
-        const img = t.getImage(); if (!img) return;
+        let img = t.getImage(); if (!img) return;
         const meta = await sharp(img).metadata(); const w = Math.min(1024, meta.width || 1024);
+        if (decal && (slot === 'base' || slot === 'em') && (meta.channels || 4) < 4) {
+          const { data, info } = await sharp(img).raw().toBuffer({ resolveWithObject: true });
+          const rgba = Buffer.alloc(info.width * info.height * 4);
+          for (let i = 0, o = 0; i < data.length; i += info.channels, o += 4) {
+            const lum = Math.max(data[i], data[i + 1], data[i + 2]);
+            rgba[o] = data[i]; rgba[o + 1] = data[i + 1]; rgba[o + 2] = data[i + 2]; rgba[o + 3] = lum;
+          }
+          img = rgba;   // black background becomes transparent, the red mark stays
+          const buf = await sharp(img, { raw: { width: info.width, height: info.height, channels: 4 } })
+            .resize({ width: w, height: w, fit: 'inside' }).webp({ quality: 82 }).toBuffer();
+          const ot = out.createTexture(name + '_' + slot).setImage(buf).setMimeType('image/webp');
+          if (slot === 'base') om.setBaseColorTexture(ot); else om.setEmissiveTexture(ot);
+          return;
+        }
         const buf = await sharp(img).resize({ width: w, height: w, fit: 'inside' }).webp({ quality: 82 }).toBuffer();
         const ot = out.createTexture(name + '_' + slot).setImage(buf).setMimeType('image/webp');
         if (slot === 'base') om.setBaseColorTexture(ot);
         if (slot === 'normal') om.setNormalTexture(ot);
         if (slot === 'mr') om.setMetallicRoughnessTexture(ot);
+        if (slot === 'em') om.setEmissiveTexture(ot);
       };
       await copyTex(sm.getBaseColorTexture(), 'base');
       await copyTex(sm.getNormalTexture(), 'normal');
       await copyTex(sm.getMetallicRoughnessTexture(), 'mr');
+      await copyTex(sm.getEmissiveTexture(), 'em');
     }
     prim.setMaterial(om);
     const mesh = out.createMesh(name).addPrimitive(prim);
