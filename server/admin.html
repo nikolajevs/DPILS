@@ -134,6 +134,24 @@ tr.dim td { opacity: .55; }
 .member button { border: none; background: none; color: var(--muted); font-size: 14px; padding: 0 2px; line-height: 1; }
 .member button:hover { color: var(--red); }
 
+/* ---- debug and journal ---- */
+.spark { display: flex; gap: 2px; align-items: flex-end; height: 40px; margin-top: 10px; }
+.spark i { flex: 1; background: var(--plate); min-height: 2px; border-radius: 1px; opacity: .85; }
+.spark i.hot { background: var(--red); }
+pre.dump { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font: 12px/1.55 ui-monospace, "Cascadia Mono", Consolas, monospace; overflow: auto; max-height: 360px; margin: 8px 0 0; white-space: pre-wrap; word-break: break-word; }
+.badge { background: var(--red); color: #fff; border-radius: 9px; font-size: 10px; font-weight: 700; padding: 1px 6px; margin-left: 6px; vertical-align: 2px; font-family: var(--f-body); letter-spacing: 0; }
+#logBox { background: #171e20; color: #d8dde0; border-radius: 10px; padding: 10px 12px; height: 62vh; min-height: 320px; overflow: auto; font: 12.5px/1.6 ui-monospace, "Cascadia Mono", Consolas, monospace; }
+#logBox .ln { display: flex; gap: 8px; padding: 1px 0; border-bottom: 1px solid rgba(255, 255, 255, .045); }
+#logBox .lt { color: #7b8a8e; flex: none; }
+#logBox .lb { flex: none; width: 40px; font-weight: 700; }
+#logBox .lx { white-space: pre-wrap; word-break: break-word; }
+#logBox .lvl-warn .lb { color: #e0b04f; }
+#logBox .lvl-error .lb { color: #ff7b72; }
+#logBox .lvl-error .lx { color: #ffc9c4; }
+#logBox .lvl-info .lb { color: #7fb3e8; }
+#logBox .lvl-log .lb { color: #8a979b; }
+#logBox .pause-note { color: #e0b04f; padding: 6px 0; }
+
 /* ---- modal and toasts ---- */
 #modal { position: fixed; inset: 0; background: rgba(28, 37, 39, .45); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
 .modal-card { width: 420px; max-width: 100%; background: var(--paper); border-radius: 12px; border-top: 4px solid var(--brick); box-shadow: 0 24px 60px rgba(0, 0, 0, .35); padding: 20px; }
@@ -169,6 +187,7 @@ tr.dim td { opacity: .55; }
     <div class="grow"></div>
     <span class="head-chip"><span class="dot" id="srvDot"></span><span id="srvName">—</span></span>
     <span class="head-chip num" id="srvUp">—</span>
+    <span class="head-chip num" id="lagChip" title="задержка событийного цикла сервера">лаг —</span>
     <button id="logout">Выйти</button>
   </header>
   <nav id="tabs">
@@ -177,6 +196,8 @@ tr.dim td { opacity: .55; }
     <button data-tab="accounts">Аккаунты</button>
     <button data-tab="board">Лидеры</button>
     <button data-tab="teams">Команды</button>
+    <button data-tab="debug">Отладка</button>
+    <button data-tab="logs">Журнал<span class="badge" id="logBadge" hidden>0</span></button>
   </nav>
   <main>
     <section class="tab" id="tab-overview">
@@ -238,6 +259,41 @@ tr.dim td { opacity: .55; }
       <div class="tab-head"><h2>Команды игроков</h2><span class="hint" id="teamsHint"></span><div class="grow"></div><button class="btn btn-sm" data-act="refresh">Обновить</button></div>
       <div class="team-cards" id="teamsBody"></div>
     </section>
+
+    <section class="tab" id="tab-debug" hidden>
+      <div class="tab-head"><h2>Отладка</h2><span class="hint">живой снимок процесса и боя · обновление каждые 3 с</span><div class="grow"></div>
+        <button class="btn btn-sm" data-act="dump">Дамп JSON</button>
+        <button class="btn btn-sm" data-act="refresh">Обновить</button>
+      </div>
+      <div class="grid2">
+        <div class="card plate"><h3>Процесс</h3><div class="kv" id="dbgProc"></div></div>
+        <div class="card brick"><h3>Событийный цикл</h3><div class="kv" id="dbgLoop"></div><div class="spark" id="dbgSpark" title="задержка цикла за последние 30 с, красный — больше 50 мс"></div></div>
+      </div>
+      <div class="grid2">
+        <div class="card"><h3>Сеть</h3><div class="kv" id="dbgNet"></div></div>
+        <div class="card"><h3>Окружение</h3><div class="kv" id="dbgEnv"></div></div>
+      </div>
+      <div class="card brick"><h3>Бой и мир</h3><div class="kv" id="dbgWorld"></div>
+        <div class="table-wrap" id="dbgZonesWrap" hidden style="margin-top:10px"><table><thead><tr><th>Зона</th><th>Тип</th><th class="r">Радиус</th><th class="r">Позиция</th><th class="r">Осталось</th></tr></thead><tbody id="dbgZones"></tbody></table></div>
+      </div>
+      <div class="grid2">
+        <div class="card plate"><h3>Катка</h3><div class="kv" id="dbgMatch"></div></div>
+        <div class="card plate"><h3>Шторм</h3><div class="kv" id="dbgStorm"></div></div>
+      </div>
+      <div class="card"><h3>Соединения WebSocket</h3><div class="table-wrap"><table><thead><tr><th>Адрес</th><th>Дверь</th><th>Вошёл</th><th class="r">Возраст</th><th class="r">Буфер</th><th>Жив</th></tr></thead><tbody id="dbgSockets"></tbody></table></div></div>
+      <div class="card"><h3>Игроки: полный дамп</h3><div class="table-wrap"><table><thead><tr><th>Игрок</th><th>Сторона</th><th class="r">HP</th><th class="r">Пинг</th><th class="r">Позиция</th><th></th></tr></thead><tbody id="dbgPlayers"></tbody></table></div></div>
+    </section>
+
+    <section class="tab" id="tab-logs" hidden>
+      <div class="tab-head"><h2>Журнал сервера</h2><span class="hint" id="logHint"></span><div class="grow"></div>
+        <div class="seg" id="logLevel"><button data-l="" class="on">Все</button><button data-l="info">Info</button><button data-l="warn">Warn</button><button data-l="error">Error</button></div>
+        <button class="btn btn-sm" id="logPause">Пауза</button>
+        <button class="btn btn-sm" data-act="logdownload">Скачать</button>
+        <button class="btn btn-sm btn-danger" data-act="logclear">Очистить</button>
+      </div>
+      <div class="controls"><input type="search" id="logQ" placeholder="Поиск по тексту журнала…"></div>
+      <div id="logBox"></div>
+    </section>
   </main>
 </div>
 
@@ -257,7 +313,7 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const ERR = { 'bad-pass': 'Неверный пароль', rate: 'Слишком много попыток — подождите 10 минут', 'no-session': 'Сессия истекла — войдите снова', off: 'Отключено на этом сервере', 'no-user': 'Аккаунт не найден', 'no-player': 'Игрок уже вышел', 'no-team': 'Команда не найдена', 'not-member': 'Игрок не в команде', active: 'Груз уже в воздухе или на земле', empty: 'Пустое сообщение', 'bad-request': 'Сервер не понял запрос', internal: 'Ошибка на сервере', 'bad-name': 'Ник: 2–16 символов — буквы, цифры, пробел, _ . -', 'bad-pass-account': 'Пароль: 6–128 символов' };
 const WHERE = { lobby: 'лобби', train: 'тренировка', game: 'бой', storm: 'шторм' };
-const state = { tab: 'overview', period: 'all', sort: 'kills', mode: 'team', overview: null };
+const state = { tab: 'overview', period: 'all', sort: 'kills', mode: 'team', overview: null, debug: null, logLevel: '', logPaused: false, logCursor: 0, logLines: [], logSeenErr: 0, logErrTotal: 0, openDumps: new Set() };
 let token = sessionStorage.getItem('dpils.admin.token') || '';
 
 /* ---- the doors ---- */
@@ -336,6 +392,7 @@ function setTab(t) {
   state.tab = t;
   for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b.dataset.tab === t);
   for (const s of document.querySelectorAll('section.tab')) s.hidden = s.id !== 'tab-' + t;
+  if (t === 'logs') { state.logSeenErr = state.logErrTotal; $('#logBadge').hidden = true; }
   refresh();
 }
 $('#tabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) setTab(b.dataset.tab); });
@@ -345,8 +402,11 @@ function refresh() {
   else if (state.tab === 'accounts') run(loadAccounts);
   else if (state.tab === 'board') run(loadBoard);
   else if (state.tab === 'teams') run(loadTeams);
+  else if (state.tab === 'debug') run(loadDebug);
+  else if (state.tab === 'logs') run(() => loadLogs(true));
 }
-setInterval(() => { if (!document.hidden && token && !$('#app').hidden && (state.tab === 'overview' || state.tab === 'players')) refresh(); }, 3000);
+setInterval(() => { if (!document.hidden && token && !$('#app').hidden && (state.tab === 'overview' || state.tab === 'players' || state.tab === 'debug')) refresh(); }, 3000);
+setInterval(() => { if (!document.hidden && token && !$('#app').hidden && state.tab === 'logs' && !state.logPaused) run(loadLogs); }, 2000);
 
 /* ---- overview ---- */
 async function loadOverview() {
@@ -355,6 +415,10 @@ async function loadOverview() {
   const s = j.server, c = j.counts;
   $('#srvName').textContent = s.name; $('#srvDot').classList.toggle('off', !s.ok);
   $('#srvUp').textContent = 'аптайм ' + fmtDur(j.uptime);
+  $('#lagChip').textContent = 'лаг ' + j.loop.last + ' мс';
+  $('#lagChip').style.color = j.loop.last > 50 ? '#ffc9c4' : '';
+  state.logErrTotal = j.journal.errors;
+  if (state.tab !== 'logs') { const d = j.journal.errors - state.logSeenErr; const b = $('#logBadge'); b.hidden = d <= 0; b.textContent = d > 99 ? '99+' : d; }
   $('#botN').value = s.bots;
   const stats = [
     ['Игроки', s.players + ' / ' + s.max, ''], ['Боты', s.bots, 'blue'],
@@ -464,6 +528,20 @@ document.addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
   const act = b.dataset.act, id = b.dataset.id, name = b.dataset.name;
   if (act === 'refresh') return refresh();
+  if (act === 'dump') return run(async () => { if (!state.debug) await loadDebug(); download('dpils-debug.json', JSON.stringify(state.debug, null, 2)); toast('Дамп отладки скачан'); });
+  if (act === 'pdump') return run(async () => {
+    const row = document.getElementById('pd-' + id);
+    if (!row.hidden) { row.hidden = true; state.openDumps.delete(+id); return; }
+    const j = await api('player', { q: '?id=' + id });
+    row.querySelector('pre').textContent = JSON.stringify(j.player, null, 2);
+    row.hidden = false; state.openDumps.add(+id);
+  });
+  if (act === 'logclear') return run(async () => {
+    const ok = await ask({ title: 'Очистить журнал', text: 'Буфер журнала сервера будет очищен (счётчики всего останутся). Новые записи пойдут дальше.', okText: 'Очистить', danger: true });
+    if (!ok) return;
+    await api('logs/clear', { method: 'POST', body: {} }); toast('Журнал очищен'); loadLogs(true);
+  });
+  if (act === 'logdownload') { download('dpils-server-log.txt', state.logLines.map(e => new Date(e.t).toISOString() + ' [' + e.level + '] ' + e.text).join('\n'), 'text/plain'); toast('Журнал скачан'); return; }
   if (act === 'bots') return run(async () => { const j = await api('bots', { method: 'POST', body: { n: +$('#botN').value } }); toast('Ботов в бою: ' + j.bots); loadOverview(); });
   if (act === 'cargo') return run(async () => { await api('cargo', { method: 'POST', body: {} }); toast('📦 Груз сброшен — ищите дым-маяк'); });
   if (act === 'say') return run(async () => { const t = $('#sayText').value.trim(); if (!t) return toast('Напишите сообщение', 'err'); await api('say', { method: 'POST', body: { text: t } }); $('#sayText').value = ''; toast('Отправлено в чат'); });
@@ -515,6 +593,88 @@ document.addEventListener('click', e => {
   });
 });
 $('#sayText').addEventListener('keydown', e => { if (e.key === 'Enter') document.querySelector('[data-act="say"]').click(); });
+
+/* ---- debug: the live picture of the process and the fight ---- */
+const kvHtml = rows => rows.map(([k, v]) => '<span class="k">' + esc(k) + '</span><span class="num">' + esc(v) + '</span>').join('');
+function download(name, text, type) {
+  const u = URL.createObjectURL(new Blob([text], { type: type || 'application/json' }));
+  const a = document.createElement('a'); a.href = u; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(u), 2000);
+}
+async function loadDebug() {
+  const j = await api('debug');
+  state.debug = j;
+  const p = j.process;
+  $('#dbgProc').innerHTML = kvHtml([
+    ['PID', p.pid], ['Node', p.node], ['Платформа', p.platform],
+    ['Ядра', p.cpus + ' × ' + p.cpuModel], ['Load average', p.loadavg.join(' / ')],
+    ['CPU процесса', p.cpu + '% ядра'], ['RSS', p.mem.rss + ' МБ'], ['Куча', p.mem.heapUsed + ' / ' + p.mem.heapTotal + ' МБ'],
+    ['External / ArrayBuffer', p.mem.external + ' / ' + p.mem.arrayBuffers + ' МБ'],
+    ['Handles / requests', (p.handles == null ? '—' : p.handles) + ' / ' + (p.requests == null ? '—' : p.requests)],
+    ['Аптайм', fmtDur(p.uptime)], ['Запущен', fmtDate(p.boot)],
+  ]);
+  $('#dbgLoop').innerHTML = kvHtml([['Задержка сейчас', j.loop.last + ' мс'], ['Среднее (30 с)', j.loop.avg + ' мс'], ['Максимум с запуска', j.loop.max + ' мс']]);
+  const mx = Math.max(20, ...j.loop.samples);
+  $('#dbgSpark').innerHTML = j.loop.samples.map(v => '<i class="' + (v > 50 ? 'hot' : '') + '" style="height:' + Math.max(4, Math.round(v / mx * 100)) + '%" title="' + v + ' мс"></i>').join('');
+  const h = j.net.http;
+  $('#dbgNet').innerHTML = kvHtml([['HTTP всего', h.total], ['За минуту', h.perMin], ['2xx / 3xx', h.s2 + ' / ' + h.s3], ['4xx / 5xx', h.s4 + ' / ' + h.s5], ['WebSocket соединений', j.net.ws.clients]]);
+  $('#dbgEnv').innerHTML = kvHtml(Object.entries(j.env));
+  const w = j.world;
+  $('#dbgWorld').innerHTML = kvHtml([
+    ['Игроки / боты', w.players + ' / ' + w.bots], ['Гранаты в воздухе', w.nades], ['Пули в полёте', w.bullets],
+    ['Предметы', w.items.active + ' активных / ' + w.items.total], ['Зоны', w.zones.length],
+    ['Мишени груза', w.marks.length ? w.marks.map(m => m.name + ' (' + fmtLeft(m.left) + ')').join(', ') : 'нет'],
+    ['Груз', w.cargo ? '#' + w.cargo.id + ' ' + w.cargo.state + ' · ' + w.cargo.x + ', ' + w.cargo.z + ' · ' + fmtLeft(w.cargo.left) : 'нет'],
+  ]);
+  $('#dbgZonesWrap').hidden = !w.zones.length;
+  $('#dbgZones').innerHTML = w.zones.map(z => '<tr><td class="num">#' + z.id + '</td><td>' + esc(z.kind) + '</td><td class="r num">' + z.r + ' м</td><td class="r num hint">' + z.x + ', ' + z.z + '</td><td class="r num">' + fmtLeft(z.left) + '</td></tr>').join('');
+  const m = j.match;
+  $('#dbgMatch').innerHTML = m ? kvHtml([['Катка', '№' + m.n], ['Начало', fmtDate(m.start)], ['Конец', fmtDate(m.end)], ['Шторм с', fmtDate(m.stormAt)], ['Вход до', fmtDate(m.doorAt)], ['В ростере', m.roster], ['Выбыли в шторме', m.out], ['Предупреждения', m.warned.length ? m.warned.join(', ') : '—'], ['«Вход закрыт» сказано', m.closedSaid ? 'да' : 'нет']]) : '<span class="hint">MATCH=off — бесконечные раунды</span>';
+  const s = j.storm, c = v => v ? v.x + ', ' + v.z + ' · r ' + v.r : '—';
+  $('#dbgStorm').innerHTML = s ? kvHtml([['Фаза', s.phase + ' / ' + s.kind], ['Этап', (s.pi + 1) + ' / ' + s.stages], ['Урон снаружи', s.dps + ' HP/с'], ['Текущий круг', c(s.cur)], ['Из', c(s.from)], ['В', c(s.to)], ['Финал', c(s.final)], ['До конца этапа', fmtLeft(s.left)], ['Живы', (s.alive == null ? '—' : s.alive) + ' / ' + (s.total == null ? '—' : s.total)]]) : '<span class="hint">шторм ещё не начался</span>';
+  $('#dbgSockets').innerHTML = j.sockets.length ? j.sockets.map(x => '<tr><td class="num">' + esc(x.ip) + '</td><td>' + esc(x.path) + '</td><td>' + (x.joined ? 'да' : '<span class="hint">нет</span>') + '</td><td class="r num">' + fmtDur(x.age) + '</td><td class="r num">' + x.buffered + '</td><td><span class="dot' + (x.alive ? '' : ' dead') + '"></span></td></tr>').join('') : '<tr><td colspan="6" class="empty">Соединений нет</td></tr>';
+  const pl = await api('players');
+  $('#dbgPlayers').innerHTML = pl.rows.map(r => '<tr><td><b>' + esc(r.name) + '</b>' + (r.bot ? ' <span class="chip bot">БОТ</span>' : '') + '</td><td>' + (r.bot ? '—' : state.mode === 'ffa' ? 'FFA' : r.team === 0 ? 'красные' : 'синие') + '</td><td class="r num">' + r.hp + '</td><td class="r num">' + (r.ping == null ? '—' : r.ping) + '</td><td class="r num hint">' + r.x + ', ' + r.z + '</td><td class="r"><button class="btn btn-sm" data-act="pdump" data-id="' + r.id + '">Дамп</button></td></tr><tr hidden id="pd-' + r.id + '"><td colspan="6"><pre class="dump"></pre></td></tr>').join('');
+  for (const pid of state.openDumps) api('player', { q: '?id=' + pid }).then(jj => { const row = document.getElementById('pd-' + pid); if (row) { row.querySelector('pre').textContent = JSON.stringify(jj.player, null, 2); row.hidden = false; } }).catch(() => {});
+}
+
+/* ---- the journal: the console of the server, incremental ---- */
+function logLine(e) {
+  const d = new Date(e.t), ts = p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds()) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+  const lb = { log: 'LOG', info: 'INFO', warn: 'WARN', error: 'ERR' }[e.level] || e.level;
+  return '<div class="ln lvl-' + esc(e.level) + '"><span class="lt">' + ts + '</span><span class="lb">' + lb + '</span><span class="lx">' + esc(e.text) + '</span></div>';
+}
+async function loadLogs(full) {
+  if (full) { state.logCursor = 0; state.logLines = []; }
+  const j = await api('logs', { q: '?after=' + state.logCursor + '&level=' + state.logLevel + '&q=' + encodeURIComponent($('#logQ').value.trim()) });
+  state.logCursor = j.last; state.logErrTotal = j.totals.error;
+  if (state.tab !== 'logs') { const d = j.totals.error - state.logSeenErr; const b = $('#logBadge'); b.hidden = d <= 0; b.textContent = d > 99 ? '99+' : d; }
+  $('#logHint').textContent = 'в буфере ' + j.held + ' / ' + j.cap + ' · всего: log ' + j.totals.log + ' · info ' + j.totals.info + ' · warn ' + j.totals.warn + ' · error ' + j.totals.error;
+  const box = $('#logBox');
+  if (full) box.innerHTML = '';
+  if (j.entries.length) {
+    state.logLines.push(...j.entries);
+    if (state.logLines.length > 1000) state.logLines.splice(0, state.logLines.length - 1000);
+    const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+    box.insertAdjacentHTML('beforeend', j.entries.map(logLine).join(''));
+    while (box.childElementCount > 1000) box.firstElementChild.remove();
+    if (stick) box.scrollTop = box.scrollHeight;
+  } else if (full) box.innerHTML = '<div class="pause-note">Записей нет</div>';
+}
+$('#logLevel').addEventListener('click', e => {
+  const b = e.target.closest('[data-l]'); if (!b) return;
+  state.logLevel = b.dataset.l;
+  for (const x of document.querySelectorAll('#logLevel button')) x.classList.toggle('on', x === b);
+  run(() => loadLogs(true));
+});
+let logQTimer = 0;
+$('#logQ').addEventListener('input', () => { clearTimeout(logQTimer); logQTimer = setTimeout(() => run(() => loadLogs(true)), 300); });
+$('#logPause').onclick = () => {
+  state.logPaused = !state.logPaused;
+  $('#logPause').textContent = state.logPaused ? 'Продолжить' : 'Пауза';
+  $('#logPause').classList.toggle('btn-plate', state.logPaused);
+  if (!state.logPaused) run(loadLogs);
+};
 
 /* ---- start: a kept token opens the panel at once; a dead one falls back to the login ---- */
 (async () => {

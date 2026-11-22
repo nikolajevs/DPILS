@@ -49,6 +49,7 @@ const social = TM ? createSocial({ accounts: ACC, teams: TM, onTeams: () => game
 // the admin panel (admin.mjs): the page /admin and its api; off until ADMIN_PASS is set. clients() reads the WebSocket
 // crowd lazily — wss below is ready by the time the first request comes
 const ADMIN = createAdmin({ pass: process.env.ADMIN_PASS || '', game, accounts: ACC, board: LB, teams: TM, social, clients: () => wss.clients.size,
+  sockets: () => [...wss.clients].map(c => ({ ip: (c._socket && c._socket.remoteAddress) || '?', path: c.where || '/', joined: !!(c.h && c.h.joined), age: Math.round((Date.now() - c.since) / 1000), buffered: c.bufferedAmount, alive: !!c.live })),
   files: [{ name: 'accounts.json', path: ACC_FILE }, { name: 'leaderboard.json', path: LB_FILE }, { name: 'teams.json', path: TM_FILE }] });
 
 /* the page itself (STATIC=dist): files of the folder, / is index.html; the bundle in assets/ has hashes in its names
@@ -129,6 +130,7 @@ function authRoute(req, res) {
 }
 
 const server = http.createServer((req, res) => {
+  res.on('finish', () => ADMIN.note(res.statusCode));   // the admin panel's http counters
   if (ADMIN.route(req, res)) return;
   if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' }); res.end(JSON.stringify(game.health())); return; }
   if (req.url.split('?')[0].startsWith('/auth/')) { authRoute(req, res); return; }
@@ -144,6 +146,7 @@ const wss = new WebSocketServer({ server, maxPayload: 16384 });
 wss.on('connection', (ws, req) => {
   ws.since = Date.now(); ws.live = true;
   const where = req.url.split('?')[0], conn = { send: s => { if (ws.readyState === 1) ws.send(s); }, close: () => ws.close() };
+  ws.where = where;   // the admin panel's socket list shows which door each connection came through
   // the social side has its own door, /social: the teams and who is online (social.mjs); without teams it says so and closes
   if (where === '/social' && !social) { ws.h = { joined: false }; conn.send(JSON.stringify({ t: 'off' })); ws.close(); return; }
   const g = where === '/social' ? social : game;   // the teams have their own door: the path /social

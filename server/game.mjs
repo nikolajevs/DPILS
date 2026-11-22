@@ -784,6 +784,9 @@ export function createGame(opts) {
     attach, addBot, removeBot, kick, say, players, arena, world, mode: MODE, equip, refreshClans,   // refreshClans: the teams changed (social.mjs)   // world: the city's physics (freePath, shotPath, stepNade) — the tools and the headless checks probe it
     get items() { return items; },   // the map pickups: the tests place them at a player's feet
     get zones() { return zones; },   // the smoke screens and burning patches: the tests probe them too
+    get nades() { return nades; },   // the grenades in the air: the admin panel's debug picture counts them
+    get bullets() { return bullets; },   // and the bullets in flight
+    get doorAt() { return MATCH ? joinUntil() : 0; },   // when the door of the match closes (with the restart grace)
     get cargo() { return cargo; },   // the supply drop in flight or on the ground: the tests drive it by their own clock
     stepCargo: () => stepCargo(now()),   // the drop, the landing, the pickup and the mark's minute, for the tests
     cargoDrop: () => dropCargo(),   // and a drop on demand, without waiting out the first minute

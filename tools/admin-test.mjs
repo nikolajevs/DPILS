@@ -52,6 +52,7 @@ console.log('admin books (accounts, leaderboard, teams):');
   const gone = A.remove('Аня');
   ok(gone && gone.key === r1.key && A.list({}).total === 1 && A.remove('Аня') === null, 'the account removed, its key returned for the kick');
   ok(createAdmin({ pass: '' }).route({}, {}) === false, 'without a password the panel is off: the paths fall through');
+  ok(typeof createAdmin({ pass: '' }).note === 'function', 'the disabled panel still answers the http note()');
 }
 
 /* ---------- 2. the live doors ---------- */
@@ -63,9 +64,9 @@ const BASE = 'http://127.0.0.1:' + PORT;
 const child = spawn(process.execPath, ['server/index.mjs'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT), ADMIN_PASS: 'test-admin-pass', BOTS: '2', SERVER_NAME: 'Тест', ACCOUNTS: path.join(dir, 'accounts.json'), LEADERBOARD: path.join(dir, 'leaderboard.json'), TEAMS: path.join(dir, 'teams.json') }, stdio: ['ignore', 'pipe', 'pipe'] });
 let serverLog = '';
 child.stdout.on('data', d => { serverLog += d; }); child.stderr.on('data', d => { serverLog += d; });
-const req = async (p, { method = 'GET', body, token } = {}) => {
+const req = async (p, { method = 'GET', body, token, q = '' } = {}) => {
   const h = {}; if (token) h['x-admin-token'] = token; if (body !== undefined) h['content-type'] = 'application/json';
-  const r = await fetch(BASE + p, { method, headers: h, body: body !== undefined ? JSON.stringify(body) : undefined });
+  const r = await fetch(BASE + p + q, { method, headers: h, body: body !== undefined ? JSON.stringify(body) : undefined });
   let j = null; try { j = await r.json(); } catch (e) { /* html or empty */ }
   return { status: r.status, headers: r.headers, j };
 };
@@ -102,6 +103,15 @@ try {
 
   const ov = await api('overview');
   ok(ov.j.ok && ov.j.server.bots === 2 && ov.j.counts.accounts === 0 && ov.j.server.match && ov.j.env.name === 'Тест' && ov.j.files.length === 3, 'the overview: the fight, the counts, the match, the files');
+  ok(ov.j.loop && typeof ov.j.loop.last === 'number' && ov.j.journal && typeof ov.j.journal.errors === 'number' && typeof ov.j.http.total === 'number', 'the overview carries the loop lag, the journal counters and the http counters');
+  // the journal: the startup line of the console and the refused login are in it
+  let lg = (await api('logs')).j;
+  ok(lg.ok && lg.entries.some(e => e.level === 'log' && e.text.includes('server on')) && lg.entries.some(e => e.level === 'warn' && e.text.includes('неверный пароль')), 'the journal holds the console startup line and the refused login');
+  // the debug picture
+  const dbg = (await api('debug')).j;
+  ok(dbg.ok && dbg.process.pid > 0 && dbg.loop.last >= 0 && dbg.net.http.total > 0 && Array.isArray(dbg.sockets) && typeof dbg.world.nades === 'number' && typeof dbg.world.bullets === 'number', 'the debug picture: process, loop, http, sockets, fight insides');
+  ok(dbg.env.ADMIN_PASS === '(задан)' && !JSON.stringify(dbg).includes('test-admin-pass'), 'the environment is whitelisted, the password never leaves');
+  ok(dbg.match && typeof dbg.match.roster === 'number' && dbg.match.doorAt > 0 && (dbg.storm === null || typeof dbg.storm.pi === 'number'), 'the match debug: the roster and the door; the storm either absent or described');   // the match runs by the wall clock: the test may land in its storm
   ok((await api('players')).j.rows.length === 2 && (await api('players')).j.rows.every(r => r.bot), 'the players: two bots');
   ok((await api('bots', { method: 'POST', body: { n: 4 } })).j.bots === 4 && (await api('bots', { method: 'POST', body: { n: 1 } })).j.bots === 1, 'the bots set to 4 and back to 1');
   ok((await api('no-such-door')).status === 404, 'an unknown door is a 404');
@@ -113,9 +123,18 @@ try {
   let pl = (await api('players')).j.rows;
   const anya = pl.find(r => !r.bot);
   ok(anya && anya.name === 'Аня' && anya.acct === 'Аня' && anya.since > 0 && anya.alive, 'the human in the players list, with the account and the join time');
+  ok((await api('debug')).j.sockets.some(s => s.joined && s.path === '/'), 'the socket list shows the joined player on his door');
+  const pd = (await api('player', { q: '?id=' + anya.id })).j;
+  ok(pd.ok && Array.isArray(pd.player.mag) && pd.player.mag.length === 8 && pd.player.reloadLeft >= 0 && !('key' in pd.player) && !JSON.stringify(pd).includes(reg.j.key), 'the player dump: the inventory and the timers, never the key');
+  ok((await api('player', { q: '?id=99999' })).status === 404, 'a dump of nobody is a 404');
   const said = waitFor(ws, m => m.t === 'chat' && m.text.includes('Админ'));
   ok((await api('say', { method: 'POST', body: { text: 'проверка связи' } })).j.ok, 'the server line sent');
   ok((await said).text.includes('проверка связи'), 'the line reached the player');
+  lg = (await api('logs')).j;
+  ok(lg.entries.some(e => e.level === 'info' && e.text.includes('admin: say')), 'the audit line of the action is in the journal');
+  const inc = (await api('logs', { q: '?after=' + lg.last })).j;
+  ok(inc.entries.length === 0 && inc.last === lg.last, 'the incremental read returns nothing new');
+  ok((await api('logs', { q: '?level=warn' })).j.entries.every(e => e.level === 'warn'), 'the level filter of the journal');
   ok((await api('say', { method: 'POST', body: { text: '   ' } })).status === 400, 'an empty line refused');
   const closed = new Promise(res => ws.once('close', res));
   const kickMsg = waitFor(ws, m => m.t === 'chat' && m.text.includes('исключён администратором'));
@@ -182,6 +201,10 @@ try {
   ok((await api('accounts')).j.total === 1 && !(await api('board')).j.rows.some(r => r.name === 'Аня'), 'the account and its results are gone');
   ok((await req('/auth/me?key=' + reg.j.key)).status === 401, 'the key of the removed account is dead');
   ok((await api('accounts/delete', { method: 'POST', body: { name: 'Аня' } })).status === 404, 'removing twice is a 404');
+
+  // the journal clear: the buffer empties, the audit of the clear itself stays
+  ok((await api('logs/clear', { method: 'POST', body: {} })).j.ok, 'the journal cleared');
+  ok((await api('logs')).j.held === 1, 'after the clear only the audit of the clear itself');
 
   // the logout closes the session
   ok((await req('/admin/logout', { method: 'POST', token: tok })).j.ok, 'the logout');
