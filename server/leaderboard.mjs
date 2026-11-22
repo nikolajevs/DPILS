@@ -39,11 +39,32 @@ export function createBoard({ file, now = Date.now } = {}) {
     const list = rows.slice(0, Math.max(1, Math.min(100, limit))).map((r, i) => ({ rank: i + 1, me: r.id === me, ...out(r) })), at = me ? rows.findIndex(r => r.id === me) : -1;
     return { period, sort: key, week: cur, total: rows.length, rows: list, me: at >= 0 ? { rank: at + 1, ...out(rows[at]) } : null };
   }
+  // the admin panel (admin.mjs): the same table, but every row keeps its id and its last visit, the inactive ones too
+  function list({ period = 'all', sort = 'kills', limit = 500 } = {}) {
+    const cur = isoWeek(now());
+    let rows = Object.entries(data.profiles).map(([id, p]) => { const s = period === 'week' ? (p.week.id === cur ? p.week : zero()) : p.all; return { id, name: p.name, seen: p.seen, ...s, kd: s.deaths ? s.kills / s.deaths : s.kills, acc: s.shots ? 100 * s.hits / s.shots : 0 }; });
+    const key = ['kills', 'kd', 'acc', 'wins'].includes(sort) ? sort : 'kills';
+    rows.sort((a, b) => b[key] - a[key] || b.kills - a.kills || a.deaths - b.deaths);
+    return { period, sort: key, week: cur, total: rows.length, rows: rows.slice(0, Math.max(1, Math.min(1000, limit))).map(r => ({ ...r, kd: +r.kd.toFixed(2), acc: Math.round(r.acc), dmg: Math.round(r.dmg) })) };
+  }
+  // a profile goes (the admin), with the nick it owns
+  function remove(id) {
+    const p = data.profiles[id]; if (!p) return false;
+    delete data.profiles[id]; if (data.names[lower(p.name)] === id) delete data.names[lower(p.name)];
+    dirty = true; return true;
+  }
+  // the counters back to zero (the admin): one profile or all of them, the whole time or the week or both
+  function reset(id, period = 'both') {
+    const one = id ? [data.profiles[id]].filter(Boolean) : Object.values(data.profiles);
+    for (const p of one) { if (period !== 'week') p.all = zero(); if (period !== 'all') p.week = { id: isoWeek(now()), ...zero() }; }
+    if (one.length) dirty = true;
+    return one.length;
+  }
   // the players who have not come for four months and have few kills go, with their nicks
   function prune() { const old = now() - 120 * 86400000; for (const [id, p] of Object.entries(data.profiles)) if (p.seen < old && p.all.kills < 20) { delete data.profiles[id]; if (data.names[lower(p.name)] === id) delete data.names[lower(p.name)]; } }
   function save() {
     if (!file || !dirty) return; dirty = false; prune();
     try { fs.mkdirSync(path.dirname(file), { recursive: true }); const tmp = file + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(data)); fs.renameSync(tmp, file); } catch (e) { dirty = true; console.error('leaderboard not saved:', e.message); }
   }
-  return { identify, top, save, count: () => Object.keys(data.profiles).length };
+  return { identify, top, list, remove, reset, save, count: () => Object.keys(data.profiles).length };
 }

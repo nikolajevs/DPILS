@@ -7,7 +7,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "node tools/check.mjs",
-    "test": "node tools/combat-test.mjs && node tools/social-test.mjs",
+    "test": "node tools/combat-test.mjs && node tools/social-test.mjs && node tools/admin-test.mjs",
     "server": "node server/index.mjs",
     "loop": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/improve-loop.ps1"
   },

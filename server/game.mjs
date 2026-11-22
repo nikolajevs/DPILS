@@ -123,7 +123,7 @@ export function createGame(opts) {
     }
     if (changed) sendBoard();
   }
-  const newPlayer = () => ({ id: nextId++, conn: null, bot: null, name: '', char: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, st: { shots: 0, hitShots: 0, dmg: 0, heads: 0 }, wep: 0, lastShot: 0, lastNade: 0, nades: 0, smokes: 0, napalms: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(),
+  const newPlayer = () => ({ id: nextId++, conn: null, bot: null, name: '', char: '', team: 0, joined: false, joinedAt: 0, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, st: { shots: 0, hitShots: 0, dmg: 0, heads: 0 }, wep: 0, lastShot: 0, lastNade: 0, nades: 0, smokes: 0, napalms: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(),
     mag: WEAPONS.map(w => w.mag), reserve: RESERVE.slice(), meds: 0, reloadDone: 0, reloadW: 0, lastMed: 0, markUntil: 0,
     attach: WEAPONS.map(() => null),
     loadout: LOADOUT.slice(), pack: PACK.slice() });   // two equipped guns + the backpack (guns and stored items); one sight mounted per weapon
@@ -556,10 +556,23 @@ export function createGame(opts) {
   let botN = 0;
   function addBot(level) {
     if (players.size >= MAX) return null;
-    const p = newPlayer(); let nm = botName(botN++); while ([...players.values()].some(q => q.name === nm)) nm = botName(botN++); p.name = nm; p.char = botChar(); p.team = pickTeam(-1, p.id); p.joined = true; brain.make(level || opts.level, p); players.set(p.id, p);
+    const p = newPlayer(); let nm = botName(botN++); while ([...players.values()].some(q => q.name === nm)) nm = botName(botN++); p.name = nm; p.char = botChar(); p.team = pickTeam(-1, p.id); p.joined = true; p.joinedAt = now(); brain.make(level || opts.level, p); players.set(p.id, p);
     spawn(p); sendBoard(); all({ t: 'chat', text: p.name + ' в игре' }); return p;
   }
   function removeBot() { const b = [...players.values()].reverse().find(p => p.bot); if (!b) return false; players.delete(b.id); all({ t: 'left', id: b.id }); sendBoard(); return true; }
+  // the admin panel (admin.mjs): a player is put out of the fight (a bot simply goes), and the server says a line to everybody
+  function kick(id, why) {
+    const p = players.get(+id); if (!p) return false;
+    if (p.bot) { players.delete(p.id); all({ t: 'left', id: p.id }); sendBoard(); return true; }
+    all({ t: 'chat', text: p.name + ' исключён администратором' + (why ? ': ' + String(why).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 80) : '') });
+    if (p.conn) p.conn.close();   // the close of the connection takes him out (handle.close below)
+    return true;
+  }
+  function say(text) {
+    const s = String(text || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
+    if (!s) return false;
+    all({ t: 'chat', text: s }); return true;
+  }
   // ---- messages of a player
   function attach(conn) {
     const p = newPlayer(); p.conn = conn;
@@ -581,7 +594,7 @@ export function createGame(opts) {
           if (lb && m.board !== false && validKey(m.key) && ![...players.values()].some(q => q.key === m.key)) { p.key = m.key; const r = lb.identify(m.key, nameBase(m.name), n => !taken(n)); p.name = r.name; p.prof = r.prof; } else p.name = cleanName(m.name);
           p.acct = who ? who.name : ''; p.clan = clanOf(p);
           const side = clanSide(p);   // the team fight: a member of a team joins the side where his teammates are
-          p.team = side >= 0 ? side : pickTeam(m.team, p.id); p.char = cleanChar(m.char); p.joined = true; players.set(p.id, p);
+          p.team = side >= 0 ? side : pickTeam(m.team, p.id); p.char = cleanChar(m.char); p.joined = true; p.joinedAt = t0; players.set(p.id, p);
           send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, clan: p.clan || undefined, now: now(), arena: arenaPub(fieldArena()), holy: holyPublic() || undefined, rules: { hp: R.hp, range: R.range }, day: dayNow() || undefined, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), zones: [...zones.values()].map(z => ({ id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, r: z.r, durMs: z.dur, left: Math.max(0, z.until - now()) })), cargo: cargoMsg(), marks: marks(), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])), match: matchPublic() || undefined, storm: stormPublic() || undefined });
           const mate = besideMate(p);   // a team appears together: next to a living teammate (in an arena the base decides)
           if (stormFight()) { const [sx, sz, syaw] = mate || stormSpawnPoint(); spawn(p, sx, sz, syaw, true); }   // a join in the storm appears inside the circle
@@ -905,7 +918,7 @@ export function createGame(opts) {
   timers.push(setInterval(() => { const t = now(), dt = Math.min(0.2, (t - last) / 1000); last = t; stepBots(dt); }, 50));
   if (MATCH) { tickMatch(); timers.push(setInterval(tickMatch, STORMC.tickMs)); }
   return {
-    attach, addBot, removeBot, players, arena, world, mode: MODE, equip, refreshClans,   // refreshClans: the teams changed (social.mjs)   // world: the city's physics (freePath, shotPath, stepNade) — the tools and the headless checks probe it
+    attach, addBot, removeBot, kick, say, players, arena, world, mode: MODE, equip, refreshClans,   // refreshClans: the teams changed (social.mjs)   // world: the city's physics (freePath, shotPath, stepNade) — the tools and the headless checks probe it
     get items() { return items; },   // the map pickups: the tests place them at a player's feet
     get zones() { return zones; },   // the smoke screens and burning patches: the tests probe them too
     get cargo() { return cargo; },   // the supply drop in flight or on the ground: the tests drive it by their own clock
