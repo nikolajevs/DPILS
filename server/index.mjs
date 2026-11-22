@@ -5,7 +5,9 @@
      ACCOUNTS (file of the accounts, default server/data/accounts.json; off = none: joins are not checked, but the page's mandatory gate cannot register on such a server),
      STATIC (a folder, e.g. dist after npm run build: the server also gives out the page, so the city and its server live on one address;
        unchanged files are answered 304, the text and the models go compressed in brotli or gzip — compress.mjs),
-     DAY_MIN (the length of the day of the game in minutes, default 120: the sun rises and sets over the city; 0 = no clock, see daycycle.mjs) */
+     DAY_MIN (the length of the day of the game in minutes, default 120: the sun rises and sets over the city; 0 = no clock, see daycycle.mjs),
+     STORM (off = no event), STORM_BOTS (the bots of the «Шторм» battle royale event, default 15; the event lives on the
+       WebSocket path /storm beside the main fight, its lobby status is /storm-health — server/storm.mjs) */
 import http from 'node:http';
 import fs from 'node:fs';
 import { WebSocketServer } from 'ws';
@@ -24,6 +26,13 @@ const ACC = process.env.ACCOUNTS === 'off' ? null : createAccounts({ file: proce
 const game = createGame({ board: LB, accounts: ACC, world: WORLD, mode: process.env.MODE === 'ffa' ? 'ffa' : 'team', win: +process.env.WIN_SCORE || 0, name: String(process.env.SERVER_NAME || 'Даугавпилс').slice(0, 40), arena: ARENAS[process.env.ARENA] || null, level: process.env.BOT_LEVEL || 'normal',
   day: process.env.DAY_MIN === '0' ? null : { len: (+process.env.DAY_MIN || 120) * 60000 } });
 for (let i = 0; i < Math.max(0, Math.min(63, +process.env.BOTS || 0)); i++) game.addBot();   // up to 63 bots: with one human that fills the 64 places
+
+/* The «Шторм» event (server/storm.mjs): a battle royale running its own rounds beside the main fight — the same city,
+   its own players and bots, the whole map as the field (no arena), more loot on the streets. The WebSocket lives on
+   the path /storm, the lobby reads /storm-health. STORM_BOTS fills the field (default 15), STORM=off turns it off. */
+const stormGame = process.env.STORM === 'off' ? null : createGame({ board: LB, accounts: ACC, world: WORLD, mode: 'storm', name: 'Шторм', level: process.env.BOT_LEVEL || 'normal', area: { cx: -1000, cz: 500, r: 3300 }, itemCount: 60,
+  day: process.env.DAY_MIN === '0' ? null : { len: (+process.env.DAY_MIN || 120) * 60000 } });
+if (stormGame) for (let i = 0; i < Math.max(0, Math.min(63, process.env.STORM_BOTS == null ? 15 : +process.env.STORM_BOTS)); i++) stormGame.addBot();
 
 /* the page itself (STATIC=dist): files of the folder, / is index.html; the bundle in assets/ has hashes in its names
    and is cached for long, the rest (the page, the city data) is checked every time */
@@ -104,6 +113,7 @@ function authRoute(req, res) {
 
 const server = http.createServer((req, res) => {
   if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' }); res.end(JSON.stringify(game.health())); return; }
+  if (req.url.split('?')[0] === '/storm-health') { res.writeHead(stormGame ? 200 : 404, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'cache-control': 'no-store' }); res.end(JSON.stringify(stormGame ? stormGame.health() : { ok: false, error: 'off' })); return; }
   if (req.url.split('?')[0].startsWith('/auth/')) { authRoute(req, res); return; }
   if (LB && req.url.startsWith('/leaderboard')) {   // ?period=all|week&sort=kills|kd|acc|wins&limit=50&me=<id: sha256 of the key, 32 hex>
     const q = new URL(req.url, 'http://x').searchParams, me = q.get('me');
@@ -114,9 +124,10 @@ const server = http.createServer((req, res) => {
   res.writeHead(404); res.end();
 });
 const wss = new WebSocketServer({ server, maxPayload: 16384 });
-wss.on('connection', ws => {
+wss.on('connection', (ws, req) => {
   ws.since = Date.now(); ws.live = true;
-  const h = game.attach({ send: s => { if (ws.readyState === 1) ws.send(s); }, close: () => ws.close() });
+  const g = stormGame && req.url.split('?')[0] === '/storm' ? stormGame : game;   // the event has its own door: the path /storm
+  const h = g.attach({ send: s => { if (ws.readyState === 1) ws.send(s); }, close: () => ws.close() });
   ws.h = h;
   ws.on('pong', () => { ws.live = true; });
   ws.on('message', raw => h.message(raw.toString()));
@@ -124,7 +135,7 @@ wss.on('connection', ws => {
   ws.on('error', () => {});
 });
 setInterval(() => { for (const c of wss.clients) { if (!c.h.joined && Date.now() - c.since > 15000) { c.terminate(); continue; } if (!c.live) { c.terminate(); continue; } c.live = false; c.ping(); } }, 15000);
-server.listen(PORT, () => console.log('Daugavpils shooter server on :' + PORT + (game.arena ? ', arena ' + game.arena.name : '') + (process.env.BOTS ? ', bots ' + process.env.BOTS : '')));
+server.listen(PORT, () => console.log('Daugavpils shooter server on :' + PORT + (game.arena ? ', arena ' + game.arena.name : '') + (process.env.BOTS ? ', bots ' + process.env.BOTS : '') + (stormGame ? ', storm event on /storm' : '')));
 if (STATIC) warm(STATIC);   // the compressed copies of the page's files, made in the background (compress.mjs)
 
 if (LB || ACC) {   // the table and the accounts are saved every 20 s and when the server is stopped

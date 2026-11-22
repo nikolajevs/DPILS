@@ -8,7 +8,8 @@
    (WEAPONS.vel) and the damage lands when the bullet arrives, not at the click. The hit is still judged against the target
    as the shooter saw it at the click (the position rewound by the shooter's lag, frozen for the flight), so “shoot where
    you see” holds while the bullet takes its time to get there. */
-import { FALL, HIT, INV, ITEMS, LOADOUT, NADE, NADE_KINDS, NAPALM, PACK, RELOAD_MS, RESERVE, RULES as R, SMOKE, WEAPONS, W_FALL, W_FIRE, W_NADE, bulletAt, bulletDir, dragDist, dragTime, rayHit, rayToSegment } from './combat.mjs';
+import { FALL, HIT, INV, ITEMS, LOADOUT, NADE, NADE_KINDS, NAPALM, PACK, RELOAD_MS, RESERVE, RULES as R, SMOKE, WEAPONS, W_FALL, W_FIRE, W_NADE, W_STORM, bulletAt, bulletDir, dragDist, dragTime, rayHit, rayToSegment } from './combat.mjs';
+import { STORM as STORMC, pickFinal, stageCircle, stormPlan } from './storm.mjs';
 import { LEVELS, botName, createBrain } from './bots.mjs';
 import { DAY_MS, dayPhase } from './daycycle.mjs';
 
@@ -36,7 +37,7 @@ function flightSeg(b, s0, dt) {
 }
 
 export function createGame(opts) {
-  const world = opts.world, FFA = opts.mode === 'ffa', MODE = FFA ? 'ffa' : 'team', WIN = opts.win || (FFA ? 20 : 30), NAME = opts.name || 'Даугавпилс', MAX = opts.maxPlayers || R.maxPlayers;
+  const world = opts.world, STORM = opts.mode === 'storm', FFA = STORM || opts.mode === 'ffa', MODE = STORM ? 'storm' : FFA ? 'ffa' : 'team', WIN = STORM ? Infinity : opts.win || (FFA ? 20 : 30), NAME = opts.name || 'Даугавпилс', MAX = opts.maxPlayers || R.maxPlayers;   // storm: the battle royale event (storm.mjs) — everybody for himself, the last survivor wins, no kill target
   const now = opts.now || (() => Date.now()), teamScore = [0, 0], players = new Map();
   // the day of the game (daycycle.mjs): its length; null — no clock, the page keeps the time of day it has
   const DAY = opts.day ? { len: Math.max(60000, +opts.day.len || DAY_MS) } : null;
@@ -46,7 +47,7 @@ export function createGame(opts) {
   // the arena: its bases stood on something walkable; without an arena bots roam round the square
   const walkSpot = (x, z) => { if (world.walkable(x, z)) return [x, z]; for (let r = 4; r < 80; r += 4) for (let k = 0; k < 12; k++) { const a = k / 12 * 6.283, nx = x + Math.cos(a) * r, nz = z + Math.sin(a) * r; if (world.walkable(nx, nz)) return [nx, nz]; } return [x, z]; };
   const arena = opts.arena ? { ...opts.arena, bases: opts.arena.bases.map(b => b.map(([x, z]) => walkSpot(x, z))) } : null;
-  const area = arena || { cx: -1487, cz: 1263, r: 450 };
+  const area = arena || opts.area || { cx: -1487, cz: 1263, r: 450 };
   const send = (p, m) => { if (p.conn) p.conn.send(JSON.stringify(m)); };
   const all = m => { const s = JSON.stringify(m); for (const p of players.values()) if (p.conn) p.conn.send(s); };
   const humans = () => [...players.values()].filter(p => !p.bot);
@@ -113,6 +114,10 @@ export function createGame(opts) {
     v.hp -= dmg; if (p !== v) { const d = dmg + Math.min(0, v.hp); p.st.dmg += d; if (p.prof) p.prof.add('dmg', d); } send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: from[0] - v.x, dz: from[2] - v.z, bd: r3(bd), vf: vf == null ? undefined : +vf.toFixed(3), fall: w === W_FALL ? 1 : undefined, fire: w === W_FIRE ? 1 : undefined }); if (p !== v) send(p, { t: 'hit', id: v.id, head, zone, kill: v.hp <= 0, dmg: Math.min(dmg, dmg + Math.min(0, v.hp)) });
     if (v.hp > 0) return;
     v.alive = false; v.deaths++; v.diedAt = t0; v.streak = 0; if (v.prof) v.prof.add('deaths');
+    if (STORM && storm) {   // the event keeps the order of the fallen: the place of the dead goes to his page (back to the lobby)
+      storm.deaths.push({ id: v.id, at: t0 });
+      if (v.conn) send(v, { t: 'stormDead', place: [...players.values()].filter(q => q.alive).length + 1, total: players.size, by: p === v ? (w === W_STORM ? 'storm' : '') : p.name, w });
+    }
     if (p !== v) { p.kills++; if (!FFA) teamScore[p.team]++; if (head) p.st.heads++; if (p.prof) { p.prof.add('kills'); if (head) p.prof.add('heads'); p.streak = (p.streak || 0) + 1; p.prof.max('best', p.streak); } }
     all({ t: 'kill', killer: p.id, victim: v.id, kn: p.name, vn: v.name, kt: p.team, vt: v.team, head, w, zone: bd ? zone : undefined, bd: r3(bd), vf: vf == null ? undefined : +vf.toFixed(3), dx: +(from[0] - v.x).toFixed(2), dz: +(from[2] - v.z).toFixed(2) }); sendBoard();   // dx/dz: where the blow came from; bd: the bullet's own way at the hit — the body falls along it (ragdoll.js)
     if (p !== v && (FFA ? p.kills : teamScore[p.team]) >= WIN) endRound(p.team, p);
@@ -122,7 +127,7 @@ export function createGame(opts) {
   // server saw itself in the state stream (fallTop, the highest point since the last landing), so a number out of thin
   // air cannot kill; the bots fall in think() and report here the same way
   function fall(p, h) {
-    if (!p.alive) return;
+    if (!p.alive || (STORM && storm && storm.phase === 'wait')) return;   // the gathering before the storm: no hurt
     const seen = Math.max(0, (p.fallTop ?? p.y) - p.y + 1);   // +1 m: the eye lowers on a crouch
     p.fallTop = p.y;
     const hh = Math.min(FALL.maxH, Math.max(0, h), seen);
@@ -315,6 +320,7 @@ export function createGame(opts) {
   // from the muzzle and cut it at the body when 'bhit' comes.
   function shoot(p, wi, rays, lagMs) {
     const W = WEAPONS[wi], t0 = now(); if (!Array.isArray(rays) || !rays.length || !p.alive) return;
+    if (STORM && storm && storm.phase !== 'play' && storm.phase !== 'sudden') return;   // the guns are cold in the gathering and after the round
     if (p.conn && !held(p, wi)) return;   // a human fires only an equipped gun
     if (t0 - p.lastShot < W.gapMs) return;
     if (t0 < p.reloadDone) return;   // still reloading
@@ -363,9 +369,94 @@ export function createGame(opts) {
     all({ t: 'win', mode: MODE, team, name: FFA ? winner.name : TEAMS[team], score: FFA ? [] : teamScore, rows, mvp: rows.length ? rows[0].id : 0, nextMs: 10000 });
     timers.push(setTimeout(() => { teamScore[0] = teamScore[1] = 0; for (const p of players.values()) { p.kills = p.deaths = 0; p.st = { shots: 0, hitShots: 0, dmg: 0, heads: 0 }; } roundOver = false; sendBoard(); all({ t: 'round' }); all({ t: 'chat', text: 'Новый раунд' }); for (const it of items.values()) { it.active = true; it.respawnAt = 0; all(itemMsg(it)); } for (const z of zones.values()) all({ t: 'zoneEnd', id: z.id }); zones.clear(); }, 10000));
   }
+  // ---- the «Шторм» event (storm.mjs): the shrinking circle over the whole city, the burn outside, the last survivor.
+  // The cycle is clock-driven (tickStorm every 500 ms): the gathering → thirty minutes of nine stages → the sudden
+  // death → the victory table → the next gathering. The dead do not respawn (the page sends them back to the lobby);
+  // a new join during the fight appears inside the current circle, during the gathering — anywhere in the city.
+  let storm = null;
+  const stormAlive = () => [...players.values()].filter(p => p.alive);
+  function stormPublic() {
+    if (!storm) return null;
+    const roundLeft = storm.phase === 'play' ? Math.max(0, storm.plan[storm.plan.length - 1].tEnd - now()) : storm.phase === 'sudden' ? Math.max(0, storm.t1 - now()) : storm.phase === 'wait' ? STORMC.playMs : 0;
+    return { phase: storm.phase, pi: storm.pi, kind: storm.kind, left: Math.max(0, storm.t1 - now()), roundLeft, t0: storm.t0, t1: storm.t1, from: storm.from, to: storm.to, cur: storm.cur, dps: storm.dps, final: storm.final || null, alive: stormAlive().length, total: players.size, cycle: storm.cycle };
+  }
+  const broadcastStorm = () => all({ t: 'storm', ...stormPublic() });
+  function stormSpawnPoint() {   // a walkable spot inside the current circle: the late join appears in the fight, facing its middle
+    const c = storm.cur;
+    for (let k = 0; k < 40; k++) { const a = Math.random() * 6.283, r = Math.sqrt(Math.random()) * Math.max(6, c.r * 0.8), x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r; if (world.walkable(x, z)) return [x, z, Math.atan2(c.x - x, c.z - z) + Math.PI]; }
+    const [x, z] = walkSpot(c.x, c.z); return [x, z, Math.random() * 6.283];
+  }
+  function startStormWait() {
+    const cycle = storm ? storm.cycle + 1 : 1, t = now();
+    storm = { phase: 'wait', pi: -1, kind: 'hold', lastKind: 'hold', cycle, t0: t, t1: t + STORMC.waitMs, from: { ...STORMC.c0, r: STORMC.r0 }, to: { ...STORMC.c0, r: STORMC.r0 }, cur: { ...STORMC.c0, r: STORMC.r0 }, dps: 0, deaths: [], lastTick: t, lastBeat: 0, playStart: 0, final: null, plan: null };
+    roundOver = true;   // the guns are cold: the bots stand, the shots and the grenades wait for the fight
+    nades.clear(); bullets.clear();
+    for (const z of zones.values()) all({ t: 'zoneEnd', id: z.id }); zones.clear();
+    for (const it of items.values()) { it.active = true; it.respawnAt = 0; all(itemMsg(it)); }
+    for (const p of players.values()) { p.kills = 0; p.deaths = 0; p.st = { shots: 0, hitShots: 0, dmg: 0, heads: 0 }; const [x, z, yaw] = areaPoint(); spawn(p, x, z, yaw); }
+    sendBoard(); all({ t: 'round' }); all({ t: 'chat', text: 'Шторм: сбор игроков — бой начнётся через ' + Math.round(STORMC.waitMs / 1000) + ' с' });
+    broadcastStorm();
+  }
+  function startStormPlay() {
+    const t = now(), final = pickFinal(world, STORMC.c0), plan = stormPlan(STORMC.c0, final, t);
+    Object.assign(storm, { phase: 'play', pi: 0, kind: 'hold', lastKind: 'hold', plan, final, playStart: t, t0: plan[0].t0, t1: plan[0].tEnd, from: plan[0].from, to: plan[0].to, cur: { ...plan[0].from }, dps: plan[0].dps });
+    roundOver = false;
+    all({ t: 'chat', text: 'Шторм начался! Зона сужается 30 минут — последний выживший побеждает' });
+    broadcastStorm();
+  }
+  function endStorm() {
+    const t = now(), alive = stormAlive(), dead = [...players.values()].filter(p => !p.alive).sort((a, b) => b.diedAt - a.diedAt);
+    const order = [...alive, ...dead], winner = order[0] || null;   // the last fallen is the last survivor when the storm takes everybody
+    const place = new Map(order.map((p, i) => [p.id, i + 1]));
+    Object.assign(storm, { phase: 'end', pi: -1, kind: 'hold', t0: t, t1: t + STORMC.endMs, dps: 0 });
+    roundOver = true;
+    for (const p of players.values()) if (p.prof) { p.prof.add('rounds'); if (p === winner) p.prof.add('wins'); }
+    const rows = order.map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, heads: p.st.heads, dmg: Math.round(p.st.dmg), acc: p.st.shots ? Math.round(100 * p.st.hitShots / p.st.shots) : 0, place: place.get(p.id), alive: p.alive }));
+    all({ t: 'win', mode: 'storm', team: winner ? winner.id : -1, name: winner ? winner.name : 'Шторм', score: [], rows, mvp: winner ? winner.id : 0, nextMs: STORMC.endMs });
+    all({ t: 'chat', text: winner ? 'Шторм завершён: победил ' + winner.name + ' — последний выживший' : 'Шторм завершён: выживших нет' });
+    broadcastStorm();
+  }
+  function tickStorm() {
+    if (!STORM || !storm) return;
+    const t = now();
+    if (storm.phase === 'wait') {
+      if (t >= storm.t1) { if (players.size >= 2) startStormPlay(); else { storm.t1 = t + 10000; broadcastStorm(); } }   // alone: the gathering waits for company
+      return;
+    }
+    if (storm.phase === 'end') { if (t >= storm.t1) startStormWait(); return; }
+    if (storm.phase === 'play') {
+      const plan = storm.plan;
+      while (storm.pi < plan.length && t >= plan[storm.pi].tEnd) storm.pi++;
+      if (storm.pi >= plan.length) {   // the thirty minutes are out: the last circle closes to nothing
+        storm.cur = { ...plan[plan.length - 1].to };
+        Object.assign(storm, { phase: 'sudden', kind: 'shrink', from: { ...storm.cur }, to: { x: storm.final.x, z: storm.final.z, r: 0 }, t0: t, t1: t + STORMC.suddenMs, dps: STORMC.suddenDps });
+        all({ t: 'chat', text: 'Шторм: финал — зона исчезает!' }); broadcastStorm();
+      } else {
+        const ph = plan[storm.pi];
+        storm.kind = t < ph.tShrink ? 'hold' : 'shrink';
+        storm.t0 = ph.t0; storm.t1 = ph.tEnd; storm.from = ph.from; storm.to = ph.to; storm.dps = ph.dps;
+        storm.cur = stageCircle(ph, t);
+        if (storm.kind !== storm.lastKind) { storm.lastKind = storm.kind; if (storm.kind === 'shrink') all({ t: 'chat', text: 'Шторм: зона сужается — бегите в круг!' }); broadcastStorm(); }
+      }
+    }
+    if (storm.phase === 'sudden') {
+      const k = Math.max(0, Math.min(1, (t - storm.t0) / STORMC.suddenMs));
+      storm.cur = { x: storm.from.x + (storm.to.x - storm.from.x) * k, z: storm.from.z + (storm.to.z - storm.from.z) * k, r: storm.from.r * (1 - k) };
+    }
+    if (t - storm.lastTick >= STORMC.tickMs) {   // the burn outside, twice a second — the napalm's own rhythm (stepZones)
+      storm.lastTick = t; const c = storm.cur, dmg = Math.max(1, Math.round(storm.dps * STORMC.tickMs / 1000));
+      for (const v of players.values()) {
+        if (!v.alive || t <= v.protectUntil) continue;
+        if (Math.hypot(v.x - c.x, v.z - c.z) < c.r) continue;
+        hurt(v, v, dmg, 0, W_STORM, [c.x, v.y, c.z]);
+      }
+    }
+    if (t - storm.lastBeat >= 2000) { storm.lastBeat = t; broadcastStorm(); }
+    if (t > storm.playStart + 5000 && stormAlive().length <= 1) endStorm();   // the last survivor takes the round
+  }
   // ---- bots
   const enemyBase = p => (arena ? (FFA ? arena.bases.flat()[Math.floor(Math.random() * arena.bases.flat().length)] : arena.bases[p.team === 1 ? 0 : 1][Math.floor(Math.random() * arena.bases[p.team === 1 ? 0 : 1].length)]) : null);
-  const brain = createBrain({ players, now, world, area, FFA, WEAPONS, R, shoot, throwNade, spawn, fall, roundOver: () => roundOver, enemyBase, reload: beginReload, equip, get items() { return items; }, get zones() { return zones; } });   // items is declared below: a getter reads it once the game is built
+  const brain = createBrain({ players, now, world, area, FFA, WEAPONS, R, shoot, throwNade, spawn, fall, roundOver: () => roundOver, enemyBase, reload: beginReload, equip, get items() { return items; }, get zones() { return zones; }, get storm() { return STORM && storm && (storm.phase === 'play' || storm.phase === 'sudden') ? storm.cur : null; } });   // storm: the safe circle the bots run into   // items is declared below: a getter reads it once the game is built
   let botN = 0;
   function addBot(level) {
     if (players.size >= MAX) return null;
@@ -387,10 +478,12 @@ export function createGame(opts) {
         if (m.t === 'join' && !p.joined) {
           if (acc && !acc.byKey(m.key)) { send(p, { t: 'auth-required' }); conn.close(); return; }   // an account is mandatory: the key must belong to an account of this server
           if (players.size >= MAX && !removeBot()) { send(p, { t: 'full' }); conn.close(); return; }
+          if (STORM && storm && (storm.phase === 'sudden' || storm.phase === 'end')) { send(p, { t: 'stormBusy', phase: storm.phase, left: Math.max(0, storm.t1 - now()) }); conn.close(); return; }   // the final and the victory table: the next gathering is the way in
           if (lb && m.board !== false && validKey(m.key) && ![...players.values()].some(q => q.key === m.key)) { p.key = m.key; const r = lb.identify(m.key, nameBase(m.name), n => !taken(n)); p.name = r.name; p.prof = r.prof; } else p.name = cleanName(m.name);
           p.team = pickTeam(m.team, p.id); p.char = cleanChar(m.char); p.joined = true; players.set(p.id, p);
-          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, day: dayNow() || undefined, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), zones: [...zones.values()].map(z => ({ id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, r: z.r, left: Math.max(0, z.until - now()) })), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])) });
-          spawn(p, m.x, m.z, m.yaw); sendBoard(); all({ t: 'chat', text: p.name + (FFA ? ' в игре' : ' в игре, ' + TEAMS[p.team]) });
+          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, day: dayNow() || undefined, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), zones: [...zones.values()].map(z => ({ id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, r: z.r, left: Math.max(0, z.until - now()) })), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])), storm: STORM ? stormPublic() : undefined });
+          if (STORM) { const [sx, sz, syaw] = storm.phase === 'play' ? stormSpawnPoint() : areaPoint(); spawn(p, sx, sz, syaw); } else spawn(p, m.x, m.z, m.yaw);
+          sendBoard(); all({ t: 'chat', text: p.name + (STORM ? ' в шторме' : FFA ? ' в игре' : ' в игре, ' + TEAMS[p.team]) });
           return;
         }
         if (!p.joined) return;
@@ -425,7 +518,7 @@ export function createGame(opts) {
           if (t0 - p.rwin > 1000) { p.rwin = t0; p.rmsgs = 0; } if (++p.rmsgs > 400) return;
           send(q, { t: 'rtc', from: p.id, d: m.d });
         } else if (m.t === 'ping') { p.rtt = Math.max(0, Math.min(1000, num(m.rtt, 1000))); send(p, { t: 'pong', c: m.c });
-        } else if (m.t === 'respawn' && !p.alive && t0 - p.diedAt >= R.respawnMs) {
+        } else if (m.t === 'respawn' && !p.alive && !STORM && t0 - p.diedAt >= R.respawnMs) {   // the storm does not respawn: the dead go back to the lobby
           const mate = m.mate && [...players.values()].filter(q => q.alive && q.team === p.team && q !== p);
           if (mate && mate.length) { const q = mate[Math.floor(Math.random() * mate.length)], a = Math.random() * 6.283, r = 6 + Math.random() * 8; spawn(p, q.x + Math.cos(a) * r, q.z + Math.sin(a) * r, q.yaw); }   // next to a teammate
           else spawn(p, m.x, m.z, m.yaw);
@@ -437,7 +530,7 @@ export function createGame(opts) {
   // ---- the items on the map: ammo, grenades, med kits and the two sights; picked up by walking over, back after a while ----
   const items = new Map(); let nextItem = 1;
   function itemSpots() {
-    const spots = [], N = INV.itemCount;
+    const spots = [], N = opts.itemCount || INV.itemCount;
     const add = (x, z) => { if (world.walkable(x, z) && !spots.some(s => Math.hypot(s[0] - x, s[1] - z) < 18)) spots.push([x, z]); };
     if (arena) {
       for (const b of arena.bases) for (const [bx, bz] of b) { const a = Math.random() * 6.283, r = 6 + Math.random() * 12; add(bx + Math.cos(a) * r, bz + Math.sin(a) * r); }
@@ -497,6 +590,7 @@ export function createGame(opts) {
   timers.push(setInterval(() => advanceBullets(now()), 1000 / 30));   // the bullets in the air fly on the same clock
   function stepBots(dt) { for (const p of [...players.values()]) if (p.bot) brain.think(p, dt); }
   timers.push(setInterval(() => { const t = now(), dt = Math.min(0.2, (t - last) / 1000); last = t; stepBots(dt); }, 50));
+  if (STORM) { timers.push(setInterval(() => tickStorm(), STORMC.tickMs)); startStormWait(); }
   return {
     attach, addBot, removeBot, players, arena, world, mode: MODE, equip,   // world: the city's physics (freePath, shotPath, stepNade) — the tools and the headless checks probe it
     get items() { return items; },   // the map pickups: the tests place them at a player's feet
@@ -505,8 +599,10 @@ export function createGame(opts) {
     stepNades: tickNades,   // the tests drive the fuse and the zones by their own clock too
     stepBots,   // and the bots' think by the test clock, for the fall test
     stepItems: () => tickItems(now()),   // and the pickups and reload completion, for the bot-tactics tests
+    stepStorm: () => tickStorm(),   // the event's own clock: the phases, the burn outside and the end, for the storm tests
+    get storm() { return storm; },   // the event's state: the tests read the circle and the phase
     stop() { for (const t of timers) { clearInterval(t); clearTimeout(t); } timers.length = 0; },
-    health() { return { ok: true, mode: MODE, name: NAME, players: humans().length, bots: players.size - humans().length, max: MAX, score: teamScore, win: WIN, teams: TEAMS, round: roundOver ? 'end' : 'play', arena: arena ? arena.name : null, leaderboard: !!lb, day: dayNow() }; },
+    health() { return { ok: true, mode: MODE, name: NAME, players: humans().length, bots: players.size - humans().length, max: MAX, score: teamScore, win: WIN === Infinity ? null : WIN, teams: TEAMS, round: roundOver ? 'end' : 'play', arena: arena ? arena.name : null, leaderboard: !!lb, day: dayNow(), storm: STORM && storm ? { phase: storm.phase, left: Math.max(0, storm.t1 - now()), alive: stormAlive().length, total: players.size, cycle: storm.cycle } : undefined }; },
   };
 }
 export { LEVELS };
