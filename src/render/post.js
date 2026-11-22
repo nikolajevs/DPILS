@@ -355,11 +355,19 @@ const SUNV = new THREE.Vector3(), RAYF = new THREE.Vector3();
 /* The sun shadow is redrawn only when a coarse cell of the camera state changes: the cascades snap their centres to
    their own texel grids (SunLightShadow), so between redraws the maps stay fixed in the world and do not shimmer.
    Coverage grows with the eye's height above the ground — on foot the near cascade keeps street detail, in flight the
-   slices stretch so the ground below stays inside them. The last cascade fades to no shadow at the coverage edge. */
+   slices stretch so the ground below stays inside them. The last cascade fades to no shadow at the coverage edge.
+   The running day turns the light (src/render/lighting.js): the maps are redrawn once it has turned by 1/200 of a
+   texel of the near cascade in radians — the shadow of an edge up to 200 m from where it falls moves by under a texel
+   at a time, so the shadows creep with the sun instead of jumping (a fixed 0.15° step moved the shadow of a roof 60 m
+   up the light 15 cm at once). On foot at «высокая» (texel ≈ 5.5 cm) that is about 3 redraws a second in a day of two
+   hours, ~2.5 ms each on an RTX 3050; at «средняя» and in flight the texel is larger and the redraws rarer. */
 let shadowFar = 0;
+const shadowDir = new THREE.Vector3();   // the light the cascades were last drawn in
 function updateSun() {
   sun.position.copy(LIGHTDIR).multiplyScalar(1000);   // the light shines from its position towards the origin
   if (!renderer.shadowMap.enabled) return;
+  const texel = 2 * sun.shadow.getCamera(0).right / sun.shadow.mapSize.x;
+  const turned = TOD.sunI > 0.01 && LIGHTDIR.angleTo(shadowDir) > Math.min(0.0026, Math.max(0.00025, texel / 200));   // no light (the blue dusk) — nothing to redraw
   const alt = Math.max(0, P.y - terrainH(P.x, P.z));
   const far = Math.min(2400, Math.round((360 + alt * 1.8) / 20) * 20);
   const step = far * 0.02;
@@ -367,8 +375,8 @@ function updateSun() {
     Math.round(camera.rotation.y / 0.05) + ',' + Math.round(camera.rotation.x / 0.08) + ',' +
     Math.round(camera.fov) + ',' + Math.round(camera.near * 20) + ',' + Math.round(camera.far / 200) + ',' +
     far + ',' + timeI + ',' + qi;
-  if (key !== shadowKey || STATE.shadowDirty) {
-    shadowKey = key; STATE.shadowDirty = false;
+  if (key !== shadowKey || STATE.shadowDirty || turned) {
+    shadowKey = key; STATE.shadowDirty = false; shadowDir.copy(LIGHTDIR);
     if (far !== shadowFar) { shadowFar = far; sun.shadow.camera.far = far; }
     renderer.shadowMap.needsUpdate = true;
   }

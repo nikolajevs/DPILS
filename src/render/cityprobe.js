@@ -78,7 +78,7 @@ function cubesNow() {
   if (k < 0.01) return A;
   if (k > 0.99) return B;
   if (!mixed) mixed = A.map(p => ({ pos: p.pos, rt: cubeRT() }));
-  if (A !== mixAt.a || B !== mixAt.b || Math.abs(k - mixAt.k) > 0.01) {
+  if (A !== mixAt.a || B !== mixAt.b || Math.abs(k - mixAt.k) > 0.004) {   // finer than 1 %: the night cubes are far darker, a step of the mix shows in the dusk
     mixAt.a = A; mixAt.b = B; mixAt.k = k;
     for (let j = 0; j < mixed.length; j++) mixCube(mixed[j].rt, A[j].rt.texture, B[j].rt.texture, k);
   }
