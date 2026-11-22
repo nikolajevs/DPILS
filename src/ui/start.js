@@ -12,12 +12,13 @@ import { openLobby, closeLobby } from './lobby.js';
    base). There is one server — the page's own address (src/game/server.js) — so there is nothing to choose.
    The keys live in the fight («Клавиши», F1), not on the start card; the card's footer link opens the credits
    modal with the data sources and licences. The time of day is a setting of the training (авто, день, вечер, ночь),
-   kept in localStorage; online the server's day runs (server/daycycle.mjs) and there is nothing to choose. */
+   kept in localStorage; online the server's day runs (server/daycycle.mjs) and there is nothing to choose. The storm is
+   no door of its own any more: it is the last twenty minutes of every online match (server/storm.mjs), and the online
+   card shows the match live (src/ui/lobby.js). */
 const card = $('startCard'), home = $('stepHome'), form = $('play');
 const STEPS = {
   train: { title: 'Тренировка с ботами', hint: 'Бой против ботов прямо в браузере, по правилам сервера. Выберите карту, режим и соперников.' },
-  online: { title: 'Играть онлайн', hint: 'Командный бой или каждый сам за себя — режим выбирает сервер.' },
-  storm: { title: 'Ивент «Шторм»', hint: 'Battle royale на сервере: безопасный круг сужается 30 минут, одна жизнь, побеждает последний выживший.' }
+  online: { title: 'Играть онлайн', hint: 'Катка на сервере: 2 часа боя, вход в первые 30 минут, в последние 20 минут — шторм до последнего выжившего. Командный бой или каждый сам за себя — режим выбирает сервер.' }
 };
 let came = null;   // the choice the card came back from, to put the focus on it again
 function showStep(step) {
@@ -26,7 +27,7 @@ function showStep(step) {
   for (const el of form.querySelectorAll('[data-for]')) el.hidden = !el.dataset.for.split(' ').includes(step);
   $('mpMsg').textContent = '';
   if (step === 'home') { closeLobby(); if (came) came.focus(); return; }
-  prepareUi(); came = step === 'train' ? $('chTrain') : step === 'storm' ? $('chStorm') : $('chOnline');
+  prepareUi(); came = step === 'train' ? $('chTrain') : $('chOnline');
   $('stepTitle').textContent = STEPS[step].title; $('stepHint').textContent = STEPS[step].hint;
   follow();
   openLobby(step);
@@ -35,16 +36,16 @@ function showStep(step) {
 // the settings that depend on others
 function follow() {
   const step = card.dataset.step, train = step === 'train';
-  $('mpTeamRow').hidden = step === 'storm' || (train && $('trMode').value === 'ffa');   // the storm: everybody for himself, the spawn is the circle's own
-  $('mpSpawnRow').hidden = step === 'storm' || (train && $('trArena').value !== '');
+  $('mpTeamRow').hidden = train && $('trMode').value === 'ffa';
+  $('mpSpawnRow').hidden = train && $('trArena').value !== '';
 }
 $('trMode').addEventListener('change', follow); $('trArena').addEventListener('change', follow);
-$('chTrain').onclick = () => showStep('train'); $('chOnline').onclick = () => showStep('online'); $('chStorm').onclick = () => showStep('storm'); $('stepBack').onclick = () => showStep('home');
+$('chTrain').onclick = () => showStep('train'); $('chOnline').onclick = () => showStep('online'); $('stepBack').onclick = () => showStep('home');
 // the time of day of the training: remembered for the next visit and shown at once on the city behind the card
 const timeSel = $('trTime');
 timeSel.value = timePref();
 timeSel.onchange = () => setTimePref(timeSel.value);
-$('chTrain').disabled = $('chOnline').disabled = $('chStorm').disabled = false;   // the code is here: the settings can be chosen while the city is still being built
+$('chTrain').disabled = $('chOnline').disabled = false;   // the code is here: the settings can be chosen while the city is still being built
 // the credits: the quiet link at the bottom of the card opens a modal with the data sources and licences
 const credits = $('credits');
 const closeCredits = () => { credits.hidden = true; $('bCredits').focus(); };
@@ -60,14 +61,15 @@ window.addEventListener('keydown', e => {
 $('bHelp').onclick = () => {
   if (document.pointerLockElement) document.exitPointerLock();
   $('go').hidden = !STATE.started;   // «Вернуться в игру» — только когда бой уже идёт
-  $('chTrain').hidden = $('chOnline').hidden = $('chStorm').hidden = !!STATE.mp;   // in a game, not another game
+  $('chTrain').hidden = $('chOnline').hidden = !!STATE.mp;   // in a game, not another game
   showStep('home'); $('start').hidden = false; (STATE.started ? $('go') : $('chTrain')).focus();
 };
 
-// the dead of the storm wake up in the lobby: mp.js sends them here with the hash #storm (stormGoLobby) — the event
-// card opens at once, over the loading city; the hash is spent so a plain refresh lands on the home step again
-if (location.hash === '#storm') { showStep('storm'); history.replaceState(null, '', location.pathname + location.search); }
-// «К нему» in the team panel (src/ui/team.js): a teammate fights online or in the storm — the card opens that door
+// the dead of the storm wake up in the lobby: mp.js sends them here with the hash #online (stormGoLobby) — the card of
+// the match opens at once, over the loading city, with the time to the next one; the hash is spent so a plain refresh
+// lands on the home step again (#storm: the old links of the event door land here too)
+if (location.hash === '#online' || location.hash === '#storm') { showStep('online'); history.replaceState(null, '', location.pathname + location.search); }
+// «К нему» in the team panel (src/ui/team.js): a teammate fights online — the card opens that door
 window.addEventListener('dpils-step', e => { if (STEPS[e.detail] && !STATE.mp) { $('start').hidden = false; showStep(e.detail); } });
 
 export { showStep };

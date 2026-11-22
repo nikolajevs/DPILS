@@ -222,19 +222,16 @@ function shootAt(T, a, b) {
   ok(an.last('say') && an.last('say').text === 'я одна', 'without a team the team chat goes to everybody');
 }
 {
-  // the storm: the last team standing wins
-  const T = setup('storm');
-  const an = T.join('Аня'), bo = T.join('Боря');
-  T.tick(61000); T.g.stepStorm();
-  ok(T.g.storm.phase === 'wait', 'one team alone does not start the storm');
-  const vi = T.join('Вика');
+  // the storm of the match (the last twenty minutes): the last team standing wins
+  const T = setup('ffa', { match: { len: 7200000, graceMs: 0 } });
+  const an = T.join('Аня'), bo = T.join('Боря'), vi = T.join('Вика');
   const pa = an.handle.player, pb = bo.handle.player;
   ok(Math.hypot(pa.x - pb.x, pa.z - pb.z) < 12, 'the team gathers in one place');
-  T.tick(20000); T.g.stepStorm();
-  ok(T.g.storm.phase === 'play', 'with a foe the storm begins');
+  T.tick(6000000 - T.clock); T.g.stepMatch();
+  ok(T.g.storm && T.g.storm.phase === 'play', 'the storm of the match begins');
   T.tick(6000); vi.handle.player.hp = 1;
   const c = T.g.storm.cur; vi.handle.player.x = c.x + c.r + 50; vi.handle.player.z = c.z; pa.x = pb.x = c.x; pa.z = pb.z = c.z;
-  T.tick(600); T.g.stepStorm();
+  T.tick(600); T.g.stepMatch();
   const win = an.last('win');
   ok(T.g.storm.phase === 'end' && win && win.clan === 't-DVN' && win.name.startsWith('[DVN]'), 'the last team standing wins together', JSON.stringify(win && { name: win.name, clan: win.clan }));
 }

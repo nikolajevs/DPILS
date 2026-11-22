@@ -21,17 +21,18 @@
    2l. The ready belt and the backpack stores: three kits and two grenades of a kind are ready, the surplus rides
       in the pack and refills the belt as it is spent (also on respawn); the sights live in the pack — mounting
       frees the cell, a swap returns the old sight to it, a full pack refuses the take-off.
-   2m. The «Шторм» event (mode storm, storm.mjs): the plan of nine stages lasts exactly 30 minutes and every next
-      circle lies inside the current one; the gathering holds the guns cold, the burn outside hurts twice a second
-      (no kill credit), the respawn is refused and the dead gets his place; the last survivor wins the round with
-      the places table, the next gathering revives him; the sudden death closes the circle to nothing and refuses
-      the late join; a bot parked outside the circle sprints into it.
+   2m. The match of the server and its «Шторм» (opts.match, storm.mjs): two hours from a whole multiple, the door
+      open for 30 minutes (then only the players of the match come back), the storm in the last 20 — its first
+      circle holds the whole field, nine nested stages and the sudden death fit the window, the final point is
+      random open ground, never a house; the fallen of the fight stand up for it, the burn outside hurts (no kill
+      credit), no respawn, the one it took cannot come back, the last survivor (the last side) wins and the guns
+      go cold until the next match, which brings everybody back with the door open; a bot outside runs in.
    3. A real bot fight on a flat arena (12 s of real time): with the small hitboxes the bots must still see,
       shoot and kill each other. */
 import { BULLET_G, CARGO, FALL, HIT, INV, WEAPONS, NADE, SMOKE, W_FALL, bulletAt, bulletDir, bulletDrop, dragDist, dragTime, dragVel, rayHit, smokeCore, smokeDepth } from '../server/combat.mjs';
 import { createGame, MUZZLE } from '../server/game.mjs';
 import { makePhysics } from '../server/physics.mjs';
-import { STORM as STORMC, stageCircle, stormPlan } from '../server/storm.mjs';
+import { MATCH as MATCHC, STORM as STORMC, matchAt, pickFinal, stageCircle, stormField, stormPlan, stormRadii } from '../server/storm.mjs';
 
 let pass = 0, fail = 0;
 const ok = (cond, name, extra = '') => { if (cond) { pass++; console.log('  ok   ' + name); } else { fail++; console.log('  FAIL ' + name + (extra ? ' вЂ” ' + extra : '')); } };
@@ -1196,11 +1197,19 @@ console.log('bot tactics (roles, weapons, footwork, cover, reaction):');
   g.stop();
 }
 
-/* ---------- 2m. the «Шторм» event: the shrinking circle, the burn outside, the last survivor ---------- */
-console.log('the storm event (createGame mode storm, controlled clock):');
+/* ---------- 2m. the match and its «Шторм»: two hours, the door of the first half hour, the storm of the last twenty minutes ---------- */
+console.log('the match and the storm (createGame match, controlled clock):');
 {
-  const c0 = STORMC.c0, cF = { x: -1487, z: 1263 }, plan = stormPlan(c0, cF, 0, 7);
-  ok(plan.length === 9 && plan[8].tEnd === 1800000, 'the plan: nine stages, exactly 30 minutes', String(plan[8].tEnd));
+  const s = matchAt(5 * MATCHC.lenMs + 1000);
+  ok(s.start === 5 * MATCHC.lenMs && s.end - s.start === 7200000 && s.joinUntil - s.start === 1800000 && s.end - s.stormAt === 1200000, 'the match: two hours from a whole multiple, the door 30 min, the storm the last 20 min');
+  const f = stormField(null, 5200, 4200);
+  ok(f.r0 > Math.hypot(5200, 4200) && f.c.x === 0 && f.c.z === 0, 'the first circle holds every corner of the field', String(f.r0));
+  const fa = stormField({ cx: 10, cz: 20, r: 300 });
+  ok(fa.r0 > 300 && fa.c.x === 10 && fa.c.z === 20 && fa.fin.r < 300, 'an arena: the circle over the arena, the final point in its middle');
+  const R = stormRadii(f.r0);
+  ok(R.length === 10 && R[0] === f.r0 && R[9] === STORMC.rEnd && R.every((r, i) => !i || r < R[i - 1]), 'ten circles from the field down to the last courtyard');
+  const cF = { x: -1487, z: 1263 }, plan = stormPlan(f.c, cF, 0, 7, f.r0, 1), dur = plan[8].tEnd + STORMC.suddenMs;
+  ok(plan.length === 9 && dur <= STORMC.windowMs - 45000 && dur >= STORMC.windowMs - 90000, 'nine stages and the sudden death within the twenty minutes, the last minute for the table', String(dur));
   let nested = true;
   for (const ph of plan) {
     if (Math.hypot(ph.to.x - ph.from.x, ph.to.z - ph.from.z) + ph.to.r > ph.from.r + 1e-6) nested = false;
@@ -1209,66 +1218,111 @@ console.log('the storm event (createGame mode storm, controlled clock):');
   }
   ok(nested, 'every next circle lies inside the current one, the shrink walks between them');
   ok(plan[8].to.x === cF.x && plan[8].to.z === cF.z && plan[8].to.r === STORMC.rEnd, 'the last stage lands on the final point');
-  const far = stormPlan(c0, { x: c0.x + 1600, z: c0.z }, 0, 3);
-  ok(far.every(ph => Math.hypot(ph.to.x - ph.from.x, ph.to.z - ph.from.z) + ph.to.r <= ph.from.r + 1e-6), 'the nesting holds at the maximal travel (1600 m)');
+  // the farthest final point the open city can draw: the edge of the city disc away from the field's middle
+  const cl = Math.hypot(f.fin.x, f.fin.z), far = { x: f.fin.x + f.fin.x / cl * f.fin.r, z: f.fin.z + f.fin.z / cl * f.fin.r };
+  ok([1, 3, 7, 11].every(seed => stormPlan(f.c, far, 0, seed, f.r0, 1).every(ph => Math.hypot(ph.to.x - ph.from.x, ph.to.z - ph.from.z) + ph.to.r <= ph.from.r + 1e-6)), 'the nesting holds at the farthest final point');
+  const half = stormPlan(f.c, cF, 0, 7, f.r0, 0.5);
+  ok(Math.abs(half[8].tEnd - plan[8].tEnd / 2) < 10, 'a shorter match scales the stages');
+  // the final point: random, open ground — never in a house
+  const blocks = (x, z) => (((x % 50) + 50) % 50 < 30 && ((z % 50) + 50) % 50 < 30 ? { top: 10 } : null);
+  const bw = flatWorld(blocks), picks = Array.from({ length: 40 }, () => pickFinal(bw, f.fin));
+  ok(picks.every(p => !blocks(p.x, p.z) && Math.hypot(p.x - f.fin.x, p.z - f.fin.z) <= f.fin.r + 1e-6), 'the final point is never in a building and lies in the city disc');
+  ok(new Set(picks.map(p => Math.round(p.x) + ',' + Math.round(p.z))).size > 30, 'the final point is random');
+}
+const LEN = MATCHC.lenMs, KA = 'a'.repeat(32), KB = 'b'.repeat(32), KC = 'c'.repeat(32), KD = 'd'.repeat(32);
+{
+  let clock = 3 * LEN + 1000;   // a second into a match
+  const g = createGame({ world: flatWorld(), mode: 'ffa', match: { len: LEN, graceMs: 0 }, now: () => clock, name: 'match', itemCount: 8 });
+  g.stop();   // the test drives every clock itself
+  const A = seat(g, conn()), B = seat(g, conn()), D = seat(g, conn());
+  msg(A, { t: 'join', name: 'Один', key: KA, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Два', key: KB, x: 0, z: 0, yaw: 0 });
+  msg(D, { t: 'join', name: 'Три', key: KD, x: 0, z: 0, yaw: 0 });
+  const h = A.last('hello');
+  ok(h.match && h.match.phase === 'fight' && h.match.open && h.match.left > LEN - 2000 && !h.storm, 'hello carries the match: the fight, the door open, no storm yet');
+  ok(h.win == null, 'a match has no kill target');
+  clock = 3 * LEN + 1800000 + 1000; g.stepMatch();
+  ok(A.all('chat').some(m => /Вход в катку закрыт/.test(m.text)), 'the door closes after thirty minutes (the chat says it)');
+  const C = seat(g, conn()); msg(C, { t: 'join', name: 'Поздний', key: KC, x: 0, z: 0, yaw: 0 });
+  ok(C.last('closed') && !C.handle.joined && C.last('closed').left > 0 && !C.last('closed').open, 'a new player is refused after thirty minutes, with the time to the next match');
+  A.handle.close();
+  const A2 = seat(g, conn()); msg(A2, { t: 'join', name: 'Один', key: KA, x: 0, z: 0, yaw: 0 });
+  ok(A2.handle.joined && A2.handle.player.alive, 'a player of this match comes back after the door closes (a reload)');
+  clock = 3 * LEN + LEN - 1200000 - 300000; g.stepMatch();
+  ok(A2.all('chat').some(m => /Шторм через 5 мин/.test(m.text)), 'the chat warns of the storm five minutes ahead');
+  B.handle.player.alive = false; B.handle.player.diedAt = clock;   // fallen in the fight just before the storm
+  clock = 3 * LEN + LEN - 1200000; g.stepMatch();
+  const st = g.storm, field = stormField(null, 5200, 4200);
+  ok(st && st.phase === 'play' && g.match.n === 3 && A2.last('match').phase === 'storm', 'the storm starts twenty minutes before the end of the match');
+  ok(Math.abs(st.cur.r - field.r0) < 1e-6 && st.cur.x === 0 && st.cur.z === 0, 'the first circle covers the whole field', String(st.cur.r));
+  ok(A2.last('storm') && A2.last('storm').phase === 'play' && A2.last('storm').final, 'the page gets the storm and its final point');
+  ok(B.handle.player.alive, 'the fallen of the fight stand up for the storm');
+  B.handle.player.x = 5000; B.handle.player.z = 4100;   // the far corner of the field: inside the first circle
+  clock += 2600; g.stepMatch();
+  ok(B.handle.player.hp === 100, 'the far corner of the field is inside the first circle');
+  B.handle.player.x = st.cur.r + 50; B.handle.player.z = 0;   // set directly: a 7 km teleport is no legal 'state'
+  for (const p of [A2, D]) { p.handle.player.x = 0; p.handle.player.z = 0; }
+  const hp0 = B.handle.player.hp; clock += 500; g.stepMatch();
+  ok(B.handle.player.hp < hp0 && A2.handle.player.hp === 100, 'the storm burns outside the circle, inside is safe', hp0 + ' -> ' + B.handle.player.hp);
+  ok(B.last('hurt').storm === 1 && B.last('hurt').by === B.handle.player.id, 'the burn is marked and self-inflicted (no kill credit)');
+  clock = st.plan[0].tShrink + 1; g.stepMatch(); const r1 = g.storm.cur.r;
+  clock = st.plan[0].tShrink + st.plan[0].shrinkMs / 2; g.stepMatch();
+  ok(g.storm.cur.r < r1 && g.storm.kind === 'shrink', 'the circle shrinks through the stage', r1 + ' -> ' + g.storm.cur.r);
+  B.handle.player.hp = 1; clock += 500; g.stepMatch();
+  ok(!B.handle.player.alive && B.last('stormDead') && B.last('stormDead').place === 3, 'the storm kills, the dead gets his place');
+  clock += 10000; msg(B, { t: 'respawn' });
+  ok(!B.handle.player.alive, 'no respawn in the storm');
+  B.handle.close();
+  const B2 = seat(g, conn()); msg(B2, { t: 'join', name: 'Два', key: KB, x: 0, z: 0, yaw: 0 });
+  ok(B2.last('closed') && B2.last('closed').out === 1 && !B2.handle.joined, 'the one the storm took cannot come back for another life');
+  A2.handle.close();
+  const A3 = seat(g, conn()); msg(A3, { t: 'join', name: 'Один', key: KA, x: 0, z: 0, yaw: 0 });
+  const c = g.storm.cur, ap = A3.handle.player;
+  ok(A3.handle.joined && Math.hypot(ap.x - c.x, ap.z - c.z) < c.r, 'a dropped player of the match comes back inside the circle');
+  ap.x = c.x; ap.z = c.z; D.handle.player.x = c.x + c.r + 30; D.handle.player.z = c.z; D.handle.player.hp = 1;
+  clock += 3000; g.stepMatch();
+  const win = A3.last('win');
+  ok(win && win.mode === 'storm' && win.name === 'Один' && win.rows[0].place === 1 && win.nextMs > 0, 'the last survivor wins the match, the table carries the places', JSON.stringify(win && { n: win.name, r: win.rows.map(r => r.name + r.place) }));
+  ok(g.storm.phase === 'end' && A3.last('match').phase === 'over', 'the match is decided: the table stands until the next one');
+  msg(A3, { t: 'shoot', w: 0, rays: [[0, 0, -1, 20, 1]] });
+  ok(!A3.last('shot'), 'the guns are cold after the storm');
+  clock = 4 * LEN + 500; g.stepMatch();
+  ok(!g.storm && g.match.n === 4 && A3.last('storm').phase === 'off' && A3.last('match').phase === 'fight', 'the next match starts: the storm is gone');
+  ok(A3.handle.player.alive && D.handle.player.alive && A3.handle.player.kills === 0, 'everybody still here is back on his feet, the scores cleared');
+  const E = seat(g, conn()); msg(E, { t: 'join', name: 'Новый', key: KC, x: 0, z: 0, yaw: 0 });
+  ok(E.handle.joined, 'the door of the new match is open again');
 }
 {
-  let clock = 1e6;
-  const g = createGame({ world: flatWorld(), mode: 'storm', area: { cx: -1000, cz: 500, r: 3300 }, now: () => clock, name: 'storm', itemCount: 8 });
-  g.stop();   // the test drives every clock itself
-  const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'Один', x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Два', x: 0, z: 0, yaw: 0 });
-  ok(A.last('hello').mode === 'storm' && A.last('hello').storm.phase === 'wait', 'hello carries the storm state (the gathering)');
-  clock += 3000;
-  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
-  msg(B, { t: 'state', x: 0, y: 1.7, z: -20, yaw: 0, pitch: 0 });
-  msg(A, { t: 'shoot', w: 0, rays: [[0, 0, -1, 20, 1]] }); g.stepBullets();
-  ok(!B.last('hurt'), 'the guns are cold in the gathering');
-  clock += 60000; g.stepStorm();
-  ok(g.storm.phase === 'play' && g.storm.cur.r === 3200, 'the fight starts, the first circle covers the city');
-  const c = g.storm.cur;   // the positions set directly: a 3 km teleport is no legal 'state'
-  B.handle.player.x = c.x + 3300; B.handle.player.z = c.z;
-  A.handle.player.x = c.x; A.handle.player.z = c.z;
-  clock += 2600;   // past the spawn protection
-  const hp0 = B.handle.player.hp;
-  clock += 500; g.stepStorm();
-  ok(B.handle.player.hp < hp0 && A.handle.player.hp === 100, 'the storm burns outside the circle, inside is safe', hp0 + ' -> ' + B.handle.player.hp);
-  ok(B.last('hurt').storm === 1 && B.last('hurt').by === B.handle.player.id, 'the burn is marked and self-inflicted (no kill credit)');
-  clock = g.storm.plan[0].tShrink + 1; g.stepStorm();
-  const r1 = g.storm.cur.r;
-  clock = g.storm.plan[0].tShrink + STORMC.shrinks[0] * 500; g.stepStorm();
-  ok(g.storm.cur.r < r1 && g.storm.kind === 'shrink', 'the circle shrinks through the stage', r1 + ' -> ' + g.storm.cur.r);
-  B.handle.player.hp = 1; clock += 500; g.stepStorm();
-  ok(!B.handle.player.alive && B.last('stormDead') && B.last('stormDead').place >= 1, 'the storm kills, the dead gets his place');
-  clock += 10000; msg(B, { t: 'respawn' });
-  ok(!B.handle.player.alive, 'the respawn is refused in the storm');
-  clock += 500; g.stepStorm();
+  // the team fight: the last side standing wins the match
+  let clock = 7 * LEN + 1000;
+  const g = createGame({ world: flatWorld(), match: { len: LEN, graceMs: 0 }, now: () => clock, name: 'match-team', itemCount: 4 });
+  g.stop();
+  const A = seat(g, conn()), B = seat(g, conn()), C = seat(g, conn());
+  msg(A, { t: 'join', name: 'Красный', team: 0, key: KA, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Синий', team: 1, key: KB, x: 0, z: 0, yaw: 0 });
+  msg(C, { t: 'join', name: 'Красный2', team: 0, key: KC, x: 0, z: 0, yaw: 0 });
+  ok(A.handle.player.team === 0 && B.handle.player.team === 1 && C.handle.player.team === 0, 'two sides');
+  clock = 7 * LEN + LEN - 1200000; g.stepMatch(); clock += 2600; g.stepMatch();
+  const c = g.storm.cur;
+  for (const p of [A, C]) { p.handle.player.x = c.x; p.handle.player.z = c.z; }
+  B.handle.player.x = c.x + c.r + 30; B.handle.player.z = c.z; B.handle.player.hp = 1;
+  clock += 3000; g.stepMatch();
   const win = A.last('win');
-  ok(g.storm.phase === 'end' && win && win.mode === 'storm' && win.name === 'Один' && win.rows[0].place === 1, 'the last survivor wins, the table carries the places');
-  clock += 15000; g.stepStorm();
-  ok(g.storm.phase === 'wait' && g.storm.cycle === 2 && A.handle.player.alive, 'the next gathering starts, the survivor is back in');
-  clock += 60000; g.stepStorm();
-  clock = g.storm.plan[8].tEnd + 1; g.stepStorm();
-  ok(g.storm.phase === 'sudden', 'the sudden death follows the thirty minutes');
-  const C = seat(g, conn()); msg(C, { t: 'join', name: 'Поздний', x: 0, z: 0, yaw: 0 });
-  ok(C.last('stormBusy'), 'the join in the final is refused with stormBusy');
-  clock += 120000 + 600; g.stepStorm();
-  ok(g.storm.cur.r === 0, 'the circle closes to nothing');
+  ok(win && win.mode === 'storm' && win.side === 0 && win.name === 'Красные' && g.storm.phase === 'end', 'the last side standing wins the match', JSON.stringify(win && { side: win.side, name: win.name }));
 }
 {
   // the bot outside the circle sprints into it: the storm of the brain (bots.mjs) over the flat city
-  let clock = 1e6;
-  const g = createGame({ world: flatWorld(), mode: 'storm', area: { cx: 0, cz: 0, r: 3300 }, now: () => clock, name: 'storm-bot', itemCount: 4 });
+  let clock = 9 * LEN + 1000;
+  const g = createGame({ world: flatWorld(), mode: 'ffa', match: { len: LEN, graceMs: 0 }, area: { cx: 0, cz: 0, r: 3300 }, now: () => clock, name: 'storm-bot', itemCount: 4 });
   g.stop();
-  const A = seat(g, conn()); msg(A, { t: 'join', name: 'Один', x: 0, z: 0, yaw: 0 });
+  const A = seat(g, conn()); msg(A, { t: 'join', name: 'Один', key: KA, x: 0, z: 0, yaw: 0 });
   const bot = g.addBot('normal');
-  clock += 60000; g.stepStorm();   // the fight starts
+  clock = 9 * LEN + LEN - 1200000; g.stepMatch();   // the storm starts
   const c = g.storm.cur;
-  bot.x = c.x + 2900; bot.z = c.z; bot.y = 1.7;   // beyond the 0.9·r edge: the run begins
+  bot.x = 5000; bot.z = 3900; bot.y = 1.7;   // beyond the 0.9·r edge, inside the field: the run begins
   A.handle.player.x = c.x; A.handle.player.z = c.z;
   const d0 = Math.hypot(bot.x - c.x, bot.z - c.z);
-  for (let i = 0; i < 200; i++) { clock += 50; g.stepStorm(); g.stepBots(0.05); }   // ten seconds of the sprint
+  for (let i = 0; i < 200; i++) { clock += 50; g.stepMatch(); g.stepBots(0.05); }   // ten seconds of the sprint
   const d1 = Math.hypot(bot.x - g.storm.cur.x, bot.z - g.storm.cur.z);
   ok(d1 < d0 - 40, 'the bot outside the circle runs in', d0.toFixed(0) + ' -> ' + d1.toFixed(0));
   ok(bot.alive, 'the bot survives the run (the first stage burns slowly)');

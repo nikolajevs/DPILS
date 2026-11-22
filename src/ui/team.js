@@ -6,7 +6,7 @@ import { addLine } from '../game/chat.js';
 
 /* ---------- the team panel: make a team, invite friends, play together ----------
    The social side of the game over src/game/social.js. The panel opens from the start card (the «Команда» row under
-   the account), from the lobby of the online fight and of the storm, and in the fight from the bar or by its key (P).
+   the account), from the lobby of the online match, and in the fight from the bar or by its key (P).
    Without a team it makes one (a name and a short tag) and lists the invitations to accept or decline; in a team it
    shows the members — online or not, and where: in the lobby, in a fight, in the storm (a teammate who fights can be
    joined: «К нему» opens the same door on the start card) — invites by nick or from the list of players online, keeps
@@ -143,7 +143,7 @@ function teamView() {
       h('i', { class: 'tm-dot', 'data-where': m.where || 'off', title: m.where ? WHERE[m.where] : 'не в сети' }),
       h('div', { class: 'tm-mem-t' }, h('b', { text: m.name }, m.leader ? h('em', { class: 'tm-lead', text: '★ лидер', title: 'Лидер команды' }) : null, self ? h('em', { class: 'tm-you', text: 'вы' }) : null),
         h('small', { text: m.where ? WHERE[m.where] || 'в сети' : 'не в сети' })));
-    if (!self && (m.where === 'game' || m.where === 'storm') && !inGame()) row.append(h('button', { class: 'btn tm-yes', type: 'button', text: 'К нему', title: m.where === 'storm' ? 'Открыть вход в «Шторм»' : 'Открыть онлайн-бой', onclick: () => { closeTeam(); window.dispatchEvent(new CustomEvent('dpils-step', { detail: m.where === 'storm' ? 'storm' : 'online' })); } }));
+    if (!self && (m.where === 'game' || m.where === 'storm') && !inGame()) row.append(h('button', { class: 'btn tm-yes', type: 'button', text: 'К нему', title: 'Открыть онлайн-катку', onclick: () => { closeTeam(); window.dispatchEvent(new CustomEvent('dpils-step', { detail: 'online' })); } }));   // the storm is the end of the same match
     if (lead && !self) row.append(h('button', { class: 'btn', type: 'button', text: 'Лидером', title: 'Передать лидерство', onclick: () => socialSend({ t: 'promote', name: m.name }) }), sure('Исключить', 'Точно?', () => socialSend({ t: 'kick', name: m.name })));
     list.append(row);
   }

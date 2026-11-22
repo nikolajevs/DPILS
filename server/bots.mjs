@@ -52,12 +52,17 @@ const JUMP_V = 6.4;   // the dodge hop lifts the bot at the player's own jump sp
 // R, shoot(p, w, rays, lagMs), throwNade(p, dir), spawn(p), roundOver(), reload(p, w, t0), items (the map pickups)
 export function createBrain(g) {
   const { world, area } = g;
-  const inArea = (x, z) => Math.hypot(x - area.cx, z - area.cz) < area.r - 8;
+  // the storm of the match (game.mjs) opens the whole field to the bots of the open city: they follow the circle wherever
+  // its final point lies; an arena keeps its edge (the circle lies inside it)
+  const roam = () => !!(g.field && g.storm);
+  let roamMemo = false;
+  const inArea = (x, z) => roam() || Math.hypot(x - area.cx, z - area.cz) < area.r - 8;
   // ---- routes: A* over a grid of 4 m cells; a cell is free when its centre and its four corners can be stood on (about
   // 4 m clear of a wall), the route is then pulled straight where the straight line is free
   const CELL = 4, okMemo = new Map(); let lastRoute = 0;
   const cellOK = (i, j) => {
     if (okMemo.size > 200000) okMemo.clear();   // the storm roams the whole city: the memo must not grow without bound
+    if (roam() !== roamMemo) { roamMemo = roam(); okMemo.clear(); }   // the storm opened (or closed) the field: the cells are judged anew
     const k = (i + 4096) * 8192 + (j + 4096); let v = okMemo.get(k); if (v !== undefined) return v;
     const x = i * CELL + CELL / 2, z = j * CELL + CELL / 2, h = 1.8;
     v = inArea(x, z) && world.walkable(x, z) && world.walkable(x + h, z + h) && world.walkable(x - h, z + h) && world.walkable(x + h, z - h) && world.walkable(x - h, z - h); okMemo.set(k, v); return v;
@@ -101,9 +106,10 @@ export function createBrain(g) {
   }
   function waypoint(p) {   // somewhere to walk: mostly towards the enemy half of the arena, sometimes anywhere
     const sz = g.storm;
-    if (sz) {   // the storm: roam inside the safe circle, towards its middle — the fight comes to you
-      for (let k = 0; k < 24; k++) { const a = rnd(0, 6.283), r = Math.sqrt(Math.random()) * Math.max(8, sz.r * 0.75), x = sz.x + Math.cos(a) * r, z = sz.z + Math.sin(a) * r; if (inArea(x, z) && world.walkable(x, z)) return [x, z]; }
-      return [sz.x, sz.z];
+    if (sz) {   // the storm: roam inside the next circle (it lies inside the safe one), towards its middle — the fight comes to you
+      const c = sz.next || sz;
+      for (let k = 0; k < 24; k++) { const a = rnd(0, 6.283), r = Math.sqrt(Math.random()) * Math.max(8, c.r * 0.75), x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r; if (inArea(x, z) && world.walkable(x, z)) return [x, z]; }
+      return [c.x, c.z];
     }
     for (let k = 0; k < 24; k++) {
       let x, z;
@@ -196,7 +202,7 @@ export function createBrain(g) {
   function think(p, dt) {
     const b = p.bot, L = b0(p), now = g.now();
     if (!p.alive) {   // back to the game after the respawn time, the favourite gun in hand again
-      if (g.storm) return;   // the storm does not respawn: the fallen wait for the next round (the page sends its dead to the lobby)
+      if (g.storm) return;   // the storm does not respawn: the fallen wait for the next match
       if (!g.roundOver() && now - p.diedAt >= g.R.respawnMs + b.respawnExtra) { g.spawn(p); b.target = 0; b.path = null; b.cover = null; b.lastSeen = null; b.alert = null; g.equip(p, b.role); p.wep = b.role; b.switchAt = now + 400; b.lastHp = p.hp; b.respawnExtra = rnd(0, 2500); }
       return;
     }

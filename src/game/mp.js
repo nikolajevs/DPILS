@@ -486,10 +486,33 @@ function tone(f0, f1, dur, vol, type = 'sine', delay = 0) {
 /* ---------- shooting ---------- */
 let ownTracers = null;   // the tracers of the shot just fired, bound to the server's bullet ids when its 'shot' echo returns
 const W = () => WEAPONS[MP.weapon];
+/* ---------- the match of the server (hello.match, 'match'; server/storm.mjs) ----------
+   Two hours — the day of the game; the door open for the first half hour; the «Шторм» of the last twenty minutes, then
+   the victory table until the next match. The page keeps the phase and the countdowns as they came, counted on from
+   the moment they came; the storm itself lives in storm.js (stormState). Without a match (the training) all of this
+   stays empty and the kill target counts. */
+const stormOn = () => stormState.on && (stormState.phase === 'play' || stormState.phase === 'sudden');   // one life: no respawn, the dead watch
+const matchLeft = k => (MP.match ? Math.max(0, MP.match[k] - (performance.now() - MP.match.at)) : 0);
+const span = ms => (ms >= 3600000 && ms % 3600000 === 0 ? ms / 3600000 + ' ч' : Math.round(ms / 60000) + ' мин');   // 2 ч, 30 мин, 20 мин
+const hms = ms => { const s = Math.max(0, Math.ceil(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, ss = String(s % 60).padStart(2, '0'); return h ? h + ':' + String(m).padStart(2, '0') + ':' + ss : m + ':' + ss; };
+// the middle of the score chip: the living in the storm, the time to it in the match, the kill target in the training
+function matchLim() {
+  if (stormOn()) return 'в живых ' + stormState.alive;
+  if (!MP.match) return 'до ' + MP.win;
+  if (MP.match.phase === 'over') return 'новая катка через ' + hms(matchLeft('left'));
+  return '⚡ шторм через ' + hms(matchLeft('stormIn'));
+}
+function setMatch(m) {
+  const prev = MP.match && MP.match.phase;
+  MP.match = { ...m, at: performance.now() };
+  document.body.classList.toggle('match-soon', m.phase === 'fight' && m.stormIn < 300000);
+  if (prev && prev !== m.phase && m.phase === 'fight') { banner('НОВАЯ КАТКА', 'storm'); feed('Новая катка: счёт обнулён, вход открыт ' + span(m.joinMs), 'sys'); }
+  if (MP.started) updatePanel();
+}
 function fire(now) {
   const w = W();
   if (MP.dead || !STATE.locked || now - MP.lastShot < w.gapMs) return;
-  if (MP.storm && stormState.phase !== 'play' && stormState.phase !== 'sudden') { if (now - (MP.coldMsgAt || 0) > 3000) { MP.coldMsgAt = now; feed(stormState.phase === 'wait' ? 'Шторм ещё не начался — дождитесь старта' : 'Раунд завершён — дождитесь следующего захода', 'sys'); } return; }   // the guns are cold in the gathering and after the round
+  if (MP.match && MP.match.phase === 'over') { if (now - (MP.coldMsgAt || 0) > 3000) { MP.coldMsgAt = now; feed('Катка завершена — следующая через ' + hms(matchLeft('left')), 'sys'); } return; }   // the guns are cold after the storm, until the next match
   if (MP.reloadAt) return;
   if (MP.ammo[MP.weapon] <= 0) { reload(now); return; }
   statEvent('shot', {}, !!MP.local); MP.lastShot = now; MP.ammo[MP.weapon]--; MP.kick = 1;
@@ -570,8 +593,8 @@ function updatePanel() {
   el('mpScore').textContent = MP.kills + ' · ' + MP.deaths; el('mpFps').textContent = PERF.fps + ' кадр/с' + (PERF.scale < 1 ? ' · разрешение ' + Math.round(PERF.scale * 100) + ' %' : '');
   el('mpMeName').textContent = MP.name ? (MP.tag ? '[' + MP.tag + '] ' : '') + MP.name : 'Вы'; el('mpMeDot').className = 'dot ' + (MP.ffa ? 'tf' : 't' + MP.team);
   const tm = el('mpTeams'); tm.textContent = '';
-  if (MP.ffa) { const lead = [...MP.board].sort((a, b) => b.kills - a.kills)[0], me = document.createElement('b'), ld = document.createElement('b'), lim = document.createElement('small'); me.className = 'me'; me.textContent = 'Вы ' + MP.kills; ld.className = 'lead'; ld.textContent = lead ? lead.name + ' ' + lead.kills : ''; lim.textContent = MP.storm ? 'в живых ' + stormState.alive : 'до ' + MP.win; tm.append(me, ld, lim); } else { const chip = (i, t, s) => { const e = document.createElement('b'), n = document.createElement('small'), v = document.createElement('span'); e.className = 't' + i; n.textContent = t; v.textContent = s; e.append(n, v); return e; };
-  const lim = document.createElement('small'); lim.textContent = 'до ' + MP.win; tm.append(chip(0, MP.teams[0], MP.score[0]), lim, chip(1, MP.teams[1], MP.score[1])); }
+  if (MP.ffa) { const lead = [...MP.board].sort((a, b) => b.kills - a.kills)[0], me = document.createElement('b'), ld = document.createElement('b'), lim = document.createElement('small'); me.className = 'me'; me.textContent = 'Вы ' + MP.kills; ld.className = 'lead'; ld.textContent = lead ? lead.name + ' ' + lead.kills : ''; lim.textContent = matchLim(); tm.append(me, ld, lim); } else { const chip = (i, t, s) => { const e = document.createElement('b'), n = document.createElement('small'), v = document.createElement('span'); e.className = 't' + i; n.textContent = t; v.textContent = s; e.append(n, v); return e; };
+  const lim = document.createElement('small'); lim.textContent = matchLim(); tm.append(chip(0, MP.teams[0], MP.score[0]), lim, chip(1, MP.teams[1], MP.score[1])); }
 }
 /* ---------- the held Tab: the live scoreboard of the round ----------
    Two team halves (or one free-for-all list with ranks); every player carries the round's kills, deaths, damage,
@@ -582,7 +605,7 @@ const bdPlural = (n, one, few, many) => { const a = n % 10, b = n % 100; return 
 function drawBoard() {
   const box = el('mpBoard'); if (box.hidden) return;
   box.firstElementChild.classList.toggle('ffa', MP.ffa);
-  el('mpBoardTitle').textContent = MP.storm ? 'Шторм · каждый сам за себя' : MP.local ? 'Тренировка с ботами' : MP.ffa ? 'Каждый сам за себя' : 'Командный бой';
+  el('mpBoardTitle').textContent = (stormOn() ? 'Шторм · ' : MP.match ? 'Катка · ' : '') + (MP.local ? 'Тренировка с ботами' : MP.ffa ? 'Каждый сам за себя' : 'Командный бой');
   const sub = [];
   if (MP.local) sub.push('уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || 'средний') + '»');
   else if (MP.server) sub.push(MP.server);
@@ -590,8 +613,8 @@ function drawBoard() {
   el('mpBoardSub').textContent = sub.join(' · ');
   const sc = el('mpBoardScore'); sc.textContent = '';
   const chip = (cls, text) => { const b = document.createElement('b'); b.className = cls; b.textContent = text; sc.append(b); };
-  const lim = document.createElement('small'); lim.textContent = MP.storm ? 'в живых ' + stormState.alive : 'до ' + MP.win;
-  if (MP.ffa) { const lead = [...MP.board].sort((a, b) => b.kills - a.kills)[0]; if (lead) chip('lead', 'лидер: ' + lead.name + ' — ' + lead.kills); if (MP.storm && stormState.phase === 'play') chip('lead', 'этап ' + (stormState.pi + 1) + '/9'); sc.append(lim); }
+  const lim = document.createElement('small'); lim.textContent = matchLim();
+  if (MP.ffa) { const lead = [...MP.board].sort((a, b) => b.kills - a.kills)[0]; if (lead) chip('lead', 'лидер: ' + lead.name + ' — ' + lead.kills); if (stormOn() && stormState.phase === 'play') chip('lead', 'этап ' + (stormState.pi + 1) + '/' + (stormState.stages || 9)); sc.append(lim); }
   else { chip('t0', MP.teams[0] + ' ' + MP.score[0]); sc.append(lim); chip('t1', MP.score[1] + ' ' + MP.teams[1]); }
   const cell = (cls, text) => { const s = document.createElement('span'); s.className = cls; s.textContent = text; return s; };
   const cols = el('mpBoardCols'); cols.textContent = '';
@@ -641,20 +664,15 @@ function die(byName, byId) {
   STATE.mpDead = true; document.body.classList.add('dead'); MP.spec = remotes.has(byId) ? byId : 0;   // watch the one who killed you first
   MP.dead = true; MP.deadAt = performance.now(); MP.firing = false; MP.scope = false; gun.visible = false; closeInv(); nadeCancel(); punchReset();
   if (document.pointerLockElement) document.exitPointerLock();
-  if (MP.storm) { el('mpDead').hidden = true; el('stormDead').hidden = false; }   // the storm's dead go back to the lobby (the place comes with 'stormDead'), not to the respawn
+  if (stormOn()) { el('mpDead').hidden = true; el('stormDead').hidden = false; }   // one life in the storm: the place comes with 'stormDead', no respawn — the dead watch the end
   else { el('mpDead').hidden = false; el('mpDeadBy').textContent = byName ? 'Вас убил ' + byName : 'Вы погибли'; }
 }
 /* ---------- the storm's dead: the place, the way back to the lobby ----------
-   The event has no respawn: the fallen watch the fight for ten seconds and wake up in the lobby (the hash #storm
-   opens the event card at once, src/ui/start.js). The button goes there sooner. */
-let stormAutoTimer = 0, stormAutoLeft = 0;
-function stopStormAuto() { clearInterval(stormAutoTimer); stormAutoTimer = 0; }
-function stormGoLobby() { stopStormAuto(); location.hash = '#storm'; location.reload(); }
-function startStormAuto() {
-  stopStormAuto(); stormAutoLeft = 10;
-  const tick = () => { el('stormAuto').textContent = 'Возврат в лобби через ' + stormAutoLeft + ' с'; if (stormAutoLeft <= 0) { stormGoLobby(); return; } stormAutoLeft--; };
-  tick(); stormAutoTimer = setInterval(tick, 1000);
-}
+   The storm has no respawn: the fallen watch the end of the match (the spectator camera of the dead) and see the
+   victory table; the button goes to the lobby — the hash #online opens the card of the match with the time to the
+   next one (src/ui/start.js). The next match brings the ones who stayed back on their feet. */
+function stopStormAuto() {}
+function stormGoLobby() { location.hash = '#online'; location.reload(); }
 let bannerT = 0;
 function banner(text, cls) { const b = el('mpBanner'); b.textContent = text; b.className = 'mp-banner ' + (cls || ''); b.hidden = false; clearTimeout(bannerT); bannerT = setTimeout(() => { b.hidden = true; }, 3200); }
 function spawnPoint(choice = MP.spawn) {
@@ -664,6 +682,7 @@ function spawnPoint(choice = MP.spawn) {
 // ---------- the end of a round: the table of the round and the time to the next one ----------
 let endTimer = 0;
 function showSummary(m) {
+  el('mpEnd').classList.toggle('storm-end', m.mode === 'storm');
   if (m.mode === 'storm') { showStormSummary(m); return; }
   const ffa = m.mode === 'ffa', mine = ffa ? m.mvp === MP.id : m.team === MP.team, title = el('mpEndTitle'); title.className = ffa ? 'tf' : 't' + (m.team === 1 ? 1 : 0);
   title.textContent = ffa ? (mine ? 'Победа! Вы набрали ' : 'Победил ' + m.name + ': ') + (m.rows[0] ? m.rows[0].kills : '') + ' убийств' : (mine ? 'Победа! ' : 'Поражение. ') + 'Выиграли ' + m.name.toLowerCase() + ', ' + m.score[0] + ' : ' + m.score[1];
@@ -678,9 +697,9 @@ function showSummary(m) {
 }
 // the end of the storm round: the places of the fallen and the last survivor, not the kill race
 function showStormSummary(m) {
-  const won = m.mvp === MP.id || (!!m.clan && m.clan === MP.clan), my = m.rows.find(r => r.id === MP.id), title = el('mpEndTitle');   // a team wins together
+  const won = stormWon(m), my = m.rows.find(r => r.id === MP.id), title = el('mpEndTitle'), side = m.ffa === false && m.side != null;
   title.className = 'tf storm-title';
-  title.textContent = won ? (m.clan ? 'ПОБЕДА — ваша команда выжила последней' : 'ПОБЕДА — вы последний выживший') : 'Шторм завершён: ' + (m.clan ? 'победила команда ' : 'победил ') + m.name;
+  title.textContent = side ? (won ? 'ПОБЕДА — ' : 'Катка завершена: победили ') + m.name.toLowerCase() : won ? (m.clan ? 'ПОБЕДА — ваша команда выжила последней' : 'ПОБЕДА — вы последний выживший') : 'Катка завершена: ' + (m.clan ? 'победила команда ' : 'победил ') + m.name;
   const mvp = m.rows.find(r => r.id === m.mvp);
   el('mpEndMvp').textContent = mvp ? '★ Последний выживший: ' + mvp.name + ' — ' + mvp.kills + ' убийств, ' + mvp.dmg + ' урона' : 'Выживших нет — шторм забрал всех';
   if (my && !won) el('mpEndMvp').textContent += ' · Ваше место: ' + my.place + ' из ' + m.rows.length;
@@ -688,10 +707,12 @@ function showStormSummary(m) {
   const row = (cells, cls) => { const r = document.createElement('div'); r.className = 'end-row ' + cls; for (const c of cells) { const s = document.createElement('span'); s.textContent = c; r.append(s); } t.append(r); };
   row(['место', 'игрок', 'убийств', 'урон', 'точность'], 'head');
   for (const r of m.rows) row([r.place, (r.id === m.mvp ? '★ ' : '') + r.name + (r.alive ? '' : ' †'), r.kills, r.dmg, r.acc + ' %'], 'tf' + (r.id === MP.id ? ' me' : ''));
-  el('mpEnd').hidden = false; const until = performance.now() + (m.nextMs || 15000); clearInterval(endTimer);
-  const tick = () => { const left = Math.max(0, Math.ceil((until - performance.now()) / 1000)); el('mpEndNext').textContent = 'Новый заход через ' + left + ' с'; if (!left) clearInterval(endTimer); };
+  el('mpEnd').hidden = false; const shown = performance.now(), until = shown + (m.nextMs || 15000); clearInterval(endTimer);
+  const tick = () => { const now = performance.now(), left = Math.max(0, until - now); el('mpEndNext').textContent = 'Следующая катка через ' + hms(left) + ' · счёт за катку — Tab'; if (!left || now - shown > 25000) { clearInterval(endTimer); el('mpEnd').hidden = true; } };   // the table steps aside after 25 s: the wait for the next match can be long, the score chip keeps counting it down
   tick(); endTimer = setInterval(tick, 300);
 }
+// the storm's win is mine: the last survivor, his team of the players in the free-for-all, his side in the team fight
+const stormWon = m => (m.ffa === false ? m.side === MP.team : m.mvp === MP.id || (!!m.clan && m.clan === MP.clan));
 // ---------- grenades and the dead man's view ----------
 // G takes the grenade in hand (the arms bring it up and pull the pin): the mouse aims, the arc and the disc of the blast
 // show where it will go, the left button held down winds the throw up and charges it (the arcs round the crosshair),
@@ -705,7 +726,7 @@ function nadeCancel(thrown) {
 function nadePrep(kind = 'nade') {
   const now = performance.now();
   if (MP.dead || !MP.ws || MP.ws.readyState !== 1) return;
-  if (MP.storm && stormState.phase !== 'play' && stormState.phase !== 'sudden') return;   // the grenades wait for the fight too
+  if (MP.match && MP.match.phase === 'over') return;   // the grenades are cold after the storm too
   if (NAIM.on) { if (NAIM.kind === kind) { nadeCancel(); return; } nadeCancel(); }   // the same key puts it away; another kind swaps it
   if (nadeCount(kind) <= 0) { feed(kind === 'smoke' ? 'Дымовых гранат нет — ищите их на карте' : kind === 'napalm' ? 'Напалма нет — ищите его на карте' : 'Гранат нет — ищите их на карте', 'sys'); tone(180, 120, 0.12, 0.2, 'square'); return; }
   if (now - MP.lastNade < 900) return;
@@ -810,7 +831,7 @@ function arenaChoices() {   // in an arena you come back on your base (or next t
 }
 function edgeNotice() { const now = performance.now(); if (now - (MP.edgeAt || 0) > 3000) feed('Граница арены: дальше нельзя', 'sys'); MP.edgeAt = now; }
 function respawn() {
-  if (MP.storm || !MP.dead || performance.now() - MP.deadAt < 3000) return;   // the storm does not respawn: the dead go back to the lobby
+  if (stormOn() || !MP.dead || performance.now() - MP.deadAt < 3000) return;   // the storm does not respawn: one life, the dead watch the end
   const v = el('mpRespawnAt').value; if (v === 'base') { MP.ws.send(JSON.stringify({ t: 'respawn' })); return; }
   if (v === 'mate') { MP.ws.send(JSON.stringify({ t: 'respawn', mate: true })); return; }
   MP.ws.send(JSON.stringify({ t: 'respawn', ...spawnPoint(v === 'rand' ? -1 : +v) }));
@@ -819,7 +840,7 @@ function respawn() {
 /* ---------- messages from the server ---------- */
 function onMsg(m) {
   switch (m.t) {
-    case 'hello': dayOf(m); MP.storm = m.mode === 'storm'; MP.ffa = m.mode === 'ffa' || MP.storm; document.body.classList.toggle('ffa', MP.ffa); document.body.classList.toggle('storm', MP.storm); if (MP.storm && m.storm) { setStorm(m.storm); feed('Ивент «Шторм»: одна жизнь, зона сужается — последний выживший побеждает', 'sys'); } MP.clan = m.clan ? m.clan.id : ''; MP.tag = m.clan ? m.clan.tag : ''; if (MP.ffa && (MP.storm || !MP.clan)) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } setWhere(MP.local ? 'train' : MP.storm ? 'storm' : 'game'); voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.server = m.server || ''; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team, e.char); document.body.dataset.team = m.team;
+    case 'hello': dayOf(m); MP.ffa = m.mode === 'ffa'; document.body.classList.toggle('ffa', MP.ffa); MP.match = null; if (m.match) setMatch(m.match); if (m.storm) { setStorm(m.storm); document.body.classList.toggle('storm', stormOn()); feed('Идёт шторм: одна жизнь, зона сужается — последний выживший побеждает', 'sys'); } else if (m.match) feed('Катка ' + span(m.match.len) + ': вход открыт ' + span(m.match.joinMs) + ', последние ' + span(m.match.stormMs) + ' — шторм', 'sys'); MP.clan = m.clan ? m.clan.id : ''; MP.tag = m.clan ? m.clan.tag : ''; if (MP.ffa && !MP.clan) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } setWhere(MP.local ? 'train' : stormOn() ? 'storm' : 'game'); voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.server = m.server || ''; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team, e.char); document.body.dataset.team = m.team;
       MP.arena = m.arena || null; clearFx(); clearBlasts(); stopZoneSounds(); setItems(m.items); for (const z of m.zones || []) { addZone(z); if (z.kind === 'smoke') zoneSound(z); }   // the screens and patches already burning when we joined
       cargoClock(m.now || Date.now()); clearCargo(); for (const id of [...marks.keys()]) markRemote(id, false); marks.clear();
       if (m.cargo) { cargoDrop(m.cargo); if (m.cargo.state === 'landed') cargoLand(m.cargo); }
@@ -934,24 +955,25 @@ function onMsg(m) {
     }
     case 'say': addLine(m, MP.id); if (m.id !== MP.id) tone(900, 700, 0.05, 0.08, 'sine'); break;
     case 'rtc': if (voice) voice.signal(m.from, m.d); break;
-    case 'win': { nadeCancel(); const mine = m.mode === 'ffa' ? m.mvp === MP.id : m.team === MP.team, row = m.rows.find(r => r.id === MP.id); statEvent('round', { win: mine, kills: row ? row.kills : 0 }, !!MP.local); showSummary(m); break; }
+    case 'win': { nadeCancel(); const mine = m.mode === 'storm' ? stormWon(m) : m.mode === 'ffa' ? m.mvp === MP.id : m.team === MP.team, row = m.rows.find(r => r.id === MP.id); statEvent('round', { win: mine, kills: row ? row.kills : 0 }, !!MP.local); showSummary(m); break; }
     case 'round': el('mpEnd').hidden = true; el('stormDead').hidden = true; clearInterval(endTimer); stopStormAuto(); clearCargo(); for (const id of [...marks.keys()]) markRemote(id, false); marks.clear(); cargoSelf(0); break;
+    case 'match': setMatch(m); break;
     case 'storm': {
-      const prev = stormState.phase, prevKind = stormState.kind, prevPi = stormState.pi;
-      setStorm(m);
+      if (m.phase === 'off') { clearStorm(); document.body.classList.remove('storm', 'storm-out'); if (!MP.local) setWhere('game'); updatePanel(); break; }   // the new match: the storm is gone
+      const prev = stormState.on ? stormState.phase : 'off', prevKind = stormState.kind, prevPi = stormState.pi;
+      setStorm(m); document.body.classList.toggle('storm', stormOn()); if (stormOn()) setWhere('storm');
       if (m.phase === 'play' && prev !== 'play') { banner('ШТОРМ НАЧАЛСЯ', 'storm'); tone(220, 440, 0.4, 0.3, 'sawtooth'); tone(440, 880, 0.5, 0.2, 'triangle', 0.15); }
       else if (m.phase === 'sudden' && prev !== 'sudden') { banner('ФИНАЛ: ЗОНА ИСЧЕЗАЕТ', 'storm'); tone(180, 90, 0.6, 0.35, 'sawtooth'); }
       else if (m.phase === 'play' && m.kind === 'shrink' && prevKind !== 'shrink') { feed('Зона сужается — бегите в круг!', 'sys'); tone(520, 260, 0.25, 0.22, 'square'); }
-      else if (m.phase === 'play' && m.pi !== prevPi && m.kind === 'hold') feed('Этап ' + (m.pi + 1) + '/9: зона стабильна, следующее сжатие по таймеру', 'sys');
+      else if (m.phase === 'play' && m.pi !== prevPi && m.kind === 'hold') feed('Этап ' + (m.pi + 1) + '/' + (m.stages || 9) + ': зона стабильна, следующее сжатие по таймеру', 'sys');
       break;
     }
     case 'stormDead': {
       el('stormPlace').textContent = 'Место: ' + m.place + ' из ' + m.total;
       el('stormDeadBy').textContent = m.by === 'storm' ? 'Вас поглотил шторм за пределами круга' : m.by ? 'Вас убил ' + m.by : 'Вы погибли';
-      startStormAuto();
       break;
     }
-    case 'stormBusy': el('mpMsg').textContent = 'Шторм уже в финале — следующий заход через ' + Math.ceil((m.left || 0) / 1000) + ' с'; break;
+    case 'closed': el('mpMsg').textContent = (m.out ? 'Шторм уже забрал вас в этой катке' : m.phase === 'fight' ? 'Катка уже идёт: войти можно только в первые ' + span(m.joinMs || 1800000) : m.phase === 'storm' ? 'Катка в шторме: вход закрыт' : 'Катка завершена') + ' — следующая через ' + hms(m.left || 0) + '. Пока можно потренироваться с ботами.'; break;   // the door of the match (server/game.mjs)
     case 'chat': feed(m.text, 'sys'); break;
     case 'full': el('mpMsg').textContent = 'На сервере нет мест.'; break;
     case 'auth-required': el('mpMsg').textContent = 'Сервер пускает только игроков с аккаунтом: войдите или зарегистрируйтесь.'; requireAccount(); break;
@@ -971,17 +993,17 @@ function dayOf(m) {
   if (m.day && m.day.len > 0) setCycle(m.day.f, m.day.len);
   else if (MP.local && MP.local.time != null && MP.local.time !== 'auto') setTime(+MP.local.time);
 }
-function join(local, storm) {   // local: { bots, level, mode, arena, time } for the game against bots in the page, with no server; storm: the «Шторм» event, the server's path /storm
+function join(local) {   // local: { bots, level, mode, arena, time } for the game against bots in the page, with no server
   if (!account()) { requireAccount(); return; }   // an account is mandatory for any game, the gate is already over the card
-  const name = el('mpName').value.trim(), url = local ? 'local:' : serverUrl() + (storm ? '/storm' : ''), msg = el('mpMsg');
+  const name = el('mpName').value.trim(), url = local ? 'local:' : serverUrl(), msg = el('mpMsg');
   try { localStorage.setItem('dpils.mp', JSON.stringify({ name, spawn: el('mpSpawn').value, team: el('mpTeam').value, char: el('mpChar').value })); } catch (e) {}
-  MP.spawn = +el('mpSpawn').value; MP.wantTeam = +el('mpTeam').value; MP.url = url; MP.local = local || null; MP.storm = !!storm; loadModels(); msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true; el('goTrain').disabled = true; el('goStorm').disabled = true;
-  let ws; try { ws = local ? openLocal(local) : new WebSocket(url); } catch (e) { msg.textContent = 'Неверный адрес сервера.'; el('goPlay').disabled = false; el('goTrain').disabled = false; el('goStorm').disabled = false; return; }
+  MP.spawn = +el('mpSpawn').value; MP.wantTeam = +el('mpTeam').value; MP.url = url; MP.local = local || null; MP.match = null; loadModels(); msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true; el('goTrain').disabled = true;
+  let ws; try { ws = local ? openLocal(local) : new WebSocket(url); } catch (e) { msg.textContent = 'Неверный адрес сервера.'; el('goPlay').disabled = false; el('goTrain').disabled = false; return; }
   MP.ws = ws; MP.started = false;
   ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, team: MP.wantTeam, char: el('mpChar').value || undefined, key: local ? undefined : playerKey() || undefined, board: local ? undefined : boardOn(), ...s })); };
   ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (err) { console.error(err); } };
   ws.onerror = () => { if (!MP.started) msg.textContent = 'Не удалось подключиться к ' + url; };
-  ws.onclose = () => { setWhere('lobby'); nadeCancel(); el('nadeWarn').hidden = true; clearStorm(); document.body.classList.remove('storm', 'storm-out'); stopStormAuto(); if (MP.started) { el('mpDead').hidden = true; el('stormDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; el('goStorm').disabled = false; if (!msg.textContent.startsWith('На сервере') && !msg.textContent.startsWith('Не удалось') && !msg.textContent.startsWith('Сервер пускает') && !msg.textContent.startsWith('Шторм')) msg.textContent = 'Соединение закрыто.'; } };
+  ws.onclose = () => { setWhere('lobby'); nadeCancel(); el('nadeWarn').hidden = true; clearStorm(); document.body.classList.remove('storm', 'storm-out', 'match-soon'); if (MP.started) { el('mpDead').hidden = true; el('stormDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; if (!/^(На сервере|Не удалось|Сервер пускает|Шторм|Катка)/.test(msg.textContent)) msg.textContent = 'Соединение закрыто.'; } };
 }
 let uiReady = false;
 function initUi() {   // the fields of the player and of the training: once, when the start card first needs them (or when the city is ready)
@@ -997,7 +1019,7 @@ function initUi() {   // the fields of the player and of the training: once, whe
   if (!el('mpName').value) el('mpName').value = el('mpName').placeholder;
   const rs = el('mpRespawnAt'); rs.textContent = ''; for (const [v, t] of [['mate', 'Рядом с товарищем'], ['rand', 'Случайное место']].concat(PLACES.map((p, i) => [i, p[0]]))) { const o = document.createElement('option'); o.value = v; o.textContent = t; rs.append(o); }
   el('mpNoBoard').checked = !boardOn(); el('mpNoBoard').onchange = () => setBoardOn(!el('mpNoBoard').checked); initLeaders(() => (MP.on ? (MP.local ? '' : MP.url) : serverUrl()));
-  el('goPlay').onclick = () => join(); el('goStorm').onclick = () => join(null, true); el('stormLobby').onclick = stormGoLobby; el('goTrain').onclick = () => { const o = { bots: +el('trBots').value, level: el('trLevel').value, mode: el('trMode').value, arena: el('trArena').value }; try { localStorage.setItem('dpils.train', JSON.stringify(o)); } catch (e) {} join({ ...o, time: el('trTime').value }); };   // the time of day is kept apart (lighting.js timePref)
+  el('goPlay').onclick = () => join(); el('stormLobby').onclick = stormGoLobby; el('goTrain').onclick = () => { const o = { bots: +el('trBots').value, level: el('trLevel').value, mode: el('trMode').value, arena: el('trArena').value }; try { localStorage.setItem('dpils.train', JSON.stringify(o)); } catch (e) {} join({ ...o, time: el('trTime').value }); };   // the time of day is kept apart (lighting.js timePref)
   try { const t = JSON.parse(localStorage.getItem('dpils.train') || '{}'); for (const [k, id] of [['bots', 'trBots'], ['level', 'trLevel'], ['mode', 'trMode'], ['arena', 'trArena']]) if (t[k] != null && [...el(id).options].some(o => o.value === String(t[k]))) el(id).value = t[k]; } catch (e) {} el('mpRespawn').onclick = respawn; el('mpSpecCam').onclick = specCam; specCamUi(); el('mpLeave').onclick = () => location.reload(); el('mpOverBtn').onclick = () => location.reload();
   el('bLeave').onclick = () => location.reload();
 }
@@ -1157,7 +1179,7 @@ const OPTIC_MIN = 4, OPTIC_MAX = 8, DOT_BOOST_MS = 1300, DOT_BOOST_CD = 700, DOT
 function mpTick(dt) {
   if (!MP.on) return;
   const now = performance.now(), t = now - 120;
-  if (voice) voice.update(dt); ambTick(dt); statEvent('tick', { dt }, !!MP.local); if (MP.storm) stormTick(dt, now);
+  if (voice) voice.update(dt); ambTick(dt); statEvent('tick', { dt }, !!MP.local); if (stormState.on) stormTick(dt, now);
   if (MP.arena && !MP.dead) { const A = MP.arena, dx = P.x - A.cx, dz = P.z - A.cz, d = Math.hypot(dx, dz); if (d > A.r - 1) { P.x = A.cx + dx / d * (A.r - 1); P.z = A.cz + dz / d * (A.r - 1); edgeNotice(); } }   // the edge of the arena
   if ((MP.fpsT = (MP.fpsT || 0) - dt) <= 0) { MP.fpsT = 1; updatePanel(); }
   el('mpReloadFill').style.width = (MP.reloadAt ? Math.min(1, (now - MP.reloadAt) / WEAPONS[MP.reloadW].reloadMs) * 100 : 0).toFixed(1) + '%';   // the reload bar under the rounds, every frame (the crosshair ring keeps its own)
@@ -1330,7 +1352,7 @@ function showSpeaking(ids, me) {
 // teammates on the maps; an enemy shows for two seconds after it fires
 STATE.mapOverlay = (ctx, cx, cz, ppm, w, h) => {
   if (!MP.on) return; const now = performance.now();
-  if (MP.storm) stormMapOverlay(ctx, cx, cz, ppm, w, h);   // the circles of the storm under the players
+  stormMapOverlay(ctx, cx, cz, ppm, w, h);   // the circles of the storm under the players (nothing while there is no storm)
   if (MP.arena) {   // the ring of the arena and the bases of the teams
     const A = MP.arena; ctx.save(); ctx.beginPath(); ctx.arc(w / 2 + (A.cx - cx) * ppm, h / 2 + (A.cz - cz) * ppm, A.r * ppm, 0, 6.283); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(200, 40, 40, .75)'; ctx.setLineDash([8, 6]); ctx.stroke(); ctx.setLineDash([]);
     A.bases.forEach((b, t) => { if (MP.ffa && t) return; for (const [bx, bz] of b) { const x = w / 2 + (bx - cx) * ppm, y = h / 2 + (bz - cz) * ppm; if (x < 4 || y < 4 || x > w - 4 || y > h - 4) continue; ctx.fillStyle = MP.ffa ? '#e8a317' : t ? '#2f78d8' : '#d8392f'; ctx.fillRect(x - 5, y - 5, 10, 10); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.strokeRect(x - 5, y - 5, 10, 10); } });
@@ -1353,6 +1375,6 @@ STATE.mapOverlay = (ctx, cx, cz, ppm, w, h) => {
   cargoMap(ctx, cx, cz, ppm, w, h);
 };
 PERF.notice = text => feed(text, 'sys');
-function enablePlay() { initUi(); el('goPlay').disabled = false; el('goTrain').disabled = false; el('goStorm').disabled = false; window.dispatchEvent(new Event('dpils-ready')); }   // the lobby's storm card reads the readiness to enable its own door
+function enablePlay() { initUi(); el('goPlay').disabled = false; el('goTrain').disabled = false; window.dispatchEvent(new Event('dpils-ready')); }   // the lobby's match card repaints its door
 
 export { MP, initUi as prepareUi, enablePlay, loadModels, mpLabels, mpTick, warmSamples, aimPunch };
