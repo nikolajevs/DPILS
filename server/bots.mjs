@@ -51,18 +51,20 @@ const JUMP_V = 6.4;   // the dodge hop lifts the bot at the player's own jump sp
 // g: the game's own tools: players, now(), world (freePath, ground, walkable), area { cx, cz, r }, bases, FFA, WEAPONS,
 // R, shoot(p, w, rays, lagMs), throwNade(p, dir), spawn(p), roundOver(), reload(p, w, t0), items (the map pickups)
 export function createBrain(g) {
-  const { world, area } = g;
+  const world = g.world;
   // the storm of the match (game.mjs) opens the whole field to the bots of the open city: they follow the circle wherever
-  // its final point lies; an arena keeps its edge (the circle lies inside it)
+  // its final point lies; an arena keeps its edge (the circle lies inside it). The area is read live (g.area): the «Царь
+  // горы» swaps it for the Church Hill arena mid-fight, and the bots follow the field they are given
   const roam = () => !!(g.field && g.storm);
-  let roamMemo = false;
-  const inArea = (x, z) => roam() || Math.hypot(x - area.cx, z - area.cz) < area.r - 8;
+  let roamMemo = false, areaRevMemo = -1;
+  const inArea = (x, z) => { const a = g.area; return roam() || Math.hypot(x - a.cx, z - a.cz) < a.r - 8; };
   // ---- routes: A* over a grid of 4 m cells; a cell is free when its centre and its four corners can be stood on (about
   // 4 m clear of a wall), the route is then pulled straight where the straight line is free
   const CELL = 4, okMemo = new Map(); let lastRoute = 0;
   const cellOK = (i, j) => {
     if (okMemo.size > 200000) okMemo.clear();   // the storm roams the whole city: the memo must not grow without bound
     if (roam() !== roamMemo) { roamMemo = roam(); okMemo.clear(); }   // the storm opened (or closed) the field: the cells are judged anew
+    if (g.areaRev !== areaRevMemo) { areaRevMemo = g.areaRev; okMemo.clear(); }   // the race swapped the arena: the cells are judged anew
     const k = (i + 4096) * 8192 + (j + 4096); let v = okMemo.get(k); if (v !== undefined) return v;
     const x = i * CELL + CELL / 2, z = j * CELL + CELL / 2, h = 1.8;
     v = inArea(x, z) && world.walkable(x, z) && world.walkable(x + h, z + h) && world.walkable(x - h, z + h) && world.walkable(x + h, z - h) && world.walkable(x - h, z - h); okMemo.set(k, v); return v;
@@ -116,7 +118,7 @@ export function createBrain(g) {
       const hunt = !g.enemyBase(p) && Math.random() < 0.7 && [...g.players.values()].filter(q => q !== p && q.alive && (g.FFA || q.team !== p.team));   // no bases: go where an enemy is
       if (hunt && hunt.length) { const q = hunt[Math.floor(Math.random() * hunt.length)]; x = q.x + rnd(-50, 50); z = q.z + rnd(-50, 50); }
       else if (Math.random() < 0.6 && g.enemyBase(p)) { const b = g.enemyBase(p); x = b[0] + rnd(-90, 90); z = b[1] + rnd(-90, 90); }
-      else { const a = rnd(0, 6.283), r = Math.sqrt(Math.random()) * (area.r - 30); x = area.cx + Math.cos(a) * r; z = area.cz + Math.sin(a) * r; }
+      else { const ar = g.area, a = rnd(0, 6.283), r = Math.sqrt(Math.random()) * (ar.r - 30); x = ar.cx + Math.cos(a) * r; z = ar.cz + Math.sin(a) * r; }
       if (inArea(x, z) && world.walkable(x, z)) return [x, z];
     }
     return [p.x, p.z];
@@ -162,6 +164,7 @@ export function createBrain(g) {
   // against the bot nudge it apart so a squad does not stack into one man; the wider offsets let it slip round a corner.
   function walk(p, hx, hz, v, dt) {
     const b = p.bot; let sx = 0, sz = 0;
+    v *= g.speedMul ? g.speedMul(p) : 1;   // the Lutheran bell hastens the holding side
     for (const q of g.players.values()) {
       if (q === p || !q.alive) continue;
       const dx = p.x - q.x, dz = p.z - q.z, d2 = dx * dx + dz * dz;
@@ -337,10 +340,21 @@ export function createBrain(g) {
         aimPitch = 0;
       } else {
         b.alertCover = null;
+        const hl = g.holy;
+        if (hl && now - (b.holyAt || 0) > 4000) { b.holyAt = now; b.path = null; }   // the race: rethink the point every few seconds (it may have changed hands)
         const stale = !b.path || b.pi >= b.path.length || now - b.wpAt > 60000;
         if (stale && now - lastRoute >= 45) {
           lastRoute = now; b.path = null;
           let goal = needItem(p);   // a kit or ammo first
+          if (!goal && hl) {   // the bell towers draw the bots in: take what is not ours, hold what is, spread round the hill
+            const my = g.holyUnit(p); let best = null, bs = -1e9;
+            for (const pt of hl.points) {
+              const d = Math.hypot(pt.x - p.x, pt.z - p.z);
+              let s = -d * 0.01 + (pt.owner !== my ? 3 : 1) + (pt.owner && pt.owner !== my ? 1.5 : 0) + ((p.id * 7 + pt.i * 3) % 5) * 0.3;
+              if (s > bs) { bs = s; best = pt; }
+            }
+            if (best) goal = [best.x + rnd(-3, 3), best.z + rnd(-3, 3)];
+          }
           const cg = g.cargo;
           if (!goal && cg) {   // the supply drop draws the bots in: the bait of the event (the fight around the crate)
             const d = Math.hypot(cg.x - p.x, cg.z - p.z);

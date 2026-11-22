@@ -17,6 +17,7 @@ import { serverUrl } from './server.js';
 import { addNade, addZone, endZone, blastGlow, boomNade, clearBlasts, clearNades, nadeSamples, tickNades, onNadeBounce, setNadeBodies, syncNade, liveNades, liveZones, smokeCores, smokeHides, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
 import { KINDS, SLOT_SVG, bindInv, setItems, itemBack, itemTook, tickItems, renderInv, invTick, closeInv, toggleInv } from './inventory.js';
 import { cargoDrop, cargoLand, cargoTook, cargoEnd, cargoSelf, cargoTick, cargoMap, cargoClock, clearCargo } from './cargo.js';
+import { setHoly, clearHoly, holyBell, holyWin, holyTick, holyMap, holyMe, holySpeedMul, holyState, holyAudio } from './holy.js';
 import { terrainH } from '../world/terrain.js';
 import { camera, canvas, renderer, scene } from '../render/renderer.js';
 import { setCycle, setTime } from '../render/lighting.js';
@@ -29,7 +30,7 @@ import { playerKey, boardOn, setBoardOn, account } from './identity.js';
 import { initLeaders } from './leaders.js';
 import { rest } from '../core/pause.js';
 import { $, reduceMotion } from '../core/env.js';
-import { boomSound, burnSound, crackSound, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeHiss, stepSound, stormZap, thunderSound } from './sfx.js';
+import { bellSound, boomSound, burnSound, crackSound, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeHiss, stepSound, stormZap, thunderSound } from './sfx.js';
 import { clearStorm, setStorm, stormAudio, stormMapOverlay, stormState, stormTick } from './storm.js';
 import { carAt, carPath } from '../world/car-hit.js';
 import { setWhere } from './social.js';
@@ -379,6 +380,7 @@ function ac() {   // the audio context of the game sounds, with one volume knob 
 onChange(() => { if (actx) actx.master.gain.value = SET.vol; if (voice) voice.setVolume(SET.voiceVol); });
 stormAudio.thunder = (vol, d, pan) => thunderSound(ac(), actx.master, vol, d, pan);   // the storm speaks through the game's own audio: one context, one volume knob
 stormAudio.zap = vol => stormZap(ac(), actx.master, vol);
+holyAudio.bell = (f0, vol, d, pan, delay) => bellSound(ac(), actx.master, f0, vol, d, pan, delay);   // the church bells of the race ring through the same audio
 // a blast close by (k: 1 at the heart, 0 at the edge): after its bang the world goes dull and the ears ring, the closer the longer
 function deafen(k, delay) {
   try {
@@ -829,6 +831,11 @@ function arenaChoices() {   // in an arena you come back on your base (or next t
   const rs = el('mpRespawnAt'); rs.textContent = '';
   for (const [v, t] of [['base', 'На своей базе']].concat(MP.ffa ? [] : [['mate', 'Рядом с товарищем']])) { const o = document.createElement('option'); o.value = v; o.textContent = t; rs.append(o); }
 }
+function freeChoices() {   // the open city (the race ended): the chosen place, a teammate or anywhere
+  const rs = el('mpRespawnAt'); rs.textContent = '';
+  for (const [v, t] of (MP.ffa ? [] : [['mate', 'Рядом с товарищем']]).concat([['rand', 'Случайное место']], PLACES.map((p, i) => [i, p[0]]))) { const o = document.createElement('option'); o.value = v; o.textContent = t; rs.append(o); }
+}
+const holyUnit = () => MP.ffa ? (MP.clan ? 'c' + MP.clan : 'p' + MP.id) : 't' + MP.team;
 function edgeNotice() { const now = performance.now(); if (now - (MP.edgeAt || 0) > 3000) feed('Граница арены: дальше нельзя', 'sys'); MP.edgeAt = now; }
 function respawn() {
   if (stormOn() || !MP.dead || performance.now() - MP.deadAt < 3000) return;   // the storm does not respawn: one life, the dead watch the end
@@ -845,7 +852,7 @@ function onMsg(m) {
       cargoClock(m.now || Date.now()); clearCargo(); for (const id of [...marks.keys()]) markRemote(id, false); marks.clear();
       if (m.cargo) { cargoDrop(m.cargo); if (m.cargo.state === 'landed') cargoLand(m.cargo); }
       for (const mk of m.marks || []) { marks.set(mk.id, mk.until); if (mk.id === MP.id) cargoSelf(mk.until); else markRemote(mk.id, true); }
-      for (const [id, a] of Object.entries(m.attach || {})) { const r = remotes.get(+id); if (r && Array.isArray(a)) { r.attach = a; if (r.av) a.forEach((k, w) => r.av.setAttach(w, k)); } } if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
+      for (const [id, a] of Object.entries(m.attach || {})) { const r = remotes.get(+id); if (r && Array.isArray(a)) { r.attach = a; if (r.av) a.forEach((k, w) => r.av.setAttach(w, k)); } } clearHoly(); holyMe(holyUnit(), MP.ffa); if (m.holy) setHoly(m.holy); P.speedMul = holySpeedMul(); if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
       if (MP.local) feed('Тренировка с ботами: ' + MP.board.filter(e => e.bot).length + ', уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || '') + '»', 'sys'); break;
     case 'spawn': {
       nadeCancel(); punchReset();
@@ -920,10 +927,10 @@ function onMsg(m) {
     }
     case 'kill': { feed(m.w === 12 ? labelOf(m.victim, m.vn) + '  ⚡ поглощён штормом' : labelOf(m.killer, m.kn) + '  ➜  ' + labelOf(m.victim, m.vn) + (m.w === 9 ? '  (граната)' : m.w === 11 ? '  (напалм)' : m.w === 10 ? '  (падение)' : m.head ? '  (в голову)' : ''), m.killer === MP.id ? 'mine' : m.victim === MP.id ? 'dead' : ''); if (m.killer === MP.id) { MP.kills++; if (m.victim !== MP.id) statEvent('kill', m, !!MP.local); } if (m.victim === MP.id) { MP.deaths++; statEvent('death', {}, !!MP.local); if (!MP.dead) die(m.w === 10 ? '' : m.kn, m.killer); } else { const rv = remotes.get(m.victim); if (rv && rv.buf.length) { rv.fallT = performance.now(); rv.corpse = corpseOf(rv, m); } } updatePanel(); break; }
     case 'alive': { const r = remotes.get(m.id); if (r) { r.buf.length = 0; r.fallT = 0; } break; }
-    case 'board': MP.board = m.board; MP.score = m.score; { const me = m.board.find(e => e.id === MP.id); if (me) { MP.clan = me.clan || ''; MP.tag = me.tag || ''; } }   // the own team first: the others' tags are read against it
+    case 'board': MP.board = m.board; MP.score = m.score; { const me = m.board.find(e => e.id === MP.id); if (me) { MP.clan = me.clan || ''; MP.tag = me.tag || ''; holyMe(holyUnit(), MP.ffa); P.speedMul = holySpeedMul(); } }   // the own team first: the others' tags are read against it
       for (const e of m.board) { const r = addRemote(e.id, e.name, e.team, e.char); if (r) { r.name = label(e); r.clan = e.clan || ''; r.tag.textContent = r.name; r.tag.classList.toggle('clan', !!MP.clan && r.clan === MP.clan); if (!MP.ffa && r.team !== e.team) { r.team = e.team; r.tag.classList.remove('t0', 't1'); r.tag.classList.add('t' + e.team); } const char = parseChar(e.char); if (char !== r.char) { r.char = char; rebuildAvatar(r); } } if (e.id === MP.id) { MP.kills = e.kills; MP.deaths = e.deaths; } } for (const id of [...remotes.keys()]) if (!m.board.some(e => e.id === id)) dropRemote(id); drawBoard(); updatePanel(); if (voice) voice.setPeers(m.board.filter(e => e.id !== MP.id && !e.bot).map(e => e.id)); break;
     case 'left': dropRemote(m.id); break;
-    case 'side': MP.team = m.team; document.body.dataset.team = m.team; feed('Вы переходите к своей команде: ' + MP.teams[m.team], 'sys'); updatePanel(); break;   // a member of a team on the other side joins his teammates (server/game.mjs)
+    case 'side': MP.team = m.team; document.body.dataset.team = m.team; holyMe(holyUnit(), MP.ffa); P.speedMul = holySpeedMul(); feed('Вы переходите к своей команде: ' + MP.teams[m.team], 'sys'); updatePanel(); break;   // a member of a team on the other side joins his teammates (server/game.mjs)
     case 'nade': { const own = m.by === MP.id && !!NTHROW.at; addNade(m, own ? (vm && vm.canNade ? vm.nadeAt(MV) : nadeBall.getWorldPosition(MV)) : null); if (own) NTHROW.gone = true; } if (m.by !== MP.id) { const rt = remotes.get(m.by); if (rt) rt.throwAt = performance.now(); const dd = Math.hypot(m.p[0] - P.x, m.p[2] - P.z); if (dd < 40) tone(500, 300, 0.08, 0.1 * (1 - dd / 40), 'triangle'); } break;
     case 'zone': {   // the smoke screen or the burning patch: the grenade's copy goes into it (nades.js)
       addZone(m);
@@ -939,11 +946,15 @@ function onMsg(m) {
     case 'cargoEnd': cargoEnd(m); break;
     case 'marked': marks.set(m.id, m.until); if (m.id === MP.id) { cargoSelf(m.until); tone(320, 150, 0.45, 0.4, 'sawtooth'); feed('Вы помечены для всех — 60 секунд', 'dead'); } else markRemote(m.id, true); break;
     case 'unmark': marks.delete(m.id); if (m.id === MP.id) cargoSelf(0); else markRemote(m.id, false); break;
+    case 'holy': { const was = holyState.on; holyMe(holyUnit(), MP.ffa); setHoly(m); if (m.arena) { MP.arena = m.arena; arenaChoices(); } P.speedMul = holySpeedMul(); if (!was) { banner('ЦАРЬ ГОРЫ', 'holy'); tone(523, 523, 0.3, 0.25, 'triangle'); tone(659, 659, 0.35, 0.22, 'triangle', 0.12); tone(784, 784, 0.5, 0.2, 'triangle', 0.24); } break; }   // the call to Church Hill: a rising chord
+    case 'bell': holyBell(m); break;   // a temple taken: its bell rings across the city (holy.js sounds it and flashes the map)
+    case 'holyWin': holyWin(m); banner((m.name || 'Победитель') + ' — ГЛАВНЫЙ ПРИЗ', 'holy'); break;
+    case 'holyEnd': clearHoly(); MP.arena = m.arena || null; P.speedMul = 1; if (MP.arena) arenaChoices(); else freeChoices(); break;
     case 'item': itemBack(m); break;
     case 'took': itemTook(m.id); if (m.to === MP.id) { feed('+ ' + KINDS[m.kind].name + (m.where === 'pack' ? ' · в рюкзак' : ''), 'sys'); tone(660, 990, 0.09, 0.22, 'triangle'); } break;
     case 'inv': MP.ammo = m.mag.slice(); MP.reserve = m.reserve.slice(); MP.nades = m.nades; MP.smokes = m.smokes ?? MP.smokes; MP.napalms = m.napalms ?? MP.napalms; MP.meds = m.meds; if (m.sights) MP.sights = { ...m.sights }; if (Array.isArray(m.attach)) { MP.attach = m.attach.slice(); syncVm(); } if (Array.isArray(m.loadout)) MP.loadout = m.loadout.slice(); if (Array.isArray(m.pack)) MP.pack = m.pack.slice(); if (!MP.loadout.includes(MP.weapon)) { MP.weapon = MP.loadout[0]; models.forEach((mm, k) => { mm.visible = k === MP.weapon; }); if (vm) { vm.setWeapon(MP.weapon); vm.equip(); } } updatePanel(); break;
     case 'attach': if (m.id === MP.id) { MP.attach = m.attach.slice(); syncVm(); updatePanel(); } else { const r = remotes.get(m.id); if (r) { r.attach = m.attach; if (r.av) m.attach.forEach((k, w) => r.av.setAttach(w, k)); } } break;
-    case 'heal': { const got = m.hp - MP.hp; MP.hp = m.hp; MP.meds = m.meds; feed('Аптечка: +' + got + ' HP', 'sys'); tone(440, 660, 0.16, 0.25, 'sine'); updatePanel(); break; }
+    case 'heal': { const got = m.hp - MP.hp; MP.hp = m.hp; MP.meds = m.meds; if (!m.quiet) { feed('Аптечка: +' + got + ' HP', 'sys'); tone(440, 660, 0.16, 0.25, 'sine'); } updatePanel(); break; }   // quiet: the race's regen and the prize top-up, no kit fanfare
     case 'boom': {
       const surf = boomNade(m), dd = Math.hypot(m.x - P.x, m.z - P.z), hear = 300; if (dd < hear) { const v = 1 - dd / hear; let real = false; try { real = boomSound(ac(), actx.master, 1.1 * v, dd, spot(m.x, P.y, m.z).pan, surf); } catch (e) {} if (!real) { bang(1.1 * v, true); tone(80, 35, 0.6, 0.5 * v, 'sine'); } }
       if (dd < 14 && !MP.dead) {   // the white of the flash: full when you look at it, a little from the side or behind
@@ -956,7 +967,7 @@ function onMsg(m) {
     case 'say': addLine(m, MP.id); if (m.id !== MP.id) tone(900, 700, 0.05, 0.08, 'sine'); break;
     case 'rtc': if (voice) voice.signal(m.from, m.d); break;
     case 'win': { nadeCancel(); const mine = m.mode === 'storm' ? stormWon(m) : m.mode === 'ffa' ? m.mvp === MP.id : m.team === MP.team, row = m.rows.find(r => r.id === MP.id); statEvent('round', { win: mine, kills: row ? row.kills : 0 }, !!MP.local); showSummary(m); break; }
-    case 'round': el('mpEnd').hidden = true; el('stormDead').hidden = true; clearInterval(endTimer); stopStormAuto(); clearCargo(); for (const id of [...marks.keys()]) markRemote(id, false); marks.clear(); cargoSelf(0); break;
+    case 'round': el('mpEnd').hidden = true; el('stormDead').hidden = true; clearInterval(endTimer); stopStormAuto(); clearCargo(); clearHoly(); P.speedMul = 1; for (const id of [...marks.keys()]) markRemote(id, false); marks.clear(); cargoSelf(0); break;
     case 'match': setMatch(m); break;
     case 'storm': {
       if (m.phase === 'off') { clearStorm(); document.body.classList.remove('storm', 'storm-out'); if (!MP.local) setWhere('game'); updatePanel(); break; }   // the new match: the storm is gone
@@ -1180,6 +1191,7 @@ function mpTick(dt) {
   if (!MP.on) return;
   const now = performance.now(), t = now - 120;
   if (voice) voice.update(dt); ambTick(dt); statEvent('tick', { dt }, !!MP.local); if (stormState.on) stormTick(dt, now);
+  P.speedMul = holySpeedMul();   // the Lutheran bell hastens the holding side (the server judges the same speed)
   if (MP.arena && !MP.dead) { const A = MP.arena, dx = P.x - A.cx, dz = P.z - A.cz, d = Math.hypot(dx, dz); if (d > A.r - 1) { P.x = A.cx + dx / d * (A.r - 1); P.z = A.cz + dz / d * (A.r - 1); edgeNotice(); } }   // the edge of the arena
   if ((MP.fpsT = (MP.fpsT || 0) - dt) <= 0) { MP.fpsT = 1; updatePanel(); }
   el('mpReloadFill').style.width = (MP.reloadAt ? Math.min(1, (now - MP.reloadAt) / WEAPONS[MP.reloadW].reloadMs) * 100 : 0).toFixed(1) + '%';   // the reload bar under the rounds, every frame (the crosshair ring keeps its own)
@@ -1207,7 +1219,7 @@ function mpTick(dt) {
     if (scoped && !dot) { scopeBdc(fov); if (at === 'optic') { scopeMag.hidden = false; const lbl = MP.opticMag + '×'; if (scopeMag.textContent !== lbl) scopeMag.textContent = lbl; } else scopeMag.hidden = true; }
     if (dot) { dotHint.hidden = !!MP.dotBoostAt; dotHint.classList.toggle('cd', !MP.dotBoostAt && now < MP.dotBoostCd); }   // the hint dims while the peek recharges
     gun.visible = !MP.dead && !nv && (mode === 'sight' || MP.zoom < 0.5); }   // the grenade in hand (and the throw) replaces the gun; the long zoom hides the arms, the red dot keeps them
-  ownSteps(dt); tickNades(dt); zoneSoundTick(); nadeWarnTick(); tickItems(dt, now); cargoTick(dt); spectate(dt, now); nadeAimTick(now); nadeHandTick(nv);
+  ownSteps(dt); tickNades(dt); zoneSoundTick(); nadeWarnTick(); tickItems(dt, now); cargoTick(dt); holyTick(dt); spectate(dt, now); nadeAimTick(now); nadeHandTick(nv);
   if (marks.size) MARK_MAT.opacity = 0.26 + 0.1 * Math.sin(now * 0.006);   // the mark's pillar breathes
   if (P.landH > 0) { const h = P.landH; P.landH = 0; if (h > FALL.safe && !MP.dead && MP.ws.readyState === 1) MP.ws.send(JSON.stringify({ t: 'fall', h: +h.toFixed(2) })); }   // a hard landing: the height goes to the server, which owns the damage
   if (MP.reloadAt && now - MP.reloadAt >= WEAPONS[MP.reloadW].reloadMs) {   // the local picture of the reload; the server's 'inv' message is the truth. It finishes on the weapon that started it, even if another is in hand now
@@ -1373,6 +1385,7 @@ STATE.mapOverlay = (ctx, cx, cz, ppm, w, h) => {
     if (marked) { ctx.beginPath(); ctx.arc(x, y, 8 + 2.5 * Math.sin(now * 0.006), 0, 6.3); ctx.strokeStyle = 'rgba(255, 59, 42, .85)'; ctx.lineWidth = 2; ctx.stroke(); }
   }
   cargoMap(ctx, cx, cz, ppm, w, h);
+  holyMap(ctx, cx, cz, ppm, w, h);   // the four temples of the race: their owners, the capture arcs and the bell flashes
 };
 PERF.notice = text => feed(text, 'sys');
 function enablePlay() { initUi(); el('goPlay').disabled = false; el('goTrain').disabled = false; window.dispatchEvent(new Event('dpils-ready')); }   // the lobby's match card repaints its door

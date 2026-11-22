@@ -95,6 +95,26 @@ export const CARGO = {
   firstMs: 75000, gapMs: 150000, alt: 130, speed: 6.5, pickR: 2.6, groundMs: 150000, markMs: 60000, beaconR: 5,
   loot: [['med', 2], ['nade', 1], ['smoke', 1], ['napalm', 1], ['optic', 1]],   // belt first, the surplus into the pack; the optic only if not already owned
 };
+// the «Царь горы» event (server/game.mjs, src/game/holy.js): the four temples of Church Hill (Церковная горка) —
+// an Orthodox cathedral, a Catholic church, a Lutheran church and an Old Believers' church — stand within three hundred
+// metres of one another. Every few minutes the fight is called to the hill: the whole field is pulled into a tight arena
+// around the temples and four bell towers become capture points. One player (or any one member of a team) takes a point
+// by standing in its ring; the taken temple rings its bell across the whole city and grants its buff to the side that
+// holds it. A side that holds all four for holdMs wins the grand prize. The bells are synthesised on the page (sfx.js
+// bellSound), one strike note per temple — together they spell a chord.
+export const HOLY = {
+  firstMs: 240000, gapMs: 420000, durMs: 420000, warnMs: 30000,   // the first call, the gap after one ends, its length, the warning before
+  capMs: 7000, capR: 13, holdMs: 180000,   // a point takes 7 s alone in the ring (13 m); all four held 3 minutes win the prize
+  prizeScore: 10, prizeKills: 5,   // the grand prize: +10 to the team score, or +5 kills to each winner in the free-for-all
+  buffs: { dmg: 1.25, regen: 3, speed: 1.2, reload: 0.7, rate: 0.85 },   // cathedral: damage; catholic: regen hp/s; lutheran: speed; old believers: reload and cycle
+  buffName: { dmg: 'Урон +25%', regen: 'Реген +3 HP/с', speed: 'Скорость +20%', reload: 'Перезарядка −30% · темп +15%' },
+  temples: [
+    { name: 'Собор Бориса и Глеба', short: 'Собор', faith: 'Православие', x: -124, z: 1287, buff: 'dmg', bell: 174.61 },
+    { name: 'Костёл Девы Марии', short: 'Костёл', faith: 'Католицизм', x: 181, z: 1266, buff: 'regen', bell: 220.0 },
+    { name: 'Церковь Мартина Лютера', short: 'Лютер', faith: 'Лютеранство', x: 57, z: 1286, buff: 'speed', bell: 261.63 },
+    { name: 'Ново-Строенская церковь', short: 'Ново-Строенская', faith: 'Старообрядие', x: -15, z: 1086, buff: 'reload', bell: 329.63 },
+  ],
+};
 // the inventory (keep src/game/mp.js and src/game/inventory.js in step): the reserve each weapon starts with, the time
 // of its reload, and the items that lie on the map and are picked up by walking over them
 export const RESERVE = [90, 24, 15, 36, 200, 90, 90, 90];

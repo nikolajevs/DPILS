@@ -11,8 +11,9 @@
    (WEAPONS.vel) and the damage lands when the bullet arrives, not at the click. The hit is still judged against the target
    as the shooter saw it at the click (the position rewound by the shooter's lag, frozen for the flight), so “shoot where
    you see” holds while the bullet takes its time to get there. */
-import { CARGO, FALL, HIT, INV, ITEMS, LOADOUT, NADE, NADE_KINDS, NAPALM, PACK, RELOAD_MS, RESERVE, RULES as R, SMOKE, WEAPONS, W_FALL, W_FIRE, W_NADE, W_STORM, bulletAt, bulletDir, dragDist, dragTime, rayHit, rayToSegment } from './combat.mjs';
+import { CARGO, FALL, HIT, HOLY, INV, ITEMS, LOADOUT, NADE, NADE_KINDS, NAPALM, PACK, RELOAD_MS, RESERVE, RULES as R, SMOKE, WEAPONS, W_FALL, W_FIRE, W_NADE, W_STORM, bulletAt, bulletDir, dragDist, dragTime, rayHit, rayToSegment } from './combat.mjs';
 import { MATCH as MATCHC, STORM as STORMC, matchAt, pickFinal, stageCircle, stormField, stormPlan } from './storm.mjs';
+import { ARENAS } from './arenas.mjs';
 import { LEVELS, botName, createBrain } from './bots.mjs';
 import { DAY_MS, dayPhase } from './daycycle.mjs';
 
@@ -142,14 +143,15 @@ export function createGame(opts) {
   }
   // where a player appears in an arena: the base point of the team (of everybody in the free-for-all) farthest from the enemies
   function basePoint(p) {
-    const pts = FFA ? arena.bases.flat() : arena.bases[p.team === 1 ? 1 : 0], foes = [...players.values()].filter(q => q.alive && q !== p && (FFA || q.team !== p.team));
+    const A = fieldArena();
+    const pts = FFA ? A.bases.flat() : A.bases[p.team === 1 ? 1 : 0], foes = [...players.values()].filter(q => q.alive && q !== p && (FFA || q.team !== p.team));
     let best = pts[0], bd = -1; for (const [x, z] of pts) { const d = foes.length ? Math.min(...foes.map(q => Math.hypot(q.x - x, q.z - z))) : Math.random() * 100; if (d > bd) { bd = d; best = [x, z]; } }
     const a = Math.random() * 6.283, r = 2 + Math.random() * 10, [x, z] = walkSpot(best[0] + Math.cos(a) * r, best[1] + Math.sin(a) * r);
-    return [x, z, Math.atan2(arena.cx - x, arena.cz - z) + Math.PI];   // facing the middle of the arena
+    return [x, z, Math.atan2(A.cx - x, A.cz - z) + Math.PI];   // facing the middle of the arena
   }
   function areaPoint() { for (let k = 0; k < 30; k++) { const a = Math.random() * 6.283, r = Math.sqrt(Math.random()) * (area.r - 20), x = area.cx + Math.cos(a) * r, z = area.cz + Math.sin(a) * r; if (world.walkable(x, z)) return [x, z, Math.random() * 6.283]; } return [area.cx, area.cz, 0]; }
   function spawn(p, x, z, yaw, exact) {   // exact: the point stands (the circle of the storm), not the arena base or the bot's own pick
-    if (exact) { /* as given */ } else if (arena) [x, z, yaw] = basePoint(p); else if (p.bot) [x, z, yaw] = areaPoint();
+    if (exact) { /* as given */ } else if (fieldArena()) [x, z, yaw] = basePoint(p); else if (p.bot) [x, z, yaw] = areaPoint();
     p.x = num(x, HX); p.z = num(z, HY); p.y = p.bot ? world.ground(p.x, p.z) + 1.7 : 1.7; p.yaw = num(yaw, 10); p.pitch = 0; p.hp = R.hp; p.alive = true; p.protectUntil = now() + R.protectMs; p.t = now(); p.free = true; p.hist.length = 0; p.nades = NADE.count; p.smokes = SMOKE.count; p.napalms = NAPALM.count; p.eye = 1.7; p.fallTop = p.y; if (p.bot) { p.bot.vy = 0; p.bot.fallTop = 0; }
     p.mag = WEAPONS.map(w => w.mag); p.reserve = RESERVE.slice(); p.meds = 0; p.reloadDone = 0; p.lastMed = 0;
     refill(p, 'med'); refill(p, 'nade'); refill(p, 'smoke'); refill(p, 'napalm');   // the kits and grenades stored in the pack top the ready belt up at once
@@ -291,7 +293,7 @@ export function createGame(opts) {
   function beginReload(p, wi, t0) {
     if (!p.alive || p.reloadDone > t0 || p.mag[wi] >= WEAPONS[wi].mag || p.reserve[wi] <= 0) return false;
     if (p.conn && !held(p, wi)) return false;   // a human reloads only an equipped gun
-    p.reloadDone = t0 + RELOAD_MS[wi]; p.reloadW = wi; return true;
+    p.reloadDone = t0 + RELOAD_MS[wi] * reloadMul(p); p.reloadW = wi; return true;
   }
   function useMed(p, t0) {
     if (!p.alive || p.meds <= 0 || p.hp >= R.hp || t0 - p.lastMed < INV.medGapMs) return false;
@@ -347,7 +349,7 @@ export function createGame(opts) {
           const total = dist + best.t;
           let f = 1; for (const w of b.walls) if (w.at <= total + 1e-6) f = w.f;   // the walls punched before this body
           const vf = Math.exp(-b.k * total) * f;   // the speed fraction left: the air and the stone; damage goes as its square
-          const dmg = (best.zone === 1 ? W.head : best.zone === 2 ? W.dmg * HIT.legMul : W.dmg) * vf * vf;
+          const dmg = (best.zone === 1 ? W.head : best.zone === 2 ? W.dmg * HIT.legMul : W.dmg) * vf * vf * dmgMul(shooter);
           const at = bulletAt(b.o, b.d, total, b.speed, b.k), bd = bulletDir(b.d, total, b.speed, b.k), s = b.shot;
           if (!s.hit) { s.hit = true; shooter.st.hitShots++; if (shooter.prof) shooter.prof.add('hits'); }
           const h = s.hits.get(best.v.id) || { v: best.v, dmg: 0, head: false, zone: 0, top: 0, bd: null, vf: 1 };
@@ -374,7 +376,7 @@ export function createGame(opts) {
     const W = WEAPONS[wi], t0 = now(); if (!Array.isArray(rays) || !rays.length || !p.alive) return;
     if (MATCH && roundOver) return;   // the guns are cold after the storm, until the next match
     if (p.conn && !held(p, wi)) return;   // a human fires only an equipped gun
-    if (t0 - p.lastShot < W.gapMs) return;
+    if (t0 - p.lastShot < W.gapMs * rateMul(p)) return;
     if (t0 < p.reloadDone) return;   // still reloading
     if (p.mag[wi] <= 0) { if (p.bot) beginReload(p, wi, t0); return; }   // a bot reloads by itself; a player asks with 'reload'
     p.mag[wi]--; p.lastShot = t0;
@@ -414,6 +416,7 @@ export function createGame(opts) {
   }
   // the end of a round: the table of the round goes to everybody, ten seconds later the scores are cleared and the next round starts
   function endRound(team, winner) {
+    if (holy) endHoly(now(), null, 'round');   // the race steps aside for the round's end
     roundOver = true;
     for (const p of players.values()) if (p.prof) { p.prof.add('rounds'); if (FFA ? p === winner : p.team === team) p.prof.add('wins'); }
     const rows = [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, heads: p.st.heads, dmg: Math.round(p.st.dmg), acc: p.st.shots ? Math.round(100 * p.st.hitShots / p.st.shots) : 0 }));
@@ -428,6 +431,11 @@ export function createGame(opts) {
   // at its start everybody still here is back on his feet with the scores cleared. The cycle is clock-driven
   // (tickMatch every 500 ms), so a restart of the server keeps the schedule.
   let match = null, storm = null;
+  // the «Царь горы» event (HOLY, combat.mjs): the fight is called to Church Hill for a few minutes — a tight arena
+  // around the four temples, four bell-tower capture points, a buff per taken temple, the grand prize for holding all
+  let holy = null, holyArena = null, nextHolyAt = now() + HOLY.firstMs, holySeq = 1, areaRev = 0, holyWarned = false;
+  const fieldArena = () => holyArena || arena;   // the arena in force: the hill during the race, the chosen one otherwise
+  const arenaPub = a => a && { name: a.name, cx: a.cx, cz: a.cz, r: a.r, bases: a.bases };
   const bootAt = now();
   const fmtMin = ms => { const m = Math.round(ms / 60000); return m >= 60 && m % 60 === 0 ? m / 60 + ' ч' : m + ' мин'; };
   const stormFight = () => !!storm && (storm.phase === 'play' || storm.phase === 'sudden');
@@ -461,6 +469,7 @@ export function createGame(opts) {
     teamScore[0] = teamScore[1] = 0; nades.clear(); bullets.clear();
     for (const z of zones.values()) all({ t: 'zoneEnd', id: z.id }); zones.clear();
     if (cargo) { all({ t: 'cargoEnd', id: cargo.id }); cargo = null; } nextCargoAt = now() + CARGO.firstMs;
+    if (holy) { holy = null; holyArena = null; areaRev++; all({ t: 'holyEnd', reason: 'match', arena: arenaPub(arena) }); } nextHolyAt = now() + HOLY.firstMs; holyWarned = false;
     for (const it of items.values()) { it.active = true; it.respawnAt = 0; all(itemMsg(it)); }
     for (const p of players.values()) {
       p.kills = p.deaths = 0; p.streak = 0; p.st = { shots: 0, hitShots: 0, dmg: 0, heads: 0 };
@@ -535,15 +544,15 @@ export function createGame(opts) {
       for (const w of MATCHC.warnMs) if (!match.warned.has(w) && t < match.stormAt && t >= match.stormAt - w && match.stormAt - w > match.start) {
         match.warned.add(w); all({ t: 'chat', text: '⚡ Шторм через ' + fmtMin(w) + ': последние ' + fmtMin(match.stormMs) + ' катки — одна жизнь, зона сужается' }); broadcastMatch();
       }
-      if (t >= match.stormAt) startStorm(t);
+      if (t >= match.stormAt) { if (holy) endHoly(t, null, 'storm'); startStorm(t); }
     }
     if (storm) tickStorm(t);
     if (!match.closedSaid && t >= joinUntil()) { match.closedSaid = true; all({ t: 'chat', text: 'Вход в катку закрыт: новые игроки — в следующей' }); broadcastMatch(); }
     if (t - match.lastBeat >= 10000) { match.lastBeat = t; broadcastMatch(); }
   }
   // ---- bots
-  const enemyBase = p => (arena ? (FFA ? arena.bases.flat()[Math.floor(Math.random() * arena.bases.flat().length)] : arena.bases[p.team === 1 ? 0 : 1][Math.floor(Math.random() * arena.bases[p.team === 1 ? 0 : 1].length)]) : null);
-  const brain = createBrain({ players, now, world, area, field: !arena, FFA, WEAPONS, R, shoot, throwNade, spawn, fall, roundOver: () => roundOver, enemyBase, reload: beginReload, equip, get items() { return items; }, get zones() { return zones; }, get cargo() { return cargo; }, get storm() { return stormFight() ? { ...storm.cur, next: storm.phase === 'play' ? storm.to : null } : null; } });   // the safe circle and the next one: the bots roam towards where the storm is going   // items and cargo are declared below: getters read them once the game is built; storm: the safe circle the bots run into
+  const enemyBase = p => { const A = fieldArena(); return A ? (FFA ? A.bases.flat()[Math.floor(Math.random() * A.bases.flat().length)] : A.bases[p.team === 1 ? 0 : 1][Math.floor(Math.random() * A.bases[p.team === 1 ? 0 : 1].length)]) : null; };
+  const brain = createBrain({ players, now, world, get area() { return fieldArena() || area; }, get field() { return !fieldArena(); }, get areaRev() { return areaRev; }, FFA, WEAPONS, R, shoot, throwNade, spawn, fall, roundOver: () => roundOver, enemyBase, reload: beginReload, equip, get items() { return items; }, get zones() { return zones; }, get cargo() { return cargo; }, get holy() { return holy; }, holyUnit: p => unitOf(p), speedMul: p => speedMul(p), get storm() { return stormFight() ? { ...storm.cur, next: storm.phase === 'play' ? storm.to : null } : null; } });   // the safe circle and the next one: the bots roam towards where the storm is going   // items and cargo are declared below: getters read them once the game is built; storm: the safe circle the bots run into
   let botN = 0;
   function addBot(level) {
     if (players.size >= MAX) return null;
@@ -586,10 +595,10 @@ export function createGame(opts) {
           p.acct = who ? who.name : ''; p.clan = clanOf(p);
           const side = clanSide(p);   // the team fight: a member of a team joins the side where his teammates are
           p.team = side >= 0 ? side : pickTeam(m.team, p.id); p.char = cleanChar(m.char); p.joined = true; p.joinedAt = t0; players.set(p.id, p);
-          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, clan: p.clan || undefined, now: now(), arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, day: dayNow() || undefined, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), zones: [...zones.values()].map(z => ({ id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, r: z.r, durMs: z.dur, left: Math.max(0, z.until - now()) })), cargo: cargoMsg(), marks: marks(), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])), match: matchPublic() || undefined, storm: stormPublic() || undefined });
+          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, clan: p.clan || undefined, now: now(), arena: arenaPub(fieldArena()), holy: holyPublic() || undefined, rules: { hp: R.hp, range: R.range }, day: dayNow() || undefined, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), zones: [...zones.values()].map(z => ({ id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, r: z.r, durMs: z.dur, left: Math.max(0, z.until - now()) })), cargo: cargoMsg(), marks: marks(), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])), match: matchPublic() || undefined, storm: stormPublic() || undefined });
           const mate = besideMate(p);   // a team appears together: next to a living teammate (in an arena the base decides)
           if (stormFight()) { const [sx, sz, syaw] = mate || stormSpawnPoint(); spawn(p, sx, sz, syaw, true); }   // a join in the storm appears inside the circle
-          else if (mate && !arena) spawn(p, mate[0], mate[1], mate[2]); else spawn(p, m.x, m.z, m.yaw);
+          else if (mate && !fieldArena()) spawn(p, mate[0], mate[1], mate[2]); else spawn(p, m.x, m.z, m.yaw);
           if (side >= 0) rebalance();
           sendBoard(); all({ t: 'chat', text: (p.clan ? '[' + p.clan.tag + '] ' : '') + p.name + (stormFight() ? ' в шторме' : FFA ? ' в игре' : ' в игре, ' + TEAMS[p.team]) });
           return;
@@ -598,9 +607,10 @@ export function createGame(opts) {
         if (m.t === 'state' && p.alive) {
           const dt = Math.max(0.02, Math.min(0.5, (t0 - p.t) / 1000)); p.t = t0;
           const x = num(m.x, HX), z = num(m.z, HY), y = Math.max(-50, Math.min(400, num(m.y, 400)));
-          if (arena && Math.hypot(x - arena.cx, z - arena.cz) > arena.r) { send(p, { t: 'correct', x: p.x, y: p.y, z: p.z, out: true }); return; }   // beyond the edge of the arena
+          const FA = fieldArena();
+          if (FA && Math.hypot(x - FA.cx, z - FA.cz) > FA.r) { send(p, { t: 'correct', x: p.x, y: p.y, z: p.z, out: true }); return; }   // beyond the edge of the arena
           const far = Math.hypot(x - p.x, z - p.z), first = p.free && far < 80; p.free = false;   // right after a spawn the client may nudge itself off a wall or out of the water
-          if (!first && far > R.runSpeed * dt * 1.6 + 3) send(p, { t: 'correct', x: p.x, y: p.y, z: p.z });   // too fast: put back
+          if (!first && far > R.runSpeed * speedMul(p) * dt * 1.6 + 3) send(p, { t: 'correct', x: p.x, y: p.y, z: p.z });   // too fast: put back
           else { p.x = x; p.z = z; p.y = y; }
           p.fallTop = Math.max(p.fallTop ?? p.y, p.y);   // the highest point since the last landing: the fall report is capped by it
           p.yaw = num(m.yaw, 100); p.pitch = num(m.pitch, 1.6); p.eye = Math.max(0.9, Math.min(1.8, num(m.h, 1.8) || 1.7)); p.wep = okWeapon(m.w) && held(p, m.w) ? m.w : p.loadout[0];   // the gun in hand must be one of the two equipped
@@ -728,7 +738,7 @@ export function createGame(opts) {
   function stepCargo(t) {
     for (const p of players.values()) if (p.markUntil && t >= p.markUntil) { p.markUntil = 0; all({ t: 'unmark', id: p.id }); }
     if (roundOver) return;
-    if (!cargo) { if (t >= nextCargoAt && players.size && !storm) dropCargo(); return; }   // the storm runs its own fight: no new crate after it begins
+    if (!cargo) { if (t >= nextCargoAt && players.size && !storm && !holy) dropCargo(); return; }   // the storm and the race run their own fight: no new crate while they hold the field
     if (cargo.state === 'fall') {
       if (t < cargo.landAt) return;
       cargo.state = 'landed'; cargo.until = t + CARGO.groundMs;
@@ -757,6 +767,133 @@ export function createGame(opts) {
     }
   }
   timers.push(setInterval(() => stepCargo(now()), 200));
+  // ---- the «Царь горы» event (HOLY, combat.mjs): the four temples of Church Hill become capture points. The whole
+  // field is pulled into a tight arena around the hill for the race; a taken temple rings its bell across the city and
+  // grants its buff to the holding side; all four held three minutes win the grand prize. The bots converge on the
+  // points too (bots.mjs). The page draws the beacons, the bells and the HUD (src/game/holy.js).
+  const holyBuffs = p => {
+    if (!holy) return null;
+    const u = unitOf(p); let b = null;
+    for (const pt of holy.points) if (pt.owner === u) (b = b || {})[HOLY.temples[pt.i].buff] = true;
+    return b;
+  };
+  function dmgMul(p) { return holyBuffs(p)?.dmg ? HOLY.buffs.dmg : 1; }
+  function speedMul(p) { return holyBuffs(p)?.speed ? HOLY.buffs.speed : 1; }
+  function reloadMul(p) { return holyBuffs(p)?.reload ? HOLY.buffs.reload : 1; }
+  function rateMul(p) { return holyBuffs(p)?.reload ? HOLY.buffs.rate : 1; }
+  const sideName = u => {
+    if (!FFA) return TEAMS[+u.slice(1)] || u;
+    const p = [...players.values()].find(q => unitOf(q) === u);
+    return p ? (p.clan ? p.clan.name : p.name) : u;
+  };
+  const holyPublic = () => {
+    if (!holy) return null;
+    const t = now();
+    return {
+      id: holy.id, t0: holy.t0, until: holy.until, left: Math.max(0, holy.until - t), capMs: HOLY.capMs, capR: HOLY.capR, holdMs: HOLY.holdMs,
+      points: holy.points.map(pt => ({ i: pt.i, x: pt.x, z: pt.z, gy: pt.gy, owner: pt.owner, team: pt.team, name: pt.name, prog: +pt.prog.toFixed(3), progSide: pt.progSide, progTeam: pt.progTeam, ringAt: pt.ringAt })),
+      hold: holy.holdSide ? { side: holy.holdSide, team: holy.holdTeam, name: sideName(holy.holdSide), left: Math.max(0, holy.holdStart + HOLY.holdMs - t) } : null,
+      arena: arenaPub(holyArena),
+    };
+  };
+  function hillSpot(p) {   // where a player appears for the race: near his base on the hill, or anywhere round it
+    const A = holyArena;
+    if (!FFA) { const b = A.bases[p.team === 1 ? 1 : 0], q = b[Math.floor(Math.random() * b.length)], a = Math.random() * 6.283, r = 3 + Math.random() * 16; return walkSpot(q[0] + Math.cos(a) * r, q[1] + Math.sin(a) * r); }
+    for (let k = 0; k < 30; k++) { const a = Math.random() * 6.283, r = 30 + Math.sqrt(Math.random()) * (A.r - 60), x = A.cx + Math.cos(a) * r, z = A.cz + Math.sin(a) * r; if (world.walkable(x, z)) return [x, z]; }
+    return walkSpot(A.cx, A.cz);
+  }
+  function startHoly(t) {
+    if (holy || storm || roundOver || !players.size) return;
+    if (cargo) cargoGone(t, 'end');   // the crate steps aside: the hill is the whole fight now
+    holyArena = { ...ARENAS.church, bases: ARENAS.church.bases.map(b => b.map(([x, z]) => walkSpot(x, z))) };
+    areaRev++;
+    holy = { id: holySeq++, t0: t, until: t + HOLY.durMs, lastStep: t, lastBeat: t, holdSide: null, holdTeam: -1, holdStart: 0,
+      points: HOLY.temples.map((tp, i) => ({ i, x: tp.x, z: tp.z, gy: world.ground(tp.x, tp.z), owner: null, team: -1, name: '', prog: 0, progSide: null, progTeam: -1, ringAt: 0 })) };
+    for (const p of players.values()) {
+      if (!p.alive) continue;
+      p.holyBack = [p.x, p.z, p.yaw];   // where the race found him: he goes back there when it ends
+      const [x, z] = hillSpot(p); spawn(p, x, z, Math.atan2(holyArena.cx - x, holyArena.cz - z) + Math.PI, true);
+    }
+    all({ t: 'holy', ...holyPublic() });
+    all({ t: 'chat', text: '🔔 Царь горы! Все на Церковную горку: захватите четыре колокольни, удержите все 3 минуты — главный приз' });
+  }
+  function capture(pt, side, byName, t) {
+    pt.owner = side.u; pt.team = side.team; pt.name = side.name; pt.prog = 1; pt.progSide = side.u; pt.progTeam = side.team; pt.ringAt = t;
+    all({ t: 'bell', i: pt.i, side: side.u, team: side.team, name: side.name, by: byName });
+    all({ t: 'chat', text: '🔔 ' + side.name + ' захватили ' + HOLY.temples[pt.i].name + ' — ' + HOLY.buffName[HOLY.temples[pt.i].buff] });
+  }
+  function holyPrize(u, t) {
+    const team = FFA ? -1 : +u.slice(1), winners = [...players.values()].filter(p => unitOf(p) === u);
+    if (!FFA && team >= 0) teamScore[team] += HOLY.prizeScore;
+    for (const p of winners) {
+      if (FFA) p.kills += HOLY.prizeKills;
+      p.hp = R.hp; p.nades = NADE.count; p.smokes = SMOKE.count; p.napalms = NAPALM.count; p.meds = INV.medMax; p.reserve = RESERVE.slice(); p.mag = WEAPONS.map(w => w.mag); p.reloadDone = 0;
+      if (!p.alive) spawn(p);   // the fallen of the winning side stand up for the prize
+      else { send(p, { t: 'heal', hp: p.hp, meds: p.meds, quiet: 1 }); invMsg(p); }
+    }
+    all({ t: 'holyWin', side: u, team, name: sideName(u), score: FFA ? [] : teamScore });
+    all({ t: 'chat', text: '🏆 ' + sideName(u) + ' удержали все храмы 3 минуты — главный приз! ' + (FFA ? '+' + HOLY.prizeKills + ' очков каждому' : '+' + HOLY.prizeScore + ' очков команде') + ', все живы и снаряжены' });
+    sendBoard();
+    endHoly(t, u, 'win');
+    if (FFA) { for (const p of winners) if (p.kills >= WIN) { endRound(p.team, p); break; } }
+    else if (team >= 0 && teamScore[team] >= WIN) endRound(team, winners[0]);
+  }
+  function endHoly(t, winner, reason) {
+    if (!holy) return;
+    holy = null; holyArena = null; areaRev++; holyWarned = false;
+    nextHolyAt = t + HOLY.gapMs;
+    for (const p of players.values()) {
+      if (!p.alive) { p.holyBack = null; continue; }
+      const back = p.holyBack; p.holyBack = null;
+      if (back && world.walkable(back[0], back[1])) spawn(p, back[0], back[1], back[2], true);
+      else spawn(p);
+    }
+    all({ t: 'holyEnd', reason, winner: winner || undefined, arena: arenaPub(arena) });
+    if (reason === 'time') all({ t: 'chat', text: 'Царь горы завершён — никто не удержал все храмы' });
+    else if (reason === 'storm') all({ t: 'chat', text: 'Царь горы прерван штормом' });
+  }
+  function stepHoly(t) {
+    if (roundOver) return;
+    if (!holy) {
+      if (!holyWarned && t >= nextHolyAt - HOLY.warnMs && t < nextHolyAt && players.size && !storm) { holyWarned = true; all({ t: 'chat', text: '⛪ Царь горы через 30 с — собирайтесь на Церковной горке' }); }
+      if (t >= nextHolyAt && players.size && !storm && !cargo) startHoly(t);
+      return;
+    }
+    const dt = Math.max(0, Math.min(1, (t - holy.lastStep) / 1000)); holy.lastStep = t;
+    for (const pt of holy.points) {
+      const sides = new Map();
+      for (const p of players.values()) {
+        if (!p.alive || Math.hypot(p.x - pt.x, p.z - pt.z) > HOLY.capR) continue;
+        if (Math.abs((p.y - p.eye) - pt.gy) > 4) continue;   // on the ground by the temple, not flying over it
+        const u = unitOf(p);
+        if (!sides.has(u)) sides.set(u, { u, team: FFA ? -1 : p.team, name: FFA ? (p.clan ? p.clan.name : p.name) : TEAMS[p.team], by: p.name });
+      }
+      if (sides.size === 1) {
+        const s = [...sides.values()][0];
+        if (pt.owner === s.u) { pt.prog = 1; pt.progSide = s.u; pt.progTeam = s.team; }
+        else {
+          pt.progSide = s.u; pt.progTeam = s.team; pt.prog = Math.min(1, pt.prog + dt * 1000 / HOLY.capMs);
+          if (pt.prog >= 1) capture(pt, s, s.by, t);
+        }
+      } else if (sides.size > 1) pt.prog = Math.max(0, pt.prog - dt * 1000 / HOLY.capMs * 0.5);   // contested: the ring stalls
+      else if (pt.owner !== pt.progSide) pt.prog = Math.max(0, pt.prog - dt * 1000 / HOLY.capMs);   // left alone: the progress fades, the owner keeps it
+    }
+    // all four in one hand: the three-minute hold begins
+    const owned = holy.points.every(pt => pt.owner), one = owned && new Set(holy.points.map(pt => pt.owner)).size === 1 ? holy.points[0].owner : null;
+    if (one) {
+      if (holy.holdSide !== one) { holy.holdSide = one; holy.holdTeam = FFA ? -1 : +one.slice(1); holy.holdStart = t; all({ t: 'chat', text: '⛪ ' + sideName(one) + ' держат все храмы — пошёл отсчёт 3 минут!' }); all({ t: 'holy', ...holyPublic() }); holy.lastBeat = t; }
+      else if (t - holy.holdStart >= HOLY.holdMs) { holyPrize(one, t); return; }
+    } else if (holy.holdSide) { holy.holdSide = null; holy.holdTeam = -1; all({ t: 'chat', text: 'Удержание прервано — храмы снова врозь' }); all({ t: 'holy', ...holyPublic() }); holy.lastBeat = t; }
+    // the catholic regen: a little health each tick to the living of the holding side
+    for (const p of players.values()) {
+      if (!p.alive || p.hp >= R.hp || !holyBuffs(p)?.regen) continue;
+      p.regenAcc = (p.regenAcc || 0) + HOLY.buffs.regen * dt;
+      if (p.regenAcc >= 1) { const add = Math.floor(p.regenAcc); p.regenAcc -= add; p.hp = Math.min(R.hp, p.hp + add); send(p, { t: 'heal', hp: p.hp, meds: p.meds, quiet: 1 }); }
+    }
+    if (t >= holy.until) { endHoly(t, null, 'time'); return; }
+    if (t - holy.lastBeat >= 1000) { holy.lastBeat = t; all({ t: 'holy', ...holyPublic() }); }
+  }
+  timers.push(setInterval(() => stepHoly(now()), 200));
   // ---- the clock of the game: snapshots of the world, the grenades in the air, the bots
   let last = now();
   timers.push(setInterval(() => {
@@ -787,6 +924,9 @@ export function createGame(opts) {
     get cargo() { return cargo; },   // the supply drop in flight or on the ground: the tests drive it by their own clock
     stepCargo: () => stepCargo(now()),   // the drop, the landing, the pickup and the mark's minute, for the tests
     cargoDrop: () => dropCargo(),   // and a drop on demand, without waiting out the first minute
+    get holy() { return holy; },   // the race on the hill: the tests read the points and the hold
+    stepHoly: () => stepHoly(now()),   // the capture, the bell, the buff and the prize, for the tests
+    holyStart: () => startHoly(now()),   // and the call to the hill on demand
     stepBullets: () => advanceBullets(now()),   // the tests drive the flight by their own clock
     stepNades: tickNades,   // the tests drive the fuse and the zones by their own clock too
     stepBots,   // and the bots' think by the test clock, for the fall test
@@ -795,7 +935,7 @@ export function createGame(opts) {
     get match() { return match; },   // the schedule of the match, its roster and the fallen of its storm
     get storm() { return storm; },   // the storm's state: the tests read the circle and the phase
     stop() { for (const t of timers) { clearInterval(t); clearTimeout(t); } timers.length = 0; },
-    health() { return { ok: true, mode: MODE, name: NAME, players: humans().length, bots: players.size - humans().length, max: MAX, score: teamScore, win: WIN === Infinity ? null : WIN, teams: TEAMS, round: roundOver ? 'end' : 'play', arena: arena ? arena.name : null, leaderboard: !!lb, day: dayNow(), match: matchPublic() || undefined, storm: storm ? { phase: storm.phase, pi: storm.pi, stages: storm.plan.length, kind: storm.kind, left: Math.max(0, storm.t1 - now()), alive: stormAlive().length, total: players.size } : undefined }; },
+    health() { return { ok: true, mode: MODE, name: NAME, players: humans().length, bots: players.size - humans().length, max: MAX, score: teamScore, win: WIN === Infinity ? null : WIN, teams: TEAMS, round: roundOver ? 'end' : 'play', arena: fieldArena() ? fieldArena().name : null, holy: holy ? { left: Math.max(0, holy.until - now()), held: holy.points.filter(pt => pt.owner).length, hold: holy.holdSide ? Math.max(0, holy.holdStart + HOLY.holdMs - now()) : 0 } : undefined, leaderboard: !!lb, day: dayNow(), match: matchPublic() || undefined, storm: storm ? { phase: storm.phase, pi: storm.pi, stages: storm.plan.length, kind: storm.kind, left: Math.max(0, storm.t1 - now()), alive: stormAlive().length, total: players.size } : undefined }; },
   };
 }
 export { LEVELS };

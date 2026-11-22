@@ -201,4 +201,31 @@ function stormZap(ctx, out, vol = 1) {
     noisePlay(ctx, out, { type: 'highpass', freq: 4200, vol: vol * 0.2, dur: 0.05, attack: 0.002, delay: 0.02 });
   } catch (e) {}
 }
-export { boomSound, burnSound, crackSound, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeHiss, stepSound, stormZap, thunderSound };
+// the church bell of the «Царь горы» (src/game/holy.js): a bronze bell is not a harmonic tone — its partials are
+// inharmonic (hum, prime, a minor tierce, quint, nominal and the higher ranks), each dying at its own rate, and the
+// clapper strikes a short bright transient. Two slightly detuned oscillators per partial give the slow beat of real
+// bronze. f0 is the strike note (one per temple); the bell is heard across the whole city — the volume falls with
+// distance but never below a third, the air dulls the highs, and the sound arrives at the speed of sound (capped so a
+// far temple still rings within a couple of seconds). No recording exists in the sets: this is always synthesised.
+function bellSound(ctx, out, f0 = 220, vol = 1, d = 0, pan = 0, delay = 0) {
+  try {
+    const t = ctx.currentTime + delay + Math.min(2.5, d / 340);
+    const v = vol * Math.max(0.3, 1.15 / (1 + d * 0.004));
+    const head = ctx.createGain(); head.gain.value = 1;
+    const flt = ctx.createBiquadFilter(); flt.type = 'lowpass'; flt.frequency.value = Math.min(16000, 9000 / (1 + d * 0.01));
+    const pn = ctx.createStereoPanner(); pn.pan.value = Math.max(-1, Math.min(1, pan));
+    head.connect(flt); flt.connect(pn); pn.connect(out);
+    // [ratio to the strike note, amplitude, decay seconds]
+    const PART = [[0.5, 0.5, 7], [1, 1, 5], [1.19, 0.55, 3.5], [1.5, 0.4, 3], [2, 0.5, 2.2], [2.51, 0.25, 1.6], [3.01, 0.18, 1.2], [4.16, 0.1, 0.9], [5.43, 0.06, 0.6]];
+    for (const [r, a, dec] of PART) for (const det of [-0.35, 0.35]) {
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f0 * r + det;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, v * a * 0.5), t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
+      o.connect(g); g.connect(head); o.start(t); o.stop(t + dec + 0.1);
+    }
+    const n = ctx.createBufferSource(); n.buffer = noise(ctx);
+    const nf = ctx.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = f0 * 8; nf.Q.value = 1.2;
+    const ng = ctx.createGain(); ng.gain.setValueAtTime(v * 0.5, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+    n.connect(nf); nf.connect(ng); ng.connect(head); n.start(t); n.stop(t + 0.08);
+  } catch (e) {}
+}
+export { bellSound, boomSound, burnSound, crackSound, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeHiss, stepSound, stormZap, thunderSound };
