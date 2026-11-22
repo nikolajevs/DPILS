@@ -134,11 +134,9 @@ for (const [kind, code] of [['smoke', 'KeyB'], ['napalm', 'KeyN']]) {
   await page.waitForTimeout(3500);   // the 2 s fuse, then the zone breathes
   await shot(`game-${kind}-zone.png`);
   console.log(kind, 'zone laid');
-  if (kind === 'smoke') {   // the inventory panel with the three grenade cards, while the screen still hangs
+  if (kind === 'smoke') {   // the inventory panel (the vest with the three grenade pockets), while the screen still hangs
     await page.evaluate(() => { window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyI' })); window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyI' })); });
-    await page.waitForTimeout(1000);
-    await page.evaluate(() => { const b = document.getElementById('mpInvBody'), low = b.querySelector('.inv-low'); b.scrollTop = low.getBoundingClientRect().top - b.getBoundingClientRect().top + b.scrollTop - 80; });   // the items section with the grenade cards
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(2500);   // the pictures of the models are shot on the first opening
     await shot('game-inv.png');
     await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })));
     await page.waitForTimeout(400);
