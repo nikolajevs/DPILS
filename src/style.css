@@ -701,12 +701,6 @@ body.mp .bar { background: var(--glass); border-color: var(--glass-line); color:
 .choice:disabled { cursor: progress; opacity: .55; }
 .choice.main:disabled { background: var(--line); color: var(--muted); box-shadow: none; opacity: 1; filter: none; }
 .choice.main:disabled .ch-ico { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--muted); }
-/* The Firefox browser hint on the start card (src/ui/start.js): quiet, dismissible for good */
-.browser-hint { display: flex; align-items: flex-start; gap: 8px; margin: 2px 0 0; padding: 8px 10px; border: 1px solid var(--line); border-left: 3px solid var(--brick); border-radius: 6px; background: var(--panel); font: 400 12.5px/1.45 var(--f-body); color: var(--muted); }
-.browser-hint[hidden] { display: none; }   /* display:flex would override the hidden attribute */
-.browser-hint b { color: var(--ink); font-weight: 600; }
-.browser-hint .bh-x { flex: none; margin: -2px -4px 0 0; padding: 2px 7px; border: 0; border-radius: 5px; background: none; color: var(--muted); font: 600 15px/1.2 var(--f-body); cursor: pointer; }
-.browser-hint .bh-x:hover { background: var(--line); color: var(--ink); }
 .play { margin-top: 0; padding-top: 0; border-top: 0; gap: 12px; }
 .play .step-head { display: flex; align-items: center; gap: 12px; }
 .play .step-head .back { padding: 8px 12px; }

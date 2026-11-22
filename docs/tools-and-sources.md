@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Chatbox | chatbox/remove-firefox-hint | Firefox: убрать подсказку про Chrome и стартовый штраф качества (проблема исправлена) | src/ui/start.js, index.html, src/style.css, src/render/lighting.js, README.md |
 
 ## Автономный цикл улучшений
 
