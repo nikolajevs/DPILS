@@ -100,7 +100,8 @@ export function createGame(opts) {
     for (let k = 0; k < 64; k++) {
       const a = count(0), b = count(1), big = a - b > 1 ? 0 : b - a > 1 ? 1 : -1; if (big < 0) break;
       const bot = [...players.values()].reverse().find(q => q.bot && q.team === big); if (!bot) break;
-      bot.team = 1 - big; moved = true; spawn(bot);
+      bot.team = 1 - big; moved = true;
+      if (!stormFight()) spawn(bot); else if (bot.alive) { const [x, z, yaw] = stormSpawnPoint(); spawn(bot, x, z, yaw, true); }   // the storm: the fallen stay fallen, the living cross over inside the circle
     }
     if (moved) sendBoard();
   }
@@ -542,7 +543,7 @@ export function createGame(opts) {
   }
   // ---- bots
   const enemyBase = p => (arena ? (FFA ? arena.bases.flat()[Math.floor(Math.random() * arena.bases.flat().length)] : arena.bases[p.team === 1 ? 0 : 1][Math.floor(Math.random() * arena.bases[p.team === 1 ? 0 : 1].length)]) : null);
-  const brain = createBrain({ players, now, world, area, field: !arena, FFA, WEAPONS, R, shoot, throwNade, spawn, fall, roundOver: () => roundOver, enemyBase, reload: beginReload, equip, get items() { return items; }, get zones() { return zones; }, get cargo() { return cargo; }, get storm() { return stormFight() ? storm.cur : null; } });   // items and cargo are declared below: getters read them once the game is built; storm: the safe circle the bots run into
+  const brain = createBrain({ players, now, world, area, field: !arena, FFA, WEAPONS, R, shoot, throwNade, spawn, fall, roundOver: () => roundOver, enemyBase, reload: beginReload, equip, get items() { return items; }, get zones() { return zones; }, get cargo() { return cargo; }, get storm() { return stormFight() ? { ...storm.cur, next: storm.phase === 'play' ? storm.to : null } : null; } });   // the safe circle and the next one: the bots roam towards where the storm is going   // items and cargo are declared below: getters read them once the game is built; storm: the safe circle the bots run into
   let botN = 0;
   function addBot(level) {
     if (players.size >= MAX) return null;

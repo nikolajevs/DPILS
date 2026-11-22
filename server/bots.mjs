@@ -106,9 +106,10 @@ export function createBrain(g) {
   }
   function waypoint(p) {   // somewhere to walk: mostly towards the enemy half of the arena, sometimes anywhere
     const sz = g.storm;
-    if (sz) {   // the storm: roam inside the safe circle, towards its middle — the fight comes to you
-      for (let k = 0; k < 24; k++) { const a = rnd(0, 6.283), r = Math.sqrt(Math.random()) * Math.max(8, sz.r * 0.75), x = sz.x + Math.cos(a) * r, z = sz.z + Math.sin(a) * r; if (inArea(x, z) && world.walkable(x, z)) return [x, z]; }
-      return [sz.x, sz.z];
+    if (sz) {   // the storm: roam inside the next circle (it lies inside the safe one), towards its middle — the fight comes to you
+      const c = sz.next || sz;
+      for (let k = 0; k < 24; k++) { const a = rnd(0, 6.283), r = Math.sqrt(Math.random()) * Math.max(8, c.r * 0.75), x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r; if (inArea(x, z) && world.walkable(x, z)) return [x, z]; }
+      return [c.x, c.z];
     }
     for (let k = 0; k < 24; k++) {
       let x, z;
