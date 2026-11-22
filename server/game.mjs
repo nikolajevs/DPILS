@@ -63,7 +63,9 @@ export function createGame(opts) {
   const CHARS = ['soldier', 'spartan', 'alien', '2b'];
   const cleanChar = s => (typeof s === 'string' && CHARS.includes(s) ? s : '');
   const botChar = () => CHARS[Math.random() * CHARS.length | 0];
-  const board = () => [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, bot: !!p.bot, char: p.char }));
+  // the Tab scoreboard reads more than the score: the round's damage and accuracy, the ping of a human (a bot has none),
+  // and who is on their feet — so the held table shows the live round, not only the kills
+  const board = () => [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, bot: !!p.bot, char: p.char, dmg: Math.round(p.st.dmg), acc: p.st.shots ? Math.round(100 * p.st.hitShots / p.st.shots) : 0, ping: p.bot ? undefined : Math.round(p.rtt), alive: p.alive }));
   const sendBoard = () => all({ t: 'board', board: board(), score: FFA ? [] : teamScore });
   const count = k => [...players.values()].filter(p => p.team === k).length;
   function pickTeam(want, id) {
@@ -480,6 +482,7 @@ export function createGame(opts) {
     if (players.size) all({ t: 'snap', now: now(), p: list });
   }, 1000 / R.tickHz));
   timers.push(setInterval(() => { for (const p of players.values()) if (p.prof) p.prof.add('secs'); }, 1000));   // the time played
+  timers.push(setInterval(() => { if (players.size) sendBoard(); }, 2000));   // the held Tab keeps living: damage, accuracy, ping and the fallen refresh between kills
   function stepNades() {
     const t = now();
     for (const n of [...nades.values()]) {
