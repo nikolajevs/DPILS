@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CHARS, CHAR_KEYS, hasChar, loadChar, makeAvatar, parseChar } from '../game/avatar.js';
+import { CHARS, CHAR_KEYS, hasChar, loadAvatar, loadChar, makeAvatar, parseChar } from '../game/avatar.js';
 import { akReady, loadAK } from '../game/viewmodel.js';
 import { worldSpace } from '../render/world-space.js';
 import { $, reduceMotion } from '../core/env.js';
@@ -126,7 +126,8 @@ async function prepare(root, cam, target) {
   }
 }
 function figure(key) {
-  return figs[key] || (figs[key] = Promise.all([loadChar(key), loadAK()]).then(async () => {
+  // (its own file did not come: the operator stands in, once the other files are here — makeAvatar)
+  return figs[key] || (figs[key] = Promise.all([loadChar(key).then(a => a || loadAvatar()), loadAK()]).then(async () => {
     const a = makeAvatar(key); if (!a) return null;
     a.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
     a.update(0.016, IDLE);
@@ -284,7 +285,7 @@ $('lobbyNext').addEventListener('click', () => cycle(1));
 /* ---------- the loop: only while the lobby is on screen ---------- */
 function tick(t) {
   raf = requestAnimationFrame(tick);
-  if (!open || document.hidden || $('start').hidden) { lastT = t; return; }
+  if (!open || !renderer || document.hidden || $('start').hidden) { lastT = t; return; }
   const dt = clamp((t - lastT) / 1000 || 0.016, 0.001, 0.05); lastT = t;
   if (!dragging && !reduceMotion && t - idleAt > 2600) yaw += dt * 0.28;
   spin.rotation.y = yaw;
