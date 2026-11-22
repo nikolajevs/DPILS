@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Claude | claude/smoke-grenade-337195 | Дымовая граната: завеса, шашка на земле, вид изнутри, метки и боты сквозь дым | src/game/nades.js, src/game/mp.js, src/game/sfx.js, server/game.mjs, server/bots.mjs, server/combat.mjs |
 
 ## Автономный цикл улучшений
 
