@@ -187,12 +187,25 @@ function makeViewmodel(parent) {
   const NADE_S = 0.5, NADE_C = 0.066;   // the in-hand M67 at its true size (the map prop is twice as big); the middle of its body above its base
   const nadeBox = new THREE.Group(), nadeIn = new THREE.Group(), pinBox = new THREE.Group(), ringMark = new THREE.Object3D();
   nadeIn.position.y = -NADE_C; nadeBox.add(nadeIn); nadeIn.add(pinBox); nadeBox.visible = false;
-  let nadeFill = 0;   // 0 nothing yet, 1 the stand-in ball, 2 the model
-  function fillNade() {
-    if (nadeFill === 2) return;
-    const parts = splitNade(), keep = o => o.traverse(c => { if (c.isMesh) { c.frustumCulled = false; c.castShadow = false; c.receiveShadow = true; c.material = drawOver(worldSpace(c.material.clone())); } });
-    if (!parts && nadeFill) return;
+  let nadeFill = 0, nadeKind = 'nade';   // 0 nothing yet, 1 the stand-in, 2 the model; of which kind
+  function fillNade(kind = 'nade') {
+    if (kind === nadeKind && nadeFill === 2) return;
+    const keep = o => o.traverse(c => { if (c.isMesh) { c.frustumCulled = false; c.castShadow = false; c.receiveShadow = true; c.material = drawOver(worldSpace(c.material.clone())); } });
+    nadeKind = kind;
     nadeIn.clear(); pinBox.clear(); nadeIn.add(pinBox);
+    if (kind !== 'nade') {   // the smoke and the napalm: the whole canister in the palm, no pin to pull
+      const m = prop(kind);
+      if (m) {
+        const h = new THREE.Box3().setFromObject(m).getSize(new THREE.Vector3()).y;
+        m.position.y = -NADE_C - (h - 0.2) / 2; keep(m); nadeIn.add(m); nadeFill = 2;
+      } else {
+        const c = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.2, 12), drawOver(worldSpace(new THREE.MeshLambertMaterial({ color: kind === 'napalm' ? 0x8a2a22 : 0x6a7a5a }))));
+        c.position.y = NADE_C; c.frustumCulled = false; nadeIn.add(c); nadeFill = 1;
+      }
+      return;
+    }
+    const parts = splitNade();
+    if (!parts && nadeFill) return;
     if (parts) {
       keep(parts.body); nadeIn.add(parts.body);
       if (parts.pin) { keep(parts.pin); pinBox.add(parts.pin); const b = new THREE.Box3().setFromObject(parts.pin, true); b.getCenter(ringMark.position); ringMark.position.x = b.max.x - 0.012; pinBox.add(ringMark); }
@@ -202,7 +215,7 @@ function makeViewmodel(parent) {
       nadeFill = 1;
     }
   }
-  onProps(fillNade);
+  onProps(() => fillNade(nadeKind));
   const NP = {   // the poses: the grenade (g…) and the left wrist (l…); the turn of the right hand from the clip's (tilt: fingers down +, roll: palm up +)
     gDown: V3([-0.16, -0.40, 0.22]), gReady: V3([-0.125, -0.115, 0.33]), gBack: V3([-0.15, 0.045, 0.16]), gFwd: V3([-0.05, -0.04, 0.43]), gFollow: V3([0.09, -0.34, 0.30]),
     lDown: V3([0.22, -0.44, 0.24]), lFwd: V3([0.17, -0.165, 0.40]),
@@ -282,7 +295,7 @@ function makeViewmodel(parent) {
     // the grenade in hand: the weapon hidden, the arms posed for it; out of it, the weapon back
     const nd = s.nade && ikOk ? s.nade : null;
     holder.visible = !!s.show || !!nd;
-    if (nd && !nadeOn) { nadeOn = true; fillNade(); nadeReset(); for (const m of akMeshes) m.visible = false; guns.forEach(g => { if (g) g.box.visible = false; }); scopes.forEach(n => { if (n) n.visible = false; }); }
+    if (nd && !nadeOn) { nadeOn = true; fillNade(nd.kind || 'nade'); nadeReset(); for (const m of akMeshes) m.visible = false; guns.forEach(g => { if (g) g.box.visible = false; }); scopes.forEach(n => { if (n) n.visible = false; }); }
     else if (!nd && nadeOn) { nadeOn = false; nadeBox.visible = false; nadeIn.add(pinBox); pinBox.visible = false; setWeapon(cur); }
     if (!holder.visible) { lastYaw = null; return; }
     fireT += dt; equipT += dt * 1.8;

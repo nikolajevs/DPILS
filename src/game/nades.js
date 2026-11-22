@@ -14,11 +14,15 @@ import { makePhysics } from '../../server/physics.mjs';
    also flies its own copy of it, with the same rules (keep NADE and the step in step with server/combat.mjs and
    server/physics.mjs), so that it moves smoothly; at the blast the copy is put where the server's grenade was. */
 const NADE = { g: 18 };
+// the three grenades (keep server/combat.mjs NADE/SMOKE/NAPALM in step): the frag blasts, the smoke lays a screen,
+// the napalm a burning patch — the fuse and the reach of each, for the aim arc and its disc
+const KIND = { nade: { fuse: 2.5, r: 8 }, smoke: { fuse: 2, r: 6 }, napalm: { fuse: 2, r: 4 } };
 // the charged throw (keep server/combat.mjs NADE in step): the left mouse button held down gathers the speed from min
 // to max over chargeMs; loft lifts the velocity a little above the aim, exactly as the server does
 const NADE_THROW = { min: 6, max: 24, loft: 0.17, chargeMs: 1100 };
 const list = new Map();
 const GEO = new THREE.SphereGeometry(0.1, 10, 8), MAT = worldSpace(new THREE.MeshLambertMaterial({ color: 0x3d5a2a }));
+const MATS = { smoke: worldSpace(new THREE.MeshLambertMaterial({ color: 0x6a7a5a })), napalm: worldSpace(new THREE.MeshLambertMaterial({ color: 0x8a2a22 })) };   // the stand-ins until the models come
 // the flight is the server's own step (server/physics.mjs), so the copy, the aim arc and the server never drift apart;
 // it also reports each touch (n.bounce) for the clink, and rolls a settled grenade downhill on a slope
 // the ground the copy flies over: in the network game the server owns the flight over the raw lidar grid, so the copy
@@ -33,13 +37,14 @@ let bodiesFn = null;
 const setNadeBodies = fn => { bodiesFn = fn; };   // mp.js gives the living bodies the grenade bounces off (the thrower is left out, as on the server)
 // the server's bounce off a body ('nbounce'): put the copy back onto the server's flight, the trail starts afresh
 function syncNade(id, p, v) { const n = list.get(id); if (!n) return; n.p = p.slice(); n.v = v.slice(); n.hist.length = 0; }
-const liveNades = () => [...list.values()].map(n => ({ p: n.p, age: n.age, by: n.by }));   // for the danger indicator
+const liveNades = () => [...list.values()].map(n => ({ p: n.p, age: n.age, by: n.by, kind: n.kind }));   // for the danger indicator
 /* модель гранаты посажена дном в ноль (так она стоит на карте); в полёте центруем её вокруг точки сервера. На карте она
    вдвое крупнее настоящей, чтобы её было видно; в полёте — почти настоящего размера, как в руке (viewmodel.js) */
 const FLY_S = 0.55, FLY_LOW = 0.06;   // the scale in flight; how far the drawn middle sits under the server's point (it keeps 12 cm over the ground)
-function flyNade() {
-  const m = prop('nade'); if (!m) return null;
-  for (const c of m.children) c.position.y -= 0.1;
+function flyNade(kind = 'nade') {
+  const m = prop(kind); if (!m) return null;
+  const c = new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3());   // the model stands bottom at 0: centre it on the server's point
+  for (const ch of m.children) ch.position.y -= c.y;
   m.scale.setScalar(FLY_S);
   return m;
 }
@@ -124,16 +129,16 @@ function tickSpoons(dt) {
 // from: where the grenade in hand was drawn when it left it (your own throw): the flying copy starts there and slides onto
 // the server's flight within a tenth of a second
 function addNade(m, from = null) {
-  const model = flyNade();
-  const mesh = model || new THREE.Mesh(GEO, MAT); if (!model) mesh.scale.setScalar(FLY_S); mesh.position.set(m.p[0], m.p[1], m.p[2]);
+  const kind = m.kind || 'nade', model = flyNade(kind);
+  const mesh = model || new THREE.Mesh(GEO, MATS[kind] || MAT); if (!model) mesh.scale.setScalar(FLY_S); mesh.position.set(m.p[0], m.p[1], m.p[2]);
   mesh.quaternion.setFromAxisAngle(V.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize(), rnd(0, 6.283)); mesh.userData.noProbe = true; scene.add(mesh);
   const trail = trails.find(t => !t.used) || null; if (trail) trail.used = true;
-  list.set(m.id, { mesh, model: !!model, p: m.p.slice(), v: m.v.slice(), age: 0, w: rnd(10, 15), trail, hist: [], ta: 0, fz: 0, by: m.by, off: from ? [from.x - m.p[0], from.y - m.p[1], from.z - m.p[2]] : null });
+  list.set(m.id, { mesh, model: !!model, kind, p: m.p.slice(), v: m.v.slice(), age: 0, w: rnd(10, 15), trail, hist: [], ta: 0, fz: 0, by: m.by, off: from ? [from.x - m.p[0], from.y - m.p[1], from.z - m.p[2]] : null });
   popSpoon(from ? [from.x, from.y, from.z] : m.p, m.v);
 }
 onProps(() => {
   for (const n of list.values()) if (!n.model) {
-    const m = flyNade(); if (!m) continue;
+    const m = flyNade(n.kind); if (!m) continue;
     m.position.copy(n.mesh.position); m.quaternion.copy(n.mesh.quaternion);
     scene.remove(n.mesh); n.mesh = m; n.model = true;
   }
@@ -222,7 +227,11 @@ function cloud(geo, mat, max, order) {
 }
 const smokeMat = particleMat(new THREE.MeshLambertMaterial({ map: SMOKE_TEX, transparent: true, depthWrite: false }), 'nade-smoke');
 const fireMat = particleMat(new THREE.MeshBasicMaterial({ map: FIRE_TEX, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }), 'nade-fire');
-const SMOKE = cloud(bentQuad(), smokeMat, 640, 1), FIRE = cloud(new THREE.PlaneGeometry(1, 1), fireMat, 200, 2);
+const SMOKE = cloud(bentQuad(), smokeMat, 900, 1), FIRE = cloud(new THREE.PlaneGeometry(1, 1), fireMat, 320, 2);
+// the napalm's carpet of flame: ordinary blending, not additive — added light washes out on a sunlit street, while
+// solid flame quads read by day as well as by night; the additive FIRE on top of them gives the bloom its glow
+const flameMat = particleMat(new THREE.MeshBasicMaterial({ map: FIRE_TEX, transparent: true, depthWrite: false, fog: false }), 'nade-flame');
+const FLAME = cloud(new THREE.PlaneGeometry(1, 1), flameMat, 320, 2);
 const WHITE = [1, 1, 1];
 // a particle: where it is and flies, how long it lives, its size from s0 to s1 (grow: how soon it gets there), its turn and spin,
 // drag towards the air around (rise: the speed it climbs at, wind: how much of the wind takes it), gravity, colour from
@@ -310,6 +319,66 @@ function scorch(x, y, z, roof) {
   const s = rnd(3.2, 4.2); d.mesh.scale.set(s, s, 1);
   scorches.push(d);
 }
+/* ---------- the zones: the smoke screen and the burning patch ----------
+   The server lays them where the special grenade went off ('zone', server/game.mjs) and says when they are out
+   ('zoneEnd'); the page breathes them out of the same two particle clouds the blast uses. The smoke is a white-grey
+   screen that swells to its radius and hangs for the zone's life; the napalm is a carpet of flame with dark smoke
+   above and sparks jumping out, lit by one flickering light that follows the nearest patch. A late joiner gets the
+   live zones with their remaining time in 'hello'. */
+const zones = new Map();
+const fireLight = new THREE.PointLight(0xff7a2a, 0, 24, 1.8); fireLight.userData.noProbe = true; scene.add(fireLight);
+function addZone(m) {
+  const n = list.get(m.id); if (n) { scene.remove(n.mesh); freeTrail(n.trail); list.delete(m.id); }   // the flying copy goes into its zone
+  const dur = (m.durMs != null ? m.durMs : m.left != null ? m.left : 8000) / 1000;
+  const z = { kind: m.kind, x: m.x, y: m.y, z: m.z, r: m.r || 4, t: 0, dur, acc: 0, acc2: 0, acc3: 0 };
+  zones.set(m.id, z);
+  if (m.kind === 'fire') {
+    emit(FIRE, { x: m.x, y: m.y + 0.4, z: m.z, life: 0.12, s0: 2.5, s1: 4, grow: 1, c0: [5, 3, 1.2], c1: [2.5, 1, 0.3], fout: 0, frame: 2 });   // the pop of ignition
+    for (let i = 0; i < 16; i++) { const a = rnd(0, 6.283), r = rnd(0.2, z.r * 0.8); emit(FIRE, { x: m.x + Math.cos(a) * r, y: m.y + 0.15, z: m.z + Math.sin(a) * r, vy: rnd(1, 3), life: rnd(0.3, 0.6), s0: rnd(0.5, 0.9), s1: rnd(1.4, 2.2), grow: 2, c0: [4.5, 2.2, 0.7], c1: [1.6, 0.4, 0.06], op: 0.9, fout: 0.3, frame: i & 1 }); }
+    scorch(m.x, m.y, m.z, false);
+    glow.x = m.x; glow.y = m.y + 0.6; glow.z = m.z; glow.t = 0;   // the ignition lights the street for a moment (blastGlow)
+  } else {
+    for (let i = 0; i < 26; i++) { const a = rnd(0, 6.283), r = rnd(0, z.r * 0.5); emit(SMOKE, { x: m.x + Math.cos(a) * r, y: m.y + rnd(0.1, 0.8), z: m.z + Math.sin(a) * r, vx: Math.cos(a) * rnd(0.5, 2), vy: rnd(0.3, 1), vz: Math.sin(a) * rnd(0.5, 2), drag: 1.6, rise: rnd(0.3, 0.7), wind: 0.6, life: rnd(3.5, 6), s0: rnd(0.8, 1.3), s1: rnd(3.5, 5.5), grow: 2.5, roll: rnd(0, 6.28), spin: rnd(-0.4, 0.4), c0: [0.86, 0.86, 0.84], c1: [0.72, 0.72, 0.7], op: rnd(0.8, 0.95), fin: 0.15, fout: 0.35, floor: m.y, frame: i % 3 }); }
+  }
+}
+const endZone = id => { zones.delete(id); };
+function tickZones(dt) {
+  let lit = null, ld = 1e9;
+  for (const [id, z] of zones) {
+    z.t += dt;
+    if (z.t >= z.dur) { zones.delete(id); continue; }
+    const fade = Math.min(1, z.t * 3) * Math.min(1, (z.dur - z.t) / 1.5 + 0.15);   // breathes in, dies out
+    if (z.kind === 'smoke') {
+      z.acc += (z.t < 1.5 ? 55 : 16) * fade * dt;
+      while (z.acc >= 1) {
+        z.acc--; const a = rnd(0, 6.283), r = rnd(0, z.r * 0.4);
+        emit(SMOKE, { x: z.x + Math.cos(a) * r, y: z.y + rnd(0.05, 0.5), z: z.z + Math.sin(a) * r, vx: Math.cos(a) * rnd(0.2, 1.2), vy: rnd(0.2, 0.8), vz: Math.sin(a) * rnd(0.2, 1.2), drag: 1.6, rise: rnd(0.35, 0.8), wind: 0.6, life: rnd(3.5, 6), s0: rnd(0.7, 1.1), s1: rnd(3.5, 5.5), grow: 2.5, roll: rnd(0, 6.28), spin: rnd(-0.4, 0.4), c0: [0.86, 0.86, 0.84], c1: [0.72, 0.72, 0.7], op: rnd(0.8, 0.95), fin: 0.15, fout: 0.35, floor: z.y, frame: (Math.random() * 3) | 0 });
+      }
+    } else {
+      z.acc += 100 * fade * dt;
+      while (z.acc >= 1) {
+        z.acc--; const a = rnd(0, 6.283), r = Math.sqrt(Math.random()) * z.r * 0.9;
+        const x = z.x + Math.cos(a) * r, zz = z.z + Math.sin(a) * r;
+        emit(FLAME, { x, y: z.y + 0.08, z: zz, vx: rnd(-0.3, 0.3), vy: rnd(1.2, 2.8), vz: rnd(-0.3, 0.3), drag: 1.2, life: rnd(0.35, 0.8), s0: rnd(0.5, 0.8), s1: rnd(1.4, 2.3), grow: 2, roll: rnd(0, 6.28), spin: rnd(-2, 2), c0: [1, 0.45, 0.12], c1: [0.8, 0.18, 0.02], op: 0.95, fout: 0.25, floor: z.y, frame: (Math.random() * 2) | 0 });
+        if (Math.random() < 0.3) emit(FIRE, { x, y: z.y + 0.3, z: zz, vy: rnd(1, 2), life: rnd(0.2, 0.4), s0: rnd(0.5, 0.9), s1: rnd(1, 1.6), grow: 2, c0: [2.5, 1.2, 0.4], c1: [1.2, 0.4, 0.1], op: 0.5, fout: 0.3, frame: 2 });   // the glow the bloom takes
+      }
+      z.acc2 += 10 * fade * dt;
+      while (z.acc2 >= 1) {
+        z.acc2--; const a = rnd(0, 6.283), r = rnd(0, z.r * 0.7);
+        emit(SMOKE, { x: z.x + Math.cos(a) * r, y: z.y + rnd(0.8, 1.6), z: z.z + Math.sin(a) * r, vx: rnd(-0.3, 0.3), vy: rnd(1, 2), vz: rnd(-0.3, 0.3), drag: 1.2, rise: rnd(0.8, 1.6), wind: 0.8, life: rnd(2.5, 4.5), s0: rnd(0.7, 1), s1: rnd(2.5, 4), grow: 2.5, roll: rnd(0, 6.28), spin: rnd(-0.5, 0.5), c0: [0.16, 0.14, 0.12], c1: [0.35, 0.33, 0.3], op: 0.5, fin: 0.1, fout: 0.3, floor: z.y, frame: (Math.random() * 3) | 0 });
+      }
+      z.acc3 += 6 * fade * dt;
+      while (z.acc3 >= 1) {
+        z.acc3--; const a = rnd(0, 6.283), r = rnd(0, z.r * 0.8);
+        emit(FIRE, { x: z.x + Math.cos(a) * r, y: z.y + 0.2, z: z.z + Math.sin(a) * r, vx: rnd(-1.5, 1.5), vy: rnd(2, 5), vz: rnd(-1.5, 1.5), grav: -9.8, life: rnd(0.2, 0.5), s0: 0.04, s1: 0.07, c0: [4, 2.6, 1], c1: [2, 0.8, 0.2], fout: 0.3, frame: 2 });
+      }
+      const d = camera.position.distanceTo(V.set(z.x, z.y + 1, z.z));
+      if (d < ld) { ld = d; lit = z; }
+    }
+  }
+  if (lit) { fireLight.position.set(lit.x, lit.y + 1.1, lit.z); fireLight.intensity = (26 + 10 * Math.sin(clock * 31) * Math.sin(clock * 17 + 1)) * Math.min(1, lit.t * 3) * Math.min(1, (lit.dur - lit.t) / 1.5 + 0.2); }
+  else fireLight.intensity = 0;
+}
 /* ---------- the frame ---------- */
 function stepCloud(sys, dt) {
   const L = sys.list;
@@ -388,8 +457,9 @@ function tickNades(dt) {
     if (n.age > 4) { scene.remove(n.mesh); freeTrail(n.trail); list.delete(id); }   // the server's blast message got lost
   }
   tickSpoons(dt);
+  tickZones(dt);
   glow.t += dt; shake.t += dt;
-  stepCloud(SMOKE, dt); stepCloud(FIRE, dt); drawCloud(SMOKE, true); drawCloud(FIRE, false);
+  stepCloud(SMOKE, dt); stepCloud(FIRE, dt); stepCloud(FLAME, dt); drawCloud(SMOKE, true); drawCloud(FIRE, false); drawCloud(FLAME, false);
   for (let i = scorches.length - 1; i >= 0; i--) {
     const d = scorches[i]; d.t += dt;
     if (d.t >= SCORCH_LIFE) { scene.remove(d.mesh); d.mesh.material.dispose(); scorches.splice(i, 1); continue; }
@@ -413,8 +483,9 @@ function camShake(cam) {
 function clearNades() { for (const n of list.values()) { scene.remove(n.mesh); freeTrail(n.trail); } list.clear(); for (const s of spoons) { s.on = false; s.g.visible = false; } }
 // a new game: no smoke, fire or scorch of the last one
 function clearBlasts() {
-  for (const s of [SMOKE, FIRE]) { s.free.push(...s.list); s.list.length = 0; s.mesh.count = 0; }
+  for (const s of [SMOKE, FIRE, FLAME]) { s.free.push(...s.list); s.list.length = 0; s.mesh.count = 0; }
   for (const d of scorches) { scene.remove(d.mesh); d.mesh.material.dispose(); } scorches.length = 0;
+  zones.clear(); fireLight.intensity = 0;
   glow.t = shake.t = 9;
 }
 
@@ -427,7 +498,7 @@ function clearBlasts() {
    away. Where a wall hides the arc it shows through as a faint ghost. The ribbon widens with the distance, so it stays
    a few pixels wide on the screen. Shown while the grenade is in hand (G), grown and warmed by the charge of the left
    mouse button. Every part is made once; aiming only rewrites the numbers of two small meshes. */
-const FUSE = 2.5, BLAST_R = 8;   // keep server/combat.mjs NADE.fuseMs and NADE.radius in step
+const FUSE = 2.5;   // keep server/combat.mjs NADE.fuseMs in step; the reach of each kind is in KIND above
 let clock = 0;   // seconds, for the running pulses
 function predictNade(p, v, maxT = FUSE) {
   const n = { p: p.slice(), v: v.slice(), preview: true }, pts = [n.p.slice()], dt = 1 / 30;   // preview: the aim arc bends round the bodies too, but not round your own
@@ -443,7 +514,8 @@ function predictNade(p, v, maxT = FUSE) {
   return { pts, first, wall, end: n.p };
 }
 const surfAt = (x, z, roof) => { const g = gnd(x, z); if (roof) { const b = buildingAt(x, z); if (b) return g + (b.top || 12); } return g; };
-const AIM_U = { uT: { value: 0 }, uCol: { value: new THREE.Color(1, 0.74, 0.34) } };
+const AIM_U = { uT: { value: 0 }, uCol: { value: new THREE.Color(1, 0.74, 0.34) }, uRim: { value: new THREE.Color(1, 0.24, 0.12) } };
+const DISC_U = { value: 8 };   // the reach of the disc: the blast, the screen or the patch (KIND)
 // the ribbon: aArc = (across −1…1, metres along the arc, 0 before the first touch / 1 after)
 const ARC_MAX = 96;
 const arcGeo = new THREE.BufferGeometry();
@@ -482,7 +554,7 @@ discGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(DISC
   discGeo.setAttribute('aL', new THREE.BufferAttribute(L, 2)); discGeo.setIndex(ix);
 }
 const DISC_V = 'attribute vec2 aL; varying vec2 vL;\nvoid main() { vL = aL; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
-const DISC_F = `uniform float uT, uR; uniform vec3 uCol; varying vec2 vL;
+const DISC_F = `uniform float uT, uR; uniform vec3 uCol, uRim; varying vec2 vL;
 void main() {
   float r = length(vL), fw = fwidth(r), k = r / uR;
   float inside = 1.0 - smoothstep(uR - fw, uR + fw, r);
@@ -498,12 +570,11 @@ void main() {
   vec2 ab = abs(vL); float m = max(ab.x, ab.y);
   float tick = (1.0 - smoothstep(0.022, 0.022 + fw * 1.5, min(ab.x, ab.y))) * step(0.62, m) * (1.0 - step(0.92, m));
   float aim = max(max(ring, dt), tick);
-  vec3 red = vec3(1.0, 0.24, 0.12);
   float aR = clamp(fill + rim * 0.9 + rim2 * 0.5 + sonar, 0.0, 1.0), aA = aim * 0.95;
   float a = aA + aR * (1.0 - aA);
-  vec3 col = (uCol * 1.6 * aA + red * 1.3 * aR * (1.0 - aA)) / max(a, 1e-3);
+  vec3 col = (uCol * 1.6 * aA + uRim * 1.3 * aR * (1.0 - aA)) / max(a, 1e-3);
   gl_FragColor = vec4(col, a);`;
-const disc = new THREE.Mesh(discGeo, aimMat(DISC_V, DISC_F, { ...AIM_U, uR: { value: BLAST_R } }, { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+const disc = new THREE.Mesh(discGeo, aimMat(DISC_V, DISC_F, { ...AIM_U, uR: DISC_U }, { polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
 disc.renderOrder = 2;
 // the beam over the spot: a quad turned to the camera about the upright
 const beamGeo = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0);
@@ -519,15 +590,21 @@ const touch = new THREE.Mesh(new THREE.RingGeometry(0.17, 0.24, 28).rotateX(-Mat
 touch.renderOrder = 4;
 const aimGroup = new THREE.Group(); aimGroup.add(arcGhost, arcLine, disc, beam, touch); aimGroup.visible = false;
 aimGroup.traverse(o => { o.frustumCulled = false; }); aimGroup.userData.noProbe = true; scene.add(aimGroup);
-const AIM_COLD = new THREE.Color(1, 0.66, 0.2), AIM_HOT = new THREE.Color(1, 0.34, 0.07);
+// the aim's colours by kind: the frag warms amber to red, the smoke stays pale steel, the napalm burns orange
+const AIM_COLD = { nade: new THREE.Color(1, 0.66, 0.2), smoke: new THREE.Color(0.72, 0.8, 0.88), napalm: new THREE.Color(1, 0.45, 0.12) };
+const AIM_HOT = { nade: new THREE.Color(1, 0.34, 0.07), smoke: new THREE.Color(0.92, 0.96, 1), napalm: new THREE.Color(1, 0.2, 0.03) };
+const AIM_RIM = { nade: [1, 0.24, 0.12], smoke: [0.78, 0.84, 0.9], napalm: [1, 0.42, 0.1] };
 let discAt = [1e9, 0, 0];
 // p, v: where the grenade leaves the hand and how fast (as the server will fly it); power 0…1 warms the colour; from: where
 // the grenade in hand is drawn, the arc starts there and sweeps into the true flight within a couple of metres.
 // Gives the metres along the ground to where it goes off, and whether it bursts in the air
 const ARC_Q = Array.from({ length: ARC_MAX }, () => [0, 0, 0]), ARC_S = new Float32Array(ARC_MAX);
-function showNadePreview(p, v, power = 0, from = null) {
-  const { pts, first, wall, end } = predictNade(p, v), n = Math.min(ARC_MAX, pts.length);
-  AIM_U.uCol.value.copy(AIM_COLD).lerp(AIM_HOT, power);
+function showNadePreview(p, v, power = 0, from = null, kind = 'nade') {
+  const K = KIND[kind] || KIND.nade;
+  const { pts, first, wall, end } = predictNade(p, v, K.fuse), n = Math.min(ARC_MAX, pts.length);
+  AIM_U.uCol.value.copy(AIM_COLD[kind] || AIM_COLD.nade).lerp(AIM_HOT[kind] || AIM_HOT.nade, power);
+  AIM_U.uRim.value.setRGB(...(AIM_RIM[kind] || AIM_RIM.nade));
+  DISC_U.value = K.r;
   const ox = from ? from.x - p[0] : 0, oy = from ? from.y - p[1] : 0, oz = from ? from.z - p[2] : 0;
   for (let i = 0, s = 0; i < n; i++) {
     const q = pts[i]; if (i) s += Math.hypot(q[0] - pts[i - 1][0], q[1] - pts[i - 1][1], q[2] - pts[i - 1][2]);
@@ -570,7 +647,7 @@ function hideNadePreview() { aimGroup.visible = false; discAt[0] = 1e9; }
 function nadeSamples() {
   const cloudSample = sys => { const m = new THREE.InstancedMesh(sys.mesh.geometry, sys.mesh.material, 1); m.setColorAt(0, new THREE.Color(1, 1, 1)); return m; };
   const aim = [arcLine, arcGhost, disc, beam, touch].map(o => new THREE.Mesh(o.geometry, o.material));   // the aim, the streak and the spoon too
-  return [flyNade() || new THREE.Mesh(GEO, MAT), cloudSample(SMOKE), cloudSample(FIRE), new THREE.Mesh(scorchGeo, scorchMat()), ...aim, new THREE.Mesh(trails[0].geo, trailMat), new THREE.Mesh(spoonLong, spoonMat)];
+  return [flyNade() || new THREE.Mesh(GEO, MAT), flyNade('smoke'), flyNade('napalm'), cloudSample(SMOKE), cloudSample(FIRE), cloudSample(FLAME), new THREE.Mesh(scorchGeo, scorchMat()), ...aim, new THREE.Mesh(trails[0].geo, trailMat), new THREE.Mesh(spoonLong, spoonMat)];
 }
 
-export { nadeSamples, addNade, boomNade, blastGlow, camShake, clearBlasts, clearNades, tickNades, onNadeBounce, setNadeBodies, syncNade, liveNades, NADE_THROW, showNadePreview, hideNadePreview };
+export { nadeSamples, addNade, addZone, endZone, boomNade, blastGlow, camShake, clearBlasts, clearNades, tickNades, onNadeBounce, setNadeBodies, syncNade, liveNades, NADE_THROW, showNadePreview, hideNadePreview };
