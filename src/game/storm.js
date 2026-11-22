@@ -44,7 +44,7 @@ float noise(vec2 p) {
   vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), f.x), mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), f.x), f.y);
 }
-float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 3; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; } return v; }
+float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 2; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; } return v; }   // two octaves: the wall is a full-screen overdraw, keep it cheap
 // value noise periodic in x (the lattice wraps at the period): the filaments are measured in metres of the ring's
 // arc, so they keep their true size at every distance — 45 m from the wall the view still crosses several of them
 float pnoise(vec2 p, float per) {
@@ -53,7 +53,7 @@ float pnoise(vec2 p, float per) {
   float a = hash2(vec2(x0, i.y)), b = hash2(vec2(x1, i.y)), c = hash2(vec2(x0, i.y + 1.0)), d = hash2(vec2(x1, i.y + 1.0));
   return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
-float pfbm(vec2 p, float per) { float v = 0.0, a = 0.5; for (int i = 0; i < 3; i++) { v += a * pnoise(p, per); p *= 2.0; per *= 2.0; a *= 0.5; } return v; }
+float pfbm(vec2 p, float per) { float v = 0.0, a = 0.5; for (int i = 0; i < 2; i++) { v += a * pnoise(p, per); p *= 2.0; per *= 2.0; a *= 0.5; } return v; }
 void main() {
   // the angle around the circle from the world position, NOT uv.x: the cylinder's seam quad interpolates uv.x
   // backwards across the whole wrap, and the camera meets exactly that quad — the noise would alias into a flat wash
@@ -63,7 +63,7 @@ void main() {
   // wraps seamlessly around the circle (no seam at the atan branch cut) and keeps its size at every distance
   float f1 = pfbm(vec2(ang * uPer12, h * 0.055 - uTime * 0.35), uPer12);
   float f2 = pfbm(vec2(ang * uPer5 + 7.0, h * 0.110 - uTime * 0.80), uPer5);
-  float fil = smoothstep(0.42, 0.75, f1) * 0.7 + smoothstep(0.50, 0.85, f2) * 0.5;
+  float fil = smoothstep(0.34, 0.62, f1) * 0.7 + smoothstep(0.40, 0.70, f2) * 0.5;   // thresholds for the two-octave range (0…0.75)
   float ca = cos(ang * 6.2831853), sa = sin(ang * 6.2831853);
   float swirl = fbm(vec2(ca * 8.0, sa * 8.0) + vec2(uTime * 0.02, h * 0.004 + uTime * 0.01));   // the slow weather around the ring
   // the height profile: a dense wall from the street to ~120 m, gone by ~360 m

@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/storm-event | Ивент «Шторм»: battle royale, сужающаяся зона 30 мин, урон снаружи, последний выживший, мёртвых в лобби | server/storm.mjs, server/game.mjs, server/bots.mjs, server/index.mjs, server/combat.mjs, src/game/storm.js, src/game/mp.js, src/game/sfx.js, src/ui/start.js, src/ui/lobby.js, index.html, src/style.css, tools/combat-test.mjs |
 
 ## Автономный цикл улучшений
 
