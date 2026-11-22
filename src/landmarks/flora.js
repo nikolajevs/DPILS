@@ -8,10 +8,13 @@ import { scene } from '../render/renderer.js';
 
 /* ---------- the flowers of the parks (ez-tree, MIT, models/ez-tree/) ----------
    Three kinds of flowers instanced over the lawn of every park, gathered by the quarter of the city they stand in, so
-   the quarters behind the camera are culled whole. They keep off the footways, the beds, the playgrounds, the water
-   and the roads. The flowers of the file are in centimetres and are scaled by a hundredth. They stand at y = 0: the
+   the quarters behind the camera are culled whole. A flower is a handful of meshes (one per material), so a quarter of
+   flowers is some twenty draw calls: a quarter is drawn only while one of its flowers is as near as the near trees
+   (floraLod, from updateLod in src/render/post.js) — farther a flower is a pixel or less. They keep off the footways,
+   the beds, the playgrounds, the water and the roads. The flowers of the file are in centimetres and are scaled by a hundredth. They stand at y = 0: the
    terrain lift of the page raises them after the instance matrix, so no height is baked in. */
 let models = null;   // the flowers of the files, once loaded (null: not asked for)
+const FLORA = [];   // the quarters: { pts: x, z of their flowers, ms: their meshes, on }
 const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), V = new THREE.Vector3(), S = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
 /* The files are asked for early (while the landmarks are built); the flowers are planted by plantFlora, a step of its
    own in the build (src/main.js), so that the work is on the loading bar and never falls into another step, nor after
@@ -60,11 +63,13 @@ async function build(flowers) {
       set.list.push(M.clone()); flowerN++;
     }
   }
+  for (let q = 0; q < 4; q++) FLORA.push({ pts: [], ms: [], on: true });
   for (const set of fsets) {
     if (!set.list.length) continue;
     const buckets = [[], [], [], []];   // the four quarters of the city: each is culled whole when it is behind the camera
-    for (const m of set.list) buckets[(m.elements[12] < 0 ? 0 : 1) + (m.elements[14] < 0 ? 0 : 2)].push(m);
-    for (const list of buckets) {
+    for (const m of set.list) { const q = (m.elements[12] < 0 ? 0 : 1) + (m.elements[14] < 0 ? 0 : 2); buckets[q].push(m); FLORA[q].pts.push(m.elements[12], m.elements[14]); }
+    for (let q = 0; q < 4; q++) {
+      const list = buckets[q];
       if (!list.length) continue;
       const attr = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 16), 16);
       list.forEach((m, i) => attr.array.set(m.elements, i * 16));
@@ -72,9 +77,18 @@ async function build(flowers) {
       for (const p of set.parts) {
         const im = new THREE.InstancedMesh(p.geo, p.mat, list.length);
         im.instanceMatrix = attr;
-        im.computeBoundingSphere(); im.castShadow = false; im.receiveShadow = false; im.userData.noProbe = true; scene.add(im);
+        im.computeBoundingSphere(); im.castShadow = false; im.receiveShadow = false; im.userData.noProbe = true; scene.add(im); FLORA[q].ms.push(im);
       }
     }
   }
 }
-export { initFlora, plantFlora };
+// shows the quarters with a flower nearer than r to the eye at (x, z), h above the ground (counted half, as the trees)
+function floraLod(x, z, h, r) {
+  const r2 = r * r - h * h * 0.25;
+  for (const f of FLORA) {
+    let on = false; const p = f.pts;
+    if (r2 > 0) for (let i = 0; i < p.length; i += 2) { const dx = p[i] - x, dz = p[i + 1] - z; if (dx * dx + dz * dz < r2) { on = true; break; } }
+    if (on !== f.on) { f.on = on; for (const m of f.ms) m.visible = on; }
+  }
+}
+export { floraLod, initFlora, plantFlora };

@@ -19,6 +19,7 @@ import { captureProbes, probeState } from './render/cityprobe.js';
 import { MIRROR_CITY } from './render/mirror-city.js';
 import { MIRROR } from './render/mirror.js';
 import { STATIC_WORLD, freezeWorld } from './render/static-world.js';
+import { BATCH, batchStatic } from './render/batch.js';
 import { splitBigMeshes } from './render/chunks.js';
 import { QUALITY, TIMES, dayInfo, qi, qAuto, relight, setCycle, setQuality, setQualityMode, setTime, setTimePref, timePref } from './render/lighting.js';
 import { P } from './game/player.js';
@@ -91,6 +92,7 @@ const step = (text, w, reported) => {
 };
 (async () => {
   try {
+    const before = new Set(scene.children);   // the lights, the sky and the pools of the game: not the city (src/render/batch.js)
     // the players and the guns of the game: their files come while the city is built (src/game/mp.js loadModels)
     let modelsF = 0, modelsStep = false;
     const models = loadModels(f => { modelsF = f; if (modelsStep) loading.part(f); });
@@ -116,6 +118,7 @@ const step = (text, w, reported) => {
       const ms = []; scene.traverse(o => { if (o.isMesh && o.frustumCulled && o.geometry) ms.push(o); });
       for (const o of ms) { if (due()) await pause(); const g = o.geometry; if (!g.boundingSphere) g.computeBoundingSphere(); if (g.boundingSphere && !g.userData.terrGrown) { g.boundingSphere.radius += 70; g.userData.terrGrown = true; } }
     }
+    await batchStatic(before);   // the still pieces of one material drawn by one call each (src/render/batch.js)
     await step('Снимаю отражения города…', W.probes); await captureProbes();   // the city cubes for water and glass, once per time of day
     // the players and the guns join the scene for the warm-up: the game starts with them ready (a minute at most for slow files)
     await step('Одеваю игроков и раздаю оружие…', W.models, true); modelsStep = true; loading.part(modelsF);
@@ -128,6 +131,6 @@ const step = (text, w, reported) => {
     loading.done('Готово: ' + BLD.length.toLocaleString('ru') + ' зданий, ' + LINES.length.toLocaleString('ru') + ' улиц и дорожек, ' + trees.toLocaleString('ru') + ' деревьев, ' + lamps.toLocaleString('ru') + ' фонарей' + (tripsN ? ', ' + tripsN.toLocaleString('ru') + ' рейсов в расписании' : '') + '.');
     if (document.body.classList.contains('mp')) $('view').classList.add('shown');   // the city fades in only in a fight; src/ui/startfx.js owns the rule
     enablePlay(); $('chTrain').focus();
-    window.__city = { PERF, ambProbe, ambStatus, statEvent, statsOf, MP, STATE, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, P, setTime, setCycle, dayInfo, showTime: t => (/^h/i.test(String(t)) ? setCycle(+String(t).slice(1) / 24, Infinity) : setTime(+t)), fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, setQualityMode, qualityMode: () => (qAuto ? 'auto' : qi), scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU, probeState, mirror: MIRROR, mirrorCity: MIRROR_CITY, staticWorld: STATIC_WORLD };
+    window.__city = { PERF, ambProbe, ambStatus, statEvent, statsOf, MP, STATE, SB, SHV, TX, treeStats: LIDAR_STATS, parking: PSTAT, series: SER_STAT, gubisce: GUB_STAT, setClock, P, setTime, setCycle, dayInfo, showTime: t => (/^h/i.test(String(t)) ? setCycle(+String(t).slice(1) / 24, Infinity) : setTime(+t)), fortPoint, walkLift, terrainH, setNight: on => setTime(on ? 2 : 0), setQuality, setQualityMode, qualityMode: () => (qAuto ? 'auto' : qi), scene, renderer, camera, renderFrame, U, PP, TIMES, QUALITY, GPU, probeState, mirror: MIRROR, mirrorCity: MIRROR_CITY, staticWorld: STATIC_WORLD, batch: BATCH };
   } catch (e) { console.error(e); loading.fail('Ошибка при сборке города: ' + e.message); }
 })();
