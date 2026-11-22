@@ -129,7 +129,7 @@ function noTeamView() {
 function teamView() {
   const t = SOC.team, me = SOC.me.toLowerCase(), lead = t.leader.toLowerCase() === me;
   const on = t.members.filter(m => m.where).length;
-  body.append(h('header', { class: 'tm-head' }, h('span', { class: 'tm-tag big', text: t.tag }),
+  body.append(h('div', { class: 'tm-head' }, h('span', { class: 'tm-tag big', text: t.tag }),
     h('div', {}, h('b', { text: t.name }), h('small', { text: t.members.length + ' из ' + t.max + ' · в сети ' + on + ' · лидер ' + t.leader }))));
   const cols = h('div', { class: 'tm-cols' }), left = h('div', { class: 'tm-col' }), right = h('div', { class: 'tm-col' });
   cols.append(left, right); body.append(cols);
@@ -178,7 +178,7 @@ function teamView() {
   const sform = h('form', { class: 'tm-inline' }, say, h('button', { class: 'btn', type: 'submit', text: 'Отправить' }));
   sform.onsubmit = e => { e.preventDefault(); const v = say.value.trim(); if (v && socialSend({ t: 'say', text: v })) say.value = ''; };
   right.append(h('section', { class: 'tm-sec tm-chat' }, h('h3', { text: 'Чат команды' }), log, sform));
-  body.append(h('footer', { class: 'tm-foot' },
+  body.append(h('div', { class: 'tm-foot' },
     h('p', { class: 'tm-hint', text: RULES }),
     h('div', { class: 'tm-foot-btns' },
       sure('Покинуть команду', 'Точно покинуть?', () => socialSend({ t: 'leave' })),
