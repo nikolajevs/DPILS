@@ -5,6 +5,7 @@ import { renderFrame, updateLod, updateSun } from '../render/post.js';
 import { QUALITY, dayTick, qi } from '../render/lighting.js';
 import { P, step } from './player.js';
 import { MP, mpLabels, mpTick, aimPunch } from './mp.js';
+import { stormLight } from './storm-fx.js';
 import { camShake } from './nades.js';
 import { perfSample, perfTick } from './perf.js';
 import { updateTags, updateTransit } from '../transit/transit.js';
@@ -38,6 +39,7 @@ function frame(now) {
   if (STATE.started) { if ($('start').hidden && big.hidden && !(MP.on && MP.dead)) step(dt); }
   else { STATE.introT += reduceMotion ? 0 : dt; P.yaw = 0.6 + STATE.introT * 0.05; P.x = -1350 + Math.sin(P.yaw) * 420; P.z = 1250 + Math.cos(P.yaw) * 420; P.y = 150 + terrainH(P.x, P.z); P.pitch = -0.33; }
   mpTick(dt); updateTransit(dt); lmTick(); dayTick();   // dayTick: the sun and the light of the running day (lighting.js)
+  stormLight();   // the storm's flashes and its dark over the day's own light (storm-fx.js): after dayTick, which rewrites it
   if (!reduceMotion) U.time.value = clock;
   staticTick(now);   // the frozen matrices of the built city: one that moved gets its own back (src/render/static-world.js)
   // the full map covers the city: outside the game the 3D picture is not drawn while it is open (the last frame stays)
