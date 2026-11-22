@@ -7,5 +7,7 @@
      facades; facNrm/serNrm: their baked tangent-space normal maps).
    - started, locked, night, introT: the state of the session (walk started, pointer locked, time of day, intro flight).
    - lodTimer, hudTimer, mapTimer, shadowDirty: countdowns and flags of the frame loop; setting a timer to 0 makes the
-     next frame refresh that part. */
+     next frame refresh that part.
+   - cityHidden: the city canvas is faded out behind the start card outside a fight, so the loop does not draw it
+     (src/game/loop.js) and the frame rate logic leaves those frames out (src/game/perf.js). */
 export const STATE = {};

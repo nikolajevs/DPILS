@@ -12,6 +12,7 @@ import { lmTick } from '../landmarks/index.js';
 import { sky, terrainH } from '../world/terrain.js';
 import { U, camera, renderer, scene } from '../render/renderer.js';
 import { gpuBegin, gpuEnd } from '../render/gputime.js';
+import { staticTick } from '../render/static-world.js';
 import { $, reduceMotion } from '../core/env.js';
 
 /* ---------- frame loop ---------- */
@@ -28,7 +29,8 @@ function nearPlane() {
   const n = Math.min(0.3, NEAR_REACH / corner);
   return P.fly || !STATE.started ? Math.max(n, Math.min(1, (P.y - terrainH(P.x, P.z)) * 0.01)) : n;
 }
-let last = performance.now(), clock = 0;
+let last = performance.now(), clock = 0, hiddenFor = 0;
+const view = $('view');
 function frame(now) {
   requestAnimationFrame(frame);
   const t0 = performance.now();   // CPU frame time: everything below, up to perfSample
@@ -37,8 +39,16 @@ function frame(now) {
   else { STATE.introT += reduceMotion ? 0 : dt; P.yaw = 0.6 + STATE.introT * 0.05; P.x = -1350 + Math.sin(P.yaw) * 420; P.z = 1250 + Math.cos(P.yaw) * 420; P.y = 150 + terrainH(P.x, P.z); P.pitch = -0.33; }
   mpTick(dt); updateTransit(dt); lmTick(); dayTick();   // dayTick: the sun and the light of the running day (lighting.js)
   if (!reduceMotion) U.time.value = clock;
+  staticTick(now);   // the frozen matrices of the built city: one that moved gets its own back (src/render/static-world.js)
   // the full map covers the city: outside the game the 3D picture is not drawn while it is open (the last frame stays)
   if (!big.hidden) { mapFrame(); if (!STATE.mp) return; }
+  /* Outside a fight the city canvas is faded out behind the start card and the lobby (src/ui/startfx.js): the whole
+     city at the top quality was drawn there every frame for no one, beside the card's own grid and the lobby's
+     figure. It is not drawn once it has been hidden for longer than its fade (the first frames after the build are
+     drawn all the same: the shadow maps and the uploads are done before the fight). perf.js leaves these frames out. */
+  hiddenFor = view.classList.contains('shown') ? 0 : hiddenFor + dt;
+  STATE.cityHidden = hiddenFor > 1.5;
+  if (STATE.cityHidden) return;
   const bob = (!P.fly && STATE.started && !reduceMotion) ? Math.sin(P.walked * 2.1) * 0.035 : 0;
   camera.position.set(P.x, P.y + bob - (reduceMotion ? 0 : P.land), P.z); camera.rotation.set(P.pitch, P.yaw, 0); aimPunch(camera); camShake(camera);   // the flinch of a hit on you, then the jolt of a grenade's blast near you; P.land: the dip of a hard landing
   const far = QUALITY[qi].far + Math.max(0, P.y - 2) * 9; scene.fog.far = far;

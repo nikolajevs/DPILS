@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Claude | claude/low-fps-issue-679bcb | Низкий FPS: CPU кадра (матрицы статичного города, перерисовки теней солнца, город за стартовой карточкой) | src/main.js, src/game/loop.js, src/game/perf.js, src/render/post.js, src/render/static-world.js |
 
 ## Автономный цикл улучшений
 
