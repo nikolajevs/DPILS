@@ -946,7 +946,7 @@ function onMsg(m) {
     case 'cargoEnd': cargoEnd(m); break;
     case 'marked': marks.set(m.id, m.until); if (m.id === MP.id) { cargoSelf(m.until); tone(320, 150, 0.45, 0.4, 'sawtooth'); feed('Вы помечены для всех — 60 секунд', 'dead'); } else markRemote(m.id, true); break;
     case 'unmark': marks.delete(m.id); if (m.id === MP.id) cargoSelf(0); else markRemote(m.id, false); break;
-    case 'holy': { const was = holyState.on; holyMe(holyUnit(), MP.ffa); setHoly(m); if (m.arena) { MP.arena = m.arena; arenaChoices(); } P.speedMul = holySpeedMul(); if (!was) { banner('СВЯТАЯ ГОНКА', 'holy'); tone(523, 523, 0.3, 0.25, 'triangle'); tone(659, 659, 0.35, 0.22, 'triangle', 0.12); tone(784, 784, 0.5, 0.2, 'triangle', 0.24); } break; }   // the call to Church Hill: a rising chord
+    case 'holy': { const was = holyState.on; holyMe(holyUnit(), MP.ffa); setHoly(m); if (m.arena) { MP.arena = m.arena; arenaChoices(); } P.speedMul = holySpeedMul(); if (!was) { banner('ЦАРЬ ГОРЫ', 'holy'); tone(523, 523, 0.3, 0.25, 'triangle'); tone(659, 659, 0.35, 0.22, 'triangle', 0.12); tone(784, 784, 0.5, 0.2, 'triangle', 0.24); } break; }   // the call to Church Hill: a rising chord
     case 'bell': holyBell(m); break;   // a temple taken: its bell rings across the city (holy.js sounds it and flashes the map)
     case 'holyWin': holyWin(m); banner((m.name || 'Победитель') + ' — ГЛАВНЫЙ ПРИЗ', 'holy'); break;
     case 'holyEnd': clearHoly(); MP.arena = m.arena || null; P.speedMul = 1; if (MP.arena) arenaChoices(); else freeChoices(); break;

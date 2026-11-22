@@ -1,4 +1,4 @@
-/* The «Святая гонка» event on the page (server/game.mjs owns the rules, HOLY in server/combat.mjs): the four temples of
+/* The «Царь горы» event on the page (server/game.mjs owns the rules, HOLY in server/combat.mjs): the four temples of
    Church Hill become capture points for a few minutes. This module draws the four bell-tower beacons — a light column,
    a capture ring that fills as a side stands in it, a swinging bronze bell — plus the event HUD (the four chips, the
    hold countdown, the buffs you hold), the world labels, the bell flashes on the minimap and the golden flash of the

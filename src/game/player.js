@@ -14,7 +14,7 @@ import { HX, HY } from '../core/env.js';
 // kx/kz: the blast knockback (the server's 'push'), a horizontal velocity that decays as it slides;
 // fallTop: the apex of the current flight (absolute feet height); landH: the height just landed from (mp.js reports it
 // to the server, which owns the damage); land: the camera dip of a hard landing, decaying
-const P = { x: -1487, y: 1.7, z: 1263, yaw: 0.6, pitch: 0, fly: false, walked: 0, eye: 1.7, up: 0, vy: 0, crouch: false, vx: 0, vz: 0, kx: 0, kz: 0, fallTop: 0, landH: 0, land: 0, speedMul: 1 };   // speedMul: the «Святая гонка» Lutheran bell hastens the holding side (mp.js sets it)
+const P = { x: -1487, y: 1.7, z: 1263, yaw: 0.6, pitch: 0, fly: false, walked: 0, eye: 1.7, up: 0, vy: 0, crouch: false, vx: 0, vz: 0, kx: 0, kz: 0, fallTop: 0, landH: 0, land: 0, speedMul: 1 };   // speedMul: the «Царь горы» Lutheran bell hastens the holding side (mp.js sets it)
 const JUMP = { v: 6.4, g: 21, eyeStand: 1.7, eyeCrouch: 1.1, crouchSpeed: 1.8 };
 // the weight of the walk, m/s²: accel — the ramp-up to the keyed speed (6 m/s in ~0.15 s, the sprint 11 in ~0.28 s),
 // decel — the brake when the keys are released (a ~0.3 m slide from the jog, ~1.1 m from the sprint),

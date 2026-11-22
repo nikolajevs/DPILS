@@ -431,7 +431,7 @@ export function createGame(opts) {
   // at its start everybody still here is back on his feet with the scores cleared. The cycle is clock-driven
   // (tickMatch every 500 ms), so a restart of the server keeps the schedule.
   let match = null, storm = null;
-  // the «Святая гонка» event (HOLY, combat.mjs): the fight is called to Church Hill for a few minutes — a tight arena
+  // the «Царь горы» event (HOLY, combat.mjs): the fight is called to Church Hill for a few minutes — a tight arena
   // around the four temples, four bell-tower capture points, a buff per taken temple, the grand prize for holding all
   let holy = null, holyArena = null, nextHolyAt = now() + HOLY.firstMs, holySeq = 1, areaRev = 0, holyWarned = false;
   const fieldArena = () => holyArena || arena;   // the arena in force: the hill during the race, the chosen one otherwise
@@ -754,7 +754,7 @@ export function createGame(opts) {
     }
   }
   timers.push(setInterval(() => stepCargo(now()), 200));
-  // ---- the «Святая гонка» event (HOLY, combat.mjs): the four temples of Church Hill become capture points. The whole
+  // ---- the «Царь горы» event (HOLY, combat.mjs): the four temples of Church Hill become capture points. The whole
   // field is pulled into a tight arena around the hill for the race; a taken temple rings its bell across the city and
   // grants its buff to the holding side; all four held three minutes win the grand prize. The bots converge on the
   // points too (bots.mjs). The page draws the beacons, the bells and the HUD (src/game/holy.js).
@@ -802,7 +802,7 @@ export function createGame(opts) {
       const [x, z] = hillSpot(p); spawn(p, x, z, Math.atan2(holyArena.cx - x, holyArena.cz - z) + Math.PI, true);
     }
     all({ t: 'holy', ...holyPublic() });
-    all({ t: 'chat', text: '🔔 Святая гонка! Все на Церковную горку: захватите четыре колокольни, удержите все 3 минуты — главный приз' });
+    all({ t: 'chat', text: '🔔 Царь горы! Все на Церковную горку: захватите четыре колокольни, удержите все 3 минуты — главный приз' });
   }
   function capture(pt, side, byName, t) {
     pt.owner = side.u; pt.team = side.team; pt.name = side.name; pt.prog = 1; pt.progSide = side.u; pt.progTeam = side.team; pt.ringAt = t;
@@ -836,13 +836,13 @@ export function createGame(opts) {
       else spawn(p);
     }
     all({ t: 'holyEnd', reason, winner: winner || undefined, arena: arenaPub(arena) });
-    if (reason === 'time') all({ t: 'chat', text: 'Святая гонка окончена — никто не удержал все храмы' });
-    else if (reason === 'storm') all({ t: 'chat', text: 'Святая гонка прервана штормом' });
+    if (reason === 'time') all({ t: 'chat', text: 'Царь горы завершён — никто не удержал все храмы' });
+    else if (reason === 'storm') all({ t: 'chat', text: 'Царь горы прерван штормом' });
   }
   function stepHoly(t) {
     if (roundOver) return;
     if (!holy) {
-      if (!holyWarned && t >= nextHolyAt - HOLY.warnMs && t < nextHolyAt && players.size && !storm) { holyWarned = true; all({ t: 'chat', text: '⛪ Святая гонка через 30 с — собирайтесь на Церковной горке' }); }
+      if (!holyWarned && t >= nextHolyAt - HOLY.warnMs && t < nextHolyAt && players.size && !storm) { holyWarned = true; all({ t: 'chat', text: '⛪ Царь горы через 30 с — собирайтесь на Церковной горке' }); }
       if (t >= nextHolyAt && players.size && !storm && !cargo) startHoly(t);
       return;
     }

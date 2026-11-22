@@ -53,8 +53,8 @@ const JUMP_V = 6.4;   // the dodge hop lifts the bot at the player's own jump sp
 export function createBrain(g) {
   const world = g.world;
   // the storm of the match (game.mjs) opens the whole field to the bots of the open city: they follow the circle wherever
-  // its final point lies; an arena keeps its edge (the circle lies inside it). The area is read live (g.area): the «Святая
-  // гонка» swaps it for the Church Hill arena mid-fight, and the bots follow the field they are given
+  // its final point lies; an arena keeps its edge (the circle lies inside it). The area is read live (g.area): the «Царь
+  // горы» swaps it for the Church Hill arena mid-fight, and the bots follow the field they are given
   const roam = () => !!(g.field && g.storm);
   let roamMemo = false, areaRevMemo = -1;
   const inArea = (x, z) => { const a = g.area; return roam() || Math.hypot(x - a.cx, z - a.cz) < a.r - 8; };

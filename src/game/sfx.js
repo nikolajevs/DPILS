@@ -201,7 +201,7 @@ function stormZap(ctx, out, vol = 1) {
     noisePlay(ctx, out, { type: 'highpass', freq: 4200, vol: vol * 0.2, dur: 0.05, attack: 0.002, delay: 0.02 });
   } catch (e) {}
 }
-// the church bell of the «Святая гонка» (src/game/holy.js): a bronze bell is not a harmonic tone — its partials are
+// the church bell of the «Царь горы» (src/game/holy.js): a bronze bell is not a harmonic tone — its partials are
 // inharmonic (hum, prime, a minor tierce, quint, nominal and the higher ranks), each dying at its own rate, and the
 // clapper strikes a short bright transient. Two slightly detuned oscillators per partial give the slow beat of real
 // bronze. f0 is the strike note (one per temple); the bell is heard across the whole city — the volume falls with

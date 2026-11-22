@@ -1058,7 +1058,7 @@ body.storm .mp-top { display: none; }
 @media (prefers-reduced-motion: reduce) { .cargo-banner, .cargo-self { animation: none; } }
 @media (max-width: 700px) { .cargo-banner { top: 52px; padding: 6px 10px; } .cargo-banner b { font-size: 12px; } .cargo-self { top: 104px; font-size: 11px; } }
 
-/* ---------- the «Святая гонка» event: the bell-tower HUD, the world labels, the prize flash ----------
+/* ---------- the «Царь горы» event: the bell-tower HUD, the world labels, the prize flash ----------
    The server calls the fight to Church Hill every few minutes (server/game.mjs, HOLY); four temples become capture
    points. The HUD rides at the top like the storm's: the title and the event clock, a chip per temple (its owner's
    colour and the capture arc), the three-minute hold countdown when one side holds all four, and the buffs you hold.

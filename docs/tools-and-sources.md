@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/holy-race | Ивент «Святая гонка»: захват колоколен Церковной горки, колокола, баффы, главный приз | server/game.mjs, server/combat.mjs, server/bots.mjs, src/game/holy.js, src/game/mp.js, src/game/sfx.js, src/game/player.js, index.html, src/style.css |
 
 ## Автономный цикл улучшений
 

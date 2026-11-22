@@ -1396,8 +1396,8 @@ console.log('cargo event (createGame, controlled clock):');
   g.stop();
 }
 
-/* ---------- 2o. the «Святая гонка» event: the call to the hill, the capture, the bell, the buff, the prize ---------- */
-console.log('holy race event (createGame, controlled clock):');
+/* ---------- 2o. the «Царь горы» event: the call to the hill, the capture, the bell, the buff, the prize ---------- */
+console.log('king of the hill event (createGame, controlled clock):');
 {
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), mode: 'team', now: () => clock, name: 'holy', itemCount: 4 });
@@ -1410,7 +1410,7 @@ console.log('holy race event (createGame, controlled clock):');
   clock += 3000;
   ok(!g.holy, 'no race before the first call is due');
   tick(HOLY.firstMs - HOLY.warnMs - 3000);
-  ok(A.all('chat').some(m => /Святая гонка через 30/.test(m.text)), 'the chat warns of the race half a minute ahead');
+  ok(A.all('chat').some(m => /Царь горы через 30/.test(m.text)), 'the chat warns of the race half a minute ahead');
   tick(HOLY.warnMs + 100);
   ok(g.holy && g.holy.points.length === 4, 'the race begins with four bell towers');
   ok(A.last('holy') && A.last('holy').arena && A.last('holy').arena.name === 'Церковная горка', 'the call went to everybody with the hill arena');

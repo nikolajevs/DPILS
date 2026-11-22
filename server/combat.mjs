@@ -95,7 +95,7 @@ export const CARGO = {
   firstMs: 75000, gapMs: 150000, alt: 130, speed: 6.5, pickR: 2.6, groundMs: 150000, markMs: 60000, beaconR: 5,
   loot: [['med', 2], ['nade', 1], ['smoke', 1], ['napalm', 1], ['optic', 1]],   // belt first, the surplus into the pack; the optic only if not already owned
 };
-// the «Святая гонка» event (server/game.mjs, src/game/holy.js): the four temples of Church Hill (Церковная горка) —
+// the «Царь горы» event (server/game.mjs, src/game/holy.js): the four temples of Church Hill (Церковная горка) —
 // an Orthodox cathedral, a Catholic church, a Lutheran church and an Old Believers' church — stand within three hundred
 // metres of one another. Every few minutes the fight is called to the hill: the whole field is pulled into a tight arena
 // around the temples and four bell towers become capture points. One player (or any one member of a team) takes a point
