@@ -16,6 +16,8 @@ import { createAccounts } from '../server/accounts.mjs';
 import { createBoard, idOf } from '../server/leaderboard.mjs';
 import { createTeams } from '../server/teams.mjs';
 import { createAdmin } from '../server/admin.mjs';
+import { createEvents } from '../server/events.mjs';
+import { CARGO, HOLY } from '../server/combat.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 let pass = 0, fail = 0;
@@ -55,13 +57,34 @@ console.log('admin books (accounts, leaderboard, teams):');
   ok(typeof createAdmin({ pass: '' }).note === 'function', 'the disabled panel still answers the http note()');
 }
 
+/* ---------- 1b. the event settings store ---------- */
+console.log('admin events (the settings store):');
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dpils-events-'));
+  const file = path.join(dir, 'events.json');
+  const E = createEvents({ file });
+  ok(E.view().holy.cfg.durMs === 420000 && E.view().cargo.cfg.loot.med === 2 && E.view().storm.cfg.rEnd === 22 && E.enabled('holy'), 'the defaults: the rules as written, the auto-run on');
+  ok(E.set('holy', { durMs: 300000, buffs: { dmg: 1.5 } }).ok && HOLY.durMs === 300000 && HOLY.buffs.dmg === 1.5 && HOLY.buffs.speed === 1.2, 'a patch applied to the rules at once, the rest kept');
+  ok(HOLY.buffName.dmg === 'Урон +50%', 'the buff label follows the value');
+  ok(E.set('cargo', { alt: 99999, speed: -5 }).ok && CARGO.alt === 500 && CARGO.speed === 1, 'out-of-range values clamped');
+  ok(E.set('holy', { nope: 1 }).error === 'bad-cfg' && E.set('holy', { durMs: 'x' }).error === 'bad-cfg', 'an unknown key and a non-number refused');
+  E.setEnabled('cargo', false);
+  const E2 = createEvents({ file });
+  ok(E2.view().holy.cfg.durMs === 300000 && E2.view().holy.cfg.buffs.dmg === 1.5 && !E2.enabled('cargo') && E2.enabled('holy'), 'the settings and the flag survive a reload');
+  ok(E2.reset('all').ok && HOLY.durMs === 420000 && CARGO.alt === 130 && HOLY.buffs.dmg === 1.25 && E2.enabled('cargo'), 'reset: the defaults and the auto-run back');
+  ok(HOLY.buffName.dmg === 'Урон +25%', 'the default buff label back');
+  const E3 = createEvents({ file: null });
+  ok(E3.set('holy', { capMs: 5000 }).ok && HOLY.capMs === 5000, 'a fileless store works in memory');
+  E3.reset('holy');
+}
+
 /* ---------- 2. the live doors ---------- */
 console.log('admin doors (a live server):');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dpils-admin-live-'));
 const freePort = () => new Promise((res, rej) => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); }); s.on('error', rej); });
 const PORT = await freePort();
 const BASE = 'http://127.0.0.1:' + PORT;
-const child = spawn(process.execPath, ['server/index.mjs'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT), ADMIN_PASS: 'test-admin-pass', BOTS: '2', SERVER_NAME: 'Тест', ACCOUNTS: path.join(dir, 'accounts.json'), LEADERBOARD: path.join(dir, 'leaderboard.json'), TEAMS: path.join(dir, 'teams.json') }, stdio: ['ignore', 'pipe', 'pipe'] });
+const child = spawn(process.execPath, ['server/index.mjs'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT), ADMIN_PASS: 'test-admin-pass', BOTS: '2', SERVER_NAME: 'Тест', ACCOUNTS: path.join(dir, 'accounts.json'), LEADERBOARD: path.join(dir, 'leaderboard.json'), TEAMS: path.join(dir, 'teams.json'), EVENTS: path.join(dir, 'events.json') }, stdio: ['ignore', 'pipe', 'pipe'] });
 let serverLog = '';
 child.stdout.on('data', d => { serverLog += d; }); child.stderr.on('data', d => { serverLog += d; });
 const req = async (p, { method = 'GET', body, token, q = '' } = {}) => {
@@ -102,7 +125,7 @@ try {
   const api = (p, o = {}) => req('/admin/api/' + p, { ...o, token: tok });
 
   const ov = await api('overview');
-  ok(ov.j.ok && ov.j.server.bots === 2 && ov.j.counts.accounts === 0 && ov.j.server.match && ov.j.env.name === 'Тест' && ov.j.files.length === 3, 'the overview: the fight, the counts, the match, the files');
+  ok(ov.j.ok && ov.j.server.bots === 2 && ov.j.counts.accounts === 0 && ov.j.server.match && ov.j.env.name === 'Тест' && ov.j.files.length === 4, 'the overview: the fight, the counts, the match, the files');
   ok(ov.j.loop && typeof ov.j.loop.last === 'number' && ov.j.journal && typeof ov.j.journal.errors === 'number' && typeof ov.j.http.total === 'number', 'the overview carries the loop lag, the journal counters and the http counters');
   // the journal: the startup line of the console and the refused login are in it
   let lg = (await api('logs')).j;
@@ -146,6 +169,45 @@ try {
   // the cargo on demand
   ok((await api('cargo', { method: 'POST', body: {} })).j.ok, 'the cargo dropped');
   ok((await api('cargo', { method: 'POST', body: {} })).status === 409, 'a second crate while one is live refused');
+
+  // the events: the settings, the auto-run flag, the manual control of the race and the crate
+  const ev0 = (await api('events')).j;
+  ok(ev0.ok && ev0.holy.cfg.durMs === 420000 && ev0.holy.enabled === true && ev0.cargo.cfg.loot.optic === 1 && ev0.storm.cfg.rEnd === 22 && ev0.holy.defaults.durMs === 420000, 'the events view: the settings, the defaults, the auto-run');
+  ok(ev0.state && typeof ev0.state.holy.nextIn === 'number' && ev0.state.storm.match, 'the events state: the countdowns and the match');
+  ok((await api('events/holy', { method: 'POST', body: { cfg: { durMs: 300000, capMs: 5000, buffs: { dmg: 1.5 } } } })).j.ok, 'the race settings applied');
+  const ev1 = (await api('events')).j;
+  ok(ev1.holy.cfg.durMs === 300000 && ev1.holy.cfg.capMs === 5000 && ev1.holy.cfg.buffs.dmg === 1.5 && ev1.holy.cfg.buffs.speed === 1.2, 'a partial patch keeps the rest');
+  ok((await api('events/holy', { method: 'POST', body: { cfg: { bogus: 1 } } })).status === 400, 'an unknown setting refused');
+  ok((await api('events/cargo', { method: 'POST', body: { enabled: false } })).j.ok && !(await api('events')).j.cargo.enabled, 'the cargo auto-run paused');
+  // the race by hand: start, the live picture, stop (during the storm the hill cannot be taken)
+  const stormLive = !!(ev1.state.storm && ev1.state.storm.live);
+  if (stormLive) {
+    ok((await api('events/holy/start', { method: 'POST', body: {} })).status === 409, 'the race start refused during the storm');
+  } else {
+    ok((await api('events/holy/start', { method: 'POST', body: {} })).j.ok, 'the race started on demand');
+    const evA = (await api('events')).j;
+    ok(evA.state.holy.active && evA.state.holy.left > 0 && evA.state.holy.points.length === 4 && evA.state.holy.points[0].temple, 'the race live: four points with names');
+    ok((await api('events/holy/start', { method: 'POST', body: {} })).status === 409, 'a second start refused');
+    ok((await api('events/holy/next', { method: 'POST', body: {} })).status === 409, 'rescheduling a running race refused');
+    ok((await api('events/holy/stop', { method: 'POST', body: {} })).j.ok && !(await api('events')).j.state.holy.active, 'the race stopped, idle again');
+    ok((await api('events/holy/stop', { method: 'POST', body: {} })).status === 409, 'stopping an idle race refused');
+    ok((await api('events/holy/next', { method: 'POST', body: { inMs: 600000 } })).j.ok, 'the next race rescheduled');
+  }
+  // the crate dropped above: take it away (a bot may have carried it off already)
+  const cActive = (await api('events')).j.state.cargo.active;
+  const rm = await api('events/cargo/remove', { method: 'POST', body: {} });
+  ok(cActive ? rm.j.ok : rm.status === 409, 'the crate removed (or already gone)');
+  ok((await api('events/cargo/remove', { method: 'POST', body: {} })).status === 409, 'removing nothing refused');
+  ok((await api('events/cargo/next', { method: 'POST', body: {} })).j.ok, 'the next drop rescheduled');
+  ok((await api('events/cargo/drop', { method: 'POST', body: {} })).j.ok && (await api('events/cargo/drop', { method: 'POST', body: {} })).status === 409, 'a drop on demand and a second refused');
+  ok((await api('events/cargo/remove', { method: 'POST', body: {} })).j.ok, 'the second crate removed too');
+  // the storm settings and the reset of everything
+  ok((await api('events/storm', { method: 'POST', body: { cfg: { rEnd: 30 } } })).j.ok && (await api('events')).j.storm.cfg.rEnd === 30, 'the storm settings applied');
+  ok((await api('events/reset', { method: 'POST', body: { kind: 'all' } })).j.ok, 'the reset of all events');
+  const evR = (await api('events')).j;
+  ok(evR.holy.cfg.durMs === 420000 && evR.cargo.cfg.alt === 130 && evR.cargo.enabled === true && evR.storm.cfg.rEnd === 22, 'the defaults back after the reset');
+  const savedEv = JSON.parse(fs.readFileSync(path.join(dir, 'events.json'), 'utf8'));
+  ok(savedEv.holy.cfg.durMs === 420000 && savedEv.cargo.enabled === true, 'the settings saved to the file');
 
   // the accounts through the api
   let acc = (await api('accounts')).j;

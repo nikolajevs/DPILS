@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/admin-events | Админка: вкладка «Ивенты» — настройки и управление («Царь горы», груз, шторм) | server/events.mjs, server/admin.mjs, server/admin.html, server/game.mjs, server/index.mjs, src/game/holy.js, tools/admin-test.mjs |
 
 ## Автономный цикл улучшений
 

@@ -28,8 +28,7 @@ const RANGE = {
   storm: { share: [0.05, 0.5], suddenMs: [0, 300000], suddenDps: [1, 100], rEnd: [5, 100] },
 };
 const clone = o => JSON.parse(JSON.stringify(o));
-const get = (o, k) => k.split('.').reduce((a, p) => (a == null ? a : a[p]), o);
-function set(o, k, v) { const ps = k.split('.'); let t = o; for (let i = 0; i < ps.length - 1; i++) t = t[ps[i]] = t[ps[i]] || {}; t[ps[ps.length - 1]] = v; }
+function put(o, k, v) { const ps = k.split('.'); let t = o; for (let i = 0; i < ps.length - 1; i++) t = t[ps[i]] = t[ps[i]] || {}; t[ps[ps.length - 1]] = v; }
 const clamp = (v, [lo, hi]) => Math.max(lo, Math.min(hi, v));
 const pct = x => Math.round(x * 100);
 
@@ -73,7 +72,7 @@ export function createEvents({ file = null } = {}) {
     for (const [key, v] of Object.entries(flat)) {
       const r = RANGE[kind][key];
       if (!r || typeof v !== 'number' || !Number.isFinite(v)) return { error: 'bad-cfg' };
-      set(st[kind].cfg, key, clamp(key === 'capR' || key === 'prizeScore' || key === 'prizeKills' || key.startsWith('loot.') || key === 'rEnd' ? Math.round(v) : v, r));
+      put(st[kind].cfg, key, clamp(key === 'capR' || key === 'prizeScore' || key === 'prizeKills' || key.startsWith('loot.') || key === 'rEnd' ? Math.round(v) : v, r));
     }
     apply(kind, st[kind].cfg); save();
     return { ok: true };
@@ -98,7 +97,7 @@ export function createEvents({ file = null } = {}) {
         if (s.cfg && typeof s.cfg === 'object') {
           const flat = {};
           (function walk(o, pre) { for (const [key, v] of Object.entries(o)) { const kk = pre ? pre + '.' + key : key; if (v && typeof v === 'object') walk(v, kk); else flat[kk] = v; } })(s.cfg, '');
-          for (const [key, v] of Object.entries(flat)) { const r = RANGE[k][key]; if (r && typeof v === 'number' && Number.isFinite(v)) set(st[k].cfg, key, clamp(v, r)); }
+          for (const [key, v] of Object.entries(flat)) { const r = RANGE[k][key]; if (r && typeof v === 'number' && Number.isFinite(v)) put(st[k].cfg, key, clamp(v, r)); }
         }
       }
     } catch (e) { /* no file yet, or a broken one: the defaults stand */ }
