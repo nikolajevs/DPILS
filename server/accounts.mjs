@@ -46,9 +46,12 @@ export function createAccounts({ file, now = Date.now } = {}) {
     return { name: u.name };
   }
 
+  // the nick of an account as it was registered (the teams invite by nick, any case): null when there is no such account
+  function find(name) { const u = data.users[lower(cleanName(name))]; return u ? u.name : null; }
+
   function save() {
     if (!file || !dirty) return; dirty = false;
     try { fs.mkdirSync(path.dirname(file), { recursive: true }); const tmp = file + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(data)); fs.renameSync(tmp, file); } catch (e) { dirty = true; console.error('accounts not saved:', e.message); }
   }
-  return { register, login, byKey, save, count: () => Object.keys(data.users).length };
+  return { register, login, byKey, find, save, count: () => Object.keys(data.users).length };
 }
