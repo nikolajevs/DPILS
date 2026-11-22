@@ -8,6 +8,7 @@
 
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
+| Claude | claude/game-social-system-440d79 | Социальная часть: команды игроков (создание, приглашения, чат, игра вместе) | server/teams.mjs, server/social.mjs, server/game.mjs, server/index.mjs, src/game/social.js, src/ui/team.js, src/game/mp.js, index.html, src/style.css |
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
 
 ## Автономный цикл улучшений
