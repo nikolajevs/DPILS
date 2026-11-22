@@ -67,5 +67,7 @@ $('bHelp').onclick = () => {
 // the dead of the storm wake up in the lobby: mp.js sends them here with the hash #storm (stormGoLobby) — the event
 // card opens at once, over the loading city; the hash is spent so a plain refresh lands on the home step again
 if (location.hash === '#storm') { showStep('storm'); history.replaceState(null, '', location.pathname + location.search); }
+// «К нему» in the team panel (src/ui/team.js): a teammate fights online or in the storm — the card opens that door
+window.addEventListener('dpils-step', e => { if (STEPS[e.detail] && !STATE.mp) { $('start').hidden = false; showStep(e.detail); } });
 
 export { showStep };

@@ -15,6 +15,7 @@ const ACTIONS = [
   ['w6', 'M4A1', 'Digit6'], ['w7', 'SCAR-L', 'Digit7'], ['w8', 'AR-15', 'Digit8'],
   ['inv', 'Инвентарь', 'KeyI'], ['med', 'Аптечка (использовать)', 'KeyH'],
   ['voice', 'Рация (удерживать)', 'KeyV'], ['chat', 'Чат всем', 'KeyY'], ['teamChat', 'Чат команде', 'KeyU'], ['board', 'Таблица очков', 'Tab'],
+  ['team', 'Команда: состав, приглашения, чат', 'KeyP'],
 ];
 const DEFAULTS = { sens: 1, fov: 66, vol: 0.8, voiceVol: 1, ambVol: 0.6, invertY: false, crossCol: '#ffffff', crossDot: true, crossDyn: true, perfHud: true };
 const CROSS_COLS = ['#ffffff', '#8dff7a', '#5ad7ff', '#ffd75a', '#ff6a5a', '#ff7ad9'];

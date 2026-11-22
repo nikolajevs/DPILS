@@ -60,17 +60,59 @@ export function createGame(opts) {
   }
   const validKey = k => typeof k === 'string' && /^[0-9a-f]{16,64}$/i.test(k), lb = opts.board || null;   // the leaderboard (leaderboard.mjs): only the humans who sent a key are in it
   const acc = opts.accounts || null;   // accounts (accounts.mjs): when on, a join whose key is not an account key is refused — guests are not let in
+  // the teams of the players (teams.mjs, social.mjs): clans(nick) gives the team of an account — {id, tag, name} or null.
+  // Teammates of a team play together: one side in the team fight (they join it, and a member on the other side crosses
+  // over at his next respawn), allies in the free-for-all and in the storm — their bullets, grenades and fire spare each
+  // other, the team chat reaches them, the storm is won by the last team standing. The tag rides the board: [DVN] Nick.
+  const clans = opts.clans || null;
+  const sameClan = (a, b) => !!(a.clan && b.clan && a.clan.id === b.clan.id);
+  const ally = (a, b) => a !== b && (FFA ? sameClan(a, b) : a.team === b.team);   // who is spared: the side in the team fight, the team of the players elsewhere
+  const clanOf = p => { const c = clans && p.acct ? clans(p.acct) : null; return c ? { id: c.id, tag: c.tag, name: c.name } : null; };
   // the chosen character rides the board: a key of CHARS in src/game/avatar.js; empty — the operator
   const CHARS = ['soldier', 'spartan', 'alien', '2b'];
   const cleanChar = s => (typeof s === 'string' && CHARS.includes(s) ? s : '');
   const botChar = () => CHARS[Math.random() * CHARS.length | 0];
   // the Tab scoreboard reads more than the score: the round's damage and accuracy, the ping of a human (a bot has none),
   // and who is on their feet — so the held table shows the live round, not only the kills
-  const board = () => [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, bot: !!p.bot, char: p.char, dmg: Math.round(p.st.dmg), acc: p.st.shots ? Math.round(100 * p.st.hitShots / p.st.shots) : 0, ping: p.bot ? undefined : Math.round(p.rtt), alive: p.alive, mark: p.markUntil > now() || undefined }));
+  const board = () => [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, bot: !!p.bot, char: p.char, dmg: Math.round(p.st.dmg), acc: p.st.shots ? Math.round(100 * p.st.hitShots / p.st.shots) : 0, ping: p.bot ? undefined : Math.round(p.rtt), alive: p.alive, mark: p.markUntil > now() || undefined, tag: p.clan ? p.clan.tag : undefined, clan: p.clan ? p.clan.id : undefined }));
   const sendBoard = () => all({ t: 'board', board: board(), score: FFA ? [] : teamScore });
   const count = k => [...players.values()].filter(p => p.team === k).length;
   function pickTeam(want, id) {
     if (FFA) return id; const a = count(0), b = count(1); if (a !== b) return a < b ? 0 : 1; return want === 0 || want === 1 ? want : Math.random() < 0.5 ? 0 : 1;
+  }
+  // the side of p's team in the team fight: where most of his teammates already are (-1: none of them here)
+  function clanSide(p) {
+    if (FFA || !p.clan) return -1; const c = [0, 0];
+    for (const q of players.values()) if (q !== p && q.joined && sameClan(p, q)) c[q.team === 1 ? 1 : 0]++;
+    return c[0] || c[1] ? (c[0] >= c[1] ? 0 : 1) : -1;
+  }
+  // a team took one side over the balance: bots cross to the other side (and come back on its base) until the sides
+  // differ by one at most — the humans stay with their team, the bots even the fight out
+  function rebalance() {
+    if (FFA) return; let moved = false;
+    for (let k = 0; k < 64; k++) {
+      const a = count(0), b = count(1), big = a - b > 1 ? 0 : b - a > 1 ? 1 : -1; if (big < 0) break;
+      const bot = [...players.values()].reverse().find(q => q.bot && q.team === big); if (!bot) break;
+      bot.team = 1 - big; moved = true; spawn(bot);
+    }
+    if (moved) sendBoard();
+  }
+  // a spot next to a living teammate of p's team (who passes ok), facing as he faces: the team appears together
+  function besideMate(p, ok = () => true) {
+    if (!p.clan) return null;
+    const q = [...players.values()].find(q => q !== p && q.alive && sameClan(p, q) && ok(q)); if (!q) return null;
+    const a = Math.random() * 6.283, r = 3 + Math.random() * 5, [x, z] = walkSpot(q.x + Math.cos(a) * r, q.z + Math.sin(a) * r);
+    return [x, z, q.yaw];
+  }
+  // the teams changed (social.mjs): every human takes his team again; the board carries the new tags
+  function refreshClans() {
+    let changed = false;
+    for (const p of players.values()) {
+      if (p.bot || !p.acct) continue;
+      const c = clanOf(p), was = p.clan ? p.clan.id + '/' + p.clan.tag : '', is = c ? c.id + '/' + c.tag : '';
+      if (was !== is) { p.clan = c; changed = true; }
+    }
+    if (changed) sendBoard();
   }
   const newPlayer = () => ({ id: nextId++, conn: null, bot: null, name: '', char: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, st: { shots: 0, hitShots: 0, dmg: 0, heads: 0 }, wep: 0, lastShot: 0, lastNade: 0, nades: 0, smokes: 0, napalms: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(),
     mag: WEAPONS.map(w => w.mag), reserve: RESERVE.slice(), meds: 0, reloadDone: 0, reloadW: 0, lastMed: 0, markUntil: 0,
@@ -154,7 +196,7 @@ export function createGame(opts) {
       const thrower = players.get(z.by); if (!thrower) continue;
       for (const v of players.values()) {
         if (!v.alive) continue;
-        if (v.team === thrower.team && v !== thrower) continue;   // teammates walk through their own napalm unburnt
+        if (ally(thrower, v)) continue;   // teammates walk through their own napalm unburnt
         if (v !== thrower && t <= v.protectUntil) continue;
         if (Math.hypot(v.x - z.x, v.z - z.z) >= z.r) continue;
         const feet = v.y - v.eye; if (feet < z.y - 1 || feet > z.y + 2.5) continue;   // on the burning surface, not above it
@@ -169,7 +211,7 @@ export function createGame(opts) {
     if (roundOver) return; const thrower = players.get(n.by);
     const blocked = (o, pt) => { const bx = pt[0] - o[0], by = pt[1] - o[1], bz = pt[2] - o[2], l = Math.hypot(bx, by, bz); return l > 0.6 && world.freePath(o, [bx / l, by / l, bz / l], l) < l - 0.7; };
     for (const v of players.values()) {
-      if (!v.alive || !thrower) continue; if (v.team === thrower.team && v !== thrower) continue;
+      if (!v.alive || !thrower) continue; if (ally(thrower, v)) continue;   // the own side (the own team in the free-for-all) is spared
       const c = [v.x, v.y - 0.41 * v.eye, v.z], o = [n.p[0], n.p[1] + 0.3, n.p[2]], dx = c[0] - o[0], dy = c[1] - o[1], dz = c[2] - o[2], d = Math.hypot(dx, dy, dz);
       if (d >= NADE.radius || (v !== thrower && now() <= v.protectUntil)) continue;
       // two rays, chest and head: a corner that hides one leaves the other half the blow; only both closed is a bunker
@@ -332,7 +374,7 @@ export function createGame(opts) {
     const eye = [p.x, p.y, p.z], out = [];
     // every living enemy as the shooter saw them at the click (lag-compensated), frozen for the whole flight: the page
     // aims at the same past, and a claim that drifted (lag, a crouch) must not cost a hit that was really there
-    const foes = roundOver ? [] : [...players.values()].filter(v => v !== p && v.alive && (FFA || v.team !== p.team) && t0 > v.protectUntil);
+    const foes = roundOver ? [] : [...players.values()].filter(v => v !== p && v.alive && !ally(p, v) && t0 > v.protectUntil);
     const shot = { by: p.id, w: wi, o: eye, hit: false, hits: new Map(), pending: 0, poses: foes.map(v => ({ v, pose: poseAt(v, t0 - lagMs) })) };
     for (const ray of rays.slice(0, W.pellets)) {   // a rifle shot is one ray, a shotgun shot is up to eight pellets
       if (!Array.isArray(ray)) continue;
@@ -377,6 +419,9 @@ export function createGame(opts) {
   // a new join during the fight appears inside the current circle, during the gathering — anywhere in the city.
   let storm = null;
   const stormAlive = () => [...players.values()].filter(p => p.alive);
+  // the storm is fought by units: a team of the players is one, everybody else is his own
+  const unitOf = p => (p.clan ? 'c' + p.clan.id : 'p' + p.id);
+  const units = list => new Set(list.map(unitOf)).size;
   function stormPublic() {
     if (!storm) return null;
     const roundLeft = storm.phase === 'play' ? Math.max(0, storm.plan[storm.plan.length - 1].tEnd - now()) : storm.phase === 'sudden' ? Math.max(0, storm.t1 - now()) : storm.phase === 'wait' ? STORMC.playMs : 0;
@@ -395,7 +440,7 @@ export function createGame(opts) {
     nades.clear(); bullets.clear();
     for (const z of zones.values()) all({ t: 'zoneEnd', id: z.id }); zones.clear();
     for (const it of items.values()) { it.active = true; it.respawnAt = 0; all(itemMsg(it)); }
-    for (const p of players.values()) { p.kills = 0; p.deaths = 0; p.st = { shots: 0, hitShots: 0, dmg: 0, heads: 0 }; const [x, z, yaw] = areaPoint(); spawn(p, x, z, yaw); }
+    for (const p of players.values()) { p.kills = 0; p.deaths = 0; p.st = { shots: 0, hitShots: 0, dmg: 0, heads: 0 }; const [x, z, yaw] = besideMate(p, q => q.stormSeat === cycle) || areaPoint(); spawn(p, x, z, yaw); p.stormSeat = cycle; }   // a team gathers in one place
     sendBoard(); all({ t: 'round' }); all({ t: 'chat', text: 'Шторм: сбор игроков — бой начнётся через ' + Math.round(STORMC.waitMs / 1000) + ' с' });
     broadcastStorm();
   }
@@ -409,20 +454,22 @@ export function createGame(opts) {
   function endStorm() {
     const t = now(), alive = stormAlive(), dead = [...players.values()].filter(p => !p.alive).sort((a, b) => b.diedAt - a.diedAt);
     const order = [...alive, ...dead], winner = order[0] || null;   // the last fallen is the last survivor when the storm takes everybody
+    const won = p => !!winner && unitOf(p) === unitOf(winner);   // the winner's whole team wins, the fallen members too
     const place = new Map(order.map((p, i) => [p.id, i + 1]));
     Object.assign(storm, { phase: 'end', pi: -1, kind: 'hold', t0: t, t1: t + STORMC.endMs, dps: 0 });
     roundOver = true;
-    for (const p of players.values()) if (p.prof) { p.prof.add('rounds'); if (p === winner) p.prof.add('wins'); }
+    for (const p of players.values()) if (p.prof) { p.prof.add('rounds'); if (won(p)) p.prof.add('wins'); }
     const rows = order.map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, heads: p.st.heads, dmg: Math.round(p.st.dmg), acc: p.st.shots ? Math.round(100 * p.st.hitShots / p.st.shots) : 0, place: place.get(p.id), alive: p.alive }));
-    all({ t: 'win', mode: 'storm', team: winner ? winner.id : -1, name: winner ? winner.name : 'Шторм', score: [], rows, mvp: winner ? winner.id : 0, nextMs: STORMC.endMs });
-    all({ t: 'chat', text: winner ? 'Шторм завершён: победил ' + winner.name + ' — последний выживший' : 'Шторм завершён: выживших нет' });
+    const squad = winner && winner.clan && [...players.values()].filter(won).length > 1 ? winner.clan : null;   // a team won together
+    all({ t: 'win', mode: 'storm', team: winner ? winner.id : -1, name: winner ? (squad ? '[' + squad.tag + '] ' + squad.name : winner.name) : 'Шторм', clan: squad ? squad.id : undefined, score: [], rows, mvp: winner ? winner.id : 0, nextMs: STORMC.endMs });
+    all({ t: 'chat', text: !winner ? 'Шторм завершён: выживших нет' : squad ? 'Шторм завершён: победила команда [' + squad.tag + '] ' + squad.name + ' — последние выжившие' : 'Шторм завершён: победил ' + winner.name + ' — последний выживший' });
     broadcastStorm();
   }
   function tickStorm() {
     if (!STORM || !storm) return;
     const t = now();
     if (storm.phase === 'wait') {
-      if (t >= storm.t1) { if (players.size >= 2) startStormPlay(); else { storm.t1 = t + 10000; broadcastStorm(); } }   // alone: the gathering waits for company
+      if (t >= storm.t1) { if (units([...players.values()]) >= 2) startStormPlay(); else { storm.t1 = t + 10000; broadcastStorm(); } }   // alone (or one team alone): the gathering waits for company
       return;
     }
     if (storm.phase === 'end') { if (t >= storm.t1) startStormWait(); return; }
@@ -454,7 +501,7 @@ export function createGame(opts) {
       }
     }
     if (t - storm.lastBeat >= 2000) { storm.lastBeat = t; broadcastStorm(); }
-    if (t > storm.playStart + 5000 && stormAlive().length <= 1) endStorm();   // the last survivor takes the round
+    if (t > storm.playStart + 5000 && units(stormAlive()) <= 1) endStorm();   // the last survivor (the last team standing) takes the round
   }
   // ---- bots
   const enemyBase = p => (arena ? (FFA ? arena.bases.flat()[Math.floor(Math.random() * arena.bases.flat().length)] : arena.bases[p.team === 1 ? 0 : 1][Math.floor(Math.random() * arena.bases[p.team === 1 ? 0 : 1].length)]) : null);
@@ -478,14 +525,20 @@ export function createGame(opts) {
         if (!m || typeof m !== 'object') return;
         if (m.t !== 'rtc' && ++p.msgs > 90) return;   // the handshake of the voice chat has its own, larger limit
         if (m.t === 'join' && !p.joined) {
-          if (acc && !acc.byKey(m.key)) { send(p, { t: 'auth-required' }); conn.close(); return; }   // an account is mandatory: the key must belong to an account of this server
+          const who = acc ? acc.byKey(m.key) : null;
+          if (acc && !who) { send(p, { t: 'auth-required' }); conn.close(); return; }   // an account is mandatory: the key must belong to an account of this server
           if (players.size >= MAX && !removeBot()) { send(p, { t: 'full' }); conn.close(); return; }
           if (STORM && storm && (storm.phase === 'sudden' || storm.phase === 'end')) { send(p, { t: 'stormBusy', phase: storm.phase, left: Math.max(0, storm.t1 - now()) }); conn.close(); return; }   // the final and the victory table: the next gathering is the way in
           if (lb && m.board !== false && validKey(m.key) && ![...players.values()].some(q => q.key === m.key)) { p.key = m.key; const r = lb.identify(m.key, nameBase(m.name), n => !taken(n)); p.name = r.name; p.prof = r.prof; } else p.name = cleanName(m.name);
-          p.team = pickTeam(m.team, p.id); p.char = cleanChar(m.char); p.joined = true; players.set(p.id, p);
-          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, now: now(), arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, day: dayNow() || undefined, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), zones: [...zones.values()].map(z => ({ id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, r: z.r, durMs: z.dur, left: Math.max(0, z.until - now()) })), cargo: cargoMsg(), marks: marks(), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])), storm: STORM ? stormPublic() : undefined });
-          if (STORM) { const [sx, sz, syaw] = storm.phase === 'play' ? stormSpawnPoint() : areaPoint(); spawn(p, sx, sz, syaw); } else spawn(p, m.x, m.z, m.yaw);
-          sendBoard(); all({ t: 'chat', text: p.name + (STORM ? ' в шторме' : FFA ? ' в игре' : ' в игре, ' + TEAMS[p.team]) });
+          p.acct = who ? who.name : ''; p.clan = clanOf(p);
+          const side = clanSide(p);   // the team fight: a member of a team joins the side where his teammates are
+          p.team = side >= 0 ? side : pickTeam(m.team, p.id); p.char = cleanChar(m.char); p.joined = true; players.set(p.id, p);
+          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, clan: p.clan || undefined, now: now(), arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, day: dayNow() || undefined, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), zones: [...zones.values()].map(z => ({ id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, r: z.r, durMs: z.dur, left: Math.max(0, z.until - now()) })), cargo: cargoMsg(), marks: marks(), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])), storm: STORM ? stormPublic() : undefined });
+          const mate = besideMate(p);   // a team appears together: next to a living teammate (in an arena the base decides)
+          if (STORM) { const [sx, sz, syaw] = mate || (storm.phase === 'play' ? stormSpawnPoint() : areaPoint()); spawn(p, sx, sz, syaw); p.stormSeat = storm.cycle; }
+          else if (mate && !arena) spawn(p, mate[0], mate[1], mate[2]); else spawn(p, m.x, m.z, m.yaw);
+          if (side >= 0) rebalance();
+          sendBoard(); all({ t: 'chat', text: (p.clan ? '[' + p.clan.tag + '] ' : '') + p.name + (STORM ? ' в шторме' : FFA ? ' в игре' : ' в игре, ' + TEAMS[p.team]) });
           return;
         }
         if (!p.joined) return;
@@ -513,16 +566,18 @@ export function createGame(opts) {
         else if (m.t === 'chat') {
           const text = String(m.text || '').replace(/[\u0000-\u001f\u007f​-‏‪-‮]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
           if (!text || t0 - p.lastChat < 700) return; p.lastChat = t0;
-          const say = { t: 'say', id: p.id, name: p.name, team: p.team, text, teamOnly: !!m.team };
-          if (m.team && !FFA) { for (const q of players.values()) if (q.team === p.team) send(q, say); } else all(say);
+          const say = { t: 'say', id: p.id, name: p.name, team: p.team, tag: p.clan ? p.clan.tag : undefined, text, teamOnly: !!m.team };
+          if (m.team && (!FFA || p.clan)) { for (const q of players.values()) if (q === p || ally(p, q)) send(q, say); } else all(say);   // the team chat: the side, or the own team of the players in the free-for-all
         } else if (m.t === 'rtc') {   // voice chat: the game only passes the WebRTC handshake between two players
           const q = players.get(+m.to); if (!q || q === p || q.bot || !m.d || typeof m.d !== 'object') return;
           if (t0 - p.rwin > 1000) { p.rwin = t0; p.rmsgs = 0; } if (++p.rmsgs > 400) return;
           send(q, { t: 'rtc', from: p.id, d: m.d });
         } else if (m.t === 'ping') { p.rtt = Math.max(0, Math.min(1000, num(m.rtt, 1000))); send(p, { t: 'pong', c: m.c });
         } else if (m.t === 'respawn' && !p.alive && !STORM && t0 - p.diedAt >= R.respawnMs) {   // the storm does not respawn: the dead go back to the lobby
-          const mate = m.mate && [...players.values()].filter(q => q.alive && q.team === p.team && q !== p);
-          if (mate && mate.length) { const q = mate[Math.floor(Math.random() * mate.length)], a = Math.random() * 6.283, r = 6 + Math.random() * 8; spawn(p, q.x + Math.cos(a) * r, q.z + Math.sin(a) * r, q.yaw); }   // next to a teammate
+          const side = clanSide(p);   // a member of a team on the other side crosses over to his teammates at the respawn
+          if (side >= 0 && side !== p.team) { p.team = side; send(p, { t: 'side', team: side }); all({ t: 'chat', text: p.name + ' переходит к своей команде: ' + TEAMS[side] }); rebalance(); sendBoard(); }
+          const mates = m.mate ? [...players.values()].filter(q => q.alive && ally(p, q)) : [], own = mates.filter(q => sameClan(p, q)), mate = own.length ? own : mates;   // the own team first
+          if (mate.length) { const q = mate[Math.floor(Math.random() * mate.length)], a = Math.random() * 6.283, r = 6 + Math.random() * 8; spawn(p, q.x + Math.cos(a) * r, q.z + Math.sin(a) * r, q.yaw); }   // next to a teammate
           else spawn(p, m.x, m.z, m.yaw);
         }
       },
@@ -673,7 +728,7 @@ export function createGame(opts) {
   timers.push(setInterval(() => { const t = now(), dt = Math.min(0.2, (t - last) / 1000); last = t; stepBots(dt); }, 50));
   if (STORM) { timers.push(setInterval(() => tickStorm(), STORMC.tickMs)); startStormWait(); }
   return {
-    attach, addBot, removeBot, players, arena, world, mode: MODE, equip,   // world: the city's physics (freePath, shotPath, stepNade) — the tools and the headless checks probe it
+    attach, addBot, removeBot, players, arena, world, mode: MODE, equip, refreshClans,   // refreshClans: the teams changed (social.mjs)   // world: the city's physics (freePath, shotPath, stepNade) — the tools and the headless checks probe it
     get items() { return items; },   // the map pickups: the tests place them at a player's feet
     get zones() { return zones; },   // the smoke screens and burning patches: the tests probe them too
     get cargo() { return cargo; },   // the supply drop in flight or on the ground: the tests drive it by their own clock

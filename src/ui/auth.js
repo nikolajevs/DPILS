@@ -17,6 +17,8 @@ import { serverUrl, serverHttp } from '../game/server.js';
    successful login or registration (or right away for a visitor who already has an account). To run this early the
    module does not import core/env.js — that one needs the city data and three.js — so its only helper, $, is local. */
 const $ = id => document.getElementById(id);
+// the account changed (a login, a logout, a key the server forgot): the connections that live on it start anew (src/game/social.js)
+const changed = () => window.dispatchEvent(new Event('dpils-account'));
 const overlay = $('auth'), form = $('authForm'), msg = $('authMsg'), title = $('authTitle'), hint = $('authHint'), goBtn = $('authGo');
 const nameIn = $('authName'), passIn = $('authPass'), pass2In = $('authPass2'), pass2Row = $('authPass2Row');
 const tabLogin = $('authTabLogin'), tabReg = $('authTabReg');
@@ -85,7 +87,7 @@ async function verify() {
   const a = account(); if (!a) return;
   try {
     const r = await fetch(serverHttp() + '/auth/me?key=' + encodeURIComponent(a.key), { cache: 'no-store' });
-    if (r.status === 401) { clearAccount(); renderAcct(); open('login', true); return; }
+    if (r.status === 401) { clearAccount(); renderAcct(); changed(); open('login', true); return; }
     if (r.ok) { const j = await r.json(); if (j && j.ok && j.name && j.name !== a.name) { setAccount({ ...a, name: j.name }); renderAcct(); } }
   } catch (e) { /* the server is not answering now: keep the account */ }
 }
@@ -109,7 +111,7 @@ form.onsubmit = async e => {
     const j = await r.json().catch(() => null);
     if (!r.ok || !j || !j.ok) { msg.textContent = (j && ERRORS[j.error]) || 'Сервер ответил ошибкой (HTTP ' + r.status + ').'; return; }
     setAccount({ url: serverUrl(), name: j.name, key: j.key, at: Date.now() });
-    $('mpName').value = j.name;
+    $('mpName').value = j.name; changed();
     renderAcct(); mandatory = false; close();
     $('mpMsg').textContent = 'Вы вошли как ' + j.name + '. Результаты боя будут в таблице лидеров этого сервера.';
   } catch (err) {
@@ -121,7 +123,7 @@ tabLogin.onclick = () => setMode('login');
 tabReg.onclick = () => setMode('register');
 $('authClose').onclick = close;
 $('bAuth').onclick = () => {
-  if (account()) { clearAccount(); renderAcct(); $('mpMsg').textContent = 'Вы вышли из аккаунта. Чтобы играть, войдите снова или создайте новый аккаунт.'; open('login', true); }
+  if (account()) { clearAccount(); renderAcct(); changed(); $('mpMsg').textContent = 'Вы вышли из аккаунта. Чтобы играть, войдите снова или создайте новый аккаунт.'; open('login', true); }
   else open('login', true);
 };
 /* the game calls this when the server refused the key (mp.js) */
