@@ -934,6 +934,89 @@ console.log('the ready belt and the backpack stores:');
   g.stop();
 }
 
+/* ---------- 2m. the smoke and the napalm: zones, belts, the fire's damage, the bots' reactions ---------- */
+console.log('smoke and napalm (zones):');
+{
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'zones' });
+  const A = seat(g, conn()), B = seat(g, conn()), C = seat(g, conn());
+  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -2, yaw: 0 });
+  msg(C, { t: 'join', name: 'Товарищ', team: 0, x: 2, z: 0, yaw: 0 });
+  const p = A.handle.player, q = B.handle.player, r = C.handle.player;
+  clock += 3000;
+  for (const c of [A, B, C]) msg(c, { t: 'state', x: c.handle.player.x, y: 1.7, z: c.handle.player.z, yaw: 0, pitch: 0 });
+  ok(p.nades === 2 && p.smokes === 1 && p.napalms === 1, 'the spawn belt: two frags, one smoke, one napalm', p.nades + '/' + p.smokes + '/' + p.napalms);
+  // the smoke: a screen of radius 6, no damage, out after its 12 s
+  msg(A, { t: 'throw', kind: 'smoke', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });
+  ok(p.smokes === 0, 'the smoke throw spends the smoke');
+  ok(A.last('nade') && A.last('nade').kind === 'smoke' && A.last('nade').fuse === 2000, 'the smoke flies with its own kind and fuse');
+  for (let i = 0; i < 70; i++) { clock += 1000 / 30; g.stepNades(); }   // past the 2 s fuse
+  const sz = A.last('zone');
+  ok(sz && sz.kind === 'smoke' && sz.r === 6 && g.zones.size === 1, 'the smoke lays a screen of radius 6', JSON.stringify(sz));
+  ok(q.hp === 100 && r.hp === 100 && !A.all('boom').length, 'the smoke neither hurts nor blasts');
+  clock += 12100; g.stepNades();
+  ok(g.zones.size === 0 && A.last('zoneEnd'), 'the screen is out after its 12 s');
+  // the napalm: a burning patch of radius 4 — the enemy and the thrower burn, the teammate does not
+  msg(A, { t: 'throw', kind: 'napalm', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });
+  ok(p.napalms === 0, 'the napalm throw spends the napalm');
+  for (let i = 0; i < 70; i++) { clock += 1000 / 30; g.stepNades(); }
+  const fz = A.last('zone');
+  ok(fz && fz.kind === 'fire' && fz.r === 4, 'the napalm lays a burning patch of radius 4', JSON.stringify(fz));
+  const hpB = q.hp, hpA = p.hp;
+  for (let i = 0; i < 30; i++) { clock += 1000 / 30; g.stepNades(); }   // a second in the fire
+  ok(q.hp < hpB && q.hp >= hpB - 40, 'the enemy standing in the fire burns (~30 HP/s)', hpB + '->' + q.hp);
+  ok(p.hp < hpA, 'the thrower burns in their own napalm too', hpA + '->' + p.hp);
+  ok(r.hp === 100, 'the teammate walks through the fire unburnt');
+  ok(B.all('hurt').some(m => m.fire), 'the burn is reported as fire (the page shows the orange edge, no aim punch)');
+  for (let i = 0; i < 240; i++) { clock += 1000 / 30; g.stepNades(); }   // the rest of the 8 s
+  ok(!q.alive && A.all('kill').some(m => m.w === 11), 'the fire kills and the kill feed names the napalm (w 11)');
+  ok(g.zones.size === 0, 'the patch is out after its 8 s');
+  // the belts of the new kinds: pickup, surplus in the pack, refill, the ready message
+  // (the thrower burnt in their own fire above — come back to life to pick the items up)
+  if (!p.alive) { p.diedAt = clock; clock += 3100; msg(A, { t: 'respawn' }); clock += 3000; }
+  const pick = kind => { const it = [...g.items.values()].find(i => i.kind === kind); it.x = p.x; it.z = p.z; it.active = true; g.stepItems(); return it; };
+  p.smokes = 0;
+  pick('smoke'); pick('smoke'); pick('smoke');
+  ok(p.smokes === 2 && p.pack.filter(k => k === 'smoke').length === 1, 'the smoke belt caps at 2, the surplus rides in the pack', JSON.stringify(p.pack));
+  msg(A, { t: 'throw', kind: 'smoke', dx: 0, dy: 0.3, dz: -1 });
+  ok(p.smokes === 2 && p.pack.filter(k => k === 'smoke').length === 0, 'a thrown smoke is replaced from the pack');
+  p.napalms = 0; pick('napalm');
+  ok(p.napalms === 1, 'the napalm pickup goes to the belt');
+  msg(A, { t: 'ready', kind: 'napalm' });
+  ok(p.napalms === 1, 'the ready message refuses a full belt');
+  g.stop();
+}
+{
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'zonebots' });
+  const A = seat(g, conn());
+  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  const bot = g.addBot('easy');
+  bot.x = 0; bot.z = -15; bot.y = 1.7; bot.hist = [];
+  const p = A.handle.player;
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  g.stepBots(0.3); g.stepBots(0.3);
+  ok(bot.bot.target === p.id, 'the bot sees the enemy across the open square');
+  msg(A, { t: 'throw', kind: 'smoke', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });
+  for (let i = 0; i < 70; i++) { clock += 1000 / 30; g.stepNades(); }
+  ok(g.zones.size === 1, 'the screen lies between the bot and the enemy');
+  bot.bot.look = 0; g.stepBots(0.3); bot.bot.look = 0; g.stepBots(0.3);
+  ok(bot.bot.target === 0, 'the smoke hides the enemy from the bot');
+  clock += 1000;
+  msg(A, { t: 'throw', kind: 'napalm', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });
+  for (let i = 0; i < 70; i++) { clock += 1000 / 30; g.stepNades(); }
+  ok([...g.zones.values()].some(z => z.kind === 'fire'), 'the napalm burns at the square');
+  bot.x = 0.5; bot.z = 0.5; bot.y = 1.7; bot.bot.target = 0;
+  g.stepBots(0.1);
+  ok(Math.hypot(bot.x, bot.z) > 0.6, 'the bot runs out of the fire before anything else', bot.x.toFixed(2) + '/' + bot.z.toFixed(2));
+  const hp0 = bot.hp;
+  for (let i = 0; i < 30; i++) { clock += 1000 / 30; g.stepNades(); }
+  ok(bot.hp < hp0, 'the fire burns the bot too');
+  g.stop();
+}
+
 /* ---------- 2j. the player cap ---------- */
 console.log('the player cap (64):');
 {

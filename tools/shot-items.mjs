@@ -37,6 +37,8 @@ page.on('console', m => { if (m.type() === 'error') errs.push(m.text().slice(0, 
 page.on('pageerror', e => errs.push('PAGE ' + String(e).slice(0, 200)));
 page.on('response', r => { if (r.status() >= 400) errs.push(r.status() + ' ' + r.url()); });
 page.on('requestfailed', r => errs.push('FAIL ' + r.url() + ' ' + (r.failure() || {}).errorText));
+// an account is mandatory for any game (src/ui/auth.js): seed one before the page loads, the local game accepts any key
+await page.addInitScript(() => { try { localStorage.setItem('dpils.account', JSON.stringify({ name: 'Тест', url: 'local', key: '0123456789abcdef0123456789abcdef' })); } catch (e) {} });
 await page.goto('http://127.0.0.1:' + PORT + '/');
 await page.waitForFunction(() => window.__city && window.__city.STATE, null, { timeout: 240000, polling: 500 });
 await page.waitForFunction(() => !document.getElementById('goTrain').disabled, null, { timeout: 120000, polling: 500 });
@@ -46,7 +48,7 @@ await page.waitForFunction(() => window.__city.STATE.mp, null, { timeout: 60000,
 await page.waitForFunction(() => { let ok = false; window.__city.scene.traverse(o => { if (o.userData && o.userData.shared) ok = true; }); return ok; }, null, { timeout: 90000, polling: 500 });
 await page.waitForTimeout(2500);
 
-for (const kind of ['ammo', 'med', 'nade']) {
+for (const kind of ['ammo', 'med', 'nade', 'smoke', 'napalm']) {
   const at = await page.evaluate(k => {
     const C = window.__city; let g = null;
     C.scene.traverse(o => { if (!g && o.userData && o.userData.item === k) g = o; });
@@ -101,6 +103,57 @@ const fly = await page.evaluate(() => {
 });
 await shot('game-nade-fly.png');
 console.log('flying grenade model meshes:', fly);
-console.log('console errors:', errs.filter(e => !/favicon/.test(e)));
+// the special grenades: stand by the map item of the kind, wind the throw up (its own arc and disc), throw for real,
+// catch the zone it leaves — the smoke screen and the burning patch — and stand in the fire for the burn overlay
+const gotoItem = kind => page.evaluate(k => {
+  const C = window.__city; let g = null;
+  C.scene.traverse(o => { if (!g && o.userData && o.userData.item === k) g = o; });
+  if (!g) return false;
+  const x = g.position.x - 2.2, z = g.position.z - 2.2, y = C.terrainH(x, z) + 1.7;
+  const me = [...C.MP.ws.game.players.values()].find(p => !p.bot);
+  if (me) { me.x = x; me.z = z; me.y = y; me.hist = []; }
+  C.P.x = x; C.P.z = z; C.P.y = y; C.P.eye = 1.7; C.P.vy = 0;
+  C.P.yaw = Math.atan2(-2.2, -2.2); C.P.pitch = 0.1;
+  return true;
+}, kind);
+for (const [kind, code] of [['smoke', 'KeyB'], ['napalm', 'KeyN']]) {
+  if (!await gotoItem(kind)) { console.log(kind, 'item NOT FOUND'); continue; }
+  await page.waitForTimeout(1500);
+  await page.evaluate(c => {
+    window.__city.STATE.locked = true;
+    window.__city.MP.nadePose = { t: 2, pw: 1, rel: -1, pwRel: 0, kind: c === 'KeyB' ? 'smoke' : 'napalm' };
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: c }));
+    window.dispatchEvent(new KeyboardEvent('keyup', { code: c }));
+  }, code);
+  await page.waitForTimeout(2500);
+  await shot(`game-${kind}-windup.png`);
+  // a weak throw at the feet: the zone forms right in view (a full-power throw lands far away, possibly out of sight)
+  await page.evaluate(() => { window.__city.MP.nadePose = null; window.__city.P.pitch = -0.25; document.querySelector('canvas').dispatchEvent(new MouseEvent('mousedown', { button: 0 })); });
+  await page.waitForTimeout(150);
+  await page.evaluate(() => window.dispatchEvent(new MouseEvent('mouseup', { button: 0 })));
+  await page.waitForTimeout(3500);   // the 2 s fuse, then the zone breathes
+  await shot(`game-${kind}-zone.png`);
+  console.log(kind, 'zone laid');
+  if (kind === 'smoke') {   // the inventory panel with the three grenade cards, while the screen still hangs
+    await page.evaluate(() => { window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyI' })); window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyI' })); });
+    await page.waitForTimeout(1000);
+    await page.evaluate(() => { const b = document.getElementById('mpInvBody'), low = b.querySelector('.inv-low'); b.scrollTop = low.getBoundingClientRect().top - b.getBoundingClientRect().top + b.scrollTop - 80; });   // the items section with the grenade cards
+    await page.waitForTimeout(400);
+    await shot('game-inv.png');
+    await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' })));
+    await page.waitForTimeout(400);
+  }
+}
+// stand in the burning patch: the orange edge of the burn and the fire's hurt
+await page.evaluate(() => {
+  const C = window.__city, z = [...C.MP.ws.game.zones.values()].find(z => z.kind === 'fire');
+  if (!z) return;
+  const me = [...C.MP.ws.game.players.values()].find(p => !p.bot);
+  if (me) { me.x = z.x; me.z = z.z; me.y = z.y + 1.7; me.hist = []; }
+  C.P.x = z.x; C.P.z = z.z; C.P.y = z.y + 1.7; C.P.vy = 0; C.P.pitch = -0.15;
+});
+await page.waitForTimeout(1300);
+await shot('game-napalm-burn.png');
+console.log('console errors:', errs.filter(e => !/favicon|\/health|\/auth/.test(e)));   // the plain test server has no /auth or /health of its own
 await browser.close();
 srv.close();

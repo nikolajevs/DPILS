@@ -162,9 +162,28 @@ export function createBrain(g) {
     }
     b.moving = false;
   }
+  // a smoke screen between the eyes hides what is beyond it: the sight segment crosses the cloud's sphere
+  // (the zones of game.mjs; the page draws the same screen, src/game/nades.js)
+  function smoked(ax, ay, az, bx, by, bz) {
+    for (const z of g.zones.values()) {
+      if (z.kind !== 'smoke') continue;
+      const cx = z.x, cy = z.y + 1.6, cz = z.z, r = z.r * 0.85;
+      const dx = bx - ax, dy = by - ay, dz = bz - az, L2 = dx * dx + dy * dy + dz * dz;
+      if (L2 < 1e-6) continue;
+      const t = Math.max(0, Math.min(1, ((cx - ax) * dx + (cy - ay) * dy + (cz - az) * dz) / L2));
+      const px = ax + dx * t - cx, py = ay + dy * t - cy, pz = az + dz * t - cz;
+      if (px * px + py * py + pz * pz < r * r) return true;
+    }
+    return false;
+  }
+  // the burning patch under the bot's feet, if any (napalm, game.mjs stepZones)
+  function fireAt(p) {
+    for (const z of g.zones.values()) if (z.kind === 'fire' && Math.hypot(p.x - z.x, p.z - z.z) < z.r + 0.5 && Math.abs((p.y - 1.7) - z.y) < 2.5) return z;
+    return null;
+  }
   function visible(p, q) {
     const dx = q.x - p.x, dz = q.z - p.z, dy = (q.y - 0.5) - p.y, d = Math.hypot(dx, dy, dz);
-    return d < b0(p).sight && world.freePath([p.x, p.y, p.z], [dx / d, dy / d, dz / d], d) >= d - 1.5 ? d : 0;
+    return d < b0(p).sight && world.freePath([p.x, p.y, p.z], [dx / d, dy / d, dz / d], d) >= d - 1.5 && !smoked(p.x, p.y, p.z, q.x, q.y - 0.5, q.z) ? d : 0;
   }
   const b0 = p => LEVELS[p.bot.level] || LEVELS.normal;
   const safeReload = (p, now) => { if (g.reload && p.reloadDone <= now && p.mag[p.wep] < g.WEAPONS[p.wep].mag * 0.4 && p.reserve[p.wep] > 0) g.reload(p, p.wep, now); };
@@ -180,6 +199,14 @@ export function createBrain(g) {
       if (world.walkable(nx, nz) && inArea(nx, nz)) { p.x = nx; p.z = nz; } else { b.kx = b.kz = 0; }
       const kd = Math.exp(-5 * dt); b.kx *= kd; b.kz *= kd;
       if (Math.hypot(b.kx, b.kz) < 0.05) b.kx = b.kz = 0;
+    }
+    const fz = fireAt(p);
+    if (fz) {   // napalm underfoot: run out of the fire before anything else — the fight waits
+      const dx = p.x - fz.x, dz = p.z - fz.z, d = Math.hypot(dx, dz) || 1;
+      walk(p, p.x + dx / d * 12, p.z + dz / d * 12, SPD.retreat, dt);
+      p.yaw = Math.atan2(-dx / d, -dz / d);
+      b.path = null; b.cover = null; b.target = 0;
+      return;
     }
     // a hit taken: remember the moment (the dodge hop comes sooner), snap the strafe the other way, and turn on an
     // attacker we cannot see — hurtFrom is written by the game when the blow lands (hurt in game.mjs)

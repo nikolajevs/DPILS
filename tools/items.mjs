@@ -4,13 +4,16 @@
    Sources (Sketchfab, CC-BY-4.0, attribution in models/README.md):
      ammo  "Soviet Weapons Ammo Crate Box Animated Low Poly" by lil_bentley — lid animation dropped, crate stays closed;
      nade  "M67" by Firewarden — the scene holds two copies (one with the spoon pulled out); the assembled one is kept;
-     med   "Medical Kit" by tediuminteractive — white case with the red cross.
+     med   "Medical Kit" by tediuminteractive — white case with the red cross;
+     smoke "M18 Smoke Grenade" by RedRogueXIII — the olive canister with its spoon and ring;
+     napalm "Incendiary grenade" by davidthe19th (The Blyat man) — the red AN-M14-style canister of CS2.
 
    Pipeline: kept primitives are baked into world space and merged per material, re-centred (bottom at y=0, x/z centred)
    and scaled to game size in metres; textures compressed to WebP (1024 px), geometry packed EXT_meshopt_compression.
    Run: npm i --no-save @gltf-transform/core@4 @gltf-transform/extensions@4 @gltf-transform/functions@4 sharp meshoptimizer
-        node tools/items.mjs            (writes the three glb into models/)
-        SRC=<dir> node tools/items.mjs  (folder with ammo-soviet/, nade-m67/, med-tedium/ subfolders, each x/scene.gltf)
+        node tools/items.mjs            (writes the glb into models/)
+        ONLY=smoke,napalm node tools/items.mjs   (build only the named kinds — the others' sources need not be present)
+        SRC=<dir> node tools/items.mjs  (folder with ammo-soviet/, nade-m67/, med-tedium/, smoke-m18/, napalm-cs2/ subfolders, each x/scene.gltf)
    Sources default to <repo>/.claude/items-src (gitignored): unpacked Sketchfab zips, uids in models/README.md;
    downloading needs a Sketchfab account token. COMPRESS=0 skips meshopt. */
 import path from 'node:path';
@@ -29,7 +32,10 @@ const JOBS = [
   { kind: 'ammo', dir: 'ammo-soviet', size: 0.55, axis: 'max' },
   { kind: 'nade', dir: 'nade-m67', size: 0.2, axis: 'y', pick: 'assembled' },
   { kind: 'med', dir: 'med-tedium', size: 0.26, axis: 'y' },
+  { kind: 'smoke', dir: 'smoke-m18', size: 0.29, axis: 'y' },   // the map prop twice the real canister (~14.5 cm), as the M67 is
+  { kind: 'napalm', dir: 'napalm-cs2', size: 0.3, axis: 'y', tilt: -Math.PI / 2 },   // the source lies along Z: stand it up, fuse on top
 ];
+const ONLY = (process.env.ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
 
 await Promise.all([MeshoptDecoder.ready, MeshoptEncoder.ready]);
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder, 'meshopt.encoder': MeshoptEncoder });
@@ -46,6 +52,7 @@ function worldBBox(nodes) {
 }
 
 for (const job of JOBS) {
+  if (ONLY.length && !ONLY.includes(job.kind)) continue;
   const doc = await io.read(`${SRC}/${job.dir}/x/scene.gltf`), root = doc.getRoot();
   for (const a of root.listAnimations()) a.dispose();
   let meshNodes = root.listNodes().filter(n => n.getMesh());
@@ -65,8 +72,10 @@ for (const job of JOBS) {
   // bake world transforms, merge per material
   const groups = new Map();
   const vb = new THREE.Box3();
+  const TILT = job.tilt ? new THREE.Matrix4().makeRotationX(job.tilt) : null;   // stand a lying source up before the bake
   for (const n of meshNodes) {
-    const M = new THREE.Matrix4().fromArray(n.getWorldMatrix()), N = new THREE.Matrix3().getNormalMatrix(M);
+    const M = new THREE.Matrix4().fromArray(n.getWorldMatrix()); if (TILT) M.premultiply(TILT);
+    const N = new THREE.Matrix3().getNormalMatrix(M);
     for (const p of n.getMesh().listPrimitives()) {
       const key = p.getMaterial()?.getName() || 'none';
       if (!groups.has(key)) groups.set(key, { mat: p.getMaterial(), pos: [], nrm: [], uv: [], idx: [] });
@@ -104,7 +113,11 @@ for (const job of JOBS) {
     const om = out.createMaterial(name);
     const sm = g.mat;
     if (sm) {
-      om.setBaseColorFactor(sm.getBaseColorFactor()).setMetallicFactor(sm.getMetallicFactor()).setRoughnessFactor(sm.getRoughnessFactor());
+      // some sources (game rips) carry the paint in KHR_materials_pbrSpecularGlossiness instead of metallic-roughness:
+      // its diffuse is the base colour, glossiness turns into roughness, the dielectric specular into no metal
+      const sg = sm.getExtension('KHR_materials_pbrSpecularGlossiness');
+      if (sg) om.setBaseColorFactor(sg.getDiffuseFactor()).setMetallicFactor(0).setRoughnessFactor(1 - (sg.getGlossinessFactor() ?? 0.5));
+      else om.setBaseColorFactor(sm.getBaseColorFactor()).setMetallicFactor(sm.getMetallicFactor()).setRoughnessFactor(sm.getRoughnessFactor());
       if (sm.getDoubleSided()) om.setDoubleSided(true);
       const copyTex = async (t, slot) => {
         if (!t) return;
@@ -116,7 +129,7 @@ for (const job of JOBS) {
         if (slot === 'normal') om.setNormalTexture(ot);
         if (slot === 'mr') om.setMetallicRoughnessTexture(ot);
       };
-      await copyTex(sm.getBaseColorTexture(), 'base');
+      await copyTex(sm.getBaseColorTexture() || (sg && sg.getDiffuseTexture()), 'base');
       await copyTex(sm.getNormalTexture(), 'normal');
       await copyTex(sm.getMetallicRoughnessTexture(), 'mr');
     }

@@ -116,4 +116,37 @@ function shellTink(ctx, out, vol = 0.2, d = 0, pan = 0, hard = true) {
     }
   } catch (e) {}
 }
-export { boomSound, crackSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, stepSound };
+// the voices of the special grenades: no recording of them exists in the sets, so these are always synthesised —
+// one shared noise buffer, filtered and enveloped. The smoke hisses out, the napalm roars and crackles.
+let NOISE = null;
+function noise(ctx) {
+  if (!NOISE) { NOISE = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate); const d = NOISE.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+  return NOISE;
+}
+function noisePlay(ctx, out, o) {
+  const s = ctx.createBufferSource(); s.buffer = noise(ctx); s.loop = true;
+  const f = ctx.createBiquadFilter(); f.type = o.type || 'lowpass'; f.frequency.value = o.freq; f.Q.value = o.q ?? 0.8;
+  const g = ctx.createGain(), t = ctx.currentTime + (o.delay ?? 0);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(0.001, o.vol), t + (o.attack ?? 0.03)); g.gain.exponentialRampToValueAtTime(0.0008, t + o.dur);
+  let tail = g;
+  if (o.pan) { const p = ctx.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, o.pan)); g.connect(p); tail = p; }
+  s.connect(f); f.connect(g); tail.connect(out); s.start(t); s.stop(t + o.dur + 0.05);
+}
+// the smoke screen breathing out: a long soft hiss, arriving at the speed of sound
+function smokeSound(ctx, out, vol = 1, d = 0, pan = 0) {
+  try { noisePlay(ctx, out, { type: 'bandpass', freq: 2400, q: 0.6, vol: vol * 0.5, dur: 2.6, attack: 0.25, delay: d / 340, pan }); noisePlay(ctx, out, { type: 'highpass', freq: 4200, vol: vol * 0.16, dur: 1.8, attack: 0.1, delay: d / 340 + 0.05, pan }); } catch (e) {}
+}
+// the napalm bursting: a low roar with a whoosh, then the crackle of the patch catching
+function fireSound(ctx, out, vol = 1, d = 0, pan = 0) {
+  try {
+    const dl = d / 340;
+    noisePlay(ctx, out, { type: 'lowpass', freq: 700, vol: vol * 0.8, dur: 1.4, attack: 0.04, delay: dl, pan });
+    noisePlay(ctx, out, { type: 'bandpass', freq: 1600, q: 0.5, vol: vol * 0.4, dur: 0.7, attack: 0.02, delay: dl, pan });
+    for (let i = 0; i < 6; i++) noisePlay(ctx, out, { type: 'highpass', freq: 2600, vol: vol * 0.22 * (0.5 + Math.random() * 0.5), dur: 0.05, attack: 0.004, delay: dl + 0.15 + Math.random() * 1.1, pan: pan + (Math.random() - 0.5) * 0.4 });
+  } catch (e) {}
+}
+// the crackle of the fire round you (the hurt of the napalm): a few dry pops at the ear
+function burnSound(ctx, out, vol = 1) {
+  try { for (let i = 0, n = 3 + (Math.random() * 3 | 0); i < n; i++) noisePlay(ctx, out, { type: 'bandpass', freq: 1800 + Math.random() * 2600, q: 1.2, vol: vol * 0.3 * (0.4 + Math.random() * 0.6), dur: 0.04 + Math.random() * 0.05, attack: 0.003, delay: Math.random() * 0.3 }); } catch (e) {}
+}
+export { boomSound, burnSound, crackSound, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeSound, stepSound };

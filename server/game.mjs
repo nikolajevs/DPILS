@@ -8,7 +8,7 @@
    (WEAPONS.vel) and the damage lands when the bullet arrives, not at the click. The hit is still judged against the target
    as the shooter saw it at the click (the position rewound by the shooter's lag, frozen for the flight), so “shoot where
    you see” holds while the bullet takes its time to get there. */
-import { FALL, HIT, INV, ITEMS, LOADOUT, NADE, PACK, RELOAD_MS, RESERVE, RULES as R, WEAPONS, W_FALL, W_NADE, bulletAt, bulletDir, dragDist, dragTime, rayHit, rayToSegment } from './combat.mjs';
+import { FALL, HIT, INV, ITEMS, LOADOUT, NADE, NADE_KINDS, NAPALM, PACK, RELOAD_MS, RESERVE, RULES as R, SMOKE, WEAPONS, W_FALL, W_FIRE, W_NADE, bulletAt, bulletDir, dragDist, dragTime, rayHit, rayToSegment } from './combat.mjs';
 import { LEVELS, botName, createBrain } from './bots.mjs';
 import { DAY_MS, dayPhase } from './daycycle.mjs';
 
@@ -42,7 +42,7 @@ export function createGame(opts) {
   const DAY = opts.day ? { len: Math.max(60000, +opts.day.len || DAY_MS) } : null;
   const dayNow = () => DAY && { f: +dayPhase(now(), DAY.len).toFixed(6), len: DAY.len };
   let nextId = 1, roundOver = false, nextNade = 1, nextBid = 1;
-  const nades = new Map(), bullets = new Map(), timers = [];
+  const nades = new Map(), bullets = new Map(), zones = new Map(), timers = [];   // zones: the smoke screens and the burning patches left by the special grenades
   // the arena: its bases stood on something walkable; without an arena bots roam round the square
   const walkSpot = (x, z) => { if (world.walkable(x, z)) return [x, z]; for (let r = 4; r < 80; r += 4) for (let k = 0; k < 12; k++) { const a = k / 12 * 6.283, nx = x + Math.cos(a) * r, nz = z + Math.sin(a) * r; if (world.walkable(nx, nz)) return [nx, nz]; } return [x, z]; };
   const arena = opts.arena ? { ...opts.arena, bases: opts.arena.bases.map(b => b.map(([x, z]) => walkSpot(x, z))) } : null;
@@ -69,7 +69,7 @@ export function createGame(opts) {
   function pickTeam(want, id) {
     if (FFA) return id; const a = count(0), b = count(1); if (a !== b) return a < b ? 0 : 1; return want === 0 || want === 1 ? want : Math.random() < 0.5 ? 0 : 1;
   }
-  const newPlayer = () => ({ id: nextId++, conn: null, bot: null, name: '', char: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, st: { shots: 0, hitShots: 0, dmg: 0, heads: 0 }, wep: 0, lastShot: 0, lastNade: 0, nades: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(),
+  const newPlayer = () => ({ id: nextId++, conn: null, bot: null, name: '', char: '', team: 0, joined: false, x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0, hp: 0, alive: false, kills: 0, deaths: 0, st: { shots: 0, hitShots: 0, dmg: 0, heads: 0 }, wep: 0, lastShot: 0, lastNade: 0, nades: 0, smokes: 0, napalms: 0, lastChat: 0, rwin: 0, rmsgs: 0, eye: 1.7, rtt: 80, hist: [], diedAt: 0, protectUntil: 0, t: 0, msgs: 0, win: now(),
     mag: WEAPONS.map(w => w.mag), reserve: RESERVE.slice(), meds: 0, reloadDone: 0, reloadW: 0, lastMed: 0,
     attach: WEAPONS.map(() => null),
     loadout: LOADOUT.slice(), pack: PACK.slice() });   // two equipped guns + the backpack (guns and stored items); one sight mounted per weapon
@@ -97,10 +97,10 @@ export function createGame(opts) {
   function areaPoint() { for (let k = 0; k < 30; k++) { const a = Math.random() * 6.283, r = Math.sqrt(Math.random()) * (area.r - 20), x = area.cx + Math.cos(a) * r, z = area.cz + Math.sin(a) * r; if (world.walkable(x, z)) return [x, z, Math.random() * 6.283]; } return [area.cx, area.cz, 0]; }
   function spawn(p, x, z, yaw) {
     if (arena) [x, z, yaw] = basePoint(p); else if (p.bot) [x, z, yaw] = areaPoint();
-    p.x = num(x, HX); p.z = num(z, HY); p.y = p.bot ? world.ground(p.x, p.z) + 1.7 : 1.7; p.yaw = num(yaw, 10); p.pitch = 0; p.hp = R.hp; p.alive = true; p.protectUntil = now() + R.protectMs; p.t = now(); p.free = true; p.hist.length = 0; p.nades = NADE.count; p.eye = 1.7; p.fallTop = p.y; if (p.bot) { p.bot.vy = 0; p.bot.fallTop = 0; }
+    p.x = num(x, HX); p.z = num(z, HY); p.y = p.bot ? world.ground(p.x, p.z) + 1.7 : 1.7; p.yaw = num(yaw, 10); p.pitch = 0; p.hp = R.hp; p.alive = true; p.protectUntil = now() + R.protectMs; p.t = now(); p.free = true; p.hist.length = 0; p.nades = NADE.count; p.smokes = SMOKE.count; p.napalms = NAPALM.count; p.eye = 1.7; p.fallTop = p.y; if (p.bot) { p.bot.vy = 0; p.bot.fallTop = 0; }
     p.mag = WEAPONS.map(w => w.mag); p.reserve = RESERVE.slice(); p.meds = 0; p.reloadDone = 0; p.lastMed = 0;
-    refill(p, 'med'); refill(p, 'nade');   // the kits and grenades stored in the pack top the ready belt up at once
-    send(p, { t: 'spawn', x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, nades: p.nades, mag: p.mag, reserve: p.reserve, meds: p.meds, sights: looseSights(p), attach: p.attach, loadout: p.loadout, pack: p.pack }); all({ t: 'alive', id: p.id });   // the pack, the sights and the loadout stay with the player through a death
+    refill(p, 'med'); refill(p, 'nade'); refill(p, 'smoke'); refill(p, 'napalm');   // the kits and grenades stored in the pack top the ready belt up at once
+    send(p, { t: 'spawn', x: p.x, z: p.z, yaw: p.yaw, hp: p.hp, nades: p.nades, smokes: p.smokes, napalms: p.napalms, mag: p.mag, reserve: p.reserve, meds: p.meds, sights: looseSights(p), attach: p.attach, loadout: p.loadout, pack: p.pack }); all({ t: 'alive', id: p.id });   // the pack, the sights and the loadout stay with the player through a death
   }
   // damage dmg from attacker p to v (weapon w; zone 1 head, 0 torso, 2 legs; from = where it came from): the hit and
   // the hurt messages, and the kill
@@ -108,7 +108,7 @@ export function createGame(opts) {
   function hurt(p, v, dmg, zone, w, from, bd, vf) {
     if (!v.alive || dmg <= 0) return; const t0 = now(), head = zone === 1;
     if (v.bot && p !== v) v.bot.hurtFrom = { x: p.x, z: p.z, at: t0, id: p.id };   // the bot turns on an attacker it cannot see (think in bots.mjs)
-    v.hp -= dmg; if (p !== v) { const d = dmg + Math.min(0, v.hp); p.st.dmg += d; if (p.prof) p.prof.add('dmg', d); } send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: from[0] - v.x, dz: from[2] - v.z, bd: r3(bd), vf: vf == null ? undefined : +vf.toFixed(3), fall: w === W_FALL ? 1 : undefined }); if (p !== v) send(p, { t: 'hit', id: v.id, head, zone, kill: v.hp <= 0, dmg: Math.min(dmg, dmg + Math.min(0, v.hp)) });
+    v.hp -= dmg; if (p !== v) { const d = dmg + Math.min(0, v.hp); p.st.dmg += d; if (p.prof) p.prof.add('dmg', d); } send(v, { t: 'hurt', by: p.id, hp: Math.max(0, v.hp), dx: from[0] - v.x, dz: from[2] - v.z, bd: r3(bd), vf: vf == null ? undefined : +vf.toFixed(3), fall: w === W_FALL ? 1 : undefined, fire: w === W_FIRE ? 1 : undefined }); if (p !== v) send(p, { t: 'hit', id: v.id, head, zone, kill: v.hp <= 0, dmg: Math.min(dmg, dmg + Math.min(0, v.hp)) });
     if (v.hp > 0) return;
     v.alive = false; v.deaths++; v.diedAt = t0; v.streak = 0; if (v.prof) v.prof.add('deaths');
     if (p !== v) { p.kills++; if (!FFA) teamScore[p.team]++; if (head) p.st.heads++; if (p.prof) { p.prof.add('kills'); if (head) p.prof.add('heads'); p.streak = (p.streak || 0) + 1; p.prof.max('best', p.streak); } }
@@ -126,8 +126,37 @@ export function createGame(opts) {
     const hh = Math.min(FALL.maxH, Math.max(0, h), seen);
     if (hh > FALL.safe) hurt(p, p, Math.round((hh - FALL.safe) * FALL.k), 0, W_FALL, [p.x, p.y, p.z]);
   }
+  // the smoke and the napalm go off into a zone lying on the surface under them (the ground, or the roof they reached);
+  // the zone lives in `zones` until its time is out — the fire burns whoever stands in it (stepZones), the smoke hides
+  // the street from the bots' eyes (bots.mjs). The page draws both from the 'zone' message (src/game/nades.js).
+  const surfaceAt = (x, y, z) => { const g = world.ground(x, z), b = world.buildingAt(x, z, y); return b && y > g + (b.top || 12) - 0.6 ? g + (b.top || 12) : g; };
+  function layZone(n) {
+    const K = n.kind === 'smoke' ? SMOKE : NAPALM, y = surfaceAt(n.p[0], n.p[1], n.p[2]);
+    const z = { id: n.id, kind: n.kind === 'smoke' ? 'smoke' : 'fire', x: n.p[0], y, z: n.p[2], r: K.radius, until: now() + K.durMs, by: n.by, lastTick: 0 };
+    zones.set(z.id, z);
+    all({ t: 'zone', id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, r: z.r, durMs: K.durMs });
+  }
+  function stepZones() {
+    const t = now();
+    for (const z of [...zones.values()]) {
+      if (t >= z.until) { zones.delete(z.id); all({ t: 'zoneEnd', id: z.id }); continue; }
+      if (z.kind !== 'fire' || roundOver || t - z.lastTick < NAPALM.tickMs) continue;
+      z.lastTick = t;
+      const thrower = players.get(z.by); if (!thrower) continue;
+      for (const v of players.values()) {
+        if (!v.alive) continue;
+        if (v.team === thrower.team && v !== thrower) continue;   // teammates walk through their own napalm unburnt
+        if (v !== thrower && t <= v.protectUntil) continue;
+        if (Math.hypot(v.x - z.x, v.z - z.z) >= z.r) continue;
+        const feet = v.y - v.eye; if (feet < z.y - 1 || feet > z.y + 2.5) continue;   // on the burning surface, not above it
+        hurt(thrower, v, Math.round(NAPALM.dps * NAPALM.tickMs / 1000), 0, W_FIRE, [z.x, z.y + 0.3, z.z]);
+      }
+    }
+  }
   function explode(n) {
-    nades.delete(n.id); all({ t: 'boom', id: n.id, x: n.p[0], y: n.p[1], z: n.p[2] });
+    nades.delete(n.id);
+    if (n.kind === 'smoke' || n.kind === 'napalm') { layZone(n); return; }
+    all({ t: 'boom', id: n.id, x: n.p[0], y: n.p[1], z: n.p[2] });
     if (roundOver) return; const thrower = players.get(n.by);
     const blocked = (o, pt) => { const bx = pt[0] - o[0], by = pt[1] - o[1], bz = pt[2] - o[2], l = Math.hypot(bx, by, bz); return l > 0.6 && world.freePath(o, [bx / l, by / l, bz / l], l) < l - 0.7; };
     for (const v of players.values()) {
@@ -152,15 +181,16 @@ export function createGame(opts) {
     }
   }
   // ---- the inventory: the server keeps the magazines and the reserve; a reload takes time and fills from the reserve ----
-  const invMsg = p => send(p, { t: 'inv', mag: p.mag, reserve: p.reserve, nades: p.nades, meds: p.meds, sights: looseSights(p), attach: p.attach, loadout: p.loadout, pack: p.pack });
+  const invMsg = p => send(p, { t: 'inv', mag: p.mag, reserve: p.reserve, nades: p.nades, smokes: p.smokes, napalms: p.napalms, meds: p.meds, sights: looseSights(p), attach: p.attach, loadout: p.loadout, pack: p.pack });
   // the sights ride in the backpack until mounted: the loose count the panel shows is what the pack holds
   const looseSights = p => ({ sight: p.pack.filter(k => k === 'sight').length, optic: p.pack.filter(k => k === 'optic').length });
-  // the ready belt (med kits, grenades of one kind) refills from the pack as it is spent, up to the cap of its kind
+  // the ready belt (med kits, grenades of each kind) refills from the pack as it is spent, up to the cap of its kind
+  const beltOf = { med: ['meds', INV.medMax], nade: ['nades', INV.nadeMax], smoke: ['smokes', INV.nadeMax], napalm: ['napalms', INV.nadeMax] };
   function refill(p, kind) {
-    const cap = kind === 'med' ? INV.medMax : INV.nadeMax;
-    let n = kind === 'med' ? p.meds : p.nades;
+    const [field, cap] = beltOf[kind];
+    let n = p[field];
     for (let i = 0; i < p.pack.length && n < cap; i++) if (p.pack[i] === kind) { p.pack[i] = null; n++; }
-    if (kind === 'med') p.meds = n; else p.nades = n;
+    p[field] = n;
   }
   // ---- the loadout: two equipped guns (loadout) and a backpack of ten cells (pack). A weapon index lives in exactly one
   // place. A human swaps a pack cell with a loadout slot ('swap'); a bot equips a gun by pulling it into a slot (equip).
@@ -312,12 +342,15 @@ export function createGame(opts) {
     p.st.shots++; if (p.prof) p.prof.add('shots');
     all({ t: 'shot', id: p.id, w: wi, o: eye, rays: out });
   }
-  function throwNade(p, u, sp = NADE.speed) {
-    const t0 = now(); if (!p.alive || p.nades <= 0 || t0 - p.lastNade < NADE.cooldownMs || roundOver) return;
-    p.nades--; p.lastNade = t0; refill(p, 'nade'); invMsg(p);   // a stored grenade takes the thrown one's place on the belt
+  function throwNade(p, u, sp = NADE.speed, kind = 'nade') {
+    if (!NADE_KINDS.includes(kind)) kind = 'nade';
+    const [field] = beltOf[kind], t0 = now();
+    if (!p.alive || p[field] <= 0 || t0 - p.lastNade < NADE.cooldownMs || roundOver) return;
+    p[field]--; p.lastNade = t0; refill(p, kind); invMsg(p);   // a stored grenade takes the thrown one's place on the belt
     sp = Math.max(NADE.minSpeed, Math.min(NADE.maxSpeed, sp)); const id = nextNade++;   // the charged throw: the client sends the speed it gathered holding the mouse
-    const n = { id, by: p.id, p: [p.x + u[0] * 0.6, p.y - 0.2 + u[1] * 0.6, p.z + u[2] * 0.6], v: [u[0] * sp, u[1] * sp + NADE.loft * sp, u[2] * sp], t: t0 + NADE.fuseMs, simT: t0 };
-    nades.set(id, n); all({ t: 'nade', id, by: p.id, p: n.p, v: n.v, fuse: NADE.fuseMs });
+    const fuse = kind === 'smoke' ? SMOKE.fuseMs : kind === 'napalm' ? NAPALM.fuseMs : NADE.fuseMs;
+    const n = { id, by: p.id, kind, p: [p.x + u[0] * 0.6, p.y - 0.2 + u[1] * 0.6, p.z + u[2] * 0.6], v: [u[0] * sp, u[1] * sp + NADE.loft * sp, u[2] * sp], t: t0 + fuse, simT: t0 };
+    nades.set(id, n); all({ t: 'nade', id, by: p.id, kind, p: n.p, v: n.v, fuse });
   }
   // the end of a round: the table of the round goes to everybody, ten seconds later the scores are cleared and the next round starts
   function endRound(team, winner) {
@@ -326,11 +359,11 @@ export function createGame(opts) {
     const rows = [...players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, heads: p.st.heads, dmg: Math.round(p.st.dmg), acc: p.st.shots ? Math.round(100 * p.st.hitShots / p.st.shots) : 0 }));
     rows.sort((a, b) => b.kills - a.kills || b.dmg - a.dmg || a.deaths - b.deaths);
     all({ t: 'win', mode: MODE, team, name: FFA ? winner.name : TEAMS[team], score: FFA ? [] : teamScore, rows, mvp: rows.length ? rows[0].id : 0, nextMs: 10000 });
-    timers.push(setTimeout(() => { teamScore[0] = teamScore[1] = 0; for (const p of players.values()) { p.kills = p.deaths = 0; p.st = { shots: 0, hitShots: 0, dmg: 0, heads: 0 }; } roundOver = false; sendBoard(); all({ t: 'round' }); all({ t: 'chat', text: 'Новый раунд' }); for (const it of items.values()) { it.active = true; it.respawnAt = 0; all(itemMsg(it)); } }, 10000));
+    timers.push(setTimeout(() => { teamScore[0] = teamScore[1] = 0; for (const p of players.values()) { p.kills = p.deaths = 0; p.st = { shots: 0, hitShots: 0, dmg: 0, heads: 0 }; } roundOver = false; sendBoard(); all({ t: 'round' }); all({ t: 'chat', text: 'Новый раунд' }); for (const it of items.values()) { it.active = true; it.respawnAt = 0; all(itemMsg(it)); } for (const z of zones.values()) all({ t: 'zoneEnd', id: z.id }); zones.clear(); }, 10000));
   }
   // ---- bots
   const enemyBase = p => (arena ? (FFA ? arena.bases.flat()[Math.floor(Math.random() * arena.bases.flat().length)] : arena.bases[p.team === 1 ? 0 : 1][Math.floor(Math.random() * arena.bases[p.team === 1 ? 0 : 1].length)]) : null);
-  const brain = createBrain({ players, now, world, area, FFA, WEAPONS, R, shoot, throwNade, spawn, fall, roundOver: () => roundOver, enemyBase, reload: beginReload, equip, get items() { return items; } });   // items is declared below: a getter reads it once the game is built
+  const brain = createBrain({ players, now, world, area, FFA, WEAPONS, R, shoot, throwNade, spawn, fall, roundOver: () => roundOver, enemyBase, reload: beginReload, equip, get items() { return items; }, get zones() { return zones; } });   // items is declared below: a getter reads it once the game is built
   let botN = 0;
   function addBot(level) {
     if (players.size >= MAX) return null;
@@ -354,7 +387,7 @@ export function createGame(opts) {
           if (players.size >= MAX && !removeBot()) { send(p, { t: 'full' }); conn.close(); return; }
           if (lb && m.board !== false && validKey(m.key) && ![...players.values()].some(q => q.key === m.key)) { p.key = m.key; const r = lb.identify(m.key, nameBase(m.name), n => !taken(n)); p.name = r.name; p.prof = r.prof; } else p.name = cleanName(m.name);
           p.team = pickTeam(m.team, p.id); p.char = cleanChar(m.char); p.joined = true; players.set(p.id, p);
-          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, day: dayNow() || undefined, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])) });
+          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, team: p.team, teams: TEAMS, win: WIN, arena: arena && { name: arena.name, cx: arena.cx, cz: arena.cz, r: arena.r, bases: arena.bases }, rules: { hp: R.hp, range: R.range }, day: dayNow() || undefined, board: board(), score: FFA ? [] : teamScore, items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), zones: [...zones.values()].map(z => ({ id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, r: z.r, left: Math.max(0, z.until - now()) })), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])) });
           spawn(p, m.x, m.z, m.yaw); sendBoard(); all({ t: 'chat', text: p.name + (FFA ? ' в игре' : ' в игре, ' + TEAMS[p.team]) });
           return;
         }
@@ -370,12 +403,12 @@ export function createGame(opts) {
           p.yaw = num(m.yaw, 100); p.pitch = num(m.pitch, 1.6); p.eye = Math.max(0.9, Math.min(1.8, num(m.h, 1.8) || 1.7)); p.wep = okWeapon(m.w) && held(p, m.w) ? m.w : p.loadout[0];   // the gun in hand must be one of the two equipped
           p.hist.push([t0, p.x, p.y, p.z, p.eye, p.yaw]); while (p.hist.length > 2 && t0 - p.hist[0][0] > 1000) p.hist.shift();
         } else if (m.t === 'shoot' && p.alive) shoot(p, okWeapon(m.w) && held(p, m.w) ? m.w : p.loadout[0], m.rays, 120 + Math.min(300, p.rtt / 2));
-        else if (m.t === 'throw') { const d = [num(m.dx, 1), num(m.dy, 1), num(m.dz, 1)], l = Math.hypot(...d); if (l >= 0.5) throwNade(p, d.map(x => x / l), m.sp == null ? NADE.speed : num(m.sp, NADE.maxSpeed)); }
+        else if (m.t === 'throw') { const d = [num(m.dx, 1), num(m.dy, 1), num(m.dz, 1)], l = Math.hypot(...d); if (l >= 0.5) throwNade(p, d.map(x => x / l), m.sp == null ? NADE.speed : num(m.sp, NADE.maxSpeed), m.kind); }
         else if (m.t === 'reload' && p.alive) beginReload(p, okWeapon(m.w) ? m.w : p.wep, t0);
         else if (m.t === 'use' && m.kind === 'med') useMed(p, t0);
-        else if (m.t === 'ready' && p.alive && (m.kind === 'med' || m.kind === 'nade')) {   // a stored item takes a free place on the ready belt
-          const cap = m.kind === 'med' ? INV.medMax : INV.nadeMax, n = m.kind === 'med' ? p.meds : p.nades, pi = p.pack.indexOf(m.kind);
-          if (pi >= 0 && n < cap) { p.pack[pi] = null; if (m.kind === 'med') p.meds++; else p.nades++; invMsg(p); }
+        else if (m.t === 'ready' && p.alive && beltOf[m.kind]) {   // a stored item takes a free place on the ready belt
+          const [field, cap] = beltOf[m.kind], pi = p.pack.indexOf(m.kind);
+          if (pi >= 0 && p[field] < cap) { p.pack[pi] = null; p[field]++; invMsg(p); }
         }
         else if (m.t === 'fall' && p.alive) fall(p, num(m.h, FALL.maxH));   // the client landed from a height: the damage is the server's
         else if (m.t === 'attach') setSight(p, okWeapon(m.w) ? m.w : p.wep, m.kind === 'sight' || m.kind === 'optic' ? m.kind : null);
@@ -411,7 +444,7 @@ export function createGame(opts) {
     return spots;
   }
   const itemMsg = it => ({ t: 'item', id: it.id, kind: it.kind, x: it.x, z: it.z });
-  itemSpots().forEach(([x, z], i) => { const it = { id: nextItem++, kind: ['ammo', 'nade', 'med', 'ammo', 'sight', 'optic'][i % 6], x, z, active: true, respawnAt: 0 }; items.set(it.id, it); });
+  itemSpots().forEach(([x, z], i) => { const it = { id: nextItem++, kind: ['ammo', 'nade', 'med', 'ammo', 'sight', 'optic', 'smoke', 'napalm'][i % 8], x, z, active: true, respawnAt: 0 }; items.set(it.id, it); });
   function tickItems(t) {
     for (const it of items.values()) {
       if (!it.active) { if (t >= it.respawnAt) { it.active = true; all(itemMsg(it)); } continue; }
@@ -419,8 +452,8 @@ export function createGame(opts) {
         if (!p.alive || Math.hypot(p.x - it.x, p.z - it.z) > INV.pickR) continue;
         let got = false;   // 'belt' — straight to the ready belt, 'pack' — stored in a free backpack cell
         if (it.kind === 'ammo') { for (let i = 0; i < WEAPONS.length; i++) { const add = Math.min(ITEMS.ammo.give[i], RESERVE[i] * INV.reserveCap - p.reserve[i]); if (add > 0) { p.reserve[i] += add; got = 'belt'; } } }
-        else if (it.kind === 'nade') { if (p.nades < INV.nadeMax) { p.nades++; got = 'belt'; } else { const fi = p.pack.indexOf(null); if (fi >= 0) { p.pack[fi] = 'nade'; got = 'pack'; } } }
         else if (it.kind === 'med') { if (p.meds < INV.medMax) { p.meds++; got = 'belt'; } else { const fi = p.pack.indexOf(null); if (fi >= 0) { p.pack[fi] = 'med'; got = 'pack'; } } }
+        else if (beltOf[it.kind]) { const [field, cap] = beltOf[it.kind]; if (p[field] < cap) { p[field]++; got = 'belt'; } else { const fi = p.pack.indexOf(null); if (fi >= 0) { p.pack[fi] = it.kind; got = 'pack'; } } }
         else if (it.kind === 'sight' || it.kind === 'optic') { const owned = p.pack.filter(k => k === it.kind).length + p.attach.filter(a => a === it.kind).length; if (owned < INV[it.kind + 'Max']) { const fi = p.pack.indexOf(null); if (fi >= 0) { p.pack[fi] = it.kind; got = 'pack'; } } }
         if (!got) continue;   // the belt and the pack are full: the item stays for someone else
         it.active = false; it.respawnAt = t + ITEMS[it.kind].respawnMs;
@@ -456,15 +489,17 @@ export function createGame(opts) {
       if (t >= n.t) explode(n);
     }
   }
-  timers.push(setInterval(stepNades, 1000 / 30));
+  const tickNades = () => { stepNades(); stepZones(); };   // the grenades in the air and the zones they left, one clock
+  timers.push(setInterval(tickNades, 1000 / 30));
   timers.push(setInterval(() => advanceBullets(now()), 1000 / 30));   // the bullets in the air fly on the same clock
   function stepBots(dt) { for (const p of [...players.values()]) if (p.bot) brain.think(p, dt); }
   timers.push(setInterval(() => { const t = now(), dt = Math.min(0.2, (t - last) / 1000); last = t; stepBots(dt); }, 50));
   return {
     attach, addBot, removeBot, players, arena, world, mode: MODE, equip,   // world: the city's physics (freePath, shotPath, stepNade) — the tools and the headless checks probe it
     get items() { return items; },   // the map pickups: the tests place them at a player's feet
+    get zones() { return zones; },   // the smoke screens and burning patches: the tests probe them too
     stepBullets: () => advanceBullets(now()),   // the tests drive the flight by their own clock
-    stepNades,   // the tests drive the fuse by their own clock too
+    stepNades: tickNades,   // the tests drive the fuse and the zones by their own clock too
     stepBots,   // and the bots' think by the test clock, for the fall test
     stepItems: () => tickItems(now()),   // and the pickups and reload completion, for the bot-tactics tests
     stop() { for (const t of timers) { clearInterval(t); clearTimeout(t); } timers.length = 0; },
