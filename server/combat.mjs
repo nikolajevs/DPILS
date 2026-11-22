@@ -56,6 +56,14 @@ export const NADE = { count: 2, speed: 15, minSpeed: 6, maxSpeed: 24, loft: 0.17
 export const SMOKE = { count: 1, fuseMs: 2000, radius: 6, durMs: 12000 };
 export const NAPALM = { count: 1, fuseMs: 2000, radius: 4, durMs: 8000, dps: 30, tickMs: 250 };
 export const NADE_KINDS = ['nade', 'smoke', 'napalm'];   // the frag, the smoke, the incendiary — the 'throw' message's kind
+// the cargo event (server/game.mjs, src/game/cargo.js): a supply crate parachutes into a random open spot every few
+// minutes — meds, grenades and the rare 8× optic inside, a smoke beacon marks the landing. Whoever takes the loot is
+// marked for everyone for markMs: the bait is the fight around the crate. The crate waits on the ground groundMs,
+// then is gone; the next drop comes gapMs after the previous one ended (taken or expired).
+export const CARGO = {
+  firstMs: 75000, gapMs: 150000, alt: 130, speed: 6.5, pickR: 2.6, groundMs: 150000, markMs: 60000, beaconR: 5,
+  loot: [['med', 2], ['nade', 1], ['smoke', 1], ['napalm', 1], ['optic', 1]],   // belt first, the surplus into the pack; the optic only if not already owned
+};
 // the inventory (keep src/game/mp.js and src/game/inventory.js in step): the reserve each weapon starts with, the time
 // of its reload, and the items that lie on the map and are picked up by walking over them
 export const RESERVE = [90, 24, 15, 36, 200, 90, 90, 90];

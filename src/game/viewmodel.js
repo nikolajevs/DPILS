@@ -332,7 +332,7 @@ function makeViewmodel(parent) {
     sway.rotation.set((-swY + (s.kick || 0) * 0.035) * calm, -swX * calm, 0); sway.position.z = (s.kick || 0) * 0.03 * calm; lastYaw = s.yaw; lastPitch = s.pitch;   // and kicks back at a shot (kick 1 → 0, mp.js)
     const sc = scopes[cur];
     if (sc && adsT > 0.001 && attachK[cur] === 'sight') {
-      T.set(-0.004, 0.072, 0.06); sc.localToWorld(T); holder.worldToLocal(T);   // the lens centre measured in item_sight.glb
+      T.set(0.002, 0.089, 0.023); sc.localToWorld(T); holder.worldToLocal(T);   // the lens centre measured in item_sight.glb (EoTech EXPS3-0)
       holder.position.set(-T.x * adsT, -T.y * adsT, 0);
     } else holder.position.set(0, 0, 0);
   }
