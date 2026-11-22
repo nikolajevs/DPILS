@@ -43,6 +43,7 @@ export function createSocial({ accounts, teams, now = Date.now, onTeams = () => 
   const noteTeam = (t, text, but) => { if (t) for (const m of t.members) if (low(m) !== low(but)) sendTo(m, { t: 'note', text }); };
   const changed = () => { try { onTeams(); } catch (e) { console.error(e); } };
   const logOf = id => logs.get(id) || [];
+  const waiting = name => { const t = teams.of(name); return t ? teams.invitesFrom(t.id).map(i => i.to) : []; };   // who waits on an invitation of name's team
   // a member came online, went away or moved between the lobby and a fight: his team sees it
   function presence(name) { const t = teams.of(name); if (t) for (const m of t.members) if (low(m) !== low(name)) push(m); }
 
@@ -79,10 +80,10 @@ export function createSocial({ accounts, teams, now = Date.now, onTeams = () => 
         return;
       }
       case 'leave': {
-        const r = teams.leave(me); if (r.error) return fail(r.error);
+        const pend = waiting(me), r = teams.leave(me); if (r.error) return fail(r.error);
         push(me); sendTo(me, { t: 'note', text: 'Вы покинули команду [' + r.team.tag + ']' });
         if (!r.closed) { const t = teams.get(r.team.id); pushTeam(t); noteTeam(t, me + ' покинул команду' + (low(r.leader) !== low(r.team.leader) ? ' · лидер теперь ' + r.leader : ''), ''); }
-        else logs.delete(r.team.id);
+        else { logs.delete(r.team.id); for (const n of pend) push(n); }   // the closed team's invitations are gone
         changed(); return;
       }
       case 'kick': {
@@ -97,8 +98,9 @@ export function createSocial({ accounts, teams, now = Date.now, onTeams = () => 
         return;
       }
       case 'disband': {
-        const r = teams.disband(me); if (r.error) return fail(r.error);
+        const pend = waiting(me), r = teams.disband(me); if (r.error) return fail(r.error);
         for (const n of r.team.members) { push(n); sendTo(n, { t: 'note', text: 'Команда [' + r.team.tag + '] распущена' }); }
+        for (const n of pend) push(n);   // its invitations are gone too
         logs.delete(r.team.id);
         changed(); return;
       }
