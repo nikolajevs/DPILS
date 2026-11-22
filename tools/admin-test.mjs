@@ -102,7 +102,7 @@ const join = async (name, key) => {
   const ws = new WebSocket('ws://127.0.0.1:' + PORT);
   await new Promise((res, rej) => { ws.once('open', res); ws.once('error', rej); });
   const hello = waitFor(ws, m => m.t === 'hello');
-  ws.send(JSON.stringify({ t: 'join', name, key, team: 0, char: 'soldier', x: -1487, z: 1263, yaw: 0, board: true }));
+  ws.send(JSON.stringify({ t: 'join', name, key, char: 'soldier', x: -1487, z: 1263, yaw: 0, board: true }));
   await hello;
   return ws;
 };

@@ -12,13 +12,12 @@ import { $, reduceMotion } from '../core/env.js';
 import { HOLY } from '../../server/combat.mjs';
 
 const S = { on: false, id: 0, points: [], hold: null, left: 0, recvAt: 0, capR: HOLY.capR, capMs: HOLY.capMs, holdMs: HOLY.holdMs, buffs: { ...HOLY.buffs }, buffName: { ...HOLY.buffName }, flashes: [] };   // buffs and their labels come with the 'holy' message: the admin panel can tune them live (server/events.mjs)
-let ME = { unit: 't0', ffa: false };
-export function holyMe(unit, ffa) { ME = { unit, ffa }; }
+let ME = { unit: '' };   // the unit of the server (unitOf in game.mjs): the own team of the players, or the player alone
+export function holyMe(unit) { ME = { unit }; }
 export const holyAudio = { bell: null };   // mp.js wires it to the game's one audio context (bellSound)
-const NEUTRAL = new THREE.Color('#ffd27a'), RED = new THREE.Color('#d8392f'), BLUE = new THREE.Color('#2f78d8'), GOLD = new THREE.Color('#e8a317'), RUST = new THREE.Color('#b8452f');
-function ownerColor(owner, team) {
+const NEUTRAL = new THREE.Color('#ffd27a'), GOLD = new THREE.Color('#e8a317'), RUST = new THREE.Color('#b8452f');
+function ownerColor(owner) {   // no sides: a temple is yours (your team's) in gold, a rival's in rust, nobody's neutral
   if (!owner) return NEUTRAL;
-  if (!ME.ffa) return team === 1 ? BLUE : RED;
   return owner === ME.unit ? GOLD : RUST;
 }
 const myBuffs = () => { const b = {}; if (S.on) for (const pt of S.points) if (pt.owner === ME.unit) b[HOLY.temples[pt.i].buff] = true; return b; };
@@ -114,13 +113,13 @@ const fmt = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return Math.flo
 function paintChips() {
   const chips = $('holyPoints').children;
   for (let i = 0; i < S.points.length && i < chips.length; i++) {
-    const pt = S.points[i], chip = chips[i], col = ownerColor(pt.owner, pt.team);
+    const pt = S.points[i], chip = chips[i], col = ownerColor(pt.owner);
     chip.classList.toggle('owned', !!pt.owner);
     chip.classList.toggle('mine', pt.owner === ME.unit);
     chip.querySelector('.holy-dot').style.background = '#' + col.getHexString();
     const fill = chip.querySelector('.holy-prog i');
     fill.style.width = (pt.prog * 100).toFixed(0) + '%';
-    fill.style.background = '#' + ownerColor(pt.progSide, pt.progTeam).getHexString();
+    fill.style.background = '#' + ownerColor(pt.progSide).getHexString();
   }
 }
 
@@ -135,7 +134,7 @@ function strike(i, vol, delay) {
 export function holyBell(m) {
   const pt = S.points.find(p => p.i === m.i);
   if (pt) { pt.swing = 1; pt.flash = 1; if (pt.vis) pt.vis.swing = 1; }
-  S.flashes.push({ i: m.i, at: performance.now(), team: m.team, side: m.side });
+  S.flashes.push({ i: m.i, at: performance.now(), side: m.side });
   strike(m.i, 1, 0); strike(m.i, 0.55, 0.85);   // the bell swings twice
   setTimeout(() => { const q = S.points.find(p => p.i === m.i); if (q) q.swing = 0.7; }, 850);
 }
@@ -143,7 +142,7 @@ export function holyWin(m) {
   for (const pt of S.points) { pt.swing = 1; pt.flash = 1; }
   for (let k = 0; k < 4; k++) strike(k, 0.9, k * 0.22);   // a peal: the four notes spell a chord
   for (let k = 0; k < 4; k++) strike(k, 0.7, 1.3 + k * 0.16);
-  S.flashes.push({ i: -1, at: performance.now(), team: m.team, side: m.side });
+  S.flashes.push({ i: -1, at: performance.now(), side: m.side });
   if (!reduceMotion) { const f = $('holyFlash'); f.hidden = false; f.style.opacity = '0.5'; setTimeout(() => { f.style.opacity = '0'; setTimeout(() => { f.hidden = true; }, 400); }, 260); }
 }
 
@@ -184,7 +183,7 @@ export function holyTick(dt) {
   const w = window.innerWidth, h = window.innerHeight;
   for (const pt of S.points) {
     const vis = pt.vis; if (!vis) continue;
-    const target = ownerColor(pt.owner, pt.team);
+    const target = ownerColor(pt.owner);
     vis.col.lerp(target, Math.min(1, dt * 4));
     vis.dispProg += (pt.prog - vis.dispProg) * Math.min(1, dt * 8);
     vis.swing = Math.max(0, vis.swing - dt * 0.9);
@@ -217,11 +216,11 @@ export function holyMap(ctx, cx, cz, ppm, w, h) {
   for (const pt of S.points) {
     const x = w / 2 + (pt.x - cx) * ppm, y = h / 2 + (pt.z - cz) * ppm;
     if (x < -12 || y < -12 || x > w + 12 || y > h + 12) continue;
-    const col = '#' + ownerColor(pt.owner, pt.team).getHexString();
+    const col = '#' + ownerColor(pt.owner).getHexString();
     if (pt.owner) { ctx.beginPath(); ctx.arc(x, y, 9 + 1.5 * Math.sin(now * 0.004), 0, 6.283); ctx.strokeStyle = col; ctx.globalAlpha = 0.5; ctx.lineWidth = 1.5; ctx.stroke(); ctx.globalAlpha = 1; }
     if (pt.prog > 0.01 && pt.owner !== pt.progSide) {   // the capture arc
       ctx.beginPath(); ctx.arc(x, y, 11, -Math.PI / 2, -Math.PI / 2 + pt.prog * 6.283);
-      ctx.strokeStyle = '#' + ownerColor(pt.progSide, pt.progTeam).getHexString(); ctx.lineWidth = 2.5; ctx.stroke();
+      ctx.strokeStyle = '#' + ownerColor(pt.progSide).getHexString(); ctx.lineWidth = 2.5; ctx.stroke();
     }
     ctx.beginPath(); ctx.arc(x, y, 6.5, 0, 6.283); ctx.fillStyle = col; ctx.fill(); ctx.lineWidth = 1.4; ctx.strokeStyle = '#fff'; ctx.stroke();
     ctx.beginPath(); ctx.moveTo(x, y - 4); ctx.lineTo(x, y + 3.5); ctx.moveTo(x - 2.6, y - 1.6); ctx.lineTo(x + 2.6, y - 1.6);   // a little cross

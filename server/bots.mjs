@@ -48,7 +48,7 @@ function pickRole(level) {
 const SPD = { roam: 7.5, sprint: 10, approach: 5.5, strafe: 4.6, retreat: 9.5, crouch: 1.8 };
 const JUMP_V = 6.4;   // the dodge hop lifts the bot at the player's own jump speed (JUMP.v), gravity FALL.g brings it down
 
-// g: the game's own tools: players, now(), world (freePath, ground, walkable), area { cx, cz, r }, bases, FFA, WEAPONS,
+// g: the game's own tools: players, now(), world (freePath, ground, walkable), area { cx, cz, r }, bases, ally(a, b), WEAPONS,
 // R, shoot(p, w, rays, lagMs), throwNade(p, dir), spawn(p), roundOver(), reload(p, w, t0), items (the map pickups)
 export function createBrain(g) {
   const world = g.world;
@@ -243,7 +243,7 @@ export function createBrain(g) {
     if (!stormRun && (b.look -= dt) <= 0) {   // the storm run ignores the fight: the circle first
       b.look = 0.25; let best = 0, bd = 1e9, markedAt = null; const cores = smokeCores(now);
       for (const q of g.players.values()) {
-        if (q === p || !q.alive || g.ally(p, q) || now <= q.protectUntil) continue;   // the siege draws its own allies: the side, not the team
+        if (q === p || !q.alive || g.ally(p, q) || now <= q.protectUntil) continue;   // the own team of the players is spared (the siege: its own side)
         if (q.markUntil > now) {   // the cargo carrier is marked for everyone: the position is known even through walls
           const dm = Math.hypot(q.x - p.x, q.z - p.z);
           if (dm < L.sight * 1.8) markedAt = { x: q.x, z: q.z, at: now };

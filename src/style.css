@@ -246,9 +246,6 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
 .mp #bLeave { display: inline-block; }
 .mp-teams { grid-column: 1 / 3; font: 600 14px/1.2 var(--f-body); }
 .mp-teams small { opacity: .8; font-weight: 500; }
-.t0 { --team: #d8392f; } .t1 { --team: #2f78d8; }
-.mp-teams b.t0, .mp-teams b.t1 { color: #fff; background: var(--team); padding: 2px 6px; border-radius: 4px; }
-.mp-tag.t0 { background: rgba(190, 40, 30, .7); } .mp-tag.t1 { background: rgba(40, 100, 200, .7); }
 .mp-banner { position: fixed; left: 50%; top: 22%; transform: translateX(-50%); z-index: 9; padding: 14px 24px; border-radius: 10px; font: 700 22px/1.2 var(--f-display); color: #fff; background: var(--team); pointer-events: none; text-align: center; }
 .mp-at { display: grid; gap: 4px; font: 500 12px/1.2 var(--f-body); color: var(--muted); }
 .mp-at select { font: 500 14px/1.3 var(--f-body); padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-solid); color: var(--ink); }
@@ -258,7 +255,7 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
 .mp-chat.open #mpChatLog { overflow-y: auto; background: rgba(0, 0, 0, .35); padding: 4px 6px; border-radius: 6px; max-height: 220px; }
 .mp-chat .line { transition: opacity .6s; word-break: break-word; }
 .mp-chat .line.old { opacity: 0; } .mp-chat.open .line.old { opacity: 1; }
-.mp-chat .line b.t0 { color: #ff8b80; } .mp-chat .line b.t1 { color: #86b7ff; } .mp-chat .line.team { color: #bff5c0; }
+.mp-chat .line b.tf { color: #ffd27a; } .mp-chat .line.team { color: #bff5c0; }
 #mpChatIn { pointer-events: auto; width: 100%; box-sizing: border-box; margin-top: 4px; font: 500 14px/1.3 var(--f-body); padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-solid); color: var(--ink); }
 .mp-voice { position: fixed; left: 14px; top: 62px; z-index: 5; display: none; gap: 8px; align-items: center; font: 600 12px/1.2 var(--f-body); color: #fff; text-shadow: 0 1px 3px #000; pointer-events: none; }
 .mp .mp-voice { display: flex; }
@@ -367,14 +364,13 @@ body.dead .mp-stat { display: none; }
 @media (max-width: 560px) { .help-grid { grid-template-columns: 1fr; } }
 .mp-end { position: fixed; inset: 0; z-index: 9; display: grid; place-items: center; pointer-events: none; background: rgba(0, 0, 0, .45); } .mp-end[hidden] { display: none; }
 .mp-end .panel { background: var(--panel-solid); color: var(--ink); padding: 18px 22px; width: min(640px, 94vw); display: grid; gap: 10px; }
-.mp-end h2 { margin: 0; font: 700 20px/1.2 var(--f-display); padding: 8px 12px; border-radius: 8px; color: #fff; background: var(--team); } #mpEndMvp { font: 600 14px/1.3 var(--f-body); color: var(--brick); }
+.mp-end h2 { margin: 0; font: 700 20px/1.2 var(--f-display); padding: 8px 12px; border-radius: 8px; color: #fff; background: #5a5f66; } #mpEndMvp { font: 600 14px/1.3 var(--f-body); color: var(--brick); }
 .end-table { display: grid; gap: 2px; } .end-row { display: grid; grid-template-columns: 1fr 64px 64px 64px 56px 70px; gap: 6px; padding: 4px 8px; border-radius: 5px; font: 500 14px/1.3 var(--f-body); }
 .end-row span:not(:first-child) { text-align: right; } .end-row.head { color: var(--muted); font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--line); border-radius: 0; }
-.end-row.t0 { border-left: 4px solid #d8392f; } .end-row.t1 { border-left: 4px solid #2f78d8; } .end-row.me { background: rgba(164, 67, 47, .16); font-weight: 700; }
+.end-row.me { background: rgba(164, 67, 47, .16); font-weight: 700; }
 #mpEndNext { color: var(--muted); font: 500 13px/1.3 var(--f-body); text-align: center; }
 @media (max-width: 560px) { .end-row { grid-template-columns: 1fr 44px 44px 44px 0 0; } .end-row span:nth-child(n+5) { display: none; } }
 #bHint { display: none; } .mp #bHint { display: inline-block; }
-.ffa #mpTeam, .ffa label:has(> #mpTeam) { display: none; }
 .mp-tag.tf { background: rgba(60, 60, 60, .7); } .end-row.tf { border-left: 4px solid #8a8a8a; }
 .mp-end h2.tf { background: #5a5f66; }
 .train { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; } .train label { display: grid; gap: 3px; font: 500 12px/1.2 var(--f-body); color: var(--muted); }
@@ -427,8 +423,6 @@ label.chk { display: flex; align-items: center; gap: 8px; font-size: 13px; color
 #mpInv .btn kbd { color: rgba(255, 255, 255, .55); }
 .inv-me { display: flex; align-items: center; gap: 9px; margin-left: auto; min-width: 0; font: 600 14px/1 var(--f-body); }
 .inv-me .dot { width: 9px; height: 9px; border-radius: 50%; background: #8a8a8a; flex: none; }
-.inv-me .dot.t0 { background: var(--red); box-shadow: 0 0 8px rgba(224, 70, 58, .8); }
-.inv-me .dot.t1 { background: var(--blue); box-shadow: 0 0 8px rgba(59, 134, 232, .8); }
 .inv-nick { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inv-me .kd { color: rgba(255, 255, 255, .55); font-variant-numeric: tabular-nums; }
 .inv-hp { display: flex; align-items: center; gap: 6px; margin-left: 4px; padding-left: 12px; border-left: 1px solid var(--glass-line); }
@@ -574,7 +568,7 @@ label.chk { display: flex; align-items: center; gap: 8px; font-size: 13px; color
 .mp-top { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); }
 .mp-teams { display: flex; align-items: stretch; gap: 0; padding: 0; border-radius: 12px; overflow: hidden; background: var(--glass); border: 1px solid var(--glass-line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: var(--shadow); font: 700 17px/1 var(--f-display); }
 .mp-teams:empty { display: none; }
-.mp-teams b { padding: 10px 16px; font-weight: 700; font-variant-numeric: tabular-nums; } .mp-teams b.t0 { background: linear-gradient(90deg, rgba(224, 70, 58, .9), rgba(224, 70, 58, .55)); border-radius: 0; } .mp-teams b.t1 { background: linear-gradient(270deg, rgba(59, 134, 232, .9), rgba(59, 134, 232, .55)); border-radius: 0; }
+.mp-teams b { padding: 10px 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .mp-teams small { display: grid; place-items: center; padding: 0 12px; font: 600 11px/1 var(--f-body); letter-spacing: .08em; text-transform: uppercase; opacity: .75; }
 .mp-teams b.me { background: rgba(255, 255, 255, .14); } .mp-teams b.lead { background: transparent; font-weight: 600; font-size: 15px; }
 /* the kill feed */
@@ -617,8 +611,6 @@ body.mp .bar { background: var(--glass); border-color: var(--glass-line); color:
 .bd-title small:empty { display: none; }
 .bd-score { display: flex; align-items: center; gap: 6px; font: 700 15px/1 var(--f-display); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .bd-score b { padding: 6px 10px; border-radius: 7px; }
-.bd-score b.t0 { background: linear-gradient(90deg, rgba(224, 70, 58, .9), rgba(224, 70, 58, .55)); }
-.bd-score b.t1 { background: linear-gradient(270deg, rgba(59, 134, 232, .9), rgba(59, 134, 232, .55)); }
 .bd-score b.lead { background: rgba(255, 255, 255, .1); font: 600 13px/1 var(--f-body); }
 .bd-score small { padding: 0 2px; font: 600 10px/1 var(--f-body); letter-spacing: .07em; text-transform: uppercase; opacity: .65; }
 .bd-cols, .bd-row { display: grid; grid-template-columns: 1fr 54px 54px 62px 56px 52px; gap: 6px; align-items: center; margin: 0 12px; padding: 6px 10px; }
@@ -627,14 +619,9 @@ body.mp .bar { background: var(--glass); border-color: var(--glass-line); color:
 .bd-cols .c-k, .bd-cols .c-d, .bd-cols .c-dmg, .bd-cols .c-acc, .bd-cols .c-ping { text-align: right; }
 .bd-cols .c-rank { text-align: center; }
 .bd-body { max-height: min(58vh, 520px); overflow-y: auto; padding-bottom: 6px; }
-.bd-team { display: flex; align-items: center; justify-content: space-between; margin: 6px 12px 3px; padding: 6px 10px; border-radius: 7px; font: 700 12px/1 var(--f-body); letter-spacing: .05em; text-transform: uppercase; }
-.bd-team.t0 { background: rgba(224, 70, 58, .2); box-shadow: inset 3px 0 0 var(--red); }
-.bd-team.t1 { background: rgba(59, 134, 232, .2); box-shadow: inset 3px 0 0 var(--blue); }
-.bd-team small { font-weight: 500; letter-spacing: 0; text-transform: none; opacity: .7; }
-.bd-empty { margin: 0 12px; padding: 6px 10px; font: 500 12px/1.3 var(--f-body); color: rgba(255, 255, 255, .4); }
 .bd-row { border-radius: 7px; font: 500 14px/1.25 var(--f-body); }
 .bd-row + .bd-row { margin-top: 2px; }
-.bd-row.t0 { box-shadow: inset 3px 0 0 var(--red); } .bd-row.t1 { box-shadow: inset 3px 0 0 var(--blue); } .bd-row.tf { box-shadow: inset 3px 0 0 #8a8a8a; }
+.bd-row.tf { box-shadow: inset 3px 0 0 #8a8a8a; }
 .bd-row.me { background: rgba(255, 255, 255, .14); }
 .bd-row.dead { opacity: .5; }
 .bd-row .c-rank { text-align: center; font-size: 12px; opacity: .55; font-variant-numeric: tabular-nums; }
@@ -753,8 +740,6 @@ body.dead .mp-slots { display: none; }
 /* the player's chip: name, team colour, kills · deaths */
 .mp-me { position: absolute; left: 16px; top: 14px; display: flex; align-items: center; gap: 9px; padding: 8px 13px; border-radius: 12px; background: var(--glass); border: 1px solid var(--glass-line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: var(--shadow); }
 .mp-me .dot { width: 9px; height: 9px; border-radius: 50%; background: #8a8a8a; flex: none; }
-.mp-me .dot.t0 { background: var(--red); box-shadow: 0 0 9px rgba(224, 70, 58, .8); }
-.mp-me .dot.t1 { background: var(--blue); box-shadow: 0 0 9px rgba(59, 134, 232, .8); }
 .mp-me > b { font: 600 13.5px/1 var(--f-body); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mp-me .kd { font: 600 12px/1 var(--f-body); font-variant-numeric: tabular-nums; color: rgba(255, 255, 255, .75); border-left: 1px solid var(--glass-line); padding-left: 9px; }
 .mp-me .kd small { display: block; font: 500 8px/1 var(--f-body); letter-spacing: .1em; opacity: .55; margin-bottom: 3px; }
@@ -769,9 +754,6 @@ body.dead .mp-slots { display: none; }
 .mp-teams b { display: flex; align-items: center; gap: 9px; padding: 9px 16px; }
 .mp-teams b small { display: inline; padding: 0; font: 600 9px/1 var(--f-body); letter-spacing: .16em; text-transform: uppercase; opacity: .85; }
 .mp-teams b span { font: 700 19px/1 var(--f-display); font-variant-numeric: tabular-nums; }
-.mp-teams b.t0 { background: linear-gradient(180deg, rgba(224, 70, 58, .92), rgba(190, 50, 40, .92)); }
-.mp-teams b.t1 { background: linear-gradient(180deg, rgba(59, 134, 232, .92), rgba(40, 100, 190, .92)); }
-.mp-teams b.t1 small { order: 2; }
 .mp-teams > small { display: grid; place-items: center; padding: 0 14px; font: 600 10px/1.3 var(--f-body); letter-spacing: .08em; text-transform: uppercase; opacity: .75; text-align: center; }
 /* the button bar returns on Esc: the console and the belt step up above it */
 body.mp:not(:has(#view.locked)) .mp-stat { bottom: 76px; }
@@ -878,12 +860,6 @@ body.mp:not(:has(#view.locked)) .mp-sys { bottom: 64px; }   /* above the returne
 .seg button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 6px; border: 0; border-radius: 6px; background: transparent; color: rgba(255, 255, 255, .6); font: 600 12px/1.1 var(--f-body); cursor: pointer; white-space: nowrap; transition: background .15s, color .15s; }
 .seg button:hover { color: #fff; background: rgba(255, 255, 255, .08); }
 .seg button.on { background: var(--warn); color: #1a1206; box-shadow: 0 1px 6px rgba(240, 180, 41, .35); }
-.seg-team .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-.seg-team .dot.any { background: #8a8a8a; }
-.seg-team .dot.t0 { background: var(--red); box-shadow: 0 0 6px rgba(224, 70, 58, .7); }
-.seg-team .dot.t1 { background: var(--blue); box-shadow: 0 0 6px rgba(59, 134, 232, .7); }
-.seg-team button.on[data-v="0"] { background: var(--red); color: #fff; box-shadow: 0 1px 8px rgba(224, 70, 58, .4); }
-.seg-team button.on[data-v="1"] { background: var(--blue); color: #fff; box-shadow: 0 1px 8px rgba(59, 134, 232, .4); }
 .lobby .chk { color: rgba(255, 255, 255, .6); }
 .lobby .go { justify-self: stretch; width: 100%; background: linear-gradient(180deg, #ffd27a, #f0b429); color: #1a1206; font: 700 16px/1 var(--f-body); letter-spacing: .02em; padding: 15px 18px; border-radius: 11px; box-shadow: 0 4px 0 rgba(0, 0, 0, .35), 0 8px 24px rgba(240, 180, 41, .22); }
 .lobby .go:not(:disabled):hover { filter: brightness(1.05); }

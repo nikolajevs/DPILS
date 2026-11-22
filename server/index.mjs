@@ -1,9 +1,9 @@
-/* Daugavpils shooter: the game server. The rules are in game.mjs (team deathmatch, or MODE=ffa: everybody against
-   everybody; an arena with bases for the teams, ARENA=center|fortress|station|park|church|pond|speedway|culture|griva; bots, BOTS=6 and BOT_LEVEL=easy|normal|hard,
+/* Daugavpils shooter: the game server. The rules are in game.mjs (everybody against everybody, the members of one team
+   of the players are the only allies; an arena with spawn bases, ARENA=center|fortress|station|park|church|pond|speedway|culture|griva; bots, BOTS=6 and BOT_LEVEL=easy|normal|hard,
    fill the empty places). The fight goes in matches of two hours — the day of the game — with the door open for the
    first half hour and the «Шторм» in the last twenty minutes to find the winner (server/storm.mjs). This file is the
    network: WebSockets for the players and /health for the page (the lobby reads the match from it).
-     PORT, SERVER_NAME, MODE, WIN_SCORE (only with MATCH=off: a match has no kill target), ARENA, BOTS, BOT_LEVEL, LEADERBOARD (file of the leaderboard, default server/data/leaderboard.json; off = none),
+     PORT, SERVER_NAME, WIN_SCORE (only with MATCH=off: a match has no kill target), ARENA, BOTS, BOT_LEVEL, LEADERBOARD (file of the leaderboard, default server/data/leaderboard.json; off = none),
      ACCOUNTS (file of the accounts, default server/data/accounts.json; off = none: joins are not checked, but the page's mandatory gate cannot register on such a server),
      TEAMS (file of the teams of the players, default server/data/teams.json; off = no teams; they need the accounts — teams.mjs,
        the live side on the WebSocket path /social — social.mjs),
@@ -47,7 +47,7 @@ const ACC = process.env.ACCOUNTS === 'off' ? null : createAccounts({ file: ACC_F
 const TM = !ACC || process.env.TEAMS === 'off' ? null : createTeams({ file: TM_FILE });
 const clans = TM ? name => { const t = TM.of(name); return t && { id: t.id, tag: t.tag, name: t.name }; } : null;
 const DAY_LEN = (+process.env.DAY_MIN || 120) * 60000;   // one match is one day of the game: midnight to midnight
-const game = createGame({ board: LB, accounts: ACC, clans, world: WORLD, mode: process.env.MODE === 'ffa' ? 'ffa' : 'team', win: +process.env.WIN_SCORE || 0, name: String(process.env.SERVER_NAME || 'Даугавпилс').slice(0, 40), arena: ARENAS[process.env.ARENA] || null, level: process.env.BOT_LEVEL || 'normal',
+const game = createGame({ board: LB, accounts: ACC, clans, world: WORLD, win: +process.env.WIN_SCORE || 0, name: String(process.env.SERVER_NAME || 'Даугавпилс').slice(0, 40), arena: ARENAS[process.env.ARENA] || null, level: process.env.BOT_LEVEL || 'normal',
   day: process.env.DAY_MIN === '0' ? null : { len: DAY_LEN }, match: process.env.MATCH === 'off' ? null : { len: DAY_LEN }, events: EVENTS });
 for (let i = 0; i < Math.max(0, Math.min(63, +process.env.BOTS || 0)); i++) game.addBot();   // up to 63 bots: with one human that fills the 64 places
 

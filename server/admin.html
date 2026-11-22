@@ -341,7 +341,7 @@ pre.dump { background: #070b11; border: 1px solid var(--seam); border-radius: 8p
     <section class="tab" id="tab-players" hidden>
       <div class="tab-head"><h2>Игроки</h2><span class="hint" id="playersHint"></span><div class="grow"></div><button class="btn btn-sm" data-act="refresh">Обновить</button></div>
       <div class="card table-wrap"><table>
-        <thead><tr><th>Игрок</th><th>Сторона</th><th class="r">K</th><th class="r">D</th><th class="r">Урон</th><th class="r">Точн.</th><th class="r">Пинг</th><th class="r">HP</th><th>Статус</th><th class="r">Позиция</th><th class="r">В игре</th><th></th></tr></thead>
+        <thead><tr><th>Игрок</th><th>Команда</th><th class="r">K</th><th class="r">D</th><th class="r">Урон</th><th class="r">Точн.</th><th class="r">Пинг</th><th class="r">HP</th><th>Статус</th><th class="r">Позиция</th><th class="r">В игре</th><th></th></tr></thead>
         <tbody id="playersBody"></tbody>
       </table></div>
     </section>
@@ -398,8 +398,7 @@ pre.dump { background: #070b11; border: 1px solid var(--seam); border-radius: 8p
           <label>Время захвата, с<input type="number" data-key="capMs" data-unit="sec" step="1" min="1" max="120"></label>
           <label>Радиус захвата, м<input type="number" data-key="capR" step="1" min="3" max="50"></label>
           <label>Удержание всех, с<input type="number" data-key="holdMs" data-unit="sec" step="10" min="10" max="1800"></label>
-          <label>Приз команде, очк<input type="number" data-key="prizeScore" step="1" min="0" max="100"></label>
-          <label>Приз в FFA, очк<input type="number" data-key="prizeKills" step="1" min="0" max="100"></label>
+          <label>Приз каждому, очк<input type="number" data-key="prizeKills" step="1" min="0" max="100"></label>
           <label>Бафф: урон, ×<input type="number" data-key="buffs.dmg" step="0.05" min="1" max="3"></label>
           <label>Бафф: реген, HP/с<input type="number" data-key="buffs.regen" step="0.5" min="0" max="20"></label>
           <label>Бафф: скорость, ×<input type="number" data-key="buffs.speed" step="0.05" min="1" max="2"></label>
@@ -515,7 +514,7 @@ pre.dump { background: #070b11; border: 1px solid var(--seam); border-radius: 8p
         <div class="card plate"><h3>Шторм</h3><div class="kv" id="dbgStorm"></div></div>
       </div>
       <div class="card"><h3>Соединения WebSocket</h3><div class="table-wrap"><table><thead><tr><th>Адрес</th><th>Дверь</th><th>Вошёл</th><th class="r">Возраст</th><th class="r">Буфер</th><th>Жив</th></tr></thead><tbody id="dbgSockets"></tbody></table></div></div>
-      <div class="card"><h3>Игроки: полный дамп</h3><div class="table-wrap"><table><thead><tr><th>Игрок</th><th>Сторона</th><th class="r">HP</th><th class="r">Пинг</th><th class="r">Позиция</th><th></th></tr></thead><tbody id="dbgPlayers"></tbody></table></div></div>
+      <div class="card"><h3>Игроки: полный дамп</h3><div class="table-wrap"><table><thead><tr><th>Игрок</th><th>Команда</th><th class="r">HP</th><th class="r">Пинг</th><th class="r">Позиция</th><th></th></tr></thead><tbody id="dbgPlayers"></tbody></table></div></div>
     </section>
 
     <section class="tab" id="tab-logs" hidden>
@@ -549,7 +548,7 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const ERR = { 'bad-pass': 'Неверный пароль', rate: 'Слишком много попыток — подождите 10 минут', 'no-session': 'Сессия истекла — войдите снова', off: 'Отключено на этом сервере', 'no-user': 'Аккаунт не найден', 'no-player': 'Игрок уже вышел', 'no-team': 'Команда не найдена', 'not-member': 'Игрок не в команде', active: 'Уже идёт — остановите или дождитесь конца', idle: 'Сейчас не идёт', storm: 'Идёт шторм — ивент недоступен', round: 'Раунд завершён — дождитесь нового', 'no-players': 'В бою никого нет', 'bad-cfg': 'Неверное значение настройки', empty: 'Пустое сообщение', 'bad-request': 'Сервер не понял запрос', internal: 'Ошибка на сервере', 'bad-name': 'Ник: 2–16 символов — буквы, цифры, пробел, _ . -', 'bad-pass-account': 'Пароль: 6–128 символов' };
 const WHERE = { lobby: 'лобби', train: 'тренировка', game: 'бой', storm: 'шторм' };
-const state = { tab: 'overview', period: 'all', sort: 'kills', mode: 'team', overview: null, debug: null, events: null, logLevel: '', logPaused: false, logCursor: 0, logLines: [], logSeenErr: 0, logErrTotal: 0, openDumps: new Set() };
+const state = { tab: 'overview', period: 'all', sort: 'kills', overview: null, debug: null, events: null, logLevel: '', logPaused: false, logCursor: 0, logLines: [], logSeenErr: 0, logErrTotal: 0, openDumps: new Set() };
 let token = sessionStorage.getItem('dpils.admin.token') || '';
 
 /* ---- the doors ---- */
@@ -648,7 +647,7 @@ setInterval(() => { if (!document.hidden && token && !$('#app').hidden && state.
 /* ---- overview ---- */
 async function loadOverview() {
   const j = await api('overview');
-  state.overview = j; state.mode = j.server.mode;
+  state.overview = j;
   const s = j.server, c = j.counts;
   $('#srvName').textContent = s.name; $('#srvDot').classList.toggle('off', !s.ok);
   $('#srvUp').textContent = 'аптайм ' + fmtDur(j.uptime);
@@ -679,11 +678,10 @@ async function loadOverview() {
     m = '<div class="matchline"><span class="phase fight">Раунды</span><span class="hint">бесконечные раунды' + (s.win ? ' до ' + s.win + ' убийств' : '') + ', без шторма (MATCH=off)</span></div>';
     if (s.day) { const hh = s.day.f * 24; m += '<div class="kv" style="margin-top:10px"><span class="k">Время города</span><span class="num">' + p2(Math.floor(hh)) + ':' + p2(Math.floor(hh % 1 * 60)) + '</span></div>'; }
   }
-  if (!s.match && s.score && s.score.length) m += '<div class="kv" style="margin-top:8px"><span class="k">Счёт</span><span class="num"><b style="color:var(--red)">' + s.score[0] + '</b> : <b style="color:var(--blue)">' + s.score[1] + '</b></span></div>';
   $('#matchInfo').innerHTML = m;
   const e = j.env;
   $('#srvInfo').innerHTML = [
-    ['Режим', e.mode === 'ffa' ? 'каждый сам за себя' : 'командный бой'], ['Арена', e.arena || 'весь город (центр)'],
+    ['Режим', 'каждый сам за себя, союзники — команда'], ['Арена', e.arena || 'весь город (центр)'],
     ['Уровень ботов', { easy: 'лёгкий', normal: 'обычный', hard: 'сложный' }[e.level] || e.level],
     ['Катки', e.match === 'off' ? 'выключены' : 'по ' + e.day + ' мин'], ['Node', j.node],
     ['Запущен', fmtDate(j.boot)],
@@ -699,7 +697,7 @@ async function loadPlayers() {
   $('#playersHint').textContent = rows.length + ' в бою · людей ' + rows.filter(r => !r.bot).length + ' · обновление каждые 3 с';
   if (!rows.length) { $('#playersBody').innerHTML = '<tr><td colspan="12" class="empty">В бою никого нет</td></tr>'; return; }
   $('#playersBody').innerHTML = rows.map(p => {
-    const side = p.bot ? '<span class="chip bot">БОТ</span>' : state.mode === 'ffa' ? '<span class="hint">FFA</span>' : p.team === 0 ? '<span class="chip red">Красные</span>' : '<span class="chip blue">Синие</span>';
+    const side = p.bot ? '<span class="chip bot">БОТ</span>' : p.tag ? '<span class="chip tag">' + esc(p.tag) + '</span>' : '<span class="hint">сам за себя</span>';
     const st = p.bot ? '<span class="status"><span class="dot bot"></span>бот</span>' : p.alive ? '<span class="status"><span class="dot"></span>жив</span>' : '<span class="status"><span class="dot dead"></span>мёртв</span>';
     return '<tr' + (p.alive ? '' : ' class="dim"') + '>'
       + '<td><b>' + esc(p.name) + '</b>' + (p.tag ? ' <span class="chip tag">' + esc(p.tag) + '</span>' : '') + (p.mark ? ' <span class="chip mark">🎯 мишень</span>' : '') + (p.acct ? '<div class="acct">' + esc(p.acct) + '</div>' : '') + '</td>'
@@ -973,7 +971,7 @@ async function loadDebug() {
   $('#dbgStorm').innerHTML = s ? kvHtml([['Фаза', s.phase + ' / ' + s.kind], ['Этап', (s.pi + 1) + ' / ' + s.stages], ['Урон снаружи', s.dps + ' HP/с'], ['Текущий круг', c(s.cur)], ['Из', c(s.from)], ['В', c(s.to)], ['Финал', c(s.final)], ['До конца этапа', fmtLeft(s.left)], ['Живы', (s.alive == null ? '—' : s.alive) + ' / ' + (s.total == null ? '—' : s.total)]]) : '<span class="hint">шторм ещё не начался</span>';
   $('#dbgSockets').innerHTML = j.sockets.length ? j.sockets.map(x => '<tr><td class="num">' + esc(x.ip) + '</td><td>' + esc(x.path) + '</td><td>' + (x.joined ? 'да' : '<span class="hint">нет</span>') + '</td><td class="r num">' + fmtDur(x.age) + '</td><td class="r num">' + x.buffered + '</td><td><span class="dot' + (x.alive ? '' : ' dead') + '"></span></td></tr>').join('') : '<tr><td colspan="6" class="empty">Соединений нет</td></tr>';
   const pl = await api('players');
-  $('#dbgPlayers').innerHTML = pl.rows.map(r => '<tr><td><b>' + esc(r.name) + '</b>' + (r.bot ? ' <span class="chip bot">БОТ</span>' : '') + '</td><td>' + (r.bot ? '—' : state.mode === 'ffa' ? 'FFA' : r.team === 0 ? 'красные' : 'синие') + '</td><td class="r num">' + r.hp + '</td><td class="r num">' + (r.ping == null ? '—' : r.ping) + '</td><td class="r num hint">' + r.x + ', ' + r.z + '</td><td class="r"><button class="btn btn-sm" data-act="pdump" data-id="' + r.id + '">Дамп</button></td></tr><tr hidden id="pd-' + r.id + '"><td colspan="6"><pre class="dump"></pre></td></tr>').join('');
+  $('#dbgPlayers').innerHTML = pl.rows.map(r => '<tr><td><b>' + esc(r.name) + '</b>' + (r.bot ? ' <span class="chip bot">БОТ</span>' : '') + '</td><td>' + (r.bot ? '—' : r.tag ? esc(r.tag) : '<span class="hint">сам за себя</span>') + '</td><td class="r num">' + r.hp + '</td><td class="r num">' + (r.ping == null ? '—' : r.ping) + '</td><td class="r num hint">' + r.x + ', ' + r.z + '</td><td class="r"><button class="btn btn-sm" data-act="pdump" data-id="' + r.id + '">Дамп</button></td></tr><tr hidden id="pd-' + r.id + '"><td colspan="6"><pre class="dump"></pre></td></tr>').join('');
   for (const pid of state.openDumps) api('player', { q: '?id=' + pid }).then(jj => { const row = document.getElementById('pd-' + pid); if (row) { row.querySelector('pre').textContent = JSON.stringify(jj.player, null, 2); row.hidden = false; } }).catch(() => {});
 }
 

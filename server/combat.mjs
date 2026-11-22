@@ -99,16 +99,16 @@ export const CARGO = {
 // the «Царь горы» event (server/game.mjs, src/game/holy.js): the four temples of Church Hill (Церковная горка) —
 // an Orthodox cathedral, a Catholic church, a Lutheran church and an Old Believers' church — stand within three hundred
 // metres of one another. Every few minutes the fight is called to the hill: the whole field is pulled into a tight arena
-// around the temples and four bell towers become capture points. One player (or any one member of a team) takes a point
-// by standing in its ring; the taken temple rings its bell across the whole city and grants its buff to the side that
-// holds it. A side that holds all four for holdMs wins the grand prize. The bells are synthesised on the page (sfx.js
+// around the temples and four bell towers become capture points. One player (or any one member of a team of the
+// players) takes a point by standing in its ring; the taken temple rings its bell across the whole city and grants its
+// buff to whoever holds it — the player, or his whole team. Whoever holds all four for holdMs wins the grand prize. The bells are synthesised on the page (sfx.js
 // bellSound), one strike note per temple — together they spell a chord.
 // The admin panel's «Ивенты» tab tunes the timings, the prize and the buffs live (server/events.mjs); the page gets
 // the changed buffs and their labels in the 'holy' message, so the picture and the prediction stay with the server.
 export const HOLY = {
   firstMs: 240000, gapMs: 420000, durMs: 420000, warnMs: 30000,   // the first call, the gap after one ends, its length, the warning before
   capMs: 7000, capR: 13, holdMs: 180000,   // a point takes 7 s alone in the ring (13 m); all four held 3 minutes win the prize
-  prizeScore: 10, prizeKills: 5,   // the grand prize: +10 to the team score, or +5 kills to each winner in the free-for-all
+  prizeKills: 5,   // the grand prize: +5 kills to each winner (the holder, or every member of the holding team)
   buffs: { dmg: 1.25, regen: 3, speed: 1.2, reload: 0.7, rate: 0.85 },   // cathedral: damage; catholic: regen hp/s; lutheran: speed; old believers: reload and cycle
   buffName: { dmg: 'Урон +25%', regen: 'Реген +3 HP/с', speed: 'Скорость +20%', reload: 'Перезарядка −30% · темп +15%' },
   temples: [

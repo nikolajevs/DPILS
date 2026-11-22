@@ -1,7 +1,8 @@
 ﻿/* The combat tests, no browser needed: node tools/combat-test.mjs (CI runs it after npm run check).
    1. The hitbox geometry (rayHit from server/combat.mjs): the zones, the crouch, the legs apart, the heading.
    2. The server rules (createGame over a fake flat world with a controlled clock): damage by zone, the shotgun,
-      walls and hill slopes (the refined freePath), the spawn protection, teammates, and the lag compensation of
+      walls and hill slopes (the refined freePath), the spawn protection, teammates (a team of the players — there
+      are no sides), and the lag compensation of
       the position, the eye height and the heading. The bullets fly (g.stepBullets drives them by the test clock),
       so each shot is given the time to reach its target before the hit is read.
    2c. The blast push (g.stepNades drives the fuse by the test clock): the explosion throws the living away and up,
@@ -25,7 +26,7 @@
       open for 30 minutes (then only the players of the match come back), the storm in the last 20 — its first
       circle holds the whole field, nine nested stages and the sudden death fit the window, the final point is
       random open ground, never a house; the fallen of the fight stand up for it, the burn outside hurts (no kill
-      credit), no respawn, the one it took cannot come back, the last survivor (the last side) wins and the guns
+      credit), no respawn, the one it took cannot come back, the last survivor (the last team) wins and the guns
       go cold until the next match, which brings everybody back with the door open; a bot outside runs in.
    3. A real bot fight on a flat arena (12 s of real time): with the small hitboxes the bots must still see,
       shoot and kill each other. */
@@ -77,17 +78,21 @@ const seat = (g, c) => { c.handle = g.attach(c); return c; };
 // equip a gun for the test: only two weapons ride on the player (loadout), the rest in the pack — swap the wanted one in
 const arm = (c, w, slot = 0) => { if (!c.handle.player.loadout.includes(w)) msg(c, { t: 'swap', w, slot }); };
 const base = (cx, cz, r) => [[cx - r, cz - r], [cx + r, cz - r], [cx + r, cz + r], [cx - r, cz + r]];
+// the teams of the players: there are no sides — the only allies are the members of one team (ally in game.mjs). A test
+// game gets fake accounts (the key is the account's nick) and the clans lookup of server/index.mjs; with the accounts on,
+// every join of that game carries its key. teams: { nick: 'TAG' } — the unit of a team is 'c' + TAG (unitOf)
+const teamed = teams => ({ accounts: { byKey: k => (typeof k === 'string' && k ? { name: k } : null) }, clans: n => (teams[n] ? { id: teams[n], tag: teams[n], name: 'Команда ' + teams[n] } : null) });
 
 /* ---------- 2. the server rules ---------- */
 console.log('server rules (createGame, controlled clock):');
 {
   let clock = 1e6;
-  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'test' });
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'test', ...teamed({ shooter: 'DVN', mate: 'DVN' }) });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'РЎС‚СЂРµР»РѕРє', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'РњРёС€РµРЅСЊ', team: 1, x: 0, z: -20, yaw: 0 });
+  msg(A, { t: 'join', key: 'shooter', name: 'РЎС‚СЂРµР»РѕРє', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', key: 'target', name: 'РњРёС€РµРЅСЊ', x: 0, z: -20, yaw: 0 });
   const bid = B.handle.player.id;
-  ok(B.handle.player.team === 1, 'the second player got the other team');
+  ok(!('team' in B.handle.player) && !('teams' in A.last('hello')), 'no sides: nobody is put on a red or a blue team');
   clock += 3000;   // past the spawn protection
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(B, { t: 'state', x: 0, y: 1.7, z: -20, yaw: 0, pitch: 0 });
@@ -124,9 +129,9 @@ console.log('server rules (createGame, controlled clock):');
   ok(h && h.head, 'the crouched head is hit at 1.0 m');
   msg(B, { t: 'state', x: 0, y: 1.7, z: -20, h: 1.7, yaw: 0, pitch: 0 });
 
-  // a teammate between the shooter and the target does not stop the bullet
+  // a member of the shooter's team between him and the target does not stop the bullet
   const C = seat(g, conn());
-  msg(C, { t: 'join', name: 'РЎРІРѕР№', team: 0, x: 0, z: -10, yaw: 0 });
+  msg(C, { t: 'join', key: 'mate', name: 'РЎРІРѕР№', x: 0, z: -10, yaw: 0 });
   clock += 3000;
   h = shootAt(0, 1.1, -20);
   ok(h && h.id === bid, 'the bullet passes through a teammate');
@@ -138,8 +143,8 @@ console.log('server rules (createGame, controlled clock):');
   const house = (x, z) => (Math.abs(x) < 3 && z > -13 && z < -7) ? { top: 12 } : null;
   const g = createGame({ world: flatWorld(house), area: { cx: 0, cz: 0 }, now: () => clock, name: 'wall' });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'РЎС‚СЂРµР»РѕРє', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'РњРёС€РµРЅСЊ', team: 1, x: 0, z: -20, yaw: 0 });
+  msg(A, { t: 'join', name: 'РЎС‚СЂРµР»РѕРє', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'РњРёС€РµРЅСЊ', x: 0, z: -20, yaw: 0 });
   const bid = B.handle.player.id;
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
@@ -162,8 +167,8 @@ console.log('server rules (createGame, controlled clock):');
   const house = (x, z) => (Math.abs(x) < 3 && z > -6 && z < -0.4) ? { top: 12 } : null;
   const g = createGame({ world: flatWorld(house), area: { cx: 0, cz: 0 }, now: () => clock, name: 'lean' });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -2, yaw: 0 });
+  msg(A, { t: 'join', name: 'Стрелок', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', x: 0, z: -2, yaw: 0 });
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(B, { t: 'state', x: 0, y: 1.7, z: -2, yaw: 0, pitch: 0 });
@@ -183,8 +188,8 @@ console.log('server rules (createGame, controlled clock):');
   const slab = (x, z) => (Math.abs(x) < 3 && z > -1.2 && z < -0.5) ? { top: 12 } : null;
   const g = createGame({ world: flatWorld(slab), area: { cx: 0, cz: 0 }, now: () => clock, name: 'clip' });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -3, yaw: 0 });
+  msg(A, { t: 'join', name: 'Стрелок', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', x: 0, z: -3, yaw: 0 });
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(B, { t: 'state', x: 0, y: 1.7, z: -3, yaw: 0, pitch: 0 });
@@ -204,8 +209,8 @@ console.log('server rules (createGame, controlled clock):');
   const hill = (x, z) => z < -10 ? (-z - 10) * 0.5 : 0;
   const g = createGame({ world: flatWorld(() => null, hill), area: { cx: 0, cz: 0 }, now: () => clock, name: 'hill' });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'РЎС‚СЂРµР»РѕРє', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'РњРёС€РµРЅСЊ', team: 1, x: 0, z: -20, yaw: 0 });
+  msg(A, { t: 'join', name: 'РЎС‚СЂРµР»РѕРє', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'РњРёС€РµРЅСЊ', x: 0, z: -20, yaw: 0 });
   const bid = B.handle.player.id;
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
@@ -223,8 +228,8 @@ console.log('server rules (createGame, controlled clock):');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'lag' });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'РЎС‚СЂРµР»РѕРє', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'РњРёС€РµРЅСЊ', team: 1, x: 0, z: -20, yaw: 0 });
+  msg(A, { t: 'join', name: 'РЎС‚СЂРµР»РѕРє', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'РњРёС€РµРЅСЊ', x: 0, z: -20, yaw: 0 });
   const bid = B.handle.player.id;
   msg(A, { t: 'ping', rtt: 60 });   // the lag becomes 120 + 30 = 150 ms
   clock += 3000;
@@ -254,8 +259,8 @@ console.log('server rules (createGame, controlled clock):');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'shotgun' });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'РЎС‚СЂРµР»РѕРє', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'РњРёС€РµРЅСЊ', team: 1, x: 0, z: -20, yaw: 0 });
+  msg(A, { t: 'join', name: 'РЎС‚СЂРµР»РѕРє', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'РњРёС€РµРЅСЊ', x: 0, z: -20, yaw: 0 });
   const bid = B.handle.player.id;
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
@@ -274,8 +279,8 @@ console.log('server rules (createGame, controlled clock):');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'flight' });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -56, yaw: 0 });
+  msg(A, { t: 'join', name: 'Стрелок', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', x: 0, z: -56, yaw: 0 });
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(B, { t: 'state', x: 0, y: 1.7, z: -56, yaw: 0, pitch: 0 });
@@ -307,8 +312,8 @@ console.log('bullet drop (gravity, holdover, determinism):');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'drop' });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -400, yaw: 0 });
+  msg(A, { t: 'join', name: 'Стрелок', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', x: 0, z: -400, yaw: 0 });
   const bid = B.handle.player.id;
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
@@ -334,8 +339,8 @@ console.log('bullet drop (gravity, holdover, determinism):');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'bothold' });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -130, yaw: 0 });
+  msg(A, { t: 'join', name: 'Стрелок', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', x: 0, z: -130, yaw: 0 });
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(B, { t: 'state', x: 0, y: 1.7, z: -130, yaw: 0, pitch: 0 });
@@ -361,8 +366,8 @@ console.log('bullet drop (gravity, holdover, determinism):');
     let clock = 1e6;
     const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'det' });
     const A = seat(g, conn()), B = seat(g, conn());
-    msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
-    msg(B, { t: 'join', name: 'Мишень', team: 1, x: 2, z: -300, yaw: 0.4 });
+    msg(A, { t: 'join', name: 'Стрелок', x: 0, z: 0, yaw: 0 });
+    msg(B, { t: 'join', name: 'Мишень', x: 2, z: -300, yaw: 0.4 });
     clock += 3000;
     msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
     msg(B, { t: 'state', x: 2, y: 1.7, z: -300, yaw: 0.4, pitch: 0 });
@@ -433,12 +438,12 @@ console.log('grenade physics (stepNade):');
 console.log('blast push (explode):');
 {
   let clock = 1e6;
-  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'push' });
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'push', ...teamed({ thrower: 'DVN', mate: 'DVN' }) });
   const A = seat(g, conn()), B = seat(g, conn()), E = seat(g, conn()), T = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -3, yaw: 0 });
-  msg(E, { t: 'join', name: 'Далеко', team: 1, x: 0, z: -6.5, yaw: 0 });
-  msg(T, { t: 'join', name: 'Свой', team: 0, x: 1, z: -1, yaw: 0 });
+  msg(A, { t: 'join', key: 'thrower', name: 'Стрелок', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', key: 'target', name: 'Мишень', x: 0, z: -3, yaw: 0 });
+  msg(E, { t: 'join', key: 'far', name: 'Далеко', x: 0, z: -6.5, yaw: 0 });
+  msg(T, { t: 'join', key: 'mate', name: 'Свой', x: 1, z: -1, yaw: 0 });
   clock += 3000;   // past the spawn protection
   for (const [c, x, z] of [[A, 0, 0], [B, 0, -3], [E, 0, -6.5], [T, 1, -1]]) msg(c, { t: 'state', x, y: 1.7, z, yaw: 0, pitch: 0 });
   msg(A, { t: 'throw', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });   // straight down: it settles at the thrower's feet
@@ -457,8 +462,8 @@ console.log('blast push (explode):');
   const house = (x, z) => (Math.abs(x) < 4 && z > -4 && z < -2) ? { top: 12 } : null;
   const g = createGame({ world: flatWorld(house), area: { cx: 0, cz: 0 }, now: () => clock, name: 'pushwall' });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -6, yaw: 0 });
+  msg(A, { t: 'join', name: 'Стрелок', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', x: 0, z: -6, yaw: 0 });
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(B, { t: 'state', x: 0, y: 1.7, z: -6, yaw: 0, pitch: 0 });
@@ -472,8 +477,8 @@ console.log('blast push (explode):');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'pushdead' });
   const A = seat(g, conn()), D = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(D, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -1, yaw: 0 });
+  msg(A, { t: 'join', name: 'Стрелок', x: 0, z: 0, yaw: 0 });
+  msg(D, { t: 'join', name: 'Мишень', x: 0, z: -1, yaw: 0 });
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(D, { t: 'state', x: 0, y: 1.7, z: -1, yaw: 0, pitch: 0 });
@@ -489,9 +494,9 @@ console.log('blast push (explode):');
 {
   // a bot slides on the server: the knockback lands in its brain and decays as it slides
   let clock = 1e6;
-  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, arena: { cx: 0, cz: 0, r: 60, bases: [base(0, -25, 4), base(0, 25, 4)] }, mode: 'team', now: () => clock, name: 'pushbot' });
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, arena: { cx: 0, cz: 0, r: 60, bases: [base(0, -25, 4), base(0, 25, 4)] }, now: () => clock, name: 'pushbot' });
   const A = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(A, { t: 'join', name: 'Стрелок', x: 0, z: 0, yaw: 0 });
   const bot = g.addBot('easy');   // easy: no grenades of its own
   bot.x = 0; bot.z = -3; bot.y = 1.7;
   clock += 3000;
@@ -513,8 +518,8 @@ console.log('grenade: the body bounce and the shot-down:');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'nadebody' });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'Thrower', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Target', team: 1, x: 0, z: -6, yaw: 0 });
+  msg(A, { t: 'join', name: 'Thrower', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Target', x: 0, z: -6, yaw: 0 });
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(B, { t: 'state', x: 0, y: 1.7, z: -6, yaw: 0, pitch: 0 });
@@ -531,10 +536,10 @@ console.log('grenade: the body bounce and the shot-down:');
 {
   // a teammate's body bounces it too, and the thrower's own body never stops their own grenade
   let clock = 1e6;
-  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'nadeteam' });
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'nadeteam', ...teamed({ thrower: 'DVN', mate: 'DVN' }) });
   const A = seat(g, conn()), T = seat(g, conn());
-  msg(A, { t: 'join', name: 'Thrower', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(T, { t: 'join', name: 'Mate', team: 0, x: 0, z: -6, yaw: 0 });
+  msg(A, { t: 'join', key: 'thrower', name: 'Thrower', x: 0, z: 0, yaw: 0 });
+  msg(T, { t: 'join', key: 'mate', name: 'Mate', x: 0, z: -6, yaw: 0 });
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(T, { t: 'state', x: 0, y: 1.7, z: -6, yaw: 0, pitch: 0 });
@@ -547,7 +552,7 @@ console.log('grenade: the body bounce and the shot-down:');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'nadeself' });
   const A = seat(g, conn());
-  msg(A, { t: 'join', name: 'Thrower', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(A, { t: 'join', name: 'Thrower', x: 0, z: 0, yaw: 0 });
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(A, { t: 'throw', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });   // straight down at own feet: the old feel must hold
@@ -560,8 +565,8 @@ console.log('grenade: the body bounce and the shot-down:');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'nadeshot' });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'Shooter', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Far', team: 1, x: 0, z: -40, yaw: 0 });
+  msg(A, { t: 'join', name: 'Shooter', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Far', x: 0, z: -40, yaw: 0 });
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(B, { t: 'state', x: 0, y: 1.7, z: -40, yaw: 0, pitch: 0 });
@@ -586,7 +591,7 @@ console.log('grenade: the body bounce and the shot-down:');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'nademiss' });
   const A = seat(g, conn());
-  msg(A, { t: 'join', name: 'Shooter', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(A, { t: 'join', name: 'Shooter', x: 0, z: 0, yaw: 0 });
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(A, { t: 'ping', rtt: 0, c: 1 });
@@ -606,7 +611,7 @@ console.log('grenade: the body bounce and the shot-down:');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'nadeshotgun' });
   const A = seat(g, conn());
-  msg(A, { t: 'join', name: 'Shooter', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(A, { t: 'join', name: 'Shooter', x: 0, z: 0, yaw: 0 });
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(A, { t: 'ping', rtt: 0, c: 1 });
@@ -625,9 +630,9 @@ console.log('grenade: the body bounce and the shot-down:');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'nadecredit' });
   const A = seat(g, conn()), B = seat(g, conn()), C = seat(g, conn());
-  msg(A, { t: 'join', name: 'Thrower', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Victim', team: 1, x: 0, z: -6, yaw: 0 });
-  msg(C, { t: 'join', name: 'Shooter', team: 1, x: 8, z: -3, yaw: 0 });
+  msg(A, { t: 'join', name: 'Thrower', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Victim', x: 0, z: -6, yaw: 0 });
+  msg(C, { t: 'join', name: 'Shooter', x: 8, z: -3, yaw: 0 });
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(B, { t: 'state', x: 0, y: 1.7, z: -6, yaw: 0, pitch: 0 });
@@ -655,7 +660,7 @@ console.log('fall damage (fall):');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), now: () => clock, name: 'fall' });
   const A = seat(g, conn());
-  msg(A, { t: 'join', name: 'Прыгун', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(A, { t: 'join', name: 'Прыгун', x: 0, z: 0, yaw: 0 });
   clock += 3000;   // past the spawn protection
   const p = A.handle.player, st = y => msg(A, { t: 'state', x: 0, y, z: 0, yaw: 0, pitch: 0 });
   // up on a 10 m wall (the server accepts the height: the ramparts are the client's knowledge), then the fall and the landing
@@ -680,7 +685,7 @@ console.log('fall damage (fall):');
   ok(k && k.w === W_FALL && k.killer === k.victim, 'the kill feed calls it a fall, no killer credited', JSON.stringify(k));
   // the spawn protection shields from the enemy, not from one's own fall (as the self blast)
   const B = seat(g, conn());
-  msg(B, { t: 'join', name: 'Новичок', team: 1, x: 5, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Новичок', x: 5, z: 0, yaw: 0 });
   msg(B, { t: 'state', x: 5, y: 11.7, z: 0, yaw: 0, pitch: 0 });
   msg(B, { t: 'state', x: 5, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(B, { t: 'fall', h: 10 });
@@ -746,8 +751,8 @@ console.log('wall chord (shotPath penetration):');
   const shed = (x, z) => (Math.abs(x) < 3 && z > -10.3 && z < -10) ? { top: 12 } : null;
   const g = createGame({ world: flatWorld(shed), area: { cx: 0, cz: 0 }, now: () => clock, name: 'chord' });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -20, yaw: 0 });
+  msg(A, { t: 'join', name: 'Стрелок', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', x: 0, z: -20, yaw: 0 });
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(B, { t: 'state', x: 0, y: 1.7, z: -20, yaw: 0, pitch: 0 });
@@ -801,8 +806,8 @@ console.log('blast: two rays, chest and head:');
   const low = (x, z) => (Math.abs(x) < 4 && z > -5.5 && z < -5) ? { top: 2.2 } : null;   // solid under gr + 1.2 m: the chest ray (0.91…0.96 m there) is hidden, the head ray (1.40…1.50 m) passes over
   const g = createGame({ world: flatWorld(low), area: { cx: 0, cz: 0 }, now: () => clock, name: 'cover' });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -6, yaw: 0 });
+  msg(A, { t: 'join', name: 'Стрелок', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', x: 0, z: -6, yaw: 0 });
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(B, { t: 'state', x: 0, y: 1.7, z: -6, yaw: 0, pitch: 0 });
@@ -834,8 +839,8 @@ console.log('bullet drag (v(s), damage, flight time):');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'dragtime' });
   const A = seat(g, conn()), B = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -56, yaw: 0 });
+  msg(A, { t: 'join', name: 'Стрелок', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Мишень', x: 0, z: -56, yaw: 0 });
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
   msg(B, { t: 'state', x: 0, y: 1.7, z: -56, yaw: 0, pitch: 0 });
@@ -854,7 +859,7 @@ console.log('the loadout (two guns + the backpack):');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'loadout' });
   const A = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(A, { t: 'join', name: 'Стрелок', x: 0, z: 0, yaw: 0 });
   const p = A.handle.player;
   ok(p.loadout.length === 2 && p.loadout.join() === '0,3', 'the player spawns with two guns equipped (rifle + pistol)', p.loadout.join());
   ok(p.pack.length === 30 && p.pack.filter(w => w !== null).length === 6 && p.pack.filter(w => w === null).length === 24, 'the backpack has 30 cells: six guns and 24 free', JSON.stringify(p.pack));
@@ -886,7 +891,7 @@ console.log('the ready belt and the backpack stores:');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'belt' });
   const A = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(A, { t: 'join', name: 'Стрелок', x: 0, z: 0, yaw: 0 });
   const p = A.handle.player;
   clock += 3000;
   ok(INV.medMax === 3 && INV.nadeMax === 2, 'the belt caps: three kits, two grenades of a kind');
@@ -949,11 +954,11 @@ console.log('the ready belt and the backpack stores:');
 console.log('smoke and napalm (zones):');
 {
   let clock = 1e6;
-  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'zones' });
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'zones', ...teamed({ shooter: 'DVN', mate: 'DVN' }) });
   const A = seat(g, conn()), B = seat(g, conn()), C = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Мишень', team: 1, x: 0, z: -2, yaw: 0 });
-  msg(C, { t: 'join', name: 'Товарищ', team: 0, x: 2, z: 0, yaw: 0 });
+  msg(A, { t: 'join', key: 'shooter', name: 'Стрелок', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', key: 'target', name: 'Мишень', x: 0, z: -2, yaw: 0 });
+  msg(C, { t: 'join', key: 'mate', name: 'Товарищ', x: 2, z: 0, yaw: 0 });
   const p = A.handle.player, q = B.handle.player, r = C.handle.player;
   clock += 3000;
   for (const c of [A, B, C]) msg(c, { t: 'state', x: c.handle.player.x, y: 1.7, z: c.handle.player.z, yaw: 0, pitch: 0 });
@@ -966,7 +971,7 @@ console.log('smoke and napalm (zones):');
   const sz = A.last('zone');
   ok(sz && sz.kind === 'smoke' && sz.r === 6 && g.zones.size === 1, 'the smoke lays a screen of radius 6', JSON.stringify(sz));
   ok(q.hp === 100 && r.hp === 100 && !A.all('boom').length, 'the smoke neither hurts nor blasts');
-  const late = seat(g, conn()); msg(late, { t: 'join', name: 'Опоздавший', team: 1, x: 5, z: 5, yaw: 0 });
+  const late = seat(g, conn()); msg(late, { t: 'join', key: 'late', name: 'Опоздавший', x: 5, z: 5, yaw: 0 });
   const hz = late.last('hello') && late.last('hello').zones.find(z => z.kind === 'smoke');
   ok(hz && hz.durMs === SMOKE.durMs && hz.left > 0 && hz.left <= SMOKE.durMs, 'a late joiner gets the screen with its whole time and what is left of it', JSON.stringify(hz));
   clock += SMOKE.durMs + 100; g.stepNades();
@@ -1005,7 +1010,7 @@ console.log('smoke and napalm (zones):');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'zonebots' });
   const A = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(A, { t: 'join', name: 'Стрелок', x: 0, z: 0, yaw: 0 });
   const bot = g.addBot('easy');
   bot.x = 0; bot.z = -15; bot.y = 1.7; bot.hist = [];
   const p = A.handle.player;
@@ -1049,7 +1054,7 @@ console.log('the smoke screen: its shape in time, the depth of smoke on a sight 
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'smokebots' });
   const A = seat(g, conn());
-  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(A, { t: 'join', name: 'Стрелок', x: 0, z: 0, yaw: 0 });
   const bot = g.addBot('normal'), p = A.handle.player;
   clock += 3000;
   msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
@@ -1090,15 +1095,15 @@ console.log('the player cap (64):');
   ok(g.addBot('easy') === null, 'the 65th bot is refused');
   ok(new Set(bots.map(b => b.name)).size === 64, 'the bot names stay unique past the 16-name list');
   const H = seat(g, conn());
-  msg(H, { t: 'join', name: 'Игрок', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(H, { t: 'join', name: 'Игрок', x: 0, z: 0, yaw: 0 });
   ok(H.last('hello') && g.health().players === 1 && g.health().bots === 63, 'a human joins the full server: a bot steps aside');
   g.stop();
   // a small server of two humans and no bots: the third join is refused for real
   const g2 = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'full', maxPlayers: 2 });
   const A = seat(g2, conn()), B = seat(g2, conn()), C = seat(g2, conn());
-  msg(A, { t: 'join', name: 'Первый', team: 0, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Второй', team: 1, x: 0, z: 0, yaw: 0 });
-  msg(C, { t: 'join', name: 'Третий', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(A, { t: 'join', name: 'Первый', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Второй', x: 0, z: 0, yaw: 0 });
+  msg(C, { t: 'join', name: 'Третий', x: 0, z: 0, yaw: 0 });
   ok(C.last('full') && !C.last('hello'), 'with no bots to step aside the server is full');
   g2.stop();
 }
@@ -1106,9 +1111,9 @@ console.log('the player cap (64):');
 /* ---------- 3. a real bot fight ---------- */
 console.log('bot fight (8 hard bots, 12 s of real time):');
 {
-  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, arena: { cx: 0, cz: 0, r: 60, bases: [base(0, -25, 4), base(0, 25, 4)] }, mode: 'team', botLevel: 'hard', name: 'bots' });
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, arena: { cx: 0, cz: 0, r: 60, bases: [base(0, -25, 4), base(0, 25, 4)] }, botLevel: 'hard', name: 'bots' });
   const S = seat(g, conn());
-  msg(S, { t: 'join', name: 'Р—СЂРёС‚РµР»СЊ', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(S, { t: 'join', name: 'Р—СЂРёС‚РµР»СЊ', x: 0, z: 0, yaw: 0 });
   for (let i = 0; i < 4; i++) { g.addBot(0); g.addBot(1); }
   await new Promise(r => setTimeout(r, 12000));
   const kills = S.all('kill'), heads = kills.filter(m => m.head).length, shots = S.all('shot').length;
@@ -1123,7 +1128,7 @@ console.log('bot tactics (roles, weapons, footwork, cover, reaction):');
 {
   // roles: a squad is born with different favourite guns, each in hand from the first step
   let clock = 1e6;
-  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, arena: { cx: 0, cz: 0, r: 80, bases: [base(0, -40, 5), base(0, 40, 5)] }, mode: 'team', now: () => clock, name: 'roles' });
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, arena: { cx: 0, cz: 0, r: 80, bases: [base(0, -40, 5), base(0, 40, 5)] }, now: () => clock, name: 'roles' });
   const bots = []; for (let i = 0; i < 24; i++) bots.push(g.addBot(i % 2 ? 'hard' : 'normal'));
   const roles = new Set(bots.map(b => b.bot.role));
   ok(roles.size >= 3, 'a squad carries at least three different favourite guns', [...roles].join(','));
@@ -1133,8 +1138,8 @@ console.log('bot tactics (roles, weapons, footwork, cover, reaction):');
 {
   // every role fights with its own gun (forced roles, free-for-all so all distances occur), and the footwork shows
   let clock = 1e6;
-  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, arena: { cx: 0, cz: 0, r: 80, bases: [[[0, -60]], [[0, 60]]] }, mode: 'ffa', now: () => clock, name: 'guns' });
-  const S = seat(g, conn()); msg(S, { t: 'join', name: 'Р—СЂРёС‚РµР»СЊ', team: 0, x: 0, z: 0, yaw: 0 });
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, arena: { cx: 0, cz: 0, r: 80, bases: [[[0, -60]], [[0, 60]]] }, now: () => clock, name: 'guns' });
+  const S = seat(g, conn()); msg(S, { t: 'join', name: 'Р—СЂРёС‚РµР»СЊ', x: 0, z: 0, yaw: 0 });
   const bots = [];
   for (let role = 0; role < 5; role++) { const b = g.addBot('hard'); b.bot.role = role; b.wep = role; b.bot.switchAt = 0; const a = role / 5 * 6.283; b.x = Math.cos(a) * 30; b.z = Math.sin(a) * 30; b.y = 1.7; bots.push(b); }
   clock += 3000;
@@ -1160,9 +1165,9 @@ console.log('bot tactics (roles, weapons, footwork, cover, reaction):');
   // an unseen attacker: a bot shot from beyond its sight remembers the blow, turns on it and is alerted
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'alert' });
-  const S = seat(g, conn()); msg(S, { t: 'join', name: 'Р—СЂРёС‚РµР»СЊ', team: 0, x: 300, z: 300, yaw: 0 });   // the spectator stands aside, out of the line of fire
-  const B = seat(g, conn()); msg(B, { t: 'join', name: 'РЎС‚СЂРµР»РѕРє', team: 1, x: 0, z: 140, yaw: 0 });
-  const bot = g.addBot('hard'); bot.team = 0; bot.x = 0; bot.z = 0; bot.y = 1.7; bot.yaw = 0;   // looks toward -z; the shooter is behind at +z, 140 m > sight 130
+  const S = seat(g, conn()); msg(S, { t: 'join', name: 'Р—СЂРёС‚РµР»СЊ', x: 300, z: 300, yaw: 0 });   // the spectator stands aside, out of the line of fire
+  const B = seat(g, conn()); msg(B, { t: 'join', name: 'РЎС‚СЂРµР»РѕРє', x: 0, z: 140, yaw: 0 });
+  const bot = g.addBot('hard'); bot.x = 0; bot.z = 0; bot.y = 1.7; bot.yaw = 0;   // looks toward -z; the shooter is behind at +z, 140 m > sight 130
   clock += 3000;
   for (let i = 0; i < 4; i++) { clock += 50; g.stepBots(0.05); }   // let the bot settle and take its full hp into lastHp before the blow
   bot.x = 0; bot.z = 0; bot.y = 1.7; bot.hist.length = 0;   // pin it back: the settle ticks may roam, and the ray below aims at the origin
@@ -1182,10 +1187,10 @@ console.log('bot tactics (roles, weapons, footwork, cover, reaction):');
   // reloading a slow gun with the enemy close: the bot falls back behind the nearest wall and crouches there
   let clock = 1e6;
   const house = (x, z) => (x > 2 && x < 10 && z > -3 && z < 3) ? { top: 9 } : null;   // a wall to the side: the bot can step behind it straight on
-  const g = createGame({ world: flatWorld(house), arena: { cx: 0, cz: 0, r: 60, bases: [base(0, -25, 4), base(0, 25, 4)] }, mode: 'team', now: () => clock, name: 'cover' });
-  const S = seat(g, conn()); msg(S, { t: 'join', name: 'Р—СЂРёС‚РµР»СЊ', team: 0, x: 0, z: 0, yaw: 0 });
-  const E = seat(g, conn()); msg(E, { t: 'join', name: 'Р’СЂР°Рі', team: 1, x: 0, z: -20, yaw: 0 });
-  const bot = g.addBot('hard'); bot.team = 0; bot.x = 0; bot.z = 0; bot.y = 1.7; bot.wep = 4; bot.bot.role = 4; bot.reloadW = 4; bot.mag[4] = 1;
+  const g = createGame({ world: flatWorld(house), arena: { cx: 0, cz: 0, r: 60, bases: [base(0, -25, 4), base(0, 25, 4)] }, now: () => clock, name: 'cover' });
+  const S = seat(g, conn()); msg(S, { t: 'join', name: 'Р—СЂРёС‚РµР»СЊ', x: 0, z: 0, yaw: 0 });
+  const E = seat(g, conn()); msg(E, { t: 'join', name: 'Р’СЂР°Рі', x: 0, z: -20, yaw: 0 });
+  const bot = g.addBot('hard'); bot.x = 0; bot.z = 0; bot.y = 1.7; bot.wep = 4; bot.bot.role = 4; bot.reloadW = 4; bot.mag[4] = 1;
   clock += 3000;
   msg(E, { t: 'state', x: 0, y: 1.7, z: -20, yaw: 0, pitch: 0 });
   bot.bot.target = E.handle.player.id; bot.bot.react = 0; bot.bot.look = 1;   // engaged at once: the gun fires its last round and reloads under the enemy's nose
@@ -1232,7 +1237,7 @@ console.log('the match and the storm (createGame match, controlled clock):');
 const LEN = MATCHC.lenMs, KA = 'a'.repeat(32), KB = 'b'.repeat(32), KC = 'c'.repeat(32), KD = 'd'.repeat(32);
 {
   let clock = 3 * LEN + 1000;   // a second into a match
-  const g = createGame({ world: flatWorld(), mode: 'ffa', match: { len: LEN, graceMs: 0 }, now: () => clock, name: 'match', itemCount: 8 });
+  const g = createGame({ world: flatWorld(), match: { len: LEN, graceMs: 0 }, now: () => clock, name: 'match', itemCount: 8 });
   g.stop();   // the test drives every clock itself
   const A = seat(g, conn()), B = seat(g, conn()), D = seat(g, conn());
   msg(A, { t: 'join', name: 'Один', key: KA, x: 0, z: 0, yaw: 0 });
@@ -1293,27 +1298,27 @@ const LEN = MATCHC.lenMs, KA = 'a'.repeat(32), KB = 'b'.repeat(32), KC = 'c'.rep
   ok(E.handle.joined, 'the door of the new match is open again');
 }
 {
-  // the team fight: the last side standing wins the match
+  // the last team of the players standing wins the match: A and C are one team, B is alone
   let clock = 7 * LEN + 1000;
-  const g = createGame({ world: flatWorld(), match: { len: LEN, graceMs: 0 }, now: () => clock, name: 'match-team', itemCount: 4 });
+  const g = createGame({ world: flatWorld(), match: { len: LEN, graceMs: 0 }, now: () => clock, name: 'match-team', itemCount: 4, ...teamed({ [KA]: 'RED', [KC]: 'RED' }) });
   g.stop();
   const A = seat(g, conn()), B = seat(g, conn()), C = seat(g, conn());
-  msg(A, { t: 'join', name: 'Красный', team: 0, key: KA, x: 0, z: 0, yaw: 0 });
-  msg(B, { t: 'join', name: 'Синий', team: 1, key: KB, x: 0, z: 0, yaw: 0 });
-  msg(C, { t: 'join', name: 'Красный2', team: 0, key: KC, x: 0, z: 0, yaw: 0 });
-  ok(A.handle.player.team === 0 && B.handle.player.team === 1 && C.handle.player.team === 0, 'two sides');
+  msg(A, { t: 'join', name: 'Красный', key: KA, x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'Синий', key: KB, x: 0, z: 0, yaw: 0 });
+  msg(C, { t: 'join', name: 'Красный2', key: KC, x: 0, z: 0, yaw: 0 });
+  ok([A, B, C].every(c => !('team' in c.handle.player)) && A.last('hello').clan && A.last('hello').clan.tag === 'RED' && !B.last('hello').clan, 'no sides: A and C are one team of the players, B is alone');
   clock = 7 * LEN + LEN - 1200000; g.stepMatch(); clock += 2600; g.stepMatch();
   const c = g.storm.cur;
   for (const p of [A, C]) { p.handle.player.x = c.x; p.handle.player.z = c.z; }
   B.handle.player.x = c.x + c.r + 30; B.handle.player.z = c.z; B.handle.player.hp = 1;
   clock += 3000; g.stepMatch();
   const win = A.last('win');
-  ok(win && win.mode === 'storm' && win.side === 0 && win.name === 'Красные' && g.storm.phase === 'end', 'the last side standing wins the match', JSON.stringify(win && { side: win.side, name: win.name }));
+  ok(win && win.mode === 'storm' && win.clan === 'RED' && win.name === '[RED] Команда RED' && !('side' in win) && g.storm.phase === 'end', 'the last team standing wins the match', JSON.stringify(win && { clan: win.clan, name: win.name }));
 }
 {
   // the bot outside the circle sprints into it: the storm of the brain (bots.mjs) over the flat city
   let clock = 9 * LEN + 1000;
-  const g = createGame({ world: flatWorld(), mode: 'ffa', match: { len: LEN, graceMs: 0 }, area: { cx: 0, cz: 0, r: 3300 }, now: () => clock, name: 'storm-bot', itemCount: 4 });
+  const g = createGame({ world: flatWorld(), match: { len: LEN, graceMs: 0 }, area: { cx: 0, cz: 0, r: 3300 }, now: () => clock, name: 'storm-bot', itemCount: 4 });
   g.stop();
   const A = seat(g, conn()); msg(A, { t: 'join', name: 'Один', key: KA, x: 0, z: 0, yaw: 0 });
   const bot = g.addBot('normal');
@@ -1334,7 +1339,7 @@ console.log('cargo event (createGame, controlled clock):');
   let clock = 1e6;
   const g = createGame({ world: flatWorld(), now: () => clock, name: 'cargo' });
   const A = seat(g, conn());
-  msg(A, { t: 'join', name: 'Носитель', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(A, { t: 'join', name: 'Носитель', x: 0, z: 0, yaw: 0 });
   const p = A.handle.player;
   clock += 3000;
   ok(!g.cargo, 'no crate before the first drop is due');
@@ -1370,14 +1375,14 @@ console.log('cargo event (createGame, controlled clock):');
   ok(g.cargo && g.cargo.state === 'fall', 'the next drop comes after the gap');
   // a late joiner gets the crate in flight with hello
   const C = seat(g, conn());
-  msg(C, { t: 'join', name: 'Поздний', team: 0, x: 0, z: 0, yaw: 0 });
+  msg(C, { t: 'join', name: 'Поздний', x: 0, z: 0, yaw: 0 });
   ok(C.last('hello').cargo && C.last('hello').cargo.id === g.cargo.id, 'a late joiner gets the crate in flight');
   // the mark dies with its carrier: the second drop is taken, then the carrier is shot
   const c1 = g.cargo; clock = c1.landAt; g.stepCargo();
   p.x = c1.x; p.z = c1.z; p.y = 1.7; g.stepCargo();
   ok(p.markUntil > clock, 'the second pickup marks again');
   const B = seat(g, conn());
-  msg(B, { t: 'join', name: 'Охотник', team: 1, x: p.x + 10, z: p.z, yaw: 0 });
+  msg(B, { t: 'join', name: 'Охотник', x: p.x + 10, z: p.z, yaw: 0 });
   clock += 3000;
   msg(B, { t: 'state', x: p.x + 10, y: 1.7, z: p.z, yaw: 0, pitch: 0 });
   const bp = B.handle.player, dx = p.x - bp.x, dz = p.z - bp.z, l = Math.hypot(dx, dz);
@@ -1400,10 +1405,10 @@ console.log('cargo event (createGame, controlled clock):');
 console.log('king of the hill event (createGame, controlled clock):');
 {
   let clock = 1e6;
-  const g = createGame({ world: flatWorld(), mode: 'team', now: () => clock, name: 'holy', itemCount: 4 });
+  const g = createGame({ world: flatWorld(), now: () => clock, name: 'holy', itemCount: 4, ...teamed({ red: 'RED', red2: 'RED' }) });
   const tick = ms => { const n = Math.max(1, Math.ceil(ms / 200)); for (let k = 0; k < n; k++) { clock += ms / n; g.stepHoly(); } };   // the race ticks every 200 ms, as on the server
-  const A = seat(g, conn()); msg(A, { t: 'join', name: 'Красный', team: 0, x: 0, z: 0, yaw: 0 });
-  const B = seat(g, conn()); msg(B, { t: 'join', name: 'Синий', team: 1, x: 50, z: 50, yaw: 0 });
+  const A = seat(g, conn()); msg(A, { t: 'join', key: 'red', name: 'Красный', x: 0, z: 0, yaw: 0 });
+  const B = seat(g, conn()); msg(B, { t: 'join', key: 'blue', name: 'Синий', x: 50, z: 50, yaw: 0 });
   const p = A.handle.player, q = B.handle.player;
   const stand = (pl, pt) => { pl.x = pt.x; pl.z = pt.z; pl.y = pt.gy + 1.7; };
   const away = pl => { pl.x = 56; pl.z = 1214; pl.y = 1.7; };   // the middle of the hill, out of every ring
@@ -1416,14 +1421,14 @@ console.log('king of the hill event (createGame, controlled clock):');
   ok(A.last('holy') && A.last('holy').arena && A.last('holy').arena.name === 'Церковная горка', 'the call went to everybody with the hill arena');
   ok(g.health().arena === 'Церковная горка', 'the field is the hill during the race');
   ok(Math.hypot(p.x - 56, p.z - 1214) < 260, 'the players were called to the hill');
-  // one side alone in the ring takes the point: the cathedral falls to the reds
+  // one unit alone in the ring takes the point: the cathedral falls to the team RED
   const pt0 = g.holy.points[0];
   stand(p, pt0); away(q);
   tick(HOLY.capMs - 200);
   ok(!pt0.owner && pt0.prog > 0.9, 'the ring fills while one side stands in it', 'prog ' + pt0.prog);
   tick(400);
-  ok(pt0.owner === 't0' && pt0.team === 0, 'the cathedral is taken by the red team');
-  ok(A.last('bell') && A.last('bell').i === 0 && A.last('bell').side === 't0', 'the bell went to everybody');
+  ok(pt0.owner === 'cRED' && pt0.name === 'Команда RED' && !('team' in pt0), 'the cathedral is taken by the team of the players RED');
+  ok(A.last('bell') && A.last('bell').i === 0 && A.last('bell').side === 'cRED', 'the bell went to everybody');
   ok(A.all('chat').some(m => /захватили Собор/.test(m.text)), 'the chat names the taken temple and its buff');
   // the cathedral buff: +25% damage. A body shot at 20 m deals ~26 against the plain ~21 (a head would be ~38)
   q.x = p.x + 20; q.z = p.z; q.y = p.y;
@@ -1431,34 +1436,34 @@ console.log('king of the hill event (createGame, controlled clock):');
   msg(A, { t: 'shoot', w: 0, rays: [[20 / ql, -0.6 / ql, 0]] }); clock += 120; g.stepBullets();
   const dealt = 100 - q.hp;
   ok(dealt >= 25 && dealt <= 29, 'the cathedral buff raises the body damage', 'dealt ' + dealt);
-  // any one member takes a point for the whole team: a second red takes the catholic church alone
-  const C = seat(g, conn()); msg(C, { t: 'join', name: 'Красный2', team: 0, x: 0, z: 0, yaw: 0 });
+  // any one member takes a point for the whole team: a second member of RED takes the catholic church alone
+  const C = seat(g, conn()); msg(C, { t: 'join', key: 'red2', name: 'Красный2', x: 0, z: 0, yaw: 0 });
   const r = C.handle.player, pt1 = g.holy.points[1];
   stand(r, pt1); away(p); away(q);
   tick(HOLY.capMs + 200);
-  ok(pt1.owner === 't0', 'any one member takes the point for the whole team');
-  // the remaining two fall to the reds: the lutheran speed and the old believers' reload
-  for (const idx of [2, 3]) { const tp = g.holy.points[idx]; stand(p, tp); away(q); away(r); tick(HOLY.capMs + 200); ok(tp.owner === 't0', 'temple ' + idx + ' taken by the reds'); }
+  ok(pt1.owner === 'cRED', 'any one member takes the point for the whole team');
+  // the remaining two fall to RED: the lutheran speed and the old believers' reload
+  for (const idx of [2, 3]) { const tp = g.holy.points[idx]; stand(p, tp); away(q); away(r); tick(HOLY.capMs + 200); ok(tp.owner === 'cRED', 'temple ' + idx + ' taken by the team'); }
   // the old believers' buff: the reload is 30% quicker
   p.reloadDone = 0; p.mag[0] = 5;
   msg(A, { t: 'reload', w: 0 });
   ok(p.reloadDone === clock + Math.round(1800 * HOLY.buffs.reload), 'the old believers hasten the reload');
   // all four in one hand: the three-minute hold begins
-  ok(g.holy.holdSide === 't0', 'holding all four starts the three-minute hold');
-  ok(A.last('holy').hold && A.last('holy').hold.side === 't0', 'the hold went to everybody');
+  ok(g.holy.holdSide === 'cRED', 'holding all four starts the three-minute hold');
+  ok(A.last('holy').hold && A.last('holy').hold.side === 'cRED', 'the hold went to everybody');
   tick(HOLY.holdMs - 1000);
   ok(g.holy, 'still racing a moment before the prize');
   tick(1500);
   ok(!g.holy, 'the race ends with the grand prize');
-  ok(A.last('holyWin') && A.last('holyWin').side === 't0', 'the prize went to everybody');
-  ok(g.health().score[0] >= HOLY.prizeScore, 'the winning team got the prize score');
+  ok(A.last('holyWin') && A.last('holyWin').side === 'cRED', 'the prize went to everybody');
+  ok(p.kills >= HOLY.prizeKills && C.handle.player.kills >= HOLY.prizeKills && q.kills < HOLY.prizeKills, 'every member of the winning team got the prize kills, the rival none', p.kills + ' / ' + C.handle.player.kills + ' / ' + q.kills);
   ok(p.hp === 100 && p.reserve[0] === RESERVE[0] && p.nades === NADE.count, 'the winners are healed and re-armed');
   ok(g.health().arena === null, 'the field is released after the race');
   ok(A.last('holyEnd') && A.last('holyEnd').reason === 'win', 'the end went to everybody with the reason');
   // the next race comes after the gap; a late joiner gets it in hello
   tick(HOLY.gapMs + 100);
   ok(g.holy, 'the next race comes after the gap');
-  const D = seat(g, conn()); msg(D, { t: 'join', name: 'Поздний', team: 0, x: 0, z: 0, yaw: 0 });
+  const D = seat(g, conn()); msg(D, { t: 'join', key: 'late', name: 'Поздний', x: 0, z: 0, yaw: 0 });
   ok(D.last('hello').holy && D.last('hello').holy.id === g.holy.id, 'a late joiner gets the race in hello');
   ok(D.last('hello').arena && D.last('hello').arena.name === 'Церковная горка', 'a late joiner gets the hill arena');
   // an untaken race expires on its own
@@ -1471,10 +1476,10 @@ console.log('king of the hill event (createGame, controlled clock):');
 console.log('siege of Dinaburg event (createGame, controlled clock):');
 {
   let clock = 1e6;
-  const g = createGame({ world: flatWorld(), mode: 'team', now: () => clock, name: 'siege', itemCount: 4 });
+  const g = createGame({ world: flatWorld(), now: () => clock, name: 'siege', itemCount: 4 });
   const tick = ms => { const n = Math.max(1, Math.ceil(ms / 200)); for (let k = 0; k < n; k++) { clock += ms / n; g.stepSiege(); } };   // the siege ticks every 200 ms, as on the server
-  const A = seat(g, conn()); msg(A, { t: 'join', name: 'Штурмовик', team: 0, x: -2700, z: -200, yaw: 0 });
-  const B = seat(g, conn()); msg(B, { t: 'join', name: 'Гарнизонный', team: 1, x: -2700, z: -200, yaw: 0 });
+  const A = seat(g, conn()); msg(A, { t: 'join', name: 'Штурмовик', x: -2700, z: -200, yaw: 0 });
+  const B = seat(g, conn()); msg(B, { t: 'join', name: 'Гарнизонный', x: -2700, z: -200, yaw: 0 });
   const p = A.handle.player, q = B.handle.player, altar = SIEGE.altar;
   const stand = (pl, x, z) => { pl.x = x; pl.z = z; pl.y = 1.7; };
   ok(!g.siege, 'no siege before the first call is due');
@@ -1489,8 +1494,8 @@ console.log('siege of Dinaburg event (createGame, controlled clock):');
   msg(B, { t: 'siegeJoin', side: 'd' });
   ok(q.siege === 'd', 'the other side too');
   const extras = [];
-  for (let i = 0; i < SIEGE.balance; i++) { const c = seat(g, conn()); msg(c, { t: 'join', name: 'Лишний' + i, team: 0, x: -2700, z: -200, yaw: 0 }); extras.push(c); msg(c, { t: 'siegeJoin', side: 'a' }); }
-  const X = seat(g, conn()); msg(X, { t: 'join', name: 'Отказник', team: 0, x: -2700, z: -200, yaw: 0 });
+  for (let i = 0; i < SIEGE.balance; i++) { const c = seat(g, conn()); msg(c, { t: 'join', name: 'Лишний' + i, x: -2700, z: -200, yaw: 0 }); extras.push(c); msg(c, { t: 'siegeJoin', side: 'a' }); }
+  const X = seat(g, conn()); msg(X, { t: 'join', name: 'Отказник', x: -2700, z: -200, yaw: 0 });
   msg(X, { t: 'siegeJoin', side: 'a' });
   ok(X.last('siegeDeny') && X.last('siegeDeny').reason === 'balance' && !X.handle.player.siege, 'the balance refuses the overfull side');
   msg(X, { t: 'siegeJoin', side: 'd' });
@@ -1533,11 +1538,11 @@ console.log('siege of Dinaburg event (createGame, controlled clock):');
 }
 {
   let clock = 2e6;
-  const g = createGame({ world: flatWorld(), mode: 'team', now: () => clock, name: 'siege2', itemCount: 4 });
+  const g = createGame({ world: flatWorld(), now: () => clock, name: 'siege2', itemCount: 4 });
   const tick = ms => { const n = Math.max(1, Math.ceil(ms / 200)); for (let k = 0; k < n; k++) { clock += ms / n; g.stepSiege(); } };   // the siege ticks every 200 ms, as on the server
-  const C = seat(g, conn()); msg(C, { t: 'join', name: 'Защитник', team: 1, x: -2700, z: -200, yaw: 0 });
-  const D = seat(g, conn()); msg(D, { t: 'join', name: 'Атакующий', team: 0, x: -2700, z: -200, yaw: 0 });
-  const E = seat(g, conn()); msg(E, { t: 'join', name: 'Зевака', team: 0, x: -2700, z: -200, yaw: 0 });   // a bystander: not registered
+  const C = seat(g, conn()); msg(C, { t: 'join', name: 'Защитник', x: -2700, z: -200, yaw: 0 });
+  const D = seat(g, conn()); msg(D, { t: 'join', name: 'Атакующий', x: -2700, z: -200, yaw: 0 });
+  const E = seat(g, conn()); msg(E, { t: 'join', name: 'Зевака', x: -2700, z: -200, yaw: 0 });   // a bystander: not registered
   const c = C.handle.player, d = D.handle.player, e = E.handle.player, altar = SIEGE.altar;
   const stand = (pl, x, z) => { pl.x = x; pl.z = z; pl.y = 1.7; };
   g.siegeStart(); msg(C, { t: 'siegeJoin', side: 'd' }); msg(D, { t: 'siegeJoin', side: 'a' });
@@ -1562,7 +1567,7 @@ console.log('siege of Dinaburg event (createGame, controlled clock):');
   g.siegeStart(); msg(C, { t: 'siegeJoin', side: 'd' }); msg(D, { t: 'siegeJoin', side: 'a' });
   tick(SIEGE.regMs + SIEGE.prepMs + 200);
   ok(g.siege && g.siege.phase === 'assault', 'the third siege reaches the assault');
-  const F = seat(g, conn()); msg(F, { t: 'join', name: 'Поздний', team: 0, x: -2700, z: -200, yaw: 0 });
+  const F = seat(g, conn()); msg(F, { t: 'join', name: 'Поздний', x: -2700, z: -200, yaw: 0 });
   ok(F.last('hello').siege && F.last('hello').siege.phase === 'assault', 'a late joiner gets the siege in hello');
   stand(c, SIEGE.cx, SIEGE.cz); stand(d, SIEGE.cx, SIEGE.cz + SIEGE.domeR + 30);
   tick(SIEGE.durMs + 500);

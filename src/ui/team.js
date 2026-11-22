@@ -94,7 +94,7 @@ function render(first) {
   else if (first) { const f = $('tmName') || $('tmInvite'); if (f && !inGame()) f.focus({ preventScroll: true }); }
   const log = $('tmLog'); if (log) log.scrollTop = log.scrollHeight;
 }
-const RULES = 'Команда играет вместе: в командном бою вы на одной стороне и появляетесь рядом, в «каждый сам за себя» и в «Шторме» вы союзники — свои пули, гранаты и напалм не ранят, чат команды (U) слышат только свои, а «Шторм» выигрывает последняя выжившая команда. Тег команды стоит перед ником.';
+const RULES = 'В бою каждый сам за себя, а команда — ваши единственные союзники: свои пули, гранаты и напалм не ранят, вы появляетесь рядом, чат команды (U) слышат только свои, храм «Царя горы» держится на всю команду, а «Шторм» выигрывает последняя выжившая команда. Тег команды стоит перед ником.';
 function invitesSec(title) {
   if (!SOC.invites.length) return null;
   const list = h('div', { class: 'tm-list' });
@@ -221,12 +221,12 @@ function rows() {
   else if (t) {
     const on = t.members.filter(m => m.where).length;
     text.append(tagChip(t.tag), ' ', h('b', { text: t.name }), ' · в сети ' + on + ' из ' + t.members.length);
-    lob.append(tagChip(t.tag), ' ', h('b', { text: t.name }), ' · в сети ' + on + ' из ' + t.members.length + ' — в бою вы на одной стороне, в «Шторме» союзники');
+    lob.append(tagChip(t.tag), ' ', h('b', { text: t.name }), ' · в сети ' + on + ' из ' + t.members.length + ' — в бою каждый сам за себя, а вы союзники');
   } else if (SOC.invites.length) {
     const i = SOC.invites[0];
     text.append('Вас пригласили в команду ', tagChip(i.tag), ' ', h('b', { text: i.name }));
     lob.append('Вас пригласили в команду ', tagChip(i.tag), ' ', h('b', { text: i.name }));
-  } else { text.textContent = 'Вы не в команде — создайте свою и пригласите друзей'; lob.textContent = 'Без команды: соберите друзей, чтобы играть на одной стороне'; }
+  } else { text.textContent = 'Вы не в команде — создайте свою и пригласите друзей'; lob.textContent = 'Без команды вы сами за себя: соберите друзей, чтобы воевать вместе'; }
   $('bTeamStartL').textContent = SOC.team ? 'Моя команда' : 'Команда';
 }
 function refresh() { rows(); badges(); render(); }

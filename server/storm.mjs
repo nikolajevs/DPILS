@@ -7,8 +7,7 @@
    building); whoever stands outside burns (game.mjs tickStorm). The stages hold, then shrink: the hold is the breath
    before the run, the shrink forces everybody towards the point — the fight is guaranteed. After the last stage the
    circle closes to nothing (sudden death, the damage grows): no camp survives it. In the storm there is one life —
-   no respawn; the last one standing (the last side in the team fight, the last team of the players in the
-   free-for-all) wins the match. The victory table stands until the next match. The schedule and the circles are pure
+   no respawn; the last one standing (or the last team of the players standing) wins the match. The victory table stands until the next match. The schedule and the circles are pure
    data and geometry here so the combat tests can drive them by their own clock; the game owns the players, the hurt
    and the cycle. */
 
