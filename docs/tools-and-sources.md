@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Claude | claude/remove-team-division-71111b | Без красных и синих: каждый сам за себя, союзники — только команда игроков (бой, шторм, Царь горы, Штурм) | server/game.mjs, server/index.mjs, server/admin.mjs, server/arenas.mjs, src/game/mp.js, src/game/holy.js, src/game/chat.js, src/game/local.js, src/ui/start.js, src/ui/lobby.js, index.html, src/style.css, tools/combat-test.mjs, tools/social-test.mjs |
 
 ## Автономный цикл улучшений
 
