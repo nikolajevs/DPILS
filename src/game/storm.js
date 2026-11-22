@@ -36,7 +36,7 @@ void main() {
   gl_Position = projectionMatrix * viewMatrix * w;
 }`;
 const WALL_FS = `
-uniform float uTime, uFlash, uFlashId, uOutside;
+uniform float uTime, uFlash, uFlashId, uOutside, uCx, uCz, uPer12, uPer5;
 varying vec2 vUv; varying vec3 vW; varying vec3 vN;
 float hash(float n) { return fract(sin(n) * 43758.5453); }
 float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -45,14 +45,27 @@ float noise(vec2 p) {
   return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), f.x), mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), f.x), f.y);
 }
 float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 3; i++) { v += a * noise(p); p *= 2.03; a *= 0.5; } return v; }
+// value noise periodic in x (the lattice wraps at the period): the filaments are measured in metres of the ring's
+// arc, so they keep their true size at every distance — 45 m from the wall the view still crosses several of them
+float pnoise(vec2 p, float per) {
+  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  float x0 = mod(i.x, per), x1 = mod(i.x + 1.0, per);
+  float a = hash2(vec2(x0, i.y)), b = hash2(vec2(x1, i.y)), c = hash2(vec2(x0, i.y + 1.0)), d = hash2(vec2(x1, i.y + 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+float pfbm(vec2 p, float per) { float v = 0.0, a = 0.5; for (int i = 0; i < 3; i++) { v += a * pnoise(p, per); p *= 2.0; per *= 2.0; a *= 0.5; } return v; }
 void main() {
-  float ang = vUv.x;   // around the circle
+  // the angle around the circle from the world position, NOT uv.x: the cylinder's seam quad interpolates uv.x
+  // backwards across the whole wrap, and the camera meets exactly that quad — the noise would alias into a flat wash
+  float ang = atan(vW.z - uCz, vW.x - uCx) * 0.15915494 + 0.5;
   float h = vW.y;
-  // the energy curtain: two layers of filaments rising at different speeds, stretched tall
-  float f1 = fbm(vec2(ang * 60.0, h * 0.010 - uTime * 0.35));
-  float f2 = fbm(vec2(ang * 130.0 + 7.0, h * 0.022 - uTime * 0.80));
-  float fil = smoothstep(0.40, 0.76, f1) * 0.7 + smoothstep(0.48, 0.88, f2) * 0.5;
-  float swirl = fbm(vec2(ang * 18.0 + uTime * 0.02, h * 0.004 + uTime * 0.01));   // the slow weather around the ring
+  // the energy curtain: filaments ~12 m and ~5 m wide on the ring's arc, rising at two speeds; the periodic noise
+  // wraps seamlessly around the circle (no seam at the atan branch cut) and keeps its size at every distance
+  float f1 = pfbm(vec2(ang * uPer12, h * 0.055 - uTime * 0.35), uPer12);
+  float f2 = pfbm(vec2(ang * uPer5 + 7.0, h * 0.110 - uTime * 0.80), uPer5);
+  float fil = smoothstep(0.42, 0.75, f1) * 0.7 + smoothstep(0.50, 0.85, f2) * 0.5;
+  float ca = cos(ang * 6.2831853), sa = sin(ang * 6.2831853);
+  float swirl = fbm(vec2(ca * 8.0, sa * 8.0) + vec2(uTime * 0.02, h * 0.004 + uTime * 0.01));   // the slow weather around the ring
   // the height profile: a dense wall from the street to ~120 m, gone by ~360 m
   float hf = pow(1.0 - smoothstep(90.0, 360.0, h), 1.4);
   // the glowing hem: an electric band hugging the ground, ~30 m tall
@@ -72,17 +85,21 @@ void main() {
     }
     bolt *= uFlash;
   }
-  vec3 deep = vec3(0.03, 0.05, 0.18);
-  vec3 mid = vec3(0.10, 0.22, 0.55);
-  vec3 glow = vec3(0.30, 0.80, 1.0);
+  // the palette in LINEAR light (the HDR pipeline blends before the tone map and the sRGB encode): a near-black
+  // indigo body, electric cyan filaments, the white-hot bolt — the bloom of the page takes what goes over white
+  vec3 deep = vec3(0.004, 0.007, 0.045);
+  vec3 mid = vec3(0.012, 0.035, 0.16);
+  vec3 glow = vec3(0.07, 0.55, 1.0);
   vec3 col = mix(deep, mid, swirl);
   col = mix(col, glow, clamp(fil, 0.0, 1.0) * 0.85);
-  col += glow * hem * 1.4;
-  col += glow * fres * 0.5;
-  col += vec3(0.8, 0.95, 1.0) * bolt * 3.0;
-  col = mix(col, vec3(0.35, 0.08, 0.50) + glow * fil * 0.6, uOutside * 0.45);   // the storm angers when you stand outside
-  float a = (0.55 + 0.30 * fil + 0.15 * swirl) * hf + hem * 0.85 + fres * 0.30 * hf + bolt;
-  gl_FragColor = vec4(col, clamp(a, 0.0, 0.95));
+  col += glow * hem * 1.6;
+  col += glow * fres * 0.6;
+  col += vec3(0.6, 0.85, 1.0) * bolt * 3.0;
+  col = mix(col, vec3(0.12, 0.006, 0.20) + glow * fil * 0.6, uOutside * 0.45);   // the storm angers when you stand outside
+  float a = (0.78 + 0.18 * fil + 0.04 * swirl) * hf + hem * 0.85 + fres * 0.30 * hf + bolt;
+  gl_FragColor = vec4(col, clamp(a, 0.0, 0.96));
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
 }`;
 const BEACON_FS = `
 uniform float uTime;
@@ -90,15 +107,17 @@ varying vec2 vUv;
 void main() {
   float pulse = 0.32 + 0.10 * sin(uTime * 2.2) + 0.05 * sin(uTime * 5.7);
   float a = pow(1.0 - vUv.y, 2.4) * pulse;
-  gl_FragColor = vec4(vec3(1.0, 0.86, 0.55), a);
+  gl_FragColor = vec4(vec3(1.0, 0.72, 0.28), a);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
 }`;
 
 function build() {
   if (built) return; built = true;
   const wm = new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 }, uFlash: { value: 0 }, uFlashId: { value: 1 }, uOutside: { value: 0 } },
+    uniforms: { uTime: { value: 0 }, uFlash: { value: 0 }, uFlashId: { value: 1 }, uOutside: { value: 0 }, uCx: { value: -1000 }, uCz: { value: 500 }, uPer12: { value: 1676 }, uPer5: { value: 4021 } },
     vertexShader: WALL_VS, fragmentShader: WALL_FS,
-    transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    transparent: true, depthWrite: false, depthTest: false, side: THREE.DoubleSide,   // the zone is an overlay over the world: the HDR pipeline's depth prepass clips the near face of a kilometres-wide shader cylinder, so the wall draws over the city (the storm reads as weather, not geometry)
   });
   worldSpace(wm);
   wall = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 128, 1, true), wm);
@@ -108,7 +127,7 @@ function build() {
   const bm = new THREE.ShaderMaterial({
     uniforms: { uTime: { value: 0 } },
     vertexShader: WALL_VS, fragmentShader: BEACON_FS,
-    transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+    transparent: true, depthWrite: false, depthTest: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,   // the guide column stands over the roofs: visible across the whole city
   });
   worldSpace(bm);
   beacon = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 1, 24, 1, true), bm);
@@ -151,7 +170,8 @@ export function stormTick(dt, now) {
   // the wall follows the circle
   wall.scale.set(Math.max(1, c.r), 520, Math.max(1, c.r)); wall.position.set(c.x, 220, c.z);
   const u = wall.material.uniforms;
-  u.uTime.value = now / 1000; u.uOutside.value = outK;
+  u.uTime.value = now / 1000; u.uOutside.value = outK; u.uCx.value = c.x; u.uCz.value = c.z;
+  u.uPer12.value = Math.max(8, Math.round(6.2831853 * c.r / 12)); u.uPer5.value = Math.max(16, Math.round(6.2831853 * c.r / 5));
   // lightning now and then: the wall flashes, the sky blinks, the thunder rolls (heard near the wall or outside)
   if (now >= nextFlash) {
     flash = 1; flashId = 1 + Math.random() * 900; nextFlash = now + 3500 + Math.random() * 6500;

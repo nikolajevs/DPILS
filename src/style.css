@@ -1015,6 +1015,9 @@ body.mp:not(:has(#view.locked)) .mp-sys { bottom: 64px; }   /* above the returne
 .mp-banner.storm { background: linear-gradient(135deg, #172554, #2f9dd8); border: 1px solid rgba(87, 200, 255, .6); box-shadow: 0 0 34px rgba(87, 200, 255, .35), var(--shadow); letter-spacing: .05em; }
 .mp-end h2.storm-title { background: linear-gradient(135deg, #172554, #2f9dd8); letter-spacing: .03em; }
 body.storm .mp-end .panel { border-color: rgba(87, 200, 255, .4); }
+body.storm .end-row { grid-template-columns: 56px 1fr 70px 64px 76px; }   /* место · игрок · убийств · урон · точность */
+body.storm .end-row.me { background: rgba(87, 200, 255, .14); box-shadow: inset 3px 0 0 #57c8ff; }
+@media (max-width: 560px) { body.storm .end-row { grid-template-columns: 40px 1fr 44px 44px 0; } body.storm .end-row span:nth-child(5) { display: none; } }
 /* the dead of the storm: the place and the way back to the lobby */
 .mp-dead.storm-dead { background: radial-gradient(ellipse at center, transparent 30%, rgba(24, 16, 64, .72)); }
 .mp-dead.storm-dead:not(#mpOver) .panel { background: rgba(12, 10, 30, .88); border-color: rgba(87, 200, 255, .4); text-align: center; display: grid; gap: 10px; justify-items: center; min-width: 320px; }

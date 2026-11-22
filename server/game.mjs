@@ -602,7 +602,7 @@ export function createGame(opts) {
     stepStorm: () => tickStorm(),   // the event's own clock: the phases, the burn outside and the end, for the storm tests
     get storm() { return storm; },   // the event's state: the tests read the circle and the phase
     stop() { for (const t of timers) { clearInterval(t); clearTimeout(t); } timers.length = 0; },
-    health() { return { ok: true, mode: MODE, name: NAME, players: humans().length, bots: players.size - humans().length, max: MAX, score: teamScore, win: WIN === Infinity ? null : WIN, teams: TEAMS, round: roundOver ? 'end' : 'play', arena: arena ? arena.name : null, leaderboard: !!lb, day: dayNow(), storm: STORM && storm ? { phase: storm.phase, left: Math.max(0, storm.t1 - now()), alive: stormAlive().length, total: players.size, cycle: storm.cycle } : undefined }; },
+    health() { return { ok: true, mode: MODE, name: NAME, players: humans().length, bots: players.size - humans().length, max: MAX, score: teamScore, win: WIN === Infinity ? null : WIN, teams: TEAMS, round: roundOver ? 'end' : 'play', arena: arena ? arena.name : null, leaderboard: !!lb, day: dayNow(), storm: STORM && storm ? { phase: storm.phase, pi: storm.pi, kind: storm.kind, left: Math.max(0, storm.t1 - now()), roundLeft: storm.phase === 'play' ? Math.max(0, storm.plan[storm.plan.length - 1].tEnd - now()) : 0, alive: stormAlive().length, total: players.size, cycle: storm.cycle } : undefined }; },
   };
 }
 export { LEVELS };
