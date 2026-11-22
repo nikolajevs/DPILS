@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/remove-load-summary | Убрать сводку «Готово: … зданий, … улиц …» после загрузки города | src/main.js, src/ui/loading.js |
 
 ## Автономный цикл улучшений
 
