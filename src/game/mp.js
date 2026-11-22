@@ -682,6 +682,7 @@ function spawnPoint(choice = MP.spawn) {
 // ---------- the end of a round: the table of the round and the time to the next one ----------
 let endTimer = 0;
 function showSummary(m) {
+  el('mpEnd').classList.toggle('storm-end', m.mode === 'storm');
   if (m.mode === 'storm') { showStormSummary(m); return; }
   const ffa = m.mode === 'ffa', mine = ffa ? m.mvp === MP.id : m.team === MP.team, title = el('mpEndTitle'); title.className = ffa ? 'tf' : 't' + (m.team === 1 ? 1 : 0);
   title.textContent = ffa ? (mine ? 'Победа! Вы набрали ' : 'Победил ' + m.name + ': ') + (m.rows[0] ? m.rows[0].kills : '') + ' убийств' : (mine ? 'Победа! ' : 'Поражение. ') + 'Выиграли ' + m.name.toLowerCase() + ', ' + m.score[0] + ' : ' + m.score[1];

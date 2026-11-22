@@ -147,7 +147,8 @@ export function setStorm(m) {
   wall.visible = S.phase !== 'end';
   beacon.visible = fight && !!S.final;
   if (beacon.visible) beacon.position.set(S.final.x, terrainH(S.final.x, S.final.z) + 340, S.final.z);
-  $('stormHud').hidden = false;
+  $('stormHud').hidden = S.phase === 'end';   // the match is decided: the score chip counts down to the next one (mp.js matchLim), the storm HUD steps aside
+  if (S.phase === 'end') { $('stormDist').hidden = true; $('stormHurt').hidden = true; $('stormTint').hidden = true; document.body.classList.remove('storm-out'); }
   if (first) nextFlash = performance.now() + 2500;
 }
 export function clearStorm() {
