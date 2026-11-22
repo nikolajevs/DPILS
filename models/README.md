@@ -122,17 +122,19 @@ This work is based on "Low Poly BMW X6M Competition" (https://sketchfab.com/3d-m
 
 ## Предметы (`item_*.glb`)
 
-Все три — **CC-BY-4.0** со Sketchfab, атрибуция обязательна:
+Все пять — **CC-BY-4.0** со Sketchfab, атрибуция обязательна:
 
 | Файл | Что | Откуда |
 |---|---|---|
 | `item_ammo.glb` | ящик патронов: советский деревянный ящик с трафаретной маркировкой, замками и ручками (крышка закрыта) | [Soviet Weapons Ammo Crate Box Animated Low Poly](https://sketchfab.com/3d-models/soviet-weapons-ammo-crate-box-animated-low-poly-e8566467ba3f4dffb686a669add07b3f), автор [lil_bentley](https://sketchfab.com/lil_bentley) |
 | `item_nade.glb` | граната M67 в сборе: чека, кольцо и рычаг на месте, жёлтая маркировка корпуса | [M67](https://sketchfab.com/3d-models/m67-52dc34ff97984927b0322326e3171467), автор [Firewarden](https://sketchfab.com/Firewarden) |
 | `item_med.glb` | аптечка: белый кейс с красным крестом и чёрной ручкой | [Medical Kit](https://sketchfab.com/3d-models/medical-kit-1c5c0905f9f34b939309cff3ecd00870), автор [tediuminteractive](https://sketchfab.com/tediuminteractive) |
+| `item_smoke.glb` | дымовая граната M18: оливковый цилиндр с маркировкой SMOKE, рычаг и кольцо на месте | [M18 Smoke Grenade](https://sketchfab.com/3d-models/m18-smoke-grenade-6dbb48151a9147b4830aa7bf55fc8282), автор [RedRogueXIII](https://sketchfab.com/RedRogueXIII) |
+| `item_napalm.glb` | напалм: зажигательная граната AN-M14 (красный цилиндр с рычагом, как в CS2) | [Incendiary grenade](https://sketchfab.com/3d-models/incendiary-grenade-0043414960304fa58e83a7cd4caeae36), автор [davidthe19th](https://sketchfab.com/davidthe19th) (The Blyat man) |
 
-This work is based on "Soviet Weapons Ammo Crate Box Animated Low Poly" by lil_bentley, "M67" by Firewarden and "Medical Kit" by tediuminteractive (Sketchfab), licensed under [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/).
+This work is based on "Soviet Weapons Ammo Crate Box Animated Low Poly" by lil_bentley, "M67" by Firewarden, "Medical Kit" by tediuminteractive, "M18 Smoke Grenade" by RedRogueXIII and "Incendiary grenade" by davidthe19th (Sketchfab), licensed under [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/).
 
-Собираются [tools/items.mjs](../tools/items.mjs): у гранаты в сцене две копии (одна с вынутой чекой) — берётся собранная; у ящика удалена анимация открытия крышки; вершины запекаются в мировые координаты и сливаются по материалу, модель центрируется (дно в y=0) и нормируется в метры (ящик 0.55 м по длине, граната 0.2 м в высоту, аптечка 0.26 м); текстуры жмутся в WebP (1024 px), геометрия — `EXT_meshopt_compression`. Итог: ящик 0.40 МБ / 6.0 тыс. треугольников, граната 0.29 МБ / 5.0 тыс., аптечка 0.08 МБ / 1.6 тыс.
+Собираются [tools/items.mjs](../tools/items.mjs): у гранаты в сцене две копии (одна с вынутой чекой) — берётся собранная; у ящика удалена анимация открытия крышки; вершины запекаются в мировые координаты и сливаются по материалу, модель центрируется (дно в y=0) и нормируется в метры (ящик 0.55 м по длине, граната 0.2 м в высоту, аптечка 0.26 м, дымовая 0.29 м, напалм 0.3 м — вдвое крупнее настоящих, как и M67); лежащий вдоль Z исходник напалма ставится вертикально (`tilt`); краска исходника напалма лежит в `KHR_materials_pbrSpecularGlossiness` (diffuseTexture) — конвейер берёт её как baseColor, glossiness переводит в roughness; текстуры жмутся в WebP (1024 px), геометрия — `EXT_meshopt_compression`. `ONLY=smoke,napalm` собирает только названные виды. Итог: ящик 0.40 МБ / 6.0 тыс. треугольников, граната 0.29 МБ / 5.0 тыс., аптечка 0.08 МБ / 1.6 тыс., дымовая 0.12 МБ / 2.5 тыс., напалм 0.14 МБ / 11.1 тыс.
 
 Загружаются один раз в [src/game/props.js](../src/game/props.js) и клонируются на каждый предмет на карте ([src/game/inventory.js](../src/game/inventory.js)) и на летящую гранату ([src/game/nades.js](../src/game/nades.js)); пока модель едет, рисуется прежний фолбэк из боксов. Проверка без экрана — [tools/shot-items.mjs](../tools/shot-items.mjs).
 

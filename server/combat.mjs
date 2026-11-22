@@ -33,6 +33,7 @@ export const WEAPONS = [
 // the number put in a kill message for a grenade (the weapons are 0 … WEAPONS.length − 1)
 export const W_NADE = 9;
 export const W_FALL = 10;   // the kill feed: a fall, not a weapon
+export const W_FIRE = 11;   // the kill feed: burnt in the napalm's patch
 // a fall hurts above the safe height: k hp per metre over safe (10 m costs 56, above 15 m kills); g is the player's jump
 // gravity (JUMP in src/game/player.js) so the bots fall at the same rate; maxH caps the client's landing report
 export const FALL = { safe: 3, k: 8, g: 21, maxH: 80 };
@@ -40,6 +41,14 @@ export const FALL = { safe: 3, k: 8, g: 21, maxH: 80 };
 // the radius, like the damage, plus a `pushUp` kick up so even a blast at chest height lifts one off the ground. The
 // server sends it to the player ('push'), the client adds it to the jump and a decaying slide; a bot slides on the server.
 export const NADE = { count: 2, speed: 15, minSpeed: 6, maxSpeed: 24, loft: 0.17, g: 18, fuseMs: 2500, radius: 8, dmg: 100, cooldownMs: 900, self: 0.5, push: 15, pushUp: 3, r: 0.1, hitR: 0.25, bodyR: 0.3 };
+// the two special grenades (keep src/game/nades.js and src/game/mp.js in step): they fly and bounce by the same rules
+// (speed, loft, g, cooldown of NADE above), but go off into a zone instead of a blast. The smoke (M18) lays a screen
+// that hides the street for `durMs` — no damage, but the bots cannot see through it; the napalm (AN-M14) bursts into a
+// burning patch that costs `dps` health a second to whoever stands in it (the thrower included, teammates spared),
+// judged every `tickMs`. `count` is what the ready belt holds at spawn, one of each kind; the belt cap is INV.nadeMax.
+export const SMOKE = { count: 1, fuseMs: 2000, radius: 6, durMs: 12000 };
+export const NAPALM = { count: 1, fuseMs: 2000, radius: 4, durMs: 8000, dps: 30, tickMs: 250 };
+export const NADE_KINDS = ['nade', 'smoke', 'napalm'];   // the frag, the smoke, the incendiary — the 'throw' message's kind
 // the inventory (keep src/game/mp.js and src/game/inventory.js in step): the reserve each weapon starts with, the time
 // of its reload, and the items that lie on the map and are picked up by walking over them
 export const RESERVE = [90, 24, 15, 36, 200];
@@ -48,7 +57,7 @@ export const RELOAD_MS = [1800, 2600, 2800, 1400, 4500];
 // pistol by default. The other three ride in the backpack (PACK): ten loot slots, three filled at the start and seven
 // empty. A weapon index lives in exactly one place — a loadout slot or a pack cell — never both. Swapping exchanges a
 // pack cell with a loadout slot (server/game.mjs swapWeapon); the magazines and the reserve stay per weapon type.
-// A pack cell holds a weapon index or an item kind string ('sight', 'optic', 'med', 'nade'): the sights live in the pack
+// A pack cell holds a weapon index or an item kind string ('sight', 'optic', 'med', 'nade', 'smoke', 'napalm'): the sights live in the pack
 // until mounted (mounting frees the cell, taking off returns the sight to a free cell), and the med kits and grenades
 // beyond the ready belt (INV.medMax / INV.nadeMax) are stored here — the belt refills from the pack as it is spent.
 export const LOADOUT = [0, 3];
@@ -56,11 +65,13 @@ export const PACK = [1, 2, 4, null, null, null, null, null, null, null];
 export const ITEMS = {
   ammo: { name: 'Патроны', respawnMs: 25000, give: [30, 8, 5, 12, 50] },   // reserve added per weapon
   nade: { name: 'Граната', respawnMs: 30000 },
+  smoke: { name: 'Дымовая граната', respawnMs: 35000 },
+  napalm: { name: 'Напалм', respawnMs: 40000 },
   med: { name: 'Аптечка', respawnMs: 35000, heal: 50 },
   sight: { name: 'Коллиматор', respawnMs: 45000 },   // the red dot: fast aim, tighter spread, on any weapon
   optic: { name: 'Оптика 8x', respawnMs: 60000 },   // the long scope: strong zoom with its overlay, on any weapon
 };
-export const INV = { nadeMax: 2, medMax: 3, reserveCap: 2, itemCount: 18, pickR: 1.7, medGapMs: 800, sightMax: 1, opticMax: 1, weaponSlots: 2, packSlots: 10 };   // reserveCap: reserve up to RESERVE × this; nadeMax/medMax: the ready belt (grenades of one kind / med kits) — the surplus rides in the pack and refills the belt as it is spent; sightMax/opticMax: owned of each kind, in the pack + mounted; weaponSlots: equipped guns; packSlots: the backpack
+export const INV = { nadeMax: 2, medMax: 3, reserveCap: 2, itemCount: 24, pickR: 1.7, medGapMs: 800, sightMax: 1, opticMax: 1, weaponSlots: 2, packSlots: 10 };   // reserveCap: reserve up to RESERVE × this; nadeMax/medMax: the ready belt (grenades of one kind / med kits) — the surplus rides in the pack and refills the belt as it is spent; sightMax/opticMax: owned of each kind, in the pack + mounted; weaponSlots: equipped guns; packSlots: the backpack
 // ---- the ballistics of a flying bullet: gravity and air drag. The path is parameterised by the distance s along the
 // initial (unit) direction d. The drag v(t) = v0/(1 + k·v0·t) integrates to s(t) = ln(1 + k·v0·t)/k, so in distance the
 // speed reads v(s) = v0·e^(−k·s) and the time to reach s is t(s) = (e^(k·s) − 1)/(k·v0); the bullet sinks ½·g·t(s)²

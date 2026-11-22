@@ -14,7 +14,7 @@ import { SET, keyName, onChange } from './settings.js';
 import { firstGames } from './help.js';
 import { requireAccount } from '../ui/auth.js';
 import { serverUrl } from './server.js';
-import { addNade, blastGlow, boomNade, clearBlasts, clearNades, nadeSamples, tickNades, onNadeBounce, setNadeBodies, syncNade, liveNades, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
+import { addNade, addZone, endZone, blastGlow, boomNade, clearBlasts, clearNades, nadeSamples, tickNades, onNadeBounce, setNadeBodies, syncNade, liveNades, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
 import { KINDS, SLOT_SVG, bindInv, setItems, itemBack, itemTook, tickItems, renderInv, invTick, closeInv, toggleInv } from './inventory.js';
 import { terrainH } from '../world/terrain.js';
 import { camera, canvas, renderer, scene } from '../render/renderer.js';
@@ -28,7 +28,7 @@ import { playerKey, boardOn, setBoardOn, account } from './identity.js';
 import { initLeaders } from './leaders.js';
 import { rest } from '../core/pause.js';
 import { $, reduceMotion } from '../core/env.js';
-import { boomSound, crackSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, stepSound } from './sfx.js';
+import { boomSound, burnSound, crackSound, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeSound, stepSound } from './sfx.js';
 import { carAt, carPath } from '../world/car-hit.js';
 import { fxSamples, tracerShot, bindTracer, hitTracer, tickFx, clearFx, dmgFloat, ejectShell, onShellBounce, muzzleSmoke } from './impacts.js';
 import { WEAPONS as WSRV, bulletAt, bulletDrop } from '../../server/combat.mjs';   // the server's own ballistics: the muzzle velocities, the drag and the bullet's fall
@@ -60,12 +60,14 @@ const DMG = [
   { dmg: 20, head: 42 },
   { dmg: 16, head: 28 },
 ];
-const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, lastNade: 0, spec: 0, specMode: 0, scope: false, zoom: 0, opticMag: 8, dotBoost: 0, dotBoostAt: 0, dotBoostCd: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0, sights: { sight: 0, optic: 0 }, attach: [null, null, null, null, null], loadout: [0, 3], pack: [1, 2, 4, null, null, null, null, null, null, null] };   // two equipped guns + the ten-cell backpack (server/combat.mjs LOADOUT/PACK): a cell holds a gun index or a stored item ('sight', 'optic', 'med', 'nade'); sights: loose in the pack, attach: mounted per weapon
+const MP = { ffa: false, on: false, ws: null, id: 0, name: '', hp: 100, dead: false, deadAt: 0, weapon: 0, nades: 2, smokes: 1, napalms: 1, lastNade: 0, burnAt: 0, lastBurnSnd: 0, spec: 0, specMode: 0, scope: false, zoom: 0, opticMag: 8, dotBoost: 0, dotBoostAt: 0, dotBoostCd: 0, ammo: [30, 6, 5, 12, 100], reserve: [90, 24, 15, 36, 200], meds: 0, lastMed: 0, noAmmoAt: 0, reloadAt: 0, reloadW: 0, lastShot: 0, firing: false, burst: 0, rtt: 0, kills: 0, deaths: 0, board: [], team: 0, teams: ['Красные', 'Синие'], score: [0, 0], win: 30, spawn: 0, kick: 0, sendT: 0, sights: { sight: 0, optic: 0 }, attach: [null, null, null, null, null], loadout: [0, 3], pack: [1, 2, 4, null, null, null, null, null, null, null] };   // two equipped guns + the ten-cell backpack (server/combat.mjs LOADOUT/PACK): a cell holds a gun index or a stored item ('sight', 'optic', 'med', 'nade'); sights: loose in the pack, attach: mounted per weapon
 // the pockets (keep server/combat.mjs in step: RESERVE and INV): the server owns them, the page only shows and predicts
 const RESERVE = [90, 24, 15, 36, 200], NADE_MAX = 2, MED_MAX = 3;   // the ready belt caps: the surplus rides in the pack and refills the belt as it is spent
 // the aimed grenade throw: G takes the grenade in hand, the mouse aims it, the left button held down charges the power
 const NAIM = { on: false, charging: false, t0: 0, power: 0, full: false, at: 0 };
-const NTHROW = { at: 0, pw: 0, gone: false };   // the throw just made: the arm follows through, then the weapon comes back up; gone: its grenade is in the air
+const NTHROW = { at: 0, pw: 0, gone: false, kind: 'nade' };   // the throw just made: the arm follows through, then the weapon comes back up; gone: its grenade is in the air
+const nadeCount = k => k === 'smoke' ? MP.smokes : k === 'napalm' ? MP.napalms : MP.nades;   // the ready belt of each kind
+const NADE_NAME = { nade: 'Граната', smoke: 'Дым', napalm: 'Напалм' };   // the label over the charge arcs
 // the dead man's camera: 0 — from the eyes of the watched player (the default), 1 — from behind the back, 2 — a free
 // flight over the city; F cycles the three, the choice is remembered (the old two-view choice dpils.specfp migrates)
 try { const s = localStorage.getItem('dpils.specmode'); MP.specMode = s === '1' ? 1 : s === '2' ? 2 : localStorage.getItem('dpils.specfp') === '0' ? 1 : 0; } catch (e) {}
@@ -236,7 +238,7 @@ function corpseOf(r, m) {
   else { dx = -(m.dx || 0); dz = -(m.dz || 0); spread = m.w === 9 ? 0.24 : 1.1; }   // the blast's normal, almost exact
   if (Math.hypot(dx, dz) < 0.01) { const a = Math.random() * 6.283; dx = Math.sin(a); dz = Math.cos(a); }   // no direction known: any way
   const a = Math.atan2(dx, dz) + (Math.random() - 0.5) * spread;
-  c.fall = { x: Math.sin(a), z: Math.cos(a), y: m.bd ? m.bd[1] : 0, zone: m.zone == null ? (m.head ? 1 : 0) : m.zone, head: !!m.head, nade: m.w === 9, soft: m.w === 10, vf: m.vf == null ? 1 : m.vf, roll: (Math.random() - 0.5) * 0.5 };   // a fall crumples in place
+  c.fall = { x: Math.sin(a), z: Math.cos(a), y: m.bd ? m.bd[1] : 0, zone: m.zone == null ? (m.head ? 1 : 0) : m.zone, head: !!m.head, nade: m.w === 9, soft: m.w === 10 || m.w === 11, vf: m.vf == null ? 1 : m.vf, roll: (Math.random() - 0.5) * 0.5 };   // a fall crumples in place
   return c;
 }
 function pose(r, t) {
@@ -287,16 +289,28 @@ const hands = models.map((m, i) => {
 // the grenade in hand while the gloved arms of viewmodel.js are not there (their file has not come): a fist like the
 // fallback weapons hold, the sleeve off the bottom of the frame, on the camera; nadeHandTick moves it like the arms
 const nadeHand = new THREE.Group(), nadeBall = new THREE.Group();
-(function () {
-  const mb = worldSpace(new THREE.MeshLambertMaterial({ color: 0x3d5a2a })), ml = worldSpace(new THREE.MeshLambertMaterial({ color: 0x8a8f94 }));
-  nadeBall.add(new THREE.Mesh(new THREE.SphereGeometry(0.034, 12, 10), mb));
-  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.018, 8), ml); cap.position.y = 0.038; nadeBall.add(cap);
-  const lever = new THREE.Mesh(GEO.box, ml); lever.scale.set(0.007, 0.03, 0.014); lever.position.set(0.025, 0.025, 0); lever.rotation.z = -0.25; nadeBall.add(lever);
-  nadeBall.position.set(-0.03, 0.02, -0.02); nadeHand.add(nadeBall);
-  const fist = makeArm([0.16, -0.30, 0.10]); fist.scale.setScalar(0.8); fist.position.set(0.01, -0.03, 0.02); nadeHand.add(fist);
-  nadeHand.visible = false; camera.add(nadeHand);
-  onProps(() => { const m = prop('nade'); if (!m) return; nadeBall.clear(); m.scale.setScalar(0.5); m.position.y = -0.033; nadeBall.add(m); });
-})();
+// the grenade of the kind in hand: the real model (props.js) or a stand-in until it comes — the frag a ball with
+// a cap and a lever, the smoke an olive tube, the napalm a red one. setNadeHand is called on prep and when props arrive.
+function setNadeHand(kind = 'nade') {
+  nadeBall.clear();
+  const m = prop(kind);
+  if (m) { const h = new THREE.Box3().setFromObject(m).getSize(new THREE.Vector3()).y; m.scale.setScalar(0.5); m.position.y = -h * 0.25 + 0.017; nadeBall.add(m); return; }
+  const mb = worldSpace(new THREE.MeshLambertMaterial({ color: kind === 'napalm' ? 0x8a2a22 : kind === 'smoke' ? 0x6a7a5a : 0x3d5a2a })), ml = worldSpace(new THREE.MeshLambertMaterial({ color: 0x8a8f94 }));
+  if (kind === 'nade') {
+    nadeBall.add(new THREE.Mesh(new THREE.SphereGeometry(0.034, 12, 10), mb));
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.018, 8), ml); cap.position.y = 0.038; nadeBall.add(cap);
+    const lever = new THREE.Mesh(GEO.box, ml); lever.scale.set(0.007, 0.03, 0.014); lever.position.set(0.025, 0.025, 0); lever.rotation.z = -0.25; nadeBall.add(lever);
+  } else {
+    nadeBall.add(new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.017, 0.072, 12), mb));
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.014, 8), ml); cap.position.y = 0.042; nadeBall.add(cap);
+    const lever = new THREE.Mesh(GEO.box, ml); lever.scale.set(0.006, 0.034, 0.012); lever.position.set(0.02, 0.028, 0); lever.rotation.z = -0.2; nadeBall.add(lever);
+  }
+}
+nadeBall.position.set(-0.03, 0.02, -0.02); nadeHand.add(nadeBall);
+const fist = makeArm([0.16, -0.30, 0.10]); fist.scale.setScalar(0.8); fist.position.set(0.01, -0.03, 0.02); nadeHand.add(fist);
+nadeHand.visible = false; camera.add(nadeHand);
+setNadeHand('nade');
+onProps(() => setNadeHand(NAIM.on ? NAIM.kind : 'nade'));
 // the flash of your own gun (muzzle.js): the AK of the arms has its own at its muzzle (viewmodel.js); this one serves
 // the other guns, at the muzzle tip of the ready model (upgradeViewmodels keeps its place). Made on the first shot
 let fpFlash = null;
@@ -483,13 +497,15 @@ function flinchK(now, t) { if (!t) return 0; const a = (now - t) / 1000; if (a <
 function updatePanel() {
   el('mpHp').style.width = Math.max(0, MP.hp) + '%'; el('mpHpN').textContent = Math.max(0, Math.ceil(MP.hp)); el('mpStat').dataset.hp = MP.hp <= 25 ? 'low' : MP.hp <= 60 ? 'mid' : 'ok';
   el('mpWeapon').textContent = W().name; el('mpAmmo').textContent = MP.reloadAt ? 'перезарядка…' : MP.ammo[MP.weapon] + ' / ' + MP.reserve[MP.weapon]; el('mpAmmo').title = 'в магазине / запас'; el('mpAmmo').dataset.empty = !MP.reloadAt && MP.ammo[MP.weapon] === 0 ? 1 : 0; el('mpAmmo').dataset.reload = MP.reloadAt ? 1 : 0;
-  const nk = keyName(SET.keys.grenade), mk = keyName(SET.keys.med);
+  const nk = keyName(SET.keys.grenade), mk = keyName(SET.keys.med), sk = keyName(SET.keys.smoke), pk = keyName(SET.keys.napalm);
   el('mpNades').textContent = '×' + Math.max(0, MP.nades); el('mpNadesBox').dataset.empty = MP.nades > 0 ? 0 : 1; el('mpNadesBox').title = 'Гранаты (' + nk + ' — прицельный бросок)'; el('mpNadeKey').textContent = nk;
+  el('mpSmokes').textContent = '×' + Math.max(0, MP.smokes); el('mpSmokeBox').dataset.empty = MP.smokes > 0 ? 0 : 1; el('mpSmokeBox').title = 'Дымовые гранаты (' + sk + ' — завеса)'; el('mpSmokeKey').textContent = sk;
+  el('mpNapalms').textContent = '×' + Math.max(0, MP.napalms); el('mpNapalmBox').dataset.empty = MP.napalms > 0 ? 0 : 1; el('mpNapalmBox').title = 'Напалм (' + pk + ' — зажигательная граната)'; el('mpNapalmKey').textContent = pk;
   el('mpMeds').textContent = '×' + Math.max(0, MP.meds); el('mpMedsBox').dataset.empty = MP.meds > 0 ? 0 : 1; el('mpMedsBox').title = 'Аптечки (' + mk + ')'; el('mpMedKey').textContent = mk;
   const sl = el('mpSlots'); if (sl.children.length !== MP.loadout.length) { sl.textContent = ''; MP.loadout.forEach(w => { const d = document.createElement('span'), b = document.createElement('b'), r = document.createElement('i'); d.title = WEAPONS[w].name; d.innerHTML = SLOT_SVG[w]; b.textContent = w + 1; d.append(b, r); sl.append(d); }); }
   [...sl.children].forEach((d, s) => { const w = MP.loadout[s]; d.classList.toggle('on', w === MP.weapon); d.querySelector('i').textContent = MP.reserve[w]; d.title = WEAPONS[w].name + ' · запас ' + MP.reserve[w]; });
   const gunInfo = i => ({ i, name: WEAPONS[i].name, mag: MP.ammo[i], magSize: WEAPONS[i].mag, reserve: MP.reserve[i], on: i === MP.weapon, key: keyName(SET.keys['w' + (i + 1)]), dmg: DMG[i].dmg, head: DMG[i].head, pellets: WEAPONS[i].pellets, gapMs: WEAPONS[i].gapMs, range: WEAPONS[i].range, reloadMs: WEAPONS[i].reloadMs, auto: WEAPONS[i].auto, scope: !!WEAPONS[i].scope, attach: MP.attach[i] });
-  renderInv({ weapons: MP.loadout.map(gunInfo), pack: MP.pack.map(w => w == null ? null : typeof w === 'number' ? gunInfo(w) : { kind: w, name: KINDS[w].name }), nades: MP.nades, nadeMax: NADE_MAX, meds: MP.meds, medMax: MED_MAX, sights: MP.sights, hp: MP.hp, medKey: keyName(SET.keys.med), nadeKey: keyName(SET.keys.grenade), reloadKey: keyName(SET.keys.reload), reloadW: MP.reloadAt ? MP.loadout.indexOf(MP.reloadW) : -1, reloadAt: MP.reloadAt, name: MP.name, team: MP.team, ffa: MP.ffa, kills: MP.kills, deaths: MP.deaths });
+  renderInv({ weapons: MP.loadout.map(gunInfo), pack: MP.pack.map(w => w == null ? null : typeof w === 'number' ? gunInfo(w) : { kind: w, name: KINDS[w].name }), nades: MP.nades, smokes: MP.smokes, napalms: MP.napalms, nadeMax: NADE_MAX, meds: MP.meds, medMax: MED_MAX, sights: MP.sights, hp: MP.hp, medKey: keyName(SET.keys.med), nadeKey: keyName(SET.keys.grenade), smokeKey: keyName(SET.keys.smoke), napalmKey: keyName(SET.keys.napalm), reloadKey: keyName(SET.keys.reload), reloadW: MP.reloadAt ? MP.loadout.indexOf(MP.reloadW) : -1, reloadAt: MP.reloadAt, name: MP.name, team: MP.team, ffa: MP.ffa, kills: MP.kills, deaths: MP.deaths });
   el('mpScore').textContent = MP.kills + ' · ' + MP.deaths; el('mpFps').textContent = PERF.fps + ' кадр/с' + (PERF.scale < 1 ? ' · разрешение ' + Math.round(PERF.scale * 100) + ' %' : '');
   el('mpMeName').textContent = MP.name || 'Вы'; el('mpMeDot').className = 'dot ' + (MP.ffa ? 'tf' : 't' + MP.team);
   const tm = el('mpTeams'); tm.textContent = '';
@@ -537,36 +553,40 @@ function nadeCancel(thrown) {
   hideNadePreview(); el('nadeUi').hidden = true;
   if (!thrown && vm && !MP.dead) vm.equip();
 }
-function nadePrep() {
+function nadePrep(kind = 'nade') {
   const now = performance.now();
   if (MP.dead || !MP.ws || MP.ws.readyState !== 1) return;
-  if (NAIM.on) { nadeCancel(); return; }
-  if (MP.nades <= 0) { feed('Гранат нет — ищите их на карте', 'sys'); tone(180, 120, 0.12, 0.2, 'square'); return; }
+  if (NAIM.on) { if (NAIM.kind === kind) { nadeCancel(); return; } nadeCancel(); }   // the same key puts it away; another kind swaps it
+  if (nadeCount(kind) <= 0) { feed(kind === 'smoke' ? 'Дымовых гранат нет — ищите их на карте' : kind === 'napalm' ? 'Напалма нет — ищите его на карте' : 'Гранат нет — ищите их на карте', 'sys'); tone(180, 120, 0.12, 0.2, 'square'); return; }
   if (now - MP.lastNade < 900) return;
-  NAIM.on = true; NAIM.charging = false; NAIM.power = 0; NAIM.full = false; NAIM.at = now; NTHROW.at = 0;
+  NAIM.on = true; NAIM.kind = kind; NAIM.charging = false; NAIM.power = 0; NAIM.full = false; NAIM.at = now; NTHROW.at = 0;
   MP.scope = false; MP.firing = false; closeInv();
-  el('nadeUi').hidden = false; el('nadeUi').dataset.full = '0'; nadeGauge(0);
+  setNadeHand(kind);
+  el('nadeUi').hidden = false; el('nadeUi').dataset.full = '0'; el('nadeUi').dataset.kind = kind; nadeGauge(0);
+  el('nadeKind').textContent = NADE_NAME[kind];
+  el('nadeHint').textContent = 'ЛКМ — замах и сила · отпустить — бросок · ПКМ или ' + keyName(SET.keys[kind === 'nade' ? 'grenade' : kind]) + ' — убрать';
   tone(340, 430, 0.07, 0.15, 'triangle');
   setTimeout(() => { if (NAIM.on && now === NAIM.at) tone(1250, 900, 0.035, 0.08, 'square'); }, 360);   // the click of the pin coming out
 }
 function throwNade(power) {
-  const now = performance.now();
-  if (MP.dead || MP.nades <= 0 || now - MP.lastNade < 900) { nadeCancel(); return; }
-  MP.nades--; MP.lastNade = now;
+  const now = performance.now(), kind = NAIM.kind || 'nade';
+  if (MP.dead || nadeCount(kind) <= 0 || now - MP.lastNade < 900) { nadeCancel(); return; }
+  if (kind === 'smoke') MP.smokes--; else if (kind === 'napalm') MP.napalms--; else MP.nades--;
+  MP.lastNade = now;
   const d = aim(), sp = NADE_THROW.min + (NADE_THROW.max - NADE_THROW.min) * Math.max(0, Math.min(1, power));
-  MP.ws.send(JSON.stringify({ t: 'throw', dx: +d[0].toFixed(4), dy: +d[1].toFixed(4), dz: +d[2].toFixed(4), sp: +sp.toFixed(2) }));
+  MP.ws.send(JSON.stringify({ t: 'throw', kind, dx: +d[0].toFixed(4), dy: +d[1].toFixed(4), dz: +d[2].toFixed(4), sp: +sp.toFixed(2) }));
   tone(260, 140, 0.12, 0.2, 'triangle');
-  NTHROW.at = now; NTHROW.pw = Math.max(0, Math.min(1, power)); NTHROW.gone = false;
+  NTHROW.at = now; NTHROW.pw = Math.max(0, Math.min(1, power)); NTHROW.gone = false; NTHROW.kind = kind;
   nadeCancel(true); updatePanel();
 }
 // what the arms do with the grenade now: { t: seconds in hand, pw: the charge, rel: seconds since the release (−1 before),
 // pwRel: the charge it went with, gone: the grenade is already in the air }, or null when they hold the weapon; the end of the follow-through brings the weapon back
 function nadeView(now) {
   if (MP.nadePose) return MP.nadePose;   // a pose held still, for the headless checks (tools/shot-items.mjs)
-  if (NAIM.on) return { t: (now - NAIM.at) / 1000, pw: NAIM.charging ? NAIM.power : 0, rel: -1, pwRel: 0 };
+  if (NAIM.on) return { t: (now - NAIM.at) / 1000, pw: NAIM.charging ? NAIM.power : 0, rel: -1, pwRel: 0, kind: NAIM.kind || 'nade' };
   if (NTHROW.at) {
     const r = (now - NTHROW.at) / 1000;
-    if (r < 0.42 && !MP.dead) return { t: 9, pw: 0, rel: r, pwRel: NTHROW.pw, gone: NTHROW.gone };
+    if (r < 0.42 && !MP.dead) return { t: 9, pw: 0, rel: r, pwRel: NTHROW.pw, gone: NTHROW.gone, kind: NTHROW.kind };
     NTHROW.at = 0; if (vm && !MP.dead) vm.equip();
   }
   return null;
@@ -586,7 +606,7 @@ function nadeAimTick(now) {
   const pw = MP.nadePose ? MP.nadePose.pw : NAIM.charging ? NAIM.power : 0, d = aim(), sp = NADE_THROW.min + (NADE_THROW.max - NADE_THROW.min) * pw;
   // the arc is drawn out of the grenade in hand (it sweeps into the true flight within a couple of metres)
   if (vm && vm.canNade) vm.nadeAt(NADE_FROM); else nadeBall.getWorldPosition(NADE_FROM);
-  const r = showNadePreview([P.x + d[0] * 0.6, P.y - 0.2 + d[1] * 0.6, P.z + d[2] * 0.6], [d[0] * sp, d[1] * sp + NADE_THROW.loft * sp, d[2] * sp], pw, NADE_FROM);
+  const r = showNadePreview([P.x + d[0] * 0.6, P.y - 0.2 + d[1] * 0.6, P.z + d[2] * 0.6], [d[0] * sp, d[1] * sp + NADE_THROW.loft * sp, d[2] * sp], pw, NADE_FROM, NAIM.kind || 'nade');
   nadeGauge(pw); el('nadeUi').dataset.full = NAIM.full ? '1' : '0';
   const m = String(Math.round(r.dist)); if (el('nadeDist').textContent !== m) el('nadeDist').textContent = m;
 }
@@ -650,14 +670,14 @@ function respawn() {
 function onMsg(m) {
   switch (m.t) {
     case 'hello': dayOf(m); MP.ffa = m.mode === 'ffa'; document.body.classList.toggle('ffa', MP.ffa); if (MP.ffa) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.team = m.team; MP.teams = m.teams; MP.win = m.win; MP.score = m.score; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.team, e.char); document.body.dataset.team = m.team;
-      MP.arena = m.arena || null; clearFx(); clearBlasts(); setItems(m.items);
+      MP.arena = m.arena || null; clearFx(); clearBlasts(); setItems(m.items); for (const z of m.zones || []) addZone(z);   // the screens and patches already burning when we joined
       for (const [id, a] of Object.entries(m.attach || {})) { const r = remotes.get(+id); if (r && Array.isArray(a)) { r.attach = a; if (r.av) a.forEach((k, w) => r.av.setAttach(w, k)); } } if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name + (MP.ffa ? '' : '. Вы — ' + m.teams[m.team].toLowerCase()), 'sys'); }
       if (MP.local) feed('Тренировка с ботами: ' + MP.board.filter(e => e.bot).length + ', уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || '') + '»', 'sys'); break;
     case 'spawn': {
       nadeCancel(); punchReset();
       const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.vx = P.vz = 0; P.kx = P.kz = 0; P.fallTop = 0; P.landH = 0; P.land = 0; P.crouch = false; P.fly = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
-      MP.loadout = Array.isArray(m.loadout) ? m.loadout.slice() : [0, 3]; MP.pack = Array.isArray(m.pack) ? m.pack.slice() : [1, 2, 4, null, null, null, null, null, null, null]; MP.weapon = MP.loadout[0]; MP.scope = false; MP.dotBoostAt = 0; MP.dotBoost = 0; models.forEach((mm, k) => { mm.visible = k === MP.weapon; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; MP.sights = m.sights ? { ...m.sights } : { sight: 0, optic: 0 }; MP.attach = Array.isArray(m.attach) ? m.attach.slice() : [null, null, null, null, null]; syncVm(); clearNades(); gun.visible = true; if (vm) { vm.setWeapon(MP.weapon); vm.equip(); } el('mpDead').hidden = true; slotsT = performance.now() + 2600; updatePanel();   // the belt greets the spawn, then hides
+      MP.loadout = Array.isArray(m.loadout) ? m.loadout.slice() : [0, 3]; MP.pack = Array.isArray(m.pack) ? m.pack.slice() : [1, 2, 4, null, null, null, null, null, null, null]; MP.weapon = MP.loadout[0]; MP.scope = false; MP.dotBoostAt = 0; MP.dotBoost = 0; models.forEach((mm, k) => { mm.visible = k === MP.weapon; }); MP.hp = m.hp; MP.ammo = m.mag ? m.mag.slice() : WEAPONS.map(w => w.mag); MP.reserve = m.reserve ? m.reserve.slice() : RESERVE.slice(); MP.meds = m.meds ?? 0; MP.reloadAt = 0; MP.dead = false; STATE.mpDead = false; document.body.classList.remove('dead'); MP.spec = 0; MP.nades = m.nades ?? 2; MP.smokes = m.smokes ?? 1; MP.napalms = m.napalms ?? 1; MP.sights = m.sights ? { ...m.sights } : { sight: 0, optic: 0 }; MP.attach = Array.isArray(m.attach) ? m.attach.slice() : [null, null, null, null, null]; syncVm(); clearNades(); gun.visible = true; if (vm) { vm.setWeapon(MP.weapon); vm.equip(); } el('mpDead').hidden = true; slotsT = performance.now() + 2600; updatePanel();   // the belt greets the spawn, then hides
       MP.ws.send(JSON.stringify({ t: 'state', x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch }));   // the server has the point as asked: tell it where the player really stands
       if (canvas.requestPointerLock) { canvas.focus(); try { const pr = canvas.requestPointerLock(); if (pr && pr.catch) pr.catch(() => {}); } catch (e) {} }
       break;
@@ -686,6 +706,10 @@ function onMsg(m) {
       const dmg = Math.max(0, MP.hp - m.hp);
       statEvent('taken', { dmg }, !!MP.local); MP.hp = m.hp; hurtT = performance.now();
       if (m.fall) { tone(70, 32, 0.3, 0.5, 'sine'); el('mpHurtDir').hidden = true; }   // a fall: no side to point at and no aim punch, the thud of the landing already sounded
+      else if (m.fire) {   // burning in the napalm: no aim punch — the orange edge of the burn and the crackle of it
+        MP.burnAt = performance.now(); el('mpBurn').hidden = false; el('mpHurtDir').hidden = true;
+        if (MP.burnAt - MP.lastBurnSnd > 450) { MP.lastBurnSnd = MP.burnAt; try { burnSound(ac(), actx.master, 0.7); } catch (e) {} }
+      }
       else {
         let real = false; try { real = hitSound(ac(), actx.master, 'body', 1); } catch (e) {} if (!real) tone(160, 60, 0.18, 0.4, 'sawtooth');
         el('mpHurtDir').hidden = false;
@@ -711,14 +735,21 @@ function onMsg(m) {
       P.vy = Math.min(P.vy + m.vy, 16);
       break;
     }
-    case 'kill': { feed(m.kn + '  ➜  ' + m.vn + (m.w === 9 ? '  (граната)' : m.w === 10 ? '  (падение)' : m.head ? '  (в голову)' : ''), m.killer === MP.id ? 'mine' : m.victim === MP.id ? 'dead' : ''); if (m.killer === MP.id) { MP.kills++; if (m.victim !== MP.id) statEvent('kill', m, !!MP.local); } if (m.victim === MP.id) { MP.deaths++; statEvent('death', {}, !!MP.local); if (!MP.dead) die(m.w === 10 ? '' : m.kn, m.killer); } else { const rv = remotes.get(m.victim); if (rv && rv.buf.length) { rv.fallT = performance.now(); rv.corpse = corpseOf(rv, m); } } updatePanel(); break; }
+    case 'kill': { feed(m.kn + '  ➜  ' + m.vn + (m.w === 9 ? '  (граната)' : m.w === 11 ? '  (напалм)' : m.w === 10 ? '  (падение)' : m.head ? '  (в голову)' : ''), m.killer === MP.id ? 'mine' : m.victim === MP.id ? 'dead' : ''); if (m.killer === MP.id) { MP.kills++; if (m.victim !== MP.id) statEvent('kill', m, !!MP.local); } if (m.victim === MP.id) { MP.deaths++; statEvent('death', {}, !!MP.local); if (!MP.dead) die(m.w === 10 ? '' : m.kn, m.killer); } else { const rv = remotes.get(m.victim); if (rv && rv.buf.length) { rv.fallT = performance.now(); rv.corpse = corpseOf(rv, m); } } updatePanel(); break; }
     case 'alive': { const r = remotes.get(m.id); if (r) { r.buf.length = 0; r.fallT = 0; } break; }
     case 'board': MP.board = m.board; MP.score = m.score; for (const e of m.board) { const r = addRemote(e.id, e.name, e.team, e.char); if (r) { r.name = e.name; r.tag.textContent = e.name; const char = parseChar(e.char); if (char !== r.char) { r.char = char; rebuildAvatar(r); } } if (e.id === MP.id) { MP.kills = e.kills; MP.deaths = e.deaths; } } for (const id of [...remotes.keys()]) if (!m.board.some(e => e.id === id)) dropRemote(id); drawBoard(); updatePanel(); if (voice) voice.setPeers(m.board.filter(e => e.id !== MP.id && !e.bot).map(e => e.id)); break;
     case 'left': dropRemote(m.id); break;
     case 'nade': { const own = m.by === MP.id && !!NTHROW.at; addNade(m, own ? (vm && vm.canNade ? vm.nadeAt(MV) : nadeBall.getWorldPosition(MV)) : null); if (own) NTHROW.gone = true; } if (m.by !== MP.id) { const rt = remotes.get(m.by); if (rt) rt.throwAt = performance.now(); const dd = Math.hypot(m.p[0] - P.x, m.p[2] - P.z); if (dd < 40) tone(500, 300, 0.08, 0.1 * (1 - dd / 40), 'triangle'); } break;
+    case 'zone': {   // the smoke screen or the burning patch: the grenade's copy goes into it (nades.js)
+      addZone(m);
+      const dd = Math.hypot(m.x - P.x, m.z - P.z), hear = 120;
+      if (dd < hear) { const v = 1 - dd / hear, s = spot(m.x, P.y, m.z); try { if (m.kind === 'fire') fireSound(ac(), actx.master, 0.9 * v, dd, s.pan); else smokeSound(ac(), actx.master, 0.8 * v, dd, s.pan); } catch (e) {} }
+      break;
+    }
+    case 'zoneEnd': endZone(m.id); break;
     case 'item': itemBack(m); break;
     case 'took': itemTook(m.id); if (m.to === MP.id) { feed('+ ' + KINDS[m.kind].name + (m.where === 'pack' ? ' · в рюкзак' : ''), 'sys'); tone(660, 990, 0.09, 0.22, 'triangle'); } break;
-    case 'inv': MP.ammo = m.mag.slice(); MP.reserve = m.reserve.slice(); MP.nades = m.nades; MP.meds = m.meds; if (m.sights) MP.sights = { ...m.sights }; if (Array.isArray(m.attach)) { MP.attach = m.attach.slice(); syncVm(); } if (Array.isArray(m.loadout)) MP.loadout = m.loadout.slice(); if (Array.isArray(m.pack)) MP.pack = m.pack.slice(); if (!MP.loadout.includes(MP.weapon)) { MP.weapon = MP.loadout[0]; models.forEach((mm, k) => { mm.visible = k === MP.weapon; }); if (vm) { vm.setWeapon(MP.weapon); vm.equip(); } } updatePanel(); break;
+    case 'inv': MP.ammo = m.mag.slice(); MP.reserve = m.reserve.slice(); MP.nades = m.nades; MP.smokes = m.smokes ?? MP.smokes; MP.napalms = m.napalms ?? MP.napalms; MP.meds = m.meds; if (m.sights) MP.sights = { ...m.sights }; if (Array.isArray(m.attach)) { MP.attach = m.attach.slice(); syncVm(); } if (Array.isArray(m.loadout)) MP.loadout = m.loadout.slice(); if (Array.isArray(m.pack)) MP.pack = m.pack.slice(); if (!MP.loadout.includes(MP.weapon)) { MP.weapon = MP.loadout[0]; models.forEach((mm, k) => { mm.visible = k === MP.weapon; }); if (vm) { vm.setWeapon(MP.weapon); vm.equip(); } } updatePanel(); break;
     case 'attach': if (m.id === MP.id) { MP.attach = m.attach.slice(); syncVm(); updatePanel(); } else { const r = remotes.get(m.id); if (r) { r.attach = m.attach; if (r.av) m.attach.forEach((k, w) => r.av.setAttach(w, k)); } } break;
     case 'heal': { const got = m.hp - MP.hp; MP.hp = m.hp; MP.meds = m.meds; feed('Аптечка: +' + got + ' HP', 'sys'); tone(440, 660, 0.16, 0.25, 'sine'); updatePanel(); break; }
     case 'boom': {
@@ -819,7 +850,9 @@ window.addEventListener('keydown', e => {
   else if (MP.dead && e.code === 'KeyF') specCam();
   else if (e.code === SET.keys.inv) { if (!MP.dead) { nadeCancel(); toggleInv(); } }
   else if (e.code === SET.keys.med) useMed();
-  else if (e.code === SET.keys.grenade) { closeInv(); nadePrep(); }
+  else if (e.code === SET.keys.grenade) { closeInv(); nadePrep('nade'); }
+  else if (e.code === SET.keys.smoke) { closeInv(); nadePrep('smoke'); }
+  else if (e.code === SET.keys.napalm) { closeInv(); nadePrep('napalm'); }
   else if (e.code === SET.keys.reload) { closeInv(); nadeCancel(); reload(performance.now()); }
   else if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { const t = performance.now(); if (MP.scope && MP.attach[MP.weapon] === 'sight' && !MP.dead && !MP.reloadAt && MP.zoom > 0.6 && !MP.dotBoostAt && t >= MP.dotBoostCd) { MP.dotBoostAt = t; tone(680, 920, 0.06, 0.14, 'sine'); } }   // the red dot's brief extra zoom on Shift, only while aiming through it (a press starts one peek; holding does not extend it)
   else if (e.code === SET.keys.w1) switchWeapon(0); else if (e.code === SET.keys.w2) switchWeapon(1); else if (e.code === SET.keys.w3) switchWeapon(2); else if (e.code === SET.keys.w4) switchWeapon(3); else if (e.code === SET.keys.w5) switchWeapon(4);
@@ -903,14 +936,14 @@ function nadeWarnTick() {
   const w = el('nadeWarn');
   let best = null, bd = 1e9;
   for (const n of liveNades()) {
-    if (n.by === MP.id) continue;
+    if (n.by === MP.id || n.kind === 'smoke') continue;   // the smoke is cover, not a threat
     const r = remotes.get(n.by); if (!MP.ffa && r && r.team === MP.team) continue;
     const d = Math.hypot(n.p[0] - P.x, n.p[1] - P.y, n.p[2] - P.z);
     if (d < 12 && d < bd) { bd = d; best = n; }
   }
   if (!best || MP.dead) { w.hidden = true; return; }
-  w.hidden = false;
-  const left = Math.max(0, 2.5 - best.age), pulse = 0.55 + 0.45 * Math.sin(performance.now() / 1000 * (6 + (2.5 - left) * 7));
+  w.hidden = false; w.dataset.kind = best.kind || 'nade';
+  const fuse = best.kind === 'nade' ? 2.5 : 2, left = Math.max(0, fuse - best.age), pulse = 0.55 + 0.45 * Math.sin(performance.now() / 1000 * (6 + (fuse - left) * 7));
   w.style.opacity = ((0.4 + 0.6 * (1 - bd / 12)) * pulse).toFixed(2);
   NW.set(best.p[0], best.p[1], best.p[2]).project(camera);
   const W = innerWidth, H = innerHeight, m = 52, cx = W / 2, cy = H / 2;
@@ -938,6 +971,7 @@ function mpTick(dt) {
   if ((MP.fpsT = (MP.fpsT || 0) - dt) <= 0) { MP.fpsT = 1; updatePanel(); }
   el('mpReloadFill').style.width = (MP.reloadAt ? Math.min(1, (now - MP.reloadAt) / WEAPONS[MP.reloadW].reloadMs) * 100 : 0).toFixed(1) + '%';   // the reload bar under the rounds, every frame (the crosshair ring keeps its own)
   invTick(now);   // the reload bar of the inventory panel, if it is open
+  if (!el('mpBurn').hidden && now - MP.burnAt > 700) el('mpBurn').hidden = true;   // the orange edge of the burn fades once out of the fire
   el('mpSlots').classList.toggle('show', now < slotsT);   // the belt of weapons: shown by a switch or the wheel, hidden once the choice settles
   const nv = nadeView(now);   // the arms with the grenade, or null
   // the scope: the picture closes in and the gun goes out of sight. The mounted 8× optic zooms by its magnification
