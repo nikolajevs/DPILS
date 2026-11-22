@@ -8,7 +8,7 @@
    cover when hurt or reloading a slow gun, crouches behind the wall and peeks out, chases an enemy that broke the line
    of sight to where it was last seen, turns on an unseen attacker that hit it, picks up the kits and ammo it needs,
    reloads when safe, throws a grenade at a cluster and comes back after the death by itself. */
-import { FALL, HIT, INV, NADE, bulletDrop } from './combat.mjs';
+import { FALL, HIT, INV, NADE, SMOKE, bulletDrop, smokeCore, smokeDepth } from './combat.mjs';
 const NAMES = ['Андрис', 'Янис', 'Артур', 'Лиена', 'Виктор', 'Ольга', 'Эдгар', 'Дайна', 'Максим', 'Илзе', 'Роман', 'Кристап', 'Анна', 'Игорь', 'Мартиньш', 'Светлана'];
 // sigma: the aim error in radians — tuned for the small hitboxes (a torso half a metre wide, a head 0.36 m), so the
 // error is about half of what it was against the old metre-wide capsule; head: the share of shots aimed at the head
@@ -86,12 +86,12 @@ export function createBrain(g) {
   }
   const lowAmmo = p => p.reserve[p.wep] <= 0 || p.reserve.reduce((a, b) => a + b, 0) < 40;
   // a pickup the bot wants and can reach: a kit when hurt and the belt not full, ammo when dry, a grenade when the belt
-  // is short. The nearest within 45 m.
+  // is short, a smoke when it has none to cover a retreat with. The nearest within 45 m.
   function needItem(p) {
     if (!g.items) return null; let best = null, bd = 1e9;
     for (const it of g.items.values()) {
       if (!it.active) continue;
-      const want = (it.kind === 'med' && p.hp < 65 && p.meds < INV.medMax) || (it.kind === 'ammo' && lowAmmo(p)) || (it.kind === 'nade' && p.nades < INV.nadeMax);
+      const want = (it.kind === 'med' && p.hp < 65 && p.meds < INV.medMax) || (it.kind === 'ammo' && lowAmmo(p)) || (it.kind === 'nade' && p.nades < INV.nadeMax) || (it.kind === 'smoke' && !(p.smokes > 0));
       if (!want) continue;
       const d = Math.hypot(it.x - p.x, it.z - p.z);
       if (d < 45 && d < bd && inArea(it.x, it.z) && world.walkable(it.x, it.z)) { bd = d; best = [it.x, it.z]; }
@@ -163,28 +163,27 @@ export function createBrain(g) {
     }
     b.moving = false;
   }
-  // a smoke screen between the eyes hides what is beyond it: the sight segment crosses the cloud's sphere
-  // (the zones of game.mjs; the page draws the same screen, src/game/nades.js)
-  function smoked(ax, ay, az, bx, by, bz) {
+  // a smoke screen between the eyes hides what is beyond it: the sight line goes through SMOKE.hide metres or more of
+  // the screens' dense cores as they stand now (smokeCore of combat.mjs — the page draws the same screen, src/game/nades.js,
+  // and hides the name tags by the same rule). A bot inside the screen is as blind as one looking into it
+  function smokeCores(now) {
+    const out = [];
     for (const z of g.zones.values()) {
       if (z.kind !== 'smoke') continue;
-      const cx = z.x, cy = z.y + 1.6, cz = z.z, r = z.r * 0.85;
-      const dx = bx - ax, dy = by - ay, dz = bz - az, L2 = dx * dx + dy * dy + dz * dz;
-      if (L2 < 1e-6) continue;
-      const t = Math.max(0, Math.min(1, ((cx - ax) * dx + (cy - ay) * dy + (cz - az) * dz) / L2));
-      const px = ax + dx * t - cx, py = ay + dy * t - cy, pz = az + dz * t - cz;
-      if (px * px + py * py + pz * pz < r * r) return true;
+      const c = smokeCore(z.r, now - (z.t0 ?? now), z.dur ?? SMOKE.durMs);
+      if (c) out.push({ x: z.x, y: z.y, z: z.z, rc: c.rc, hc: c.hc });
     }
-    return false;
+    return out;
   }
+  const smoked = (cores, ax, ay, az, bx, by, bz) => cores.length > 0 && smokeDepth(cores, [ax, ay, az], [bx, by, bz]) >= SMOKE.hide;
   // the burning patch under the bot's feet, if any (napalm, game.mjs stepZones)
   function fireAt(p) {
     for (const z of g.zones.values()) if (z.kind === 'fire' && Math.hypot(p.x - z.x, p.z - z.z) < z.r + 0.5 && Math.abs((p.y - 1.7) - z.y) < 2.5) return z;
     return null;
   }
-  function visible(p, q) {
+  function visible(p, q, cores = smokeCores(g.now())) {
     const dx = q.x - p.x, dz = q.z - p.z, dy = (q.y - 0.5) - p.y, d = Math.hypot(dx, dy, dz);
-    return d < b0(p).sight && world.freePath([p.x, p.y, p.z], [dx / d, dy / d, dz / d], d) >= d - 1.5 && !smoked(p.x, p.y, p.z, q.x, q.y - 0.5, q.z) ? d : 0;
+    return d < b0(p).sight && world.freePath([p.x, p.y, p.z], [dx / d, dy / d, dz / d], d) >= d - 1.5 && !smoked(cores, p.x, p.y, p.z, q.x, q.y - 0.5, q.z) ? d : 0;
   }
   const b0 = p => LEVELS[p.bot.level] || LEVELS.normal;
   const safeReload = (p, now) => { if (g.reload && p.reloadDone <= now && p.mag[p.wep] < g.WEAPONS[p.wep].mag * 0.4 && p.reserve[p.wep] > 0) g.reload(p, p.wep, now); };
@@ -219,8 +218,8 @@ export function createBrain(g) {
     b.lastHp = p.hp;
     // look for the nearest enemy that can be seen (not every tick); remember where it was last seen to chase it round a corner
     if ((b.look -= dt) <= 0) {
-      b.look = 0.25; let best = 0, bd = 1e9;
-      for (const q of g.players.values()) { if (q === p || !q.alive || (!g.FFA && q.team === p.team) || now <= q.protectUntil) continue; const d = visible(p, q); if (d && d < bd) { bd = d; best = q.id; } }
+      b.look = 0.25; let best = 0, bd = 1e9; const cores = smokeCores(now);
+      for (const q of g.players.values()) { if (q === p || !q.alive || (!g.FFA && q.team === p.team) || now <= q.protectUntil) continue; const d = visible(p, q, cores); if (d && d < bd) { bd = d; best = q.id; } }
       if (best !== b.target) { b.target = best; if (best) b.react = now + L.react * 1000 * rnd(0.7, 1.3) * (b.alert && now - b.alert.at < 2200 ? 0.5 : 1); }   // an alerted bot snaps round quicker
     }
     const q = b.target && g.players.get(b.target);
@@ -238,6 +237,7 @@ export function createBrain(g) {
       // reload and heal, then come back out. With no cover nearby it is the old straight retreat.
       if (b.retreatUntil < now && ((p.hp < 35 && Math.random() < 0.02) || (p.reloadDone > now && dist < 40 && (p.wep === 2 || p.wep === 4)))) {
         b.retreatUntil = now + (p.hp < 35 ? 3000 : 2500); b.retreatAt = now; b.cover = findCover(p, q.x, q.z);
+        if (p.hp < 35) coverSmoke(p, q, dist, now, L);
       }
       if (b.retreatUntil > now) {
         if (b.cover) {
@@ -329,6 +329,16 @@ export function createBrain(g) {
     p.hist.push([now, p.x, p.y, p.z, p.eye, p.yaw]); while (p.hist.length > 2 && now - p.hist[0][0] > 1000) p.hist.shift();
     if (!engaged || now < b.react || Math.abs(dy) > 0.25) return;
     fight(p, q, dist, now, L);
+  }
+  // a hurt bot falling back covers itself with a smoke (the normal and hard levels, if it has one): thrown towards the
+  // enemy so that it lands a little under half the way there, the screen between them while the bot runs for cover.
+  // The flight is the server's (g 18, loft 0.17): aimed 20° up, a throw of speed sp carries ≈ 0.053·sp² metres
+  function coverSmoke(p, q, dist, now, L) {
+    if (!L.nades || !(p.smokes > 0) || dist < 8 || dist > 55 || now - p.lastNade < NADE.cooldownMs) return false;
+    const X = Math.min(14, dist * 0.42), sp = Math.max(NADE.minSpeed, Math.min(NADE.maxSpeed, Math.sqrt(X / 0.053) * 0.9));   // short of the mark: it bounces on
+    const dx = (q.x - p.x) / dist, dz = (q.z - p.z) / dist, l = Math.hypot(1, 0.36);
+    g.throwNade(p, [dx / l, 0.36 / l, dz / l], sp, 'smoke');
+    return true;
   }
   function fight(p, q, dist, now, L) {
     const b = p.bot, w = p.wep, W = g.WEAPONS[w];

@@ -117,7 +117,7 @@ function shellTink(ctx, out, vol = 0.2, d = 0, pan = 0, hard = true) {
   } catch (e) {}
 }
 // the voices of the special grenades: no recording of them exists in the sets, so these are always synthesised —
-// one shared noise buffer, filtered and enveloped. The smoke hisses out, the napalm roars and crackles.
+// one shared noise buffer, filtered and enveloped. The smoke canister pops and hisses, the napalm roars and crackles.
 let NOISE = null;
 function noise(ctx) {
   if (!NOISE) { NOISE = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate); const d = NOISE.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
@@ -132,9 +132,43 @@ function noisePlay(ctx, out, o) {
   if (o.pan) { const p = ctx.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, o.pan)); g.connect(p); tail = p; }
   s.connect(f); f.connect(g); tail.connect(out); s.start(t); s.stop(t + o.dur + 0.05);
 }
-// the smoke screen breathing out: a long soft hiss, arriving at the speed of sound
-function smokeSound(ctx, out, vol = 1, d = 0, pan = 0) {
-  try { noisePlay(ctx, out, { type: 'bandpass', freq: 2400, q: 0.6, vol: vol * 0.5, dur: 2.6, attack: 0.25, delay: d / 340, pan }); noisePlay(ctx, out, { type: 'highpass', freq: 4200, vol: vol * 0.16, dur: 1.8, attack: 0.1, delay: d / 340 + 0.05, pan }); } catch (e) {}
+// the smoke canister burning: the pop of its igniter, then the hiss of the jet — hard for the first second and a half,
+// then steady and sputtering a little until the filler is spent (burnS seconds after it lit), with a short tail. age:
+// how long it has burnt already (a screen found burning on joining). The loudness by distance and the side are the
+// caller's, every frame (mp.js zoneSounds): the knobs pos (gain) and pan; stop() cuts it short, until is when it is over
+function smokeHiss(ctx, out, burnS, age = 0) {
+  try {
+    const t = ctx.currentTime, end = Math.max(0.2, burnS - age), src = [];
+    const pos = ctx.createGain(), pan = ctx.createStereoPanner(); pos.gain.value = 0; pos.connect(pan); pan.connect(out);
+    const band = (type, freq, q) => {
+      const s = ctx.createBufferSource(); s.buffer = noise(ctx); s.loop = true;
+      const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+      const g = ctx.createGain(); g.gain.value = 0.0001; s.connect(f); f.connect(g); g.connect(pos); s.start(t, Math.random() * 1.5); src.push(s);
+      return { f, g };
+    };
+    const env = (g, peak, sus) => {
+      g.gain.setValueAtTime(0.0001, t);
+      if (age < 1.5) { g.gain.exponentialRampToValueAtTime(peak, t + 0.15); g.gain.setTargetAtTime(sus, t + Math.max(0.2, 1.5 - age), 0.5); }
+      else g.gain.exponentialRampToValueAtTime(sus, t + 0.4);
+      g.gain.setTargetAtTime(0.0001, t + end, 0.6);
+    };
+    const jet = band('bandpass', 2500, 0.6), air = band('highpass', 5400, 0.7), rum = band('lowpass', 420, 0.8);
+    env(jet.g, 0.55, 0.24); env(air.g, 0.2, 0.08); env(rum.g, 0.3, 0.12);
+    const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 5 + Math.random() * 4; lg.gain.value = 320;   // the sputter: the jet's pitch wobbles
+    lfo.connect(lg); lg.connect(jet.f.frequency); lfo.start(t); src.push(lfo);
+    if (age < 0.3) {   // the igniter: a dull pop and a click
+      const s = ctx.createBufferSource(); s.buffer = noise(ctx); const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.9, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+      s.connect(f); f.connect(g); g.connect(pos); s.start(t); s.stop(t + 0.2);
+      const o = ctx.createOscillator(), og = ctx.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(1800, t); o.frequency.exponentialRampToValueAtTime(600, t + 0.03);
+      og.gain.setValueAtTime(0.25, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.04); o.connect(og); og.connect(pos); o.start(t); o.stop(t + 0.06);
+    }
+    const stopAt = t + end + 3; for (const s of src) s.stop(stopAt);
+    return {
+      pos, pan, until: performance.now() + (end + 3) * 1000,
+      stop() { try { const n = ctx.currentTime; pos.gain.cancelScheduledValues(n); pos.gain.setTargetAtTime(0, n, 0.08); for (const s of src) s.stop(n + 0.5); } catch (e) {} }
+    };
+  } catch (e) { return null; }
 }
 // the napalm bursting: a low roar with a whoosh, then the crackle of the patch catching
 function fireSound(ctx, out, vol = 1, d = 0, pan = 0) {
@@ -149,4 +183,4 @@ function fireSound(ctx, out, vol = 1, d = 0, pan = 0) {
 function burnSound(ctx, out, vol = 1) {
   try { for (let i = 0, n = 3 + (Math.random() * 3 | 0); i < n; i++) noisePlay(ctx, out, { type: 'bandpass', freq: 1800 + Math.random() * 2600, q: 1.2, vol: vol * 0.3 * (0.4 + Math.random() * 0.6), dur: 0.04 + Math.random() * 0.05, attack: 0.003, delay: Math.random() * 0.3 }); } catch (e) {}
 }
-export { boomSound, burnSound, crackSound, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeSound, stepSound };
+export { boomSound, burnSound, crackSound, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeHiss, stepSound };

@@ -23,7 +23,7 @@
       frees the cell, a swap returns the old sight to it, a full pack refuses the take-off.
    3. A real bot fight on a flat arena (12 s of real time): with the small hitboxes the bots must still see,
       shoot and kill each other. */
-import { BULLET_G, FALL, HIT, INV, WEAPONS, NADE, W_FALL, bulletAt, bulletDir, bulletDrop, dragDist, dragTime, dragVel, rayHit } from '../server/combat.mjs';
+import { BULLET_G, FALL, HIT, INV, WEAPONS, NADE, SMOKE, W_FALL, bulletAt, bulletDir, bulletDrop, dragDist, dragTime, dragVel, rayHit, smokeCore, smokeDepth } from '../server/combat.mjs';
 import { createGame, MUZZLE } from '../server/game.mjs';
 import { makePhysics } from '../server/physics.mjs';
 
@@ -951,7 +951,7 @@ console.log('smoke and napalm (zones):');
   clock += 3000;
   for (const c of [A, B, C]) msg(c, { t: 'state', x: c.handle.player.x, y: 1.7, z: c.handle.player.z, yaw: 0, pitch: 0 });
   ok(p.nades === 2 && p.smokes === 1 && p.napalms === 1, 'the spawn belt: two frags, one smoke, one napalm', p.nades + '/' + p.smokes + '/' + p.napalms);
-  // the smoke: a screen of radius 6, no damage, out after its 12 s
+  // the smoke: a screen of radius 6, no damage, out after its 15 s
   msg(A, { t: 'throw', kind: 'smoke', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });
   ok(p.smokes === 0, 'the smoke throw spends the smoke');
   ok(A.last('nade') && A.last('nade').kind === 'smoke' && A.last('nade').fuse === 2000, 'the smoke flies with its own kind and fuse');
@@ -959,8 +959,11 @@ console.log('smoke and napalm (zones):');
   const sz = A.last('zone');
   ok(sz && sz.kind === 'smoke' && sz.r === 6 && g.zones.size === 1, 'the smoke lays a screen of radius 6', JSON.stringify(sz));
   ok(q.hp === 100 && r.hp === 100 && !A.all('boom').length, 'the smoke neither hurts nor blasts');
-  clock += 12100; g.stepNades();
-  ok(g.zones.size === 0 && A.last('zoneEnd'), 'the screen is out after its 12 s');
+  const late = seat(g, conn()); msg(late, { t: 'join', name: 'Опоздавший', team: 1, x: 5, z: 5, yaw: 0 });
+  const hz = late.last('hello') && late.last('hello').zones.find(z => z.kind === 'smoke');
+  ok(hz && hz.durMs === SMOKE.durMs && hz.left > 0 && hz.left <= SMOKE.durMs, 'a late joiner gets the screen with its whole time and what is left of it', JSON.stringify(hz));
+  clock += SMOKE.durMs + 100; g.stepNades();
+  ok(g.zones.size === 0 && A.last('zoneEnd'), 'the screen is out after its 15 s');
   // the napalm: a burning patch of radius 4 — the enemy and the thrower burn, the teammate does not
   msg(A, { t: 'throw', kind: 'napalm', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });
   ok(p.napalms === 0, 'the napalm throw spends the napalm');
@@ -1018,6 +1021,53 @@ console.log('smoke and napalm (zones):');
   const hp0 = bot.hp;
   for (let i = 0; i < 30; i++) { clock += 1000 / 30; g.stepNades(); }
   ok(bot.hp < hp0, 'the fire burns the bot too');
+  g.stop();
+}
+
+console.log('the smoke screen: its shape in time, the depth of smoke on a sight line, the bots behind it:');
+{
+  const R = SMOKE.radius, D = SMOKE.durMs;
+  const c0 = smokeCore(R, 0, D), cg = smokeCore(R, SMOKE.growMs, D), ch = smokeCore(R, D / 2, D), ce = smokeCore(R, D - 300, D);
+  ok(c0 && Math.abs(c0.rc - R * 0.85 * 0.25) < 1e-9 && c0.hc < SMOKE.height * 0.4, 'the screen starts as a puff a quarter of its width', JSON.stringify(c0));
+  ok(cg && Math.abs(cg.rc - R * 0.85) < 1e-9 && Math.abs(cg.hc - SMOKE.height) < 1e-9 && ch.rc === cg.rc, 'it stands full by growMs and holds', JSON.stringify(cg));
+  ok(ce && ce.rc < 0.5 && smokeCore(R, D, D) === null && smokeCore(R, -1, D) === null, 'it thins away over fadeMs and is out at the end', JSON.stringify(ce));
+  const full = [{ x: 0, y: 0, z: 0, ...ch }];
+  const across = smokeDepth(full, [-20, 1.5, 0], [20, 1.5, 0]);
+  ok(Math.abs(across - 2 * ch.rc * Math.sqrt(1 - (1.5 / ch.hc) ** 2)) < 1e-6, 'a sight line across the middle goes through the whole chord', across.toFixed(2));
+  ok(smokeDepth(full, [-20, ch.hc + 0.3, 0], [20, ch.hc + 0.3, 0]) === 0, 'a sight line over the dome sees over it');
+  ok(smokeDepth(full, [-20, 1.5, ch.rc - 0.1], [20, 1.5, ch.rc - 0.1]) < SMOKE.hide, 'one grazing its edge goes through too little to be hidden');
+  ok(smokeDepth(full, [0, 1.5, 0], [0, 1.5, 0.5]) < SMOKE.hide && smokeDepth(full, [0, 1.5, 0], [0, 1.5, 3]) >= SMOKE.hide, 'inside it you see a step ahead, not the far side');
+  ok(smokeDepth(full, [-20, -1, 0], [20, -1, 0]) === 0, 'under the surface there is no smoke');
+  ok(smokeDepth(full, [-20, 1.5, 0], [-12, 1.5, 0]) === 0, 'a sight line that stops short of the screen is clear');
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'smokebots' });
+  const A = seat(g, conn());
+  msg(A, { t: 'join', name: 'Стрелок', team: 0, x: 0, z: 0, yaw: 0 });
+  const bot = g.addBot('normal'), p = A.handle.player;
+  clock += 3000;
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  const place = () => { bot.x = 0; bot.z = -20; bot.y = 1.7; bot.hist = []; bot.bot.kx = bot.bot.kz = 0; };
+  place(); bot.bot.look = 0; g.stepBots(0.05);
+  ok(bot.bot.target === p.id, 'the bot sees the enemy 20 m away across the open square');
+  // a screen laid half way: a fresh puff the bot sees over, the grown screen it does not
+  g.zones.set(990, { id: 990, kind: 'smoke', x: 0, y: 0, z: -10, r: SMOKE.radius, t0: clock, dur: SMOKE.durMs, until: clock + SMOKE.durMs, by: p.id, lastTick: 0 });
+  place(); bot.bot.look = 0; g.stepBots(0.05);
+  ok(bot.bot.target === p.id, 'a screen just lit is still a puff: the bot sees over it');
+  clock += SMOKE.growMs; place(); bot.bot.look = 0; g.stepBots(0.05);
+  ok(bot.bot.target === 0, 'grown, the screen between them hides the enemy from the bot');
+  clock += SMOKE.durMs - SMOKE.growMs - 200; place(); bot.bot.look = 0; g.stepBots(0.05);
+  ok(bot.bot.target === p.id, 'a screen running out thins and the bot sees through it again');
+  g.zones.delete(990);
+  // a hurt bot falling back throws a smoke between itself and the enemy
+  place(); bot.bot.look = 0; g.stepBots(0.05); clock += 1000; place(); g.stepBots(0.05);
+  bot.hp = 20; bot.bot.lastHp = 20; bot.bot.retreatUntil = 0; bot.smokes = 1; bot.lastNade = 0;
+  const rnd0 = Math.random; Math.random = () => 0.01;   // the 2 % chance of falling back, now
+  try { place(); g.stepBots(0.05); } finally { Math.random = rnd0; }
+  const sm = A.all('nade').find(m => m.kind === 'smoke' && m.by === bot.id);
+  ok(sm && bot.smokes === 0 && bot.bot.retreatUntil > clock, 'a hurt bot falling back covers itself with a smoke', JSON.stringify(sm));
+  for (let i = 0; i < 70; i++) { clock += 1000 / 30; g.stepNades(); }
+  const bz = [...g.zones.values()].find(z => z.kind === 'smoke');
+  ok(bz && bz.z > -19 && bz.z < -4 && Math.abs(bz.x) < 2, 'it lands between them, short of the enemy', bz && bz.x.toFixed(1) + '/' + bz.z.toFixed(1));
   g.stop();
 }
 
