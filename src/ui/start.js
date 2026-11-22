@@ -44,14 +44,6 @@ const timeSel = $('trTime');
 timeSel.value = timePref();
 timeSel.onchange = () => setTimePref(timeSel.value);
 $('chTrain').disabled = $('chOnline').disabled = false;   // the code is here: the settings can be chosen while the city is still being built
-/* The browser hint: Firefox's WebGL draws the city markedly slower than Chromium's on the same GPU (measured 20–28
-   vs 60–80 fps on an RTX 3050), and auto quality already starts Firefox lower (src/render/lighting.js). Tell the
-   visitor once, on the start card; the cross hides it for good (dpils-browser-hint). */
-if (/firefox/i.test(navigator.userAgent)) {
-  let dismissed = false; try { dismissed = localStorage.getItem('dpils-browser-hint') === 'off'; } catch (e) {}
-  if (!dismissed) $('browserHint').hidden = false;
-  $('browserHintX').onclick = () => { $('browserHint').hidden = true; try { localStorage.setItem('dpils-browser-hint', 'off'); } catch (e) {} };
-}
 // the credits: the quiet link at the bottom of the card opens a modal with the data sources and licences
 const credits = $('credits');
 const closeCredits = () => { credits.hidden = true; $('bCredits').focus(); };
