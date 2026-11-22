@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { buildingAt, onRoad } from '../world/data.js';
-import { terrainH, walkLift } from '../world/terrain.js';
+import { sky, terrainH, walkLift } from '../world/terrain.js';
 import { STATE } from '../core/state.js';
-import { camera, scene } from '../render/renderer.js';
+import { U, camera, scene } from '../render/renderer.js';
 import { worldSpace } from '../render/world-space.js';
 import { reduceMotion } from '../core/env.js';
 import { fbm } from './muzzle.js';
@@ -201,14 +201,30 @@ const SCORCH_TEX = paint(1, (i, x, y, out) => {
   out[0] = 0.25 + 0.5 * grain * clamp(r / R); out[1] = Math.max(body, streak) * clamp((1 - r) * 5) * (0.75 + 0.25 * grain);
 });
 // the opacity and the glow of a particle (x, y) and the corner of its atlas cell (z, w) ride one instanced attribute aP;
-// the glow is the light of the fire inside the smoke, added to what the scene lights
-function particleMat(m, key) {
+// the glow is the light of the fire inside the smoke, added to what the scene lights.
+// The smoke scatters (scatter): a cloud is not lit like a wall — it sends the light all round, and seen against the sun
+// it glows through. So the sun does not light it as a surface (a puff turned to the camera with the sun behind it went
+// black-brown at sunset); it takes the colours the sky's own clouds have at this hour instead (world/terrain.js, set by
+// lighting.js): the lit one on its side to the sun, the dark one on the far side, and the lit one again through the
+// puff when the camera looks into the sun. The lamps, the hemisphere and the flash of a blast (point lights) light it
+// as before.
+const SMK_LIT = { value: new THREE.Vector3(1.35, 1.3, 1.22) }, SMK_DARK = { value: new THREE.Vector3(0.36, 0.43, 0.56) };   // the day's, till the sky is there
+const NO_SUN = THREE.ShaderChunk.lights_fragment_begin.replace('#if ( NUM_DIR_LIGHTS > 0 ) && defined( RE_Direct )', '#if 0');
+function particleMat(m, key, scatter = false) {
   const base = THREE.Material.prototype.onBeforeCompile;   // the page's own patch (world/terrain.js) stays: these are worldSpace, it lifts nothing
   m.onBeforeCompile = function (s) {
     base.call(this, s);
     s.vertexShader = 'attribute vec4 aP;\nvarying vec2 vP;\n' + s.vertexShader.replace('#include <uv_vertex>', '#include <uv_vertex>\nvMapUv = vMapUv * 0.5 + aP.zw;\nvP = aP.xy;');
     s.fragmentShader = 'varying vec2 vP;\n' + s.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.a *= vP.x;')
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vP.y * vec3(2.4, 1.0, 0.3);');
+    if (!scatter) return;
+    const su = sky && sky.material && sky.material.uniforms;
+    s.uniforms.uSmkLit = su && su.uCloudLit ? su.uCloudLit : SMK_LIT; s.uniforms.uSmkDark = su && su.uCloudDark ? su.uCloudDark : SMK_DARK; s.uniforms.uSmkSun = U.sunDir;
+    s.fragmentShader = 'uniform vec3 uSmkLit, uSmkDark, uSmkSun;\n' + s.fragmentShader
+      .replace('#include <lights_fragment_begin>', NO_SUN)
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n{ vec3 sv = normalize((viewMatrix * vec4(uSmkSun, 0.0)).xyz);\n'
+        + '  float k = 0.5 + 0.5 * dot(normal, sv), f = pow(max(0.0, dot(normalize(-vViewPosition), sv)), 5.0);\n'
+        + '  totalEmissiveRadiance += diffuseColor.rgb * (mix(uSmkDark, uSmkLit, k) + uSmkLit * f * 0.6); }');
   };
   m.customProgramCacheKey = () => key;
   return worldSpace(m);
@@ -226,7 +242,7 @@ function cloud(geo, mat, max, order) {
   mesh.userData.noProbe = true; scene.add(mesh);
   return { mesh, aP, list: [], free: Array.from({ length: max }, () => ({})) };
 }
-const smokeMat = particleMat(new THREE.MeshLambertMaterial({ map: SMOKE_TEX, transparent: true, depthWrite: false }), 'nade-smoke');
+const smokeMat = particleMat(new THREE.MeshLambertMaterial({ map: SMOKE_TEX, transparent: true, depthWrite: false }), 'nade-smoke', true);
 const fireMat = particleMat(new THREE.MeshBasicMaterial({ map: FIRE_TEX, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }), 'nade-fire');
 const SMOKE = cloud(bentQuad(), smokeMat, 900, 1), FIRE = cloud(new THREE.PlaneGeometry(1, 1), fireMat, 320, 2);
 // the napalm's carpet of flame: ordinary blending, not additive — added light washes out on a sunlit street, while
@@ -358,7 +374,9 @@ function layCanister(z, n) {
 function addZone(m) {
   const n = list.get(m.id); if (n) { freeTrail(n.trail); list.delete(m.id); if (m.kind !== 'smoke') scene.remove(n.mesh); }   // the flying copy goes into its zone
   const durMs = m.durMs != null ? m.durMs : m.left != null ? m.left : 8000, age = m.left != null && m.durMs != null ? Math.max(0, m.durMs - m.left) : 0;
-  const z = { kind: m.kind, x: m.x, y: m.y, z: m.z, r: m.r || 4, t: age / 1000, dur: durMs / 1000, acc: 0, acc2: 0, acc3: 0, n: 0, fk: 1, core: null, can: null, nx: m.x, ny: m.y + 0.1, nz: m.z, hx: 1, hz: 0 };
+  // born: the zone's clock runs by the wall clock, not by the sum of the frames: a tab left in the background (its
+  // frames held back) or a hitch would leave it behind the server's, and the server's zoneEnd would cut it off unfaded
+  const z = { kind: m.kind, x: m.x, y: m.y, z: m.z, r: m.r || 4, t: age / 1000, born: performance.now() - age, dur: durMs / 1000, acc: 0, acc2: 0, acc3: 0, n: 0, fk: 1, core: null, can: null, nx: m.x, ny: m.y + 0.1, nz: m.z, hx: 1, hz: 0 };
   zones.set(m.id, z);
   if (m.kind === 'fire') {
     emit(FIRE, { x: m.x, y: m.y + 0.4, z: m.z, life: 0.12, s0: 2.5, s1: 4, grow: 1, c0: [5, 3, 1.2], c1: [2.5, 1, 0.3], fout: 0, frame: 2 });   // the pop of ignition
@@ -479,8 +497,9 @@ function drawVeil(dt) {
 }
 function tickZones(dt) {
   let lit = null, ld = 1e9;
+  const now = performance.now();
   for (const [id, z] of zones) {
-    z.t += dt;
+    z.t = (now - z.born) / 1000;
     if (z.t >= z.dur) { dropZone(id); continue; }
     if (z.kind === 'smoke') { tickSmoke(z, dt); continue; }
     const fade = Math.min(1, z.t * 3) * Math.min(1, (z.dur - z.t) / 1.5 + 0.15);   // breathes in, dies out
