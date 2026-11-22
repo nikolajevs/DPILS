@@ -15,7 +15,11 @@
    probe), the http counters (index.mjs calls note() on every answered request), the WebSocket crowd, the insides of
    the fight (grenades and bullets in the air, the zones, the cargo, the marks, the match roster, the storm circles)
    and the whitelisted environment (never ADMIN_PASS itself). /admin/api/player?id= is the full safe dump of one
-   player: the inventory, the reload and protection timers, the pose history length, the message rate. */
+   player: the inventory, the reload and protection timers, the pose history length, the message rate.
+   Events side (the «Ивенты» tab): /admin/api/events reads the settings and the live state of the three events — the
+   «Царь горы» race, the cargo drop and the storm; /events/<kind> tunes the rules and the auto-run flag (events.mjs
+   keeps them in server/data/events.json), /events/holy/start|stop|next and /events/cargo/drop|remove|next drive the
+   events by hand, /events/reset restores the defaults. The storm settings apply to the next match. */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -23,12 +27,13 @@ import util from 'node:util';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { idOf } from './leaderboard.mjs';
+import { CARGO, HOLY } from './combat.mjs';
 
 const TTL = 12 * 3600 * 1000, MAX_SESSIONS = 64, LOG_CAP = 1000;
-const ENV_KEYS = ['PORT', 'SERVER_NAME', 'MODE', 'ARENA', 'BOTS', 'BOT_LEVEL', 'WIN_SCORE', 'MATCH', 'DAY_MIN', 'LEADERBOARD', 'ACCOUNTS', 'TEAMS', 'STATIC', 'NODE_ENV'];
+const ENV_KEYS = ['PORT', 'SERVER_NAME', 'MODE', 'ARENA', 'BOTS', 'BOT_LEVEL', 'WIN_SCORE', 'MATCH', 'DAY_MIN', 'LEADERBOARD', 'ACCOUNTS', 'TEAMS', 'EVENTS', 'STATIC', 'NODE_ENV'];
 const mb = b => Math.round(b / 1048576 * 10) / 10;
 
-export function createAdmin({ pass, game, accounts = null, board = null, teams = null, social = null, clients = () => 0, sockets = () => [], files = [] }) {
+export function createAdmin({ pass, game, accounts = null, board = null, teams = null, social = null, events = null, clients = () => 0, sockets = () => [], files = [] }) {
   if (!pass) return { route: () => false, note: () => {} };   // no password — no panel: the paths fall through to the usual 404
   const page = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'admin.html'), 'utf8');
   const want = crypto.createHash('sha256').update(String(pass)).digest();
@@ -142,6 +147,29 @@ export function createAdmin({ pass, game, accounts = null, board = null, teams =
       return { bots };
     },
     'POST /cargo': () => game.cargo ? { code: 409, error: 'active' } : (game.cargoDrop(), { ok: true }),
+    // the events: the settings and the auto-run flag (events.mjs), the live state from the game
+    'GET /events': () => {
+      if (!events) return { code: 501, error: 'off' };
+      const t = Date.now(), h = game.holyState(), c = game.cargoState(), hs = game.health();
+      return {
+        ...events.view(),
+        state: {
+          holy: h ? { active: true, id: h.id, left: h.left, until: h.until, held: h.points.filter(p => p.owner).length, hold: h.hold, points: h.points.map(p => ({ i: p.i, temple: HOLY.temples[p.i].short, owner: p.owner, name: p.name, prog: p.prog })) } : { active: false, nextIn: Math.max(0, game.holyNextAt - t) },
+          cargo: c ? { active: true, id: c.id, state: c.state, x: Math.round(c.x), z: Math.round(c.z), left: Math.max(0, (c.until || c.landAt) - t) } : { active: false, nextIn: Math.max(0, game.cargoNextAt - t) },
+          storm: { match: hs.match || null, live: hs.storm || null },
+        },
+      };
+    },
+    'POST /events/holy': m => evSet('holy', m),
+    'POST /events/cargo': m => evSet('cargo', m),
+    'POST /events/storm': m => evSet('storm', m),
+    'POST /events/holy/start': () => { const r = game.holyStart(); return r === 'ok' ? { ok: true } : { code: 409, error: r }; },
+    'POST /events/holy/stop': () => game.holyStop() ? { ok: true } : { code: 409, error: 'idle' },
+    'POST /events/holy/next': m => game.holyNext(clampMs(m.inMs, HOLY.gapMs)) ? { ok: true } : { code: 409, error: 'active' },
+    'POST /events/cargo/drop': () => game.cargo ? { code: 409, error: 'active' } : (game.cargoDrop(), { ok: true }),
+    'POST /events/cargo/remove': () => game.cargoRemove() ? { ok: true } : { code: 409, error: 'idle' },
+    'POST /events/cargo/next': m => game.cargoNext(clampMs(m.inMs, CARGO.gapMs)) ? { ok: true } : { code: 409, error: 'active' },
+    'POST /events/reset': m => { const k = ['holy', 'cargo', 'storm', 'all'].includes(m.kind) ? m.kind : 'all'; events.reset(k); return { ok: true, kind: k }; },
     'GET /accounts': (m, q) => {
       if (!accounts) return { code: 501, error: 'off' };
       const r = accounts.list({ q: q.get('q') || '', limit: +q.get('limit') || 200 });
@@ -249,6 +277,15 @@ export function createAdmin({ pass, game, accounts = null, board = null, teams =
       } };
     },
   };
+
+  // the events: a patch of settings and/or the auto-run flag; the store clamps the values and keeps them between restarts
+  function evSet(kind, m) {
+    if (!events) return { code: 501, error: 'off' };
+    if (m.enabled !== undefined) events.setEnabled(kind, !!m.enabled);
+    if (m.cfg !== undefined) { const r = events.set(kind, m.cfg); if (r.error) return { code: 400, error: r.error }; }
+    return { ok: true };
+  }
+  const clampMs = (v, def) => { const n = +v; return Number.isFinite(n) ? Math.max(0, Math.min(86400000, n)) : def; };
 
   function finish(res, r) {
     if (r && r.code) reply(res, r.code, { ok: false, error: r.error || 'error' });

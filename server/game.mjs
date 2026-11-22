@@ -438,6 +438,8 @@ export function createGame(opts) {
   const arenaPub = a => a && { name: a.name, cx: a.cx, cz: a.cz, r: a.r, bases: a.bases };
   const bootAt = now();
   const fmtMin = ms => { const m = Math.round(ms / 60000); return m >= 60 && m % 60 === 0 ? m / 60 + ' ч' : m + ' мин'; };
+  const fmtSpan = ms => ms < 60000 ? Math.round(ms / 1000) + ' с' : fmtMin(ms);   // an event's span in the chat: seconds under a minute
+  const evOn = kind => !opts.events || opts.events.enabled(kind);   // the event's auto-run: the admin panel can pause the schedule (events.mjs)
   const stormFight = () => !!storm && (storm.phase === 'play' || storm.phase === 'sudden');
   const stormAlive = () => [...players.values()].filter(p => p.alive);
   // the storm is fought by units: a side in the team fight; in the free-for-all a team of the players is one, everybody else his own
@@ -733,12 +735,13 @@ export function createGame(opts) {
     if (!cargo) return;
     if (cargo.zoneId) { zones.delete(cargo.zoneId); all({ t: 'zoneEnd', id: cargo.zoneId }); }
     all({ t: why === 'took' ? 'cargoTook' : 'cargoEnd', id: cargo.id, to: cargo.tookBy || undefined, name: cargo.tookName || undefined });
+    if (why === 'admin') all({ t: 'chat', text: '📦 Груз убран администратором' });
     cargo = null; nextCargoAt = t + CARGO.gapMs;
   }
   function stepCargo(t) {
     for (const p of players.values()) if (p.markUntil && t >= p.markUntil) { p.markUntil = 0; all({ t: 'unmark', id: p.id }); }
     if (roundOver) return;
-    if (!cargo) { if (t >= nextCargoAt && players.size && !storm && !holy) dropCargo(); return; }   // the storm and the race run their own fight: no new crate while they hold the field
+    if (!cargo) { if (evOn('cargo') && t >= nextCargoAt && players.size && !storm && !holy) dropCargo(); return; }   // the storm and the race run their own fight: no new crate while they hold the field
     if (cargo.state === 'fall') {
       if (t < cargo.landAt) return;
       cargo.state = 'landed'; cargo.until = t + CARGO.groundMs;
@@ -761,7 +764,7 @@ export function createGame(opts) {
       if (p.conn) invMsg(p);
       all({ t: 'marked', id: p.id, until: p.markUntil, name: p.name });
       cargoGone(t, 'took');
-      all({ t: 'chat', text: '🎯 ' + p.name + ' забрал груз — теперь он мишень для всех (60 с)' });
+      all({ t: 'chat', text: '🎯 ' + p.name + ' забрал груз — теперь он мишень для всех (' + Math.round(CARGO.markMs / 1000) + ' с)' });
       sendBoard();
       return;
     }
@@ -790,7 +793,7 @@ export function createGame(opts) {
     if (!holy) return null;
     const t = now();
     return {
-      id: holy.id, t0: holy.t0, until: holy.until, left: Math.max(0, holy.until - t), capMs: HOLY.capMs, capR: HOLY.capR, holdMs: HOLY.holdMs,
+      id: holy.id, t0: holy.t0, until: holy.until, left: Math.max(0, holy.until - t), capMs: HOLY.capMs, capR: HOLY.capR, holdMs: HOLY.holdMs, buffs: { ...HOLY.buffs }, buffName: { ...HOLY.buffName },
       points: holy.points.map(pt => ({ i: pt.i, x: pt.x, z: pt.z, gy: pt.gy, owner: pt.owner, team: pt.team, name: pt.name, prog: +pt.prog.toFixed(3), progSide: pt.progSide, progTeam: pt.progTeam, ringAt: pt.ringAt })),
       hold: holy.holdSide ? { side: holy.holdSide, team: holy.holdTeam, name: sideName(holy.holdSide), left: Math.max(0, holy.holdStart + HOLY.holdMs - t) } : null,
       arena: arenaPub(holyArena),
@@ -803,7 +806,10 @@ export function createGame(opts) {
     return walkSpot(A.cx, A.cz);
   }
   function startHoly(t) {
-    if (holy || storm || roundOver || !players.size) return;
+    if (holy) return 'active';
+    if (storm) return 'storm';
+    if (roundOver) return 'round';
+    if (!players.size) return 'no-players';
     if (cargo) cargoGone(t, 'end');   // the crate steps aside: the hill is the whole fight now
     holyArena = { ...ARENAS.church, bases: ARENAS.church.bases.map(b => b.map(([x, z]) => walkSpot(x, z))) };
     areaRev++;
@@ -815,7 +821,8 @@ export function createGame(opts) {
       const [x, z] = hillSpot(p); spawn(p, x, z, Math.atan2(holyArena.cx - x, holyArena.cz - z) + Math.PI, true);
     }
     all({ t: 'holy', ...holyPublic() });
-    all({ t: 'chat', text: '🔔 Царь горы! Все на Церковную горку: захватите четыре колокольни, удержите все 3 минуты — главный приз' });
+    all({ t: 'chat', text: '🔔 Царь горы! Все на Церковную горку: захватите четыре колокольни, удержите все ' + fmtSpan(HOLY.holdMs) + ' — главный приз' });
+    return 'ok';
   }
   function capture(pt, side, byName, t) {
     pt.owner = side.u; pt.team = side.team; pt.name = side.name; pt.prog = 1; pt.progSide = side.u; pt.progTeam = side.team; pt.ringAt = t;
@@ -832,7 +839,7 @@ export function createGame(opts) {
       else { send(p, { t: 'heal', hp: p.hp, meds: p.meds, quiet: 1 }); invMsg(p); }
     }
     all({ t: 'holyWin', side: u, team, name: sideName(u), score: FFA ? [] : teamScore });
-    all({ t: 'chat', text: '🏆 ' + sideName(u) + ' удержали все храмы 3 минуты — главный приз! ' + (FFA ? '+' + HOLY.prizeKills + ' очков каждому' : '+' + HOLY.prizeScore + ' очков команде') + ', все живы и снаряжены' });
+    all({ t: 'chat', text: '🏆 ' + sideName(u) + ' удержали все храмы ' + fmtSpan(HOLY.holdMs) + ' — главный приз! ' + (FFA ? '+' + HOLY.prizeKills + ' очков каждому' : '+' + HOLY.prizeScore + ' очков команде') + ', все живы и снаряжены' });
     sendBoard();
     endHoly(t, u, 'win');
     if (FFA) { for (const p of winners) if (p.kills >= WIN) { endRound(p.team, p); break; } }
@@ -851,11 +858,13 @@ export function createGame(opts) {
     all({ t: 'holyEnd', reason, winner: winner || undefined, arena: arenaPub(arena) });
     if (reason === 'time') all({ t: 'chat', text: 'Царь горы завершён — никто не удержал все храмы' });
     else if (reason === 'storm') all({ t: 'chat', text: 'Царь горы прерван штормом' });
+    else if (reason === 'admin') all({ t: 'chat', text: 'Царь горы остановлен администратором' });
   }
   function stepHoly(t) {
     if (roundOver) return;
     if (!holy) {
-      if (!holyWarned && t >= nextHolyAt - HOLY.warnMs && t < nextHolyAt && players.size && !storm) { holyWarned = true; all({ t: 'chat', text: '⛪ Царь горы через 30 с — собирайтесь на Церковной горке' }); }
+      if (!evOn('holy')) { holyWarned = false; return; }   // the schedule is paused by the admin panel
+      if (!holyWarned && t >= nextHolyAt - HOLY.warnMs && t < nextHolyAt && players.size && !storm) { holyWarned = true; all({ t: 'chat', text: '⛪ Царь горы через ' + Math.round(HOLY.warnMs / 1000) + ' с — собирайтесь на Церковной горке' }); }
       if (t >= nextHolyAt && players.size && !storm && !cargo) startHoly(t);
       return;
     }
@@ -881,7 +890,7 @@ export function createGame(opts) {
     // all four in one hand: the three-minute hold begins
     const owned = holy.points.every(pt => pt.owner), one = owned && new Set(holy.points.map(pt => pt.owner)).size === 1 ? holy.points[0].owner : null;
     if (one) {
-      if (holy.holdSide !== one) { holy.holdSide = one; holy.holdTeam = FFA ? -1 : +one.slice(1); holy.holdStart = t; all({ t: 'chat', text: '⛪ ' + sideName(one) + ' держат все храмы — пошёл отсчёт 3 минут!' }); all({ t: 'holy', ...holyPublic() }); holy.lastBeat = t; }
+      if (holy.holdSide !== one) { holy.holdSide = one; holy.holdTeam = FFA ? -1 : +one.slice(1); holy.holdStart = t; all({ t: 'chat', text: '⛪ ' + sideName(one) + ' держат все храмы — пошёл отсчёт ' + fmtSpan(HOLY.holdMs) + '!' }); all({ t: 'holy', ...holyPublic() }); holy.lastBeat = t; }
       else if (t - holy.holdStart >= HOLY.holdMs) { holyPrize(one, t); return; }
     } else if (holy.holdSide) { holy.holdSide = null; holy.holdTeam = -1; all({ t: 'chat', text: 'Удержание прервано — храмы снова врозь' }); all({ t: 'holy', ...holyPublic() }); holy.lastBeat = t; }
     // the catholic regen: a little health each tick to the living of the holding side
@@ -927,9 +936,17 @@ export function createGame(opts) {
     get cargo() { return cargo; },   // the supply drop in flight or on the ground: the tests drive it by their own clock
     stepCargo: () => stepCargo(now()),   // the drop, the landing, the pickup and the mark's minute, for the tests
     cargoDrop: () => dropCargo(),   // and a drop on demand, without waiting out the first minute
+    cargoRemove: () => { if (!cargo) return false; cargoGone(now(), 'admin'); return true; },   // the admin takes the crate away
+    cargoNext: ms => { if (cargo) return false; nextCargoAt = now() + Math.max(0, ms); return true; },   // the next drop rescheduled by the admin
+    get cargoNextAt() { return nextCargoAt; },   // when the next crate is due: the admin panel's countdown
+    cargoState: () => cargoMsg(),   // the public picture of the crate: the panel reads its state and place
     get holy() { return holy; },   // the race on the hill: the tests read the points and the hold
     stepHoly: () => stepHoly(now()),   // the capture, the bell, the buff and the prize, for the tests
-    holyStart: () => startHoly(now()),   // and the call to the hill on demand
+    holyStart: () => startHoly(now()),   // the call to the hill on demand: 'ok', or the reason it refused ('active', 'storm', 'round', 'no-players')
+    holyStop: () => { if (!holy) return false; endHoly(now(), null, 'admin'); return true; },   // the admin ends the race: everyone goes back to his place
+    holyNext: ms => { if (holy) return false; nextHolyAt = now() + Math.max(0, ms); holyWarned = false; return true; },   // the next call rescheduled by the admin
+    get holyNextAt() { return nextHolyAt; },   // when the next race is due: the admin panel's countdown
+    holyState: () => holyPublic(),   // the public picture of the race: the panel reads the points and the hold
     stepBullets: () => advanceBullets(now()),   // the tests drive the flight by their own clock
     stepNades: tickNades,   // the tests drive the fuse and the zones by their own clock too
     stepBots,   // and the bots' think by the test clock, for the fall test

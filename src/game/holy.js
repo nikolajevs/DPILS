@@ -11,7 +11,7 @@ import { camera, scene } from '../render/renderer.js';
 import { $, reduceMotion } from '../core/env.js';
 import { HOLY } from '../../server/combat.mjs';
 
-const S = { on: false, id: 0, points: [], hold: null, left: 0, recvAt: 0, capR: HOLY.capR, capMs: HOLY.capMs, holdMs: HOLY.holdMs, flashes: [] };
+const S = { on: false, id: 0, points: [], hold: null, left: 0, recvAt: 0, capR: HOLY.capR, capMs: HOLY.capMs, holdMs: HOLY.holdMs, buffs: { ...HOLY.buffs }, buffName: { ...HOLY.buffName }, flashes: [] };   // buffs and their labels come with the 'holy' message: the admin panel can tune them live (server/events.mjs)
 let ME = { unit: 't0', ffa: false };
 export function holyMe(unit, ffa) { ME = { unit, ffa }; }
 export const holyAudio = { bell: null };   // mp.js wires it to the game's one audio context (bellSound)
@@ -22,7 +22,7 @@ function ownerColor(owner, team) {
   return owner === ME.unit ? GOLD : RUST;
 }
 const myBuffs = () => { const b = {}; if (S.on) for (const pt of S.points) if (pt.owner === ME.unit) b[HOLY.temples[pt.i].buff] = true; return b; };
-export function holySpeedMul() { return myBuffs().speed ? HOLY.buffs.speed : 1; }
+export function holySpeedMul() { return myBuffs().speed ? S.buffs.speed : 1; }
 
 /* ---------- the 3D markers ---------- */
 const BEAM_VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }';
@@ -91,6 +91,8 @@ export function setHoly(m) {
   if (!m) return;
   const first = !S.on;
   S.on = true; S.id = m.id; S.left = m.left; S.recvAt = performance.now(); S.capR = m.capR; S.capMs = m.capMs; S.holdMs = m.holdMs; S.hold = m.hold;
+  if (m.buffs) S.buffs = m.buffs;
+  if (m.buffName) S.buffName = m.buffName;
   const byI = new Map(S.points.map(pt => [pt.i, pt]));
   S.points = m.points.map(p => { const old = byI.get(p.i); return { ...p, vis: old ? old.vis : null }; });
   build();
@@ -102,7 +104,7 @@ function buildChips() {
   const box = $('holyPoints'); box.textContent = '';
   for (const tp of HOLY.temples) {
     const chip = document.createElement('div'); chip.className = 'holy-chip'; chip.dataset.i = tp.short;
-    chip.title = tp.name + ' · ' + tp.faith + ' · ' + HOLY.buffName[tp.buff];
+    chip.title = tp.name + ' · ' + tp.faith + ' · ' + (S.buffName[tp.buff] || HOLY.buffName[tp.buff]);
     chip.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a4 4 0 0 1 4 4c0 3 1.5 4.5 2 6H6c.5-1.5 2-3 2-6a4 4 0 0 1 4-4zM10 19a2 2 0 0 0 4 0M12 1v2"/></svg><b></b><i class="holy-dot"></i><div class="holy-prog"><i></i></div>';
     chip.querySelector('b').textContent = tp.short;
     box.append(chip);
@@ -172,7 +174,7 @@ export function holyTick(dt) {
     buffBox.dataset.have = want; buffBox.textContent = '';
     const ICO = { dmg: 'M6 3l12 12M18 3L6 15M4 17l3 3M17 4l3 3', regen: 'M12 5v14M5 12h14', speed: 'M13 2 4.5 13.5H11L9.5 22 19 10h-6.5z', reload: 'M4 12a8 8 0 1 1 2.3 5.7M4 12V7m0 5h5' };
     for (const k of Object.keys(b)) {
-      const s = document.createElement('span'); s.className = 'holy-buff'; s.title = HOLY.buffName[k];
+      const s = document.createElement('span'); s.className = 'holy-buff'; s.title = S.buffName[k] || HOLY.buffName[k];
       s.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + ICO[k] + '"/></svg>';
       buffBox.append(s);
     }
@@ -199,7 +201,7 @@ export function holyTick(dt) {
     V.set(pt.x, pt.gy + 9.5, pt.z).project(camera);
     if (V.z < 1 && Math.abs(V.x) < 1.1 && Math.abs(V.y) < 1.1 && d < 240 && !STATE.mpDead) {
       vis.label.hidden = false;
-      const txt = HOLY.temples[pt.i].short.toUpperCase() + ' · ' + HOLY.buffName[HOLY.temples[pt.i].buff];
+      const txt = HOLY.temples[pt.i].short.toUpperCase() + ' · ' + (S.buffName[HOLY.temples[pt.i].buff] || HOLY.buffName[HOLY.temples[pt.i].buff]);
       if (vis.label.textContent !== txt) vis.label.textContent = txt;
       vis.label.style.borderColor = '#' + vis.col.getHexString();
       vis.label.style.transform = 'translate(-50%,-100%) translate(' + ((V.x + 1) / 2 * w).toFixed(0) + 'px,' + ((1 - V.y) / 2 * h).toFixed(0) + 'px)';

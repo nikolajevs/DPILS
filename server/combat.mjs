@@ -91,6 +91,7 @@ export const NADE_KINDS = ['nade', 'smoke', 'napalm'];   // the frag, the smoke,
 // minutes — meds, grenades and the rare 8× optic inside, a smoke beacon marks the landing. Whoever takes the loot is
 // marked for everyone for markMs: the bait is the fight around the crate. The crate waits on the ground groundMs,
 // then is gone; the next drop comes gapMs after the previous one ended (taken or expired).
+// The admin panel's «Ивенты» tab tunes these values live and keeps them in server/data/events.json (server/events.mjs).
 export const CARGO = {
   firstMs: 75000, gapMs: 150000, alt: 130, speed: 6.5, pickR: 2.6, groundMs: 150000, markMs: 60000, beaconR: 5,
   loot: [['med', 2], ['nade', 1], ['smoke', 1], ['napalm', 1], ['optic', 1]],   // belt first, the surplus into the pack; the optic only if not already owned
@@ -102,6 +103,8 @@ export const CARGO = {
 // by standing in its ring; the taken temple rings its bell across the whole city and grants its buff to the side that
 // holds it. A side that holds all four for holdMs wins the grand prize. The bells are synthesised on the page (sfx.js
 // bellSound), one strike note per temple — together they spell a chord.
+// The admin panel's «Ивенты» tab tunes the timings, the prize and the buffs live (server/events.mjs); the page gets
+// the changed buffs and their labels in the 'holy' message, so the picture and the prediction stay with the server.
 export const HOLY = {
   firstMs: 240000, gapMs: 420000, durMs: 420000, warnMs: 30000,   // the first call, the gap after one ends, its length, the warning before
   capMs: 7000, capR: 13, holdMs: 180000,   // a point takes 7 s alone in the ring (13 m); all four held 3 minutes win the prize
