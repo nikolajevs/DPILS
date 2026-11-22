@@ -219,8 +219,18 @@ export function createBrain(g) {
     b.lastHp = p.hp;
     // look for the nearest enemy that can be seen (not every tick); remember where it was last seen to chase it round a corner
     if ((b.look -= dt) <= 0) {
-      b.look = 0.25; let best = 0, bd = 1e9;
-      for (const q of g.players.values()) { if (q === p || !q.alive || (!g.FFA && q.team === p.team) || now <= q.protectUntil) continue; const d = visible(p, q); if (d && d < bd) { bd = d; best = q.id; } }
+      b.look = 0.25; let best = 0, bd = 1e9, markedAt = null;
+      for (const q of g.players.values()) {
+        if (q === p || !q.alive || (!g.FFA && q.team === p.team) || now <= q.protectUntil) continue;
+        if (q.markUntil > now) {   // the cargo carrier is marked for everyone: the position is known even through walls
+          const dm = Math.hypot(q.x - p.x, q.z - p.z);
+          if (dm < L.sight * 1.8) markedAt = { x: q.x, z: q.z, at: now };
+          const d = visible(p, q); if (d && d * 0.5 < bd) { bd = d * 0.5; best = q.id; }   // in sight: the mark doubles the priority
+          continue;
+        }
+        const d = visible(p, q); if (d && d < bd) { bd = d; best = q.id; }
+      }
+      if (markedAt) b.lastSeen = markedAt;   // the mark tells where the carrier is: chase it round the corners
       if (best !== b.target) { b.target = best; if (best) b.react = now + L.react * 1000 * rnd(0.7, 1.3) * (b.alert && now - b.alert.at < 2200 ? 0.5 : 1); }   // an alerted bot snaps round quicker
     }
     const q = b.target && g.players.get(b.target);
@@ -300,6 +310,11 @@ export function createBrain(g) {
         if (stale && now - lastRoute >= 45) {
           lastRoute = now; b.path = null;
           let goal = needItem(p);   // a kit or ammo first
+          const cg = g.cargo;
+          if (!goal && cg) {   // the supply drop draws the bots in: the bait of the event (the fight around the crate)
+            const d = Math.hypot(cg.x - p.x, cg.z - p.z);
+            if (cg.state === 'landed' ? d < 280 : d < 90) goal = [cg.x + rnd(-1.5, 1.5), cg.z + rnd(-1.5, 1.5)];
+          }
           if (!goal && b.lastSeen && now - b.lastSeen.at < 6000) goal = [b.lastSeen.x, b.lastSeen.z];   // then where the enemy went
           for (let k = 0; k < 4 && !b.path; k++) { const t = k === 0 && goal ? goal : waypoint(p); b.path = route(p.x, p.z, t[0], t[1]); }
           b.pi = 0; b.wpAt = now;
