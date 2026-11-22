@@ -304,6 +304,9 @@ button:focus-visible, a:focus-visible, .mini:focus-visible { outline: 2px solid 
 .mp-scope em { left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: #e03528; box-shadow: 0 0 3px rgba(224, 53, 40, .7); }
 /* the red dot of a mounted collimator: the arms stay in view, only the dot replaces the crosshair */
 .mp-dot { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #ff2a1a; box-shadow: 0 0 6px 2px rgba(255, 42, 26, .75), 0 0 18px 6px rgba(255, 42, 26, .28); pointer-events: none; z-index: 4; }
+.mp-dot .dot-hint { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); white-space: nowrap; font: 600 11px/1 'Segoe UI', system-ui, sans-serif; letter-spacing: .3px; color: rgba(255, 255, 255, .82); text-shadow: 0 1px 3px rgba(0, 0, 0, .9); transition: opacity .2s; }
+.mp-dot .dot-hint.cd { opacity: .35; }
+.mp-scope .sc-mag { left: 50%; top: calc(50% + 30vmin); transform: translateX(-50%); background: none; font: 600 12px/1 'Segoe UI', system-ui, sans-serif; letter-spacing: .5px; color: rgba(225, 230, 235, .8); text-shadow: 0 1px 2px rgba(0, 0, 0, .8); }
 .mp-settings { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: rgba(0, 0, 0, .45); padding: 12px; }
 .mp-settings[hidden] { display: none; }
 .mp-settings .panel { width: min(620px, 100%); max-height: calc(100vh - 24px); overflow: hidden; padding: 16px 20px; display: flex; flex-direction: column; background: var(--panel-solid); color: var(--ink); }
