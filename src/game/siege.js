@@ -205,6 +205,16 @@ const ringMat = new THREE.ShaderMaterial({ uniforms: { uColor: domeU.uColor, uTi
 const moteMat = new THREE.ShaderMaterial({ uniforms: { uTime: domeU.uTime, uOpacity: domeU.uOpacity, uFall: domeU.uFall }, vertexShader: MOTE_VS, fragmentShader: MOTE_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
 const shardMat = new THREE.ShaderMaterial({ uniforms: { uT: { value: -1 }, uColor: { value: SHIELD.clone() } }, vertexShader: SHARD_VS, fragmentShader: SHARD_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
 const waveMat = new THREE.ShaderMaterial({ uniforms: { uW: { value: 0 }, uColor: { value: SHIELD.clone() } }, vertexShader: UV_VS, fragmentShader: WAVE_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+// the shard and wave programs warm too: tiny dummies parked under the ground (depth-tested away, two cheap draws),
+// so the fall never compiles a shader in the middle of the fight
+{
+  const bg = new THREE.BufferGeometry();
+  bg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3));
+  bg.setAttribute('aSeed', new THREE.BufferAttribute(new Float32Array(1), 1));
+  bg.setAttribute('aVel', new THREE.BufferAttribute(new Float32Array(3), 3));
+  const bp = new THREE.Points(bg, shardMat); bp.position.set(0, -500, 0); bp.userData.noProbe = true; scene.add(bp);
+  const wp = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), waveMat); wp.position.set(0, -500, 0); wp.userData.noProbe = true; scene.add(wp);
+}
 try {   // warm the six programs on the loading page, not in the fight
   const ws = new THREE.Scene(), tg = [];
   const sg = new THREE.SphereGeometry(1, 8, 4); tg.push(sg);
@@ -217,8 +227,8 @@ try {   // warm the six programs on the loading page, not in the fight
   bg.setAttribute('aMax', new THREE.BufferAttribute(new Float32Array([10]), 1));
   bg.setAttribute('aVel', new THREE.BufferAttribute(new Float32Array(3), 3));
   ws.add(new THREE.Points(bg, moteMat)); ws.add(new THREE.Points(bg, shardMat));
-  renderer.compile(ws, camera);
-  for (const g of tg) g.dispose();
+  const drop = () => { for (const g of tg) g.dispose(); };
+  renderer.compileAsync(ws, camera).then(drop, drop);   // parallel: the loading page must not freeze either
 } catch (e) { /* a lost context warms them later, on the first frame */ }
 function buildDome(d) {
   clearDome();
@@ -252,6 +262,13 @@ function buildDome(d) {
   const motes = new THREE.Points(mg, moteMat);
   motes.position.set(d.cx, gy - 3, d.cz); motes.renderOrder = 15; motes.frustumCulled = false; motes.userData.noProbe = true; scene.add(motes);
   domeLight.position.set(d.cx, gy + 70, d.cz); domeLight.distance = d.r * 2.6;
+  // the loading-time warmup may have compiled under another tone mapping (lighting.js sets it later): compile the
+  // dome's programs again, in parallel, off the main thread — a synchronous first compile here would freeze the
+  // page for tens of seconds and the server's heartbeat would drop the player. The meshes stay hidden until the
+  // programs are ready, so the first drawn frame never falls back to a synchronous compile.
+  for (const m of [glass, shell, ring, motes]) m.visible = false;
+  const show = () => { for (const m of [glass, shell, ring, motes]) m.visible = true; };
+  renderer.compileAsync(scene, camera).then(show, show);
   domeVis = { d: { ...d }, gy, geo, glass, shell, ring, motes, u: domeU, hits: domeU.uHits.value, hitIdx: 0, rise: 0, shards: null, wave: null };
 }
 // the burst: seven hundred hex plates torn off the shell, each with its own hour, toss and spin (GPU-ballistic)
