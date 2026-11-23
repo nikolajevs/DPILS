@@ -17,7 +17,7 @@ import { gameUrl, noteServer, serverPick, serverUrl } from './server.js';
 import { addNade, addZone, endZone, douseFire, burnBodies, fireNow, blastGlow, boomNade, clearBlasts, clearNades, nadeSamples, tickNades, onNadeBounce, setNadeBodies, syncNade, liveNades, liveZones, smokeCores, smokeHides, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
 import { KINDS, SLOT_SVG, bindInv, setItems, itemBack, itemTook, tickItems, renderInv, invTick, closeInv, toggleInv } from './inventory.js';
 import { cargoDrop, cargoLand, cargoTook, cargoEnd, cargoSelf, cargoTick, cargoMap, cargoClock, clearCargo } from './cargo.js';
-import { setHoly, clearHoly, holyBell, holyWin, holyTick, holyMap, holyMe, holySpeedMul, holyState, holyAudio } from './holy.js';
+import { setHoly, clearHoly, holyBell, holyWin, holyTick, holyMap, holyMe, holySpeedMul, holyState, holyAudio, holyEnlist, holyEnlisted } from './holy.js';
 import { setSiege, siegeYou, siegeOut, siegeWin, clearSiege, siegeTick, siegeMap, siegeNet } from './siege.js';
 import { terrainH } from '../world/terrain.js';
 import { camera, canvas, renderer, scene } from '../render/renderer.js';
@@ -843,11 +843,18 @@ function freeChoices() {   // the open city (the race ended): the chosen place, 
   for (const [v, t] of (MP.clan ? [['mate', 'Рядом с товарищем']] : []).concat([['rand', 'Случайное место']], PLACES.map((p, i) => [i, p[0]]))) { const o = document.createElement('option'); o.value = v; o.textContent = t; rs.append(o); }
 }
 const holyUnit = () => (MP.clan ? 'c' + MP.clan : 'p' + MP.id);   // the unit of the race (unitOf in server/game.mjs): the own team, or me alone
+function hillChoice(on) {   // enlisted in the «Царь горы» (the first altar taken): coming back by the hill is the first choice, and chosen
+  const rs = el('mpRespawnAt'), o = rs.querySelector('option[value=hill]');
+  if (!on) { if (o) o.remove(); return; }
+  if (o) return;
+  const n = document.createElement('option'); n.value = 'hill'; n.textContent = 'У Церковной горки (ивент)'; rs.prepend(n); rs.value = 'hill';
+}
 function edgeNotice() { const now = performance.now(); if (now - (MP.edgeAt || 0) > 3000) feed('Граница арены: дальше нельзя', 'sys'); MP.edgeAt = now; }
 function domeNotice() { const now = performance.now(); if (now - (MP.domeAt || 0) > 3000) feed('Защитный купол: не пройти', 'sys'); MP.domeAt = now; }
 function respawn() {
   if (stormOn() || !MP.dead || performance.now() - MP.deadAt < 3000) return;   // the storm does not respawn: one life, the dead watch the end
   const v = el('mpRespawnAt').value; if (v === 'base') { MP.ws.send(JSON.stringify({ t: 'respawn' })); return; }
+  if (v === 'hill') { MP.ws.send(JSON.stringify({ t: 'respawn', hill: true, ...spawnPoint(-1) })); return; }   // by the hill while the race runs (the server checks the enlistment), else anywhere
   if (v === 'mate') { MP.ws.send(JSON.stringify({ t: 'respawn', mate: true })); return; }
   MP.ws.send(JSON.stringify({ t: 'respawn', ...spawnPoint(v === 'rand' ? -1 : +v) }));
 }
@@ -860,7 +867,7 @@ function onMsg(m) {
       cargoClock(m.now || Date.now()); clearCargo(); for (const id of [...marks.keys()]) markRemote(id, false); marks.clear();
       if (m.cargo) { cargoDrop(m.cargo); if (m.cargo.state === 'landed') cargoLand(m.cargo); }
       for (const mk of m.marks || []) { marks.set(mk.id, mk.until); if (mk.id === MP.id) cargoSelf(mk.until); else markRemote(mk.id, true); }
-      for (const [id, a] of Object.entries(m.attach || {})) { const r = remotes.get(+id); if (r && Array.isArray(a)) { r.attach = a; if (r.av) a.forEach((k, w) => r.av.setAttach(w, k)); } } clearHoly(); holyMe(holyUnit()); if (m.holy) setHoly(m.holy); P.speedMul = holySpeedMul(); clearSiege(); if (m.siege) setSiege(m.siege, m.mySide); if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name, 'sys'); }
+      for (const [id, a] of Object.entries(m.attach || {})) { const r = remotes.get(+id); if (r && Array.isArray(a)) { r.attach = a; if (r.av) a.forEach((k, w) => r.av.setAttach(w, k)); } } clearHoly(); hillChoice(false); holyMe(holyUnit()); if (m.holy) setHoly(m.holy); P.speedMul = holySpeedMul(); clearSiege(); if (m.siege) setSiege(m.siege, m.mySide); if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name, 'sys'); }
       if (MP.local) feed('Тренировка с ботами: ' + MP.board.filter(e => e.bot).length + ', уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || '') + '»', 'sys'); break;
     case 'spawn': {
       nadeCancel(); punchReset();
@@ -959,9 +966,10 @@ function onMsg(m) {
     case 'marked': marks.set(m.id, m.until); if (m.id === MP.id) { cargoSelf(m.until); tone(320, 150, 0.45, 0.4, 'sawtooth'); feed('Вы помечены для всех — 60 секунд', 'dead'); } else markRemote(m.id, true); break;
     case 'unmark': marks.delete(m.id); if (m.id === MP.id) cargoSelf(0); else markRemote(m.id, false); break;
     case 'holy': { const was = holyState.on; holyMe(holyUnit()); setHoly(m); if (m.arena) { MP.arena = m.arena; arenaChoices(); } P.speedMul = holySpeedMul(); if (!was) { banner('ЦАРЬ ГОРЫ', 'holy'); tone(523, 523, 0.3, 0.25, 'triangle'); tone(659, 659, 0.35, 0.22, 'triangle', 0.12); tone(784, 784, 0.5, 0.2, 'triangle', 0.24); } break; }   // the call to Church Hill: a rising chord
-    case 'bell': holyBell(m); break;   // a temple taken: its bell rings across the city (holy.js sounds it and flashes the map)
+    case 'bell': holyBell(m); break;
+    case 'holyIn': holyEnlist(m); if (holyEnlisted()) { hillChoice(true); feed('Вы в ивенте «Царь горы»: после гибели — возрождение у Церковной горки', 'sys'); } break;   // the first altar I took enlisted me   // a temple taken: its bell rings across the city (holy.js sounds it and flashes the map)
     case 'holyWin': holyWin(m); banner((m.name || 'Победитель') + ' — ГЛАВНЫЙ ПРИЗ', 'holy'); break;
-    case 'holyEnd': clearHoly(); MP.arena = m.arena || null; P.speedMul = 1; if (MP.arena) arenaChoices(); else freeChoices(); break;
+    case 'holyEnd': clearHoly(); hillChoice(false); MP.arena = m.arena || null; P.speedMul = 1; if (MP.arena) arenaChoices(); else freeChoices(); break;
     case 'siege': { const r = setSiege(m);   // the siege of the fortress: the registration, the dome, the assault
       if (r && r.first) { banner('ШТУРМ ДИНАБУРГА', 'siege'); tone(392, 392, 0.3, 0.25, 'triangle'); tone(523, 523, 0.35, 0.22, 'triangle', 0.14); tone(659, 659, 0.5, 0.2, 'triangle', 0.28); }
       else if (r && r.prevPhase === 'reg' && m.phase === 'prep') { banner('КУПОЛ ПОДНЯТ — ПОДГОТОВКА', 'siege'); tone(330, 220, 0.5, 0.25, 'sine'); }

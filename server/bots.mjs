@@ -54,18 +54,23 @@ const JUMP_V = 6.4;   // the dodge hop lifts the bot at the player's own jump sp
 export function createBrain(g) {
   const world = g.world;
   // the storm of the match (game.mjs) opens the whole field to the bots of the open city: they follow the circle wherever
-  // its final point lies; an arena keeps its edge (the circle lies inside it). The area is read live (g.area): the «Царь
-  // горы» swaps it for the Church Hill arena mid-fight, and the bots follow the field they are given
+  // its final point lies; an arena keeps its edge (the circle lies inside it). The area is read live and per bot
+  // (g.areaOf, else g.area): the pilgrims of the «Царь горы» fight within Church Hill while they are there (game.mjs),
+  // the rest keep the field of the game. think() sets the bot's own field (cur) before it walks or plans a route
   const roam = () => !!(g.field && g.storm);
-  let roamMemo = false, areaRevMemo = -1;
-  const inArea = (x, z) => { const a = g.area; return roam() || Math.hypot(x - a.cx, z - a.cz) < a.r - 8; };
+  let roamMemo = false, areaRevMemo = -1, cur = null;
+  const areaFor = p => (g.areaOf ? g.areaOf(p) : g.area);
+  const inArea = (x, z) => { const a = cur || g.area; return roam() || Math.hypot(x - a.cx, z - a.cz) < a.r - 8; };
   // ---- routes: A* over a grid of 4 m cells; a cell is free when its centre and its four corners can be stood on (about
-  // 4 m clear of a wall), the route is then pulled straight where the straight line is free
-  const CELL = 4, okMemo = new Map(); let lastRoute = 0;
+  // 4 m clear of a wall), the route is then pulled straight where the straight line is free. The judged cells are kept
+  // per field (the city, the hill, an arena): a bot of one field does not spoil the memo of another
+  const CELL = 4, memos = new Map(); let lastRoute = 0;
   const cellOK = (i, j) => {
+    if (roam() !== roamMemo) { roamMemo = roam(); memos.clear(); }   // the storm opened (or closed) the field: the cells are judged anew
+    if (g.areaRev !== areaRevMemo) { areaRevMemo = g.areaRev; memos.clear(); }   // the field was swapped: the cells are judged anew
+    const a = cur || g.area, mk = roam() ? 'roam' : a.cx + ',' + a.cz + ',' + a.r;
+    let okMemo = memos.get(mk); if (!okMemo) { if (memos.size > 8) memos.clear(); okMemo = new Map(); memos.set(mk, okMemo); }
     if (okMemo.size > 200000) okMemo.clear();   // the storm roams the whole city: the memo must not grow without bound
-    if (roam() !== roamMemo) { roamMemo = roam(); okMemo.clear(); }   // the storm opened (or closed) the field: the cells are judged anew
-    if (g.areaRev !== areaRevMemo) { areaRevMemo = g.areaRev; okMemo.clear(); }   // the race swapped the arena: the cells are judged anew
     const k = (i + 4096) * 8192 + (j + 4096); let v = okMemo.get(k); if (v !== undefined) return v;
     const x = i * CELL + CELL / 2, z = j * CELL + CELL / 2, h = 1.8;
     v = inArea(x, z) && world.walkable(x, z) && world.walkable(x + h, z + h) && world.walkable(x - h, z + h) && world.walkable(x + h, z - h) && world.walkable(x - h, z - h); okMemo.set(k, v); return v;
@@ -120,7 +125,7 @@ export function createBrain(g) {
       const hunt = !g.enemyBase(p) && Math.random() < 0.7 && [...g.players.values()].filter(q => q !== p && q.alive && !g.ally(p, q));   // no bases: go where an enemy is
       if (hunt && hunt.length) { const q = hunt[Math.floor(Math.random() * hunt.length)]; x = q.x + rnd(-50, 50); z = q.z + rnd(-50, 50); }
       else if (Math.random() < 0.6 && g.enemyBase(p)) { const b = g.enemyBase(p); x = b[0] + rnd(-90, 90); z = b[1] + rnd(-90, 90); }
-      else { const ar = g.area, a = rnd(0, 6.283), r = Math.sqrt(Math.random()) * (ar.r - 30); x = ar.cx + Math.cos(a) * r; z = ar.cz + Math.sin(a) * r; }
+      else { const ar = cur || g.area, a = rnd(0, 6.283), r = Math.sqrt(Math.random()) * (ar.r - 30); x = ar.cx + Math.cos(a) * r; z = ar.cz + Math.sin(a) * r; }
       if (inArea(x, z) && world.walkable(x, z)) return [x, z];
     }
     return [p.x, p.z];
@@ -229,6 +234,7 @@ export function createBrain(g) {
   const safeReload = (p, now) => { if (g.reload && p.reloadDone <= now && p.mag[p.wep] < g.WEAPONS[p.wep].mag * 0.4 && p.reserve[p.wep] > 0) g.reload(p, p.wep, now); };
   function think(p, dt) {
     const b = p.bot, L = b0(p), now = g.now();
+    cur = areaFor(p);   // the bot's own field: the city, the hill of the race, an arena
     if (!p.alive) {   // back to the game after the respawn time, the favourite gun in hand again
       if (g.storm || g.siege) return;   // the storm and the siege do not respawn: the fallen wait out the event
       if (!g.roundOver() && now - p.diedAt >= g.R.respawnMs + b.respawnExtra) { g.spawn(p); b.target = 0; b.path = null; b.cover = null; b.lastSeen = null; b.alert = null; g.equip(p, b.role); p.wep = b.role; b.switchAt = now + 400; b.lastHp = p.hp; b.respawnExtra = rnd(0, 2500); }
@@ -382,9 +388,10 @@ export function createBrain(g) {
             else if (p.siege === 'a' || sg.prog > 0.12) goal = [ax + rnd(-4, 4), az + rnd(-4, 4)];   // the hold is on: retake the altar
             else { const a = (p.id * 2.399) % 6.283, r = 9 + (p.id % 4) * 5; goal = [ax + Math.cos(a) * r, az + Math.sin(a) * r]; }   // spread round the garden
           }
-          if (!goal && hl) {   // the bell towers draw the bots in: take what is not ours, hold what is, spread round the hill
+          if (!goal && hl) {   // the bell towers draw in the bots whose field holds them (the pilgrims): take what is not ours, hold what is, spread round the hill
             const my = g.holyUnit(p); let best = null, bs = -1e9;
             for (const pt of hl.points) {
+              if (!inArea(pt.x, pt.z)) continue;   // a bot of the city does not set out across it
               const d = Math.hypot(pt.x - p.x, pt.z - p.z);
               let s = -d * 0.01 + (pt.owner !== my ? 3 : 1) + (pt.owner && pt.owner !== my ? 1.5 : 0) + ((p.id * 7 + pt.i * 3) % 5) * 0.3;
               if (s > bs) { bs = s; best = pt; }

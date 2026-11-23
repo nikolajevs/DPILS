@@ -156,15 +156,19 @@ export const CARGO = {
 };
 // the «Царь горы» event (server/game.mjs, src/game/holy.js): the four temples of Church Hill (Церковная горка) —
 // an Orthodox cathedral, a Catholic church, a Lutheran church and an Old Believers' church — stand within three hundred
-// metres of one another. Every few minutes the fight is called to the hill: the whole field is pulled into a tight arena
-// around the temples and four bell towers become capture points. One player (or any one member of a team of the
-// players) takes a point by standing in its ring; the taken temple rings its bell across the whole city and grants its
-// buff to whoever holds it — the player, or his whole team. Whoever holds all four for holdMs wins the grand prize. The bells are synthesised on the page (sfx.js
-// bellSound), one strike note per temple — together they spell a chord.
+// metres of one another. Every few minutes the hill is called: four bell-tower altars light up beside the temples and
+// become capture points. Nobody is carried there — the field stays as it was, and whoever wants the prize makes his own
+// way across the city to the beams over the hill. One player alone (or any one member of a team of the players) takes
+// an altar by standing in its ring; the taken temple rings its bell across the whole city and grants its buff to
+// whoever holds it — the player, or his whole team. The first altar a player takes enlists him in the race: after a
+// death he comes back beside the hill (hill.spawn, off the rings), not across the city. Whoever holds all four for
+// holdMs wins the grand prize. The bells are synthesised on the page (sfx.js bellSound), one strike note per temple —
+// together they spell a chord. Part of the bots (hill.pilgrims) go to the hill too (game.mjs, bots.mjs).
 // The admin panel's «Ивенты» tab tunes the timings, the prize and the buffs live (server/events.mjs); the page gets
 // the changed buffs and their labels in the 'holy' message, so the picture and the prediction stay with the server.
 export const HOLY = {
-  firstMs: 240000, gapMs: 420000, durMs: 420000, warnMs: 30000,   // the first call, the gap after one ends, its length, the warning before
+  firstMs: 240000, gapMs: 420000, durMs: 600000, warnMs: 60000,   // the first call, the gap after one ends, its length (the way to the hill is the players' own), the warning before
+  hill: { name: 'Церковная горка', cx: 56, cz: 1214, r: 260, spawn: [60, 150], pilgrims: 0.5 },   // the hill: its middle and edge, the ring round the middle where the enlisted come back, the share of the bots sent there
   capMs: 7000, capR: 13, holdMs: 180000,   // a point takes 7 s alone in the ring (13 m); all four held 3 minutes win the prize
   prizeKills: 5,   // the grand prize: +5 kills to each winner (the holder, or every member of the holding team)
   buffs: { dmg: 1.25, regen: 3, speed: 1.2, reload: 0.7, rate: 0.85 },   // cathedral: damage; catholic: regen hp/s; lutheran: speed; old believers: reload and cycle

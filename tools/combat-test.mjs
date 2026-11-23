@@ -1551,7 +1551,8 @@ console.log('cargo event (createGame, controlled clock):');
   g.stop();
 }
 
-/* ---------- 2o. the «Царь горы» event: the call to the hill, the capture, the bell, the buff, the prize ---------- */
+/* ---------- 2o. the «Царь горы» event: the call to the hill (no teleport), the capture alone or by a team, the bell,
+   the buff, the enlistment and the respawn by the hill, the prize, the pilgrim bots ---------- */
 console.log('king of the hill event (createGame, controlled clock):');
 {
   let clock = 1e6;
@@ -1565,12 +1566,12 @@ console.log('king of the hill event (createGame, controlled clock):');
   clock += 3000;
   ok(!g.holy, 'no race before the first call is due');
   tick(HOLY.firstMs - HOLY.warnMs - 3000);
-  ok(A.all('chat').some(m => /Царь горы через 30/.test(m.text)), 'the chat warns of the race half a minute ahead');
+  ok(A.all('chat').some(m => /Царь горы через 1 мин/.test(m.text)), 'the chat warns of the race a minute ahead');
   tick(HOLY.warnMs + 100);
   ok(g.holy && g.holy.points.length === 4, 'the race begins with four bell towers');
-  ok(A.last('holy') && A.last('holy').arena && A.last('holy').arena.name === 'Церковная горка', 'the call went to everybody with the hill arena');
-  ok(g.health().arena === 'Церковная горка', 'the field is the hill during the race');
-  ok(Math.hypot(p.x - 56, p.z - 1214) < 260, 'the players were called to the hill');
+  ok(A.last('holy') && A.last('holy').hill && A.last('holy').hill.name === 'Церковная горка' && !A.last('holy').arena, 'the call went to everybody with the hill, no arena');
+  ok(g.health().arena === null, 'the field stays the open city during the race');
+  ok(p.x === 0 && p.z === 0 && q.x === 50 && q.z === 50, 'nobody is carried to the hill: the players make their own way', p.x + ',' + p.z);
   // one unit alone in the ring takes the point: the cathedral falls to the team RED
   const pt0 = g.holy.points[0];
   stand(p, pt0); away(q);
@@ -1579,6 +1580,16 @@ console.log('king of the hill event (createGame, controlled clock):');
   tick(400);
   ok(pt0.owner === 'cRED' && pt0.name === 'Команда RED' && !('team' in pt0), 'the cathedral is taken by the team of the players RED');
   ok(A.last('bell') && A.last('bell').i === 0 && A.last('bell').side === 'cRED', 'the bell went to everybody');
+  ok(A.last('holyIn') && A.last('holyIn').id === g.holy.id && p.holyIn === g.holy.id && !B.last('holyIn'), 'the first altar taken enlists the one who stood in the ring, nobody else');
+  // the enlisted comes back beside the hill after a death; the one not enlisted where he chose
+  const H = HOLY.hill, offRings = pl => HOLY.temples.every(tp => Math.hypot(tp.x - pl.x, tp.z - pl.z) >= HOLY.capR + 15);
+  p.alive = false; p.diedAt = clock - 4000; msg(A, { t: 'respawn', hill: true, x: 0, z: 0, yaw: 0 });
+  const dh = Math.hypot(p.x - H.cx, p.z - H.cz);
+  ok(p.alive && dh >= H.spawn[0] - 1 && dh <= H.spawn[1] + 1 && offRings(p), 'the enlisted respawns by the hill, off the altar rings', 'at ' + dh.toFixed(0) + ' m');
+  q.alive = false; q.diedAt = clock - 4000; msg(B, { t: 'respawn', hill: true, x: 300, z: 300, yaw: 0 });
+  ok(q.alive && q.x === 300 && q.z === 300, 'the one not enlisted cannot ask for the hill: he appears where he chose');
+  stand(p, pt0); away(q);
+  clock += 3000;   // past the spawn protection of both
   ok(A.all('chat').some(m => /захватили Собор/.test(m.text)), 'the chat names the taken temple and its buff');
   // the cathedral buff: +25% damage. A body shot at 20 m deals ~26 against the plain ~21 (a head would be ~38)
   q.x = p.x + 20; q.z = p.z; q.y = p.y;
@@ -1586,6 +1597,18 @@ console.log('king of the hill event (createGame, controlled clock):');
   msg(A, { t: 'shoot', w: 0, rays: [[20 / ql, -0.6 / ql, 0]] }); clock += 120; g.stepBullets();
   const dealt = 100 - q.hp;
   ok(dealt >= 25 && dealt <= 29, 'the cathedral buff raises the body damage', 'dealt ' + dealt);
+  // a taken altar is not snatched at once: a rival alone first drains it to nothing (neutral, the buff gone), then fills it
+  g.stepHoly();   // the race's own clock catches up with the shots above
+  stand(q, pt0); away(p); tick(HOLY.capMs * 0.5);
+  ok(pt0.owner === 'cRED' && pt0.prog > 0.4 && pt0.prog < 0.6, 'a rival in the ring drains the altar first, the holder keeps it meanwhile', 'prog ' + pt0.prog);
+  tick(HOLY.capMs * 0.5 + 400);
+  ok(!pt0.owner && pt0.progSide === 'p' + q.id, 'drained to nothing, the altar falls neutral');
+  const pr0 = pt0.prog; stand(p, pt0); tick(1000);
+  ok(pt0.contest && pt0.prog === pr0, 'two sides in the ring: contested, the bar stalls');
+  away(p); tick(HOLY.capMs + 200);
+  ok(pt0.owner === 'p' + q.id, 'then the rival takes it');
+  stand(p, pt0); away(q); tick(HOLY.capMs * 2 + 600);
+  ok(pt0.owner === 'cRED', 'and RED takes it back the same way: drain, then fill');
   // any one member takes a point for the whole team: a second member of RED takes the catholic church alone
   const C = seat(g, conn()); msg(C, { t: 'join', key: 'red2', name: 'Красный2', x: 0, z: 0, yaw: 0 });
   const r = C.handle.player, pt1 = g.holy.points[1];
@@ -1608,17 +1631,50 @@ console.log('king of the hill event (createGame, controlled clock):');
   ok(A.last('holyWin') && A.last('holyWin').side === 'cRED', 'the prize went to everybody');
   ok(p.kills >= HOLY.prizeKills && C.handle.player.kills >= HOLY.prizeKills && q.kills < HOLY.prizeKills, 'every member of the winning team got the prize kills, the rival none', p.kills + ' / ' + C.handle.player.kills + ' / ' + q.kills);
   ok(p.hp === 100 && p.reserve[0] === RESERVE[0] && p.nades === NADE.count, 'the winners are healed and re-armed');
-  ok(g.health().arena === null, 'the field is released after the race');
+  ok(g.health().arena === null, 'the field is still the open city after the race');
   ok(A.last('holyEnd') && A.last('holyEnd').reason === 'win', 'the end went to everybody with the reason');
+  ok(!p.holyIn, 'the enlistment ends with the race');
   // the next race comes after the gap; a late joiner gets it in hello
   tick(HOLY.gapMs + 100);
   ok(g.holy, 'the next race comes after the gap');
   const D = seat(g, conn()); msg(D, { t: 'join', key: 'late', name: 'Поздний', x: 0, z: 0, yaw: 0 });
   ok(D.last('hello').holy && D.last('hello').holy.id === g.holy.id, 'a late joiner gets the race in hello');
-  ok(D.last('hello').arena && D.last('hello').arena.name === 'Церковная горка', 'a late joiner gets the hill arena');
+  ok(!D.last('hello').arena && D.last('hello').holy.hill, 'a late joiner gets no arena, only the hill to go to');
   // an untaken race expires on its own
   tick(HOLY.durMs + 200);
   ok(!g.holy && A.last('holyEnd') && A.last('holyEnd').reason === 'time', 'the untaken race expires');
+  // one player alone takes all four altars and holds them: the prize is his
+  ok(g.holyStart() === 'ok', 'the admin calls the hill again');
+  const lone = D.handle.player;
+  for (const pl of [p, q, r]) away(pl);
+  for (const tp of g.holy.points) { stand(lone, tp); tick(HOLY.capMs + 200); ok(tp.owner === 'p' + lone.id, 'the lone player takes temple ' + tp.i); }
+  ok(D.last('holyIn') && lone.holyIn === g.holy.id, 'the lone player is enlisted by his first altar');
+  ok(g.holy.holdSide === 'p' + lone.id, 'one player alone starts the hold');
+  away(lone); tick(HOLY.holdMs + 500);
+  ok(!g.holy && D.last('holyWin') && D.last('holyWin').side === 'p' + lone.id && lone.kills >= HOLY.prizeKills, 'one player alone wins the grand prize');
+  g.stop();
+}
+{   // the pilgrim bots: a share of the bots is brought to the hill unseen, and home after the race
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), now: () => clock, name: 'holy-bots', itemCount: 0 });
+  const A = seat(g, conn()); msg(A, { t: 'join', name: 'Далёкий', x: 2500, z: -2500, yaw: 0 });
+  for (let k = 0; k < 4; k++) g.addBot();
+  const H = HOLY.hill, bots = [...g.players.values()].filter(pl => pl.bot), onHill = () => bots.filter(pl => Math.hypot(pl.x - H.cx, pl.z - H.cz) < H.r).length;
+  ok(onHill() === 0, 'the bots begin in the city');
+  ok(g.holyStart() === 'ok', 'the race starts');
+  clock += 1100; g.stepHoly();
+  ok(onHill() === Math.round(bots.length * H.pilgrims), 'half the bots are brought to the hill out of sight, the rest keep the city', onHill() + ' of ' + bots.length);
+  const pil = bots.find(pl => pl.bot.pilgrim);
+  pil.alive = false; pil.diedAt = clock;
+  g.spawn(pil);
+  ok(Math.hypot(pil.x - H.cx, pil.z - H.cz) < H.r, 'a pilgrim respawns by the hill during the race');
+  g.holyStop(); clock += 1100; g.stepHoly();
+  ok(onHill() === 0 && bots.every(pl => !pl.bot.pilgrim), 'after the race the pilgrims go home out of sight');
+  // a player standing by the hill: the pilgrims are not moved in front of him
+  const B = seat(g, conn()); msg(B, { t: 'join', name: 'Свидетель', x: H.cx, z: H.cz, yaw: 0 });
+  ok(g.holyStart() === 'ok', 'the next race starts');
+  clock += 1100; g.stepHoly();
+  ok(onHill() === 0, 'nobody appears on the hill before the eyes of a player there: the pilgrims wait for a respawn');
   g.stop();
 }
 
