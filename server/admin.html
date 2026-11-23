@@ -119,6 +119,7 @@ nav button.on svg { opacity: 1; }
 .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--respawn); box-shadow: 0 0 9px rgba(61, 220, 132, .8); animation: beat 2s ease-in-out infinite; }
 @keyframes beat { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 .clock { font-size: 13px; color: var(--muted); }
+#srvSel { height: 34px; min-width: 210px; font-size: 13px; }
 main { width: 100%; max-width: 1280px; margin: 0 auto; padding: 24px 26px 80px; }
 section.tab { display: grid; gap: 16px; }
 .tab-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -310,6 +311,7 @@ pre.dump { background: #070b11; border: 1px solid var(--seam); border-radius: 8p
     <header>
       <div class="crumb"><span class="crumb-root">OPS</span><span class="crumb-sep">//</span><span id="pageTitle">Обзор</span></div>
       <div class="grow"></div>
+      <select id="srvSel" title="Сервер, которым управляют вкладки «Обзор», «Игроки», «Ивенты» и «Отладка»" hidden></select>
       <span class="live"><span class="live-dot"></span>LIVE</span>
       <span class="clock num" id="clock">--:--:--</span>
     </header>
@@ -555,13 +557,15 @@ const ERR = { 'bad-pass': 'Неверный пароль', rate: 'Слишком
 const WHERE = { lobby: 'лобби', train: 'тренировка', game: 'бой', storm: 'шторм' };
 const state = { tab: 'overview', period: 'all', sort: 'kills', overview: null, debug: null, events: null, logLevel: '', logPaused: false, logCursor: 0, logLines: [], logSeenErr: 0, logErrTotal: 0, openDumps: new Set(), restarting: false };
 let token = sessionStorage.getItem('dpils.admin.token') || '';
+state.srv = +sessionStorage.getItem('dpils.admin.srv') || 1;   // the server the fight tabs work on (one process holds the list)
 
 /* ---- the doors ---- */
 async function api(path, opts = {}) {
   const h = { 'x-admin-token': token };
   if (opts.body !== undefined) h['content-type'] = 'application/json';
   let r;
-  try { r = await fetch('/admin/api/' + path + (opts.q || ''), { method: opts.method || 'GET', headers: h, body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined }); }
+  const q = (opts.q || '') + (state.srv > 1 ? ((opts.q || '').includes('?') ? '&' : '?') + 'srv=' + state.srv : '');
+  try { r = await fetch('/admin/api/' + path + q, { method: opts.method || 'GET', headers: h, body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined }); }
   catch (e) { throw new Error('Сервер недоступен'); }
   let j = null; try { j = await r.json(); } catch (e) { /* not json */ }
   if (r.status === 401) { showLogin(); throw new Error(ERR['no-session']); }
@@ -674,11 +678,25 @@ function refresh() {
 setInterval(() => { if (!document.hidden && token && !$('#app').hidden && !state.restarting && (state.tab === 'overview' || state.tab === 'players' || state.tab === 'events' || state.tab === 'debug')) refresh(); }, 3000);
 setInterval(() => { if (!document.hidden && token && !$('#app').hidden && !state.restarting && state.tab === 'logs' && !state.logPaused) run(loadLogs); }, 2000);
 
+/* ---- the list of servers: the select in the header picks the one the fight tabs work on ---- */
+function paintServers(list) {
+  const sel = $('#srvSel');
+  sel.hidden = list.length < 2;
+  if (list.length < 2) return;
+  const was = document.activeElement === sel;
+  if (!was) sel.innerHTML = list.map(v => {
+    const m = v.match, ph = !m ? '' : m.phase === 'storm' ? ' · шторм' : m.phase === 'over' ? ' · итоги' : m.open ? ' · вход ' + fmtLeft(m.joinLeft) : ' · бой';
+    return '<option value="' + v.id + '"' + (v.id === state.srv ? ' selected' : '') + '>' + esc(v.name + ' — ' + v.players + ' игр.' + ph) + '</option>';
+  }).join('');
+}
+$('#srvSel').addEventListener('change', e => { state.srv = +e.target.value || 1; sessionStorage.setItem('dpils.admin.srv', String(state.srv)); state.openDumps.clear(); refresh(); });
+
 /* ---- overview ---- */
 async function loadOverview() {
   const j = await api('overview');
   state.overview = j;
   const s = j.server, c = j.counts;
+  paintServers(j.servers || []);
   $('#srvName').textContent = s.name; $('#srvDot').classList.toggle('off', !s.ok);
   $('#srvUp').textContent = 'аптайм ' + fmtDur(j.uptime);
   $('#lagChip').textContent = 'лаг ' + j.loop.last + ' мс';
@@ -713,7 +731,8 @@ async function loadOverview() {
   $('#srvInfo').innerHTML = [
     ['Режим', 'каждый сам за себя, союзники — команда'], ['Арена', e.arena || 'весь город (центр)'],
     ['Уровень ботов', { easy: 'лёгкий', normal: 'обычный', hard: 'сложный' }[e.level] || e.level],
-    ['Катки', e.match === 'off' ? 'выключены' : 'по ' + e.day + ' мин'], ['Node', j.node],
+    ['Катки', e.match === 'off' ? 'выключены' : 'по ' + e.day + ' мин'],
+    ['Серверы', e.servers > 1 ? e.servers + ', катки со сдвигом ' + e.step + ' мин' : 'один'], ['Node', j.node],
     ['Запущен', fmtDate(j.boot)],
   ].map(([k, v]) => '<span class="k">' + esc(k) + '</span><span>' + esc(v) + '</span>').join('');
   $('#fileInfo').innerHTML = j.files.map(f => '<span class="k">' + esc(f.name) + '</span><span class="num">' + (f.size ? fmtSize(f.size) + ' · ' + fmtAgo(f.mtime) : 'нет файла') + '</span>').join('')

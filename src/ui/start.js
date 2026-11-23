@@ -9,7 +9,8 @@ import { openLobby, closeLobby } from './lobby.js';
    the fight). Only then the settings of
    that choice, with a way back; and within them, a setting shows only when it means something: the place to appear
    only in the open city (in an arena you appear on its base points). There are no sides to choose: everybody fights
-   for himself, the only allies are the own team of the players (src/ui/team.js). There is one server — the page's own address (src/game/server.js) — so there is nothing to choose.
+   for himself, the only allies are the own team of the players (src/ui/team.js). There is one address — the page's own (src/game/server.js) —
+   and on it the list of servers: the same city, matches started 15 minutes apart; the online card lists them and picks one (src/ui/lobby.js).
    The keys live in the fight («Клавиши», F1), not on the start card; the card's footer link opens the credits
    modal with the data sources and licences. The time of day is a setting of the training (авто, день, вечер, ночь),
    kept in localStorage; online the server's day runs (server/daycycle.mjs) and there is nothing to choose. The storm is
@@ -18,7 +19,7 @@ import { openLobby, closeLobby } from './lobby.js';
 const card = $('startCard'), home = $('stepHome'), form = $('play');
 const STEPS = {
   train: { title: 'Тренировка с ботами', hint: 'Бой против ботов прямо в браузере, по правилам сервера: каждый сам за себя. Выберите карту и соперников.' },
-  online: { title: 'Играть онлайн', hint: 'Катка на сервере: 2 часа боя, вход в первые 30 минут, в последние 20 минут — шторм до последнего выжившего. Каждый сам за себя, союзники — только ваша команда.' }
+  online: { title: 'Играть онлайн', hint: 'Выберите сервер: на каждом катка 2 часа, следующий сервер начинает на 15 минут позже. Вход в первые 30 минут, в последние 20 минут — шторм до последнего выжившего. Каждый сам за себя, союзники — только ваша команда.' }
 };
 let came = null;   // the choice the card came back from, to put the focus on it again
 function showStep(step) {

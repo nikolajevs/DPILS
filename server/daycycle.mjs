@@ -5,5 +5,6 @@
    draws the sun, the moon and the light of that moment (src/render/lighting.js). DAY_MIN of the server changes the
    length, DAY_MIN=0 stops the clock (server/index.mjs). */
 export const DAY_MS = 120 * 60 * 1000;   // 45 minutes was too quick: the sun crawled visibly and the shadows went in jerks
-// the share of the day gone at t (ms since 1970): 0 midnight, 0.25 six in the morning, 0.5 noon
-export const dayPhase = (t, len = DAY_MS) => (((t / len) % 1) + 1) % 1;
+// the share of the day gone at t (ms since 1970): 0 midnight, 0.25 six in the morning, 0.5 noon. off shifts the
+// midnight: a server whose matches start later (storm.mjs matchAt) has its day start with its match
+export const dayPhase = (t, len = DAY_MS, off = 0) => ((((t - off) / len) % 1) + 1) % 1;

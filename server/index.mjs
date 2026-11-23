@@ -2,8 +2,13 @@
    of the players are the only allies; an arena with spawn bases, ARENA=center|fortress|station|park|church|pond|speedway|culture|griva; bots, BOTS=6 and BOT_LEVEL=easy|normal|hard,
    fill the empty places). The fight goes in matches of two hours — the day of the game — with the door open for the
    first half hour and the «Шторм» in the last twenty minutes to find the winner (server/storm.mjs). This file is the
-   network: WebSockets for the players and /health for the page (the lobby reads the match from it).
-     PORT, SERVER_NAME, WIN_SCORE (only with MATCH=off: a match has no kill target), ARENA, BOTS, BOT_LEVEL, LEADERBOARD (file of the leaderboard, default server/data/leaderboard.json; off = none),
+   network: WebSockets for the players and /health for the page (the lobby reads the matches from it).
+   One process holds the list of servers: SERVERS games (default 4) on one port, one accounts book, one leaderboard and
+   one set of teams for all of them. Each next server starts its matches SERVER_STEP_MIN minutes (default 15) after the
+   one before, so when the door of one match closes another one is open; its day (the sun) starts with its match. The
+   page joins a server by the WebSocket path /play/<n> (n from 1; / is the first one) and reads all of them from
+   /health (the field servers).
+     PORT, SERVER_NAME (the name of the list: with several servers they are «<name> 1», «<name> 2»…), SERVERS (1–8), SERVER_STEP_MIN, WIN_SCORE (only with MATCH=off: a match has no kill target), ARENA, BOTS, BOT_LEVEL, LEADERBOARD (file of the leaderboard, default server/data/leaderboard.json; off = none),
      ACCOUNTS (file of the accounts, default server/data/accounts.json; off = none: joins are not checked, but the page's mandatory gate cannot register on such a server),
      TEAMS (file of the teams of the players, default server/data/teams.json; off = no teams; they need the accounts — teams.mjs,
        the live side on the WebSocket path /social — social.mjs),
@@ -47,15 +52,27 @@ const ACC = process.env.ACCOUNTS === 'off' ? null : createAccounts({ file: ACC_F
 const TM = !ACC || process.env.TEAMS === 'off' ? null : createTeams({ file: TM_FILE });
 const clans = TM ? name => { const t = TM.of(name); return t && { id: t.id, tag: t.tag, name: t.name }; } : null;
 const DAY_LEN = (+process.env.DAY_MIN || 120) * 60000;   // one match is one day of the game: midnight to midnight
-const game = createGame({ board: LB, accounts: ACC, clans, world: WORLD, win: +process.env.WIN_SCORE || 0, name: String(process.env.SERVER_NAME || 'Даугавпилс').slice(0, 40), arena: ARENAS[process.env.ARENA] || null, level: process.env.BOT_LEVEL || 'normal',
-  day: process.env.DAY_MIN === '0' ? null : { len: DAY_LEN }, match: process.env.MATCH === 'off' ? null : { len: DAY_LEN }, events: EVENTS });
-for (let i = 0; i < Math.max(0, Math.min(63, +process.env.BOTS || 0)); i++) game.addBot();   // up to 63 bots: with one human that fills the 64 places
+// the list of servers: the n-th starts its matches (and its day) (n−1)·STEP later than the first; the bots fill each one
+const N_SERVERS = Math.max(1, Math.min(8, Math.round(+(process.env.SERVERS ?? 4)) || 1));
+const STEP_MS = Math.max(0, +(process.env.SERVER_STEP_MIN ?? 15) || 0) * 60000;
+const BASE_NAME = String(process.env.SERVER_NAME || 'Даугавпилс').slice(0, 36);
+const games = Array.from({ length: N_SERVERS }, (_, i) => {
+  const off = (i * STEP_MS) % DAY_LEN;
+  const g = createGame({ id: i + 1, board: LB, accounts: ACC, clans, world: WORLD, win: +process.env.WIN_SCORE || 0, name: N_SERVERS > 1 ? BASE_NAME + ' ' + (i + 1) : BASE_NAME, arena: ARENAS[process.env.ARENA] || null, level: process.env.BOT_LEVEL || 'normal',
+    day: process.env.DAY_MIN === '0' ? null : { len: DAY_LEN, offset: off }, match: process.env.MATCH === 'off' ? null : { len: DAY_LEN, offset: off }, events: EVENTS });
+  for (let k = 0; k < Math.max(0, Math.min(63, +process.env.BOTS || 0)); k++) g.addBot();   // up to 63 bots: with one human that fills the 64 places
+  return g;
+});
+const game = games[0];
+// the door of a server: / and /play/1 — the first, /play/<n> — the n-th; anything else is no game
+const gameAt = where => { if (where === '/') return game; const m = /^\/play\/(\d)$/.exec(where); return m ? games[+m[1] - 1] || null : null; };
+const health = () => ({ ...game.health(), servers: games.map(g => { const h = g.health(); return { id: h.id, name: h.name, players: h.players, bots: h.bots, max: h.max, day: h.day, match: h.match, storm: h.storm && { phase: h.storm.phase, alive: h.storm.alive } }; }) });
 
 // the live side of the teams (social.mjs): a team changed — the fight takes the new tags and allies at once
-const social = TM ? createSocial({ accounts: ACC, teams: TM, onTeams: () => game.refreshClans() }) : null;
+const social = TM ? createSocial({ accounts: ACC, teams: TM, onTeams: () => { for (const g of games) g.refreshClans(); } }) : null;
 // the admin panel (admin.mjs): the page /admin and its api; off until ADMIN_PASS is set. clients() reads the WebSocket
 // crowd lazily — wss below is ready by the time the first request comes
-const ADMIN = createAdmin({ pass: process.env.ADMIN_PASS || '', game, accounts: ACC, board: LB, teams: TM, social, events: EVENTS, clients: () => wss.clients.size,
+const ADMIN = createAdmin({ pass: process.env.ADMIN_PASS || '', games, accounts: ACC, board: LB, teams: TM, social, events: EVENTS, clients: () => wss.clients.size,
   sockets: () => [...wss.clients].map(c => ({ ip: (c._socket && c._socket.remoteAddress) || '?', path: c.where || '/', joined: !!(c.h && c.h.joined), age: Math.round((Date.now() - c.since) / 1000), buffered: c.bufferedAmount, alive: !!c.live })),
   files: [{ name: 'accounts.json', path: ACC_FILE }, { name: 'leaderboard.json', path: LB_FILE }, { name: 'teams.json', path: TM_FILE }, { name: 'events.json', path: EV_FILE }] });
 
@@ -139,7 +156,7 @@ function authRoute(req, res) {
 const server = http.createServer((req, res) => {
   res.on('finish', () => ADMIN.note(res.statusCode));   // the admin panel's http counters
   if (ADMIN.route(req, res)) return;
-  if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' }); res.end(JSON.stringify(game.health())); return; }
+  if (req.url === '/health') { res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' }); res.end(JSON.stringify(health())); return; }
   if (req.url.split('?')[0].startsWith('/auth/')) { authRoute(req, res); return; }
   if (LB && req.url.startsWith('/leaderboard')) {   // ?period=all|week&sort=kills|kd|acc|wins&limit=50&me=<id: sha256 of the key, 32 hex>
     const q = new URL(req.url, 'http://x').searchParams, me = q.get('me');
@@ -156,7 +173,8 @@ wss.on('connection', (ws, req) => {
   ws.where = where;   // the admin panel's socket list shows which door each connection came through
   // the social side has its own door, /social: the teams and who is online (social.mjs); without teams it says so and closes
   if (where === '/social' && !social) { ws.h = { joined: false }; conn.send(JSON.stringify({ t: 'off' })); ws.close(); return; }
-  const g = where === '/social' ? social : game;   // the teams have their own door: the path /social
+  const g = where === '/social' ? social : gameAt(where);   // the teams have their own door: the path /social; the servers theirs: /play/<n>
+  if (!g) { ws.h = { joined: false }; conn.send(JSON.stringify({ t: 'noserver' })); ws.close(); return; }
   const h = g.attach(conn);
   ws.h = h;
   ws.on('pong', () => { ws.live = true; });
@@ -165,7 +183,7 @@ wss.on('connection', (ws, req) => {
   ws.on('error', () => {});
 });
 setInterval(() => { for (const c of wss.clients) { if (!c.h.joined && Date.now() - c.since > 15000) { c.terminate(); continue; } if (!c.live) { c.terminate(); continue; } c.live = false; c.ping(); } }, 15000);
-server.listen(PORT, () => console.log('Daugavpils shooter server on :' + PORT + (game.arena ? ', arena ' + game.arena.name : '') + (process.env.BOTS ? ', bots ' + process.env.BOTS : '') + (process.env.MATCH === 'off' ? '' : ', matches of ' + DAY_LEN / 60000 + ' min with the storm at the end')));
+server.listen(PORT, () => console.log('Daugavpils shooter server on :' + PORT + ', ' + N_SERVERS + (N_SERVERS > 1 ? ' servers ' + STEP_MS / 60000 + ' min apart' : ' server') + (game.arena ? ', arena ' + game.arena.name : '') + (process.env.BOTS ? ', bots ' + process.env.BOTS + ' each' : '') + (process.env.MATCH === 'off' ? '' : ', matches of ' + DAY_LEN / 60000 + ' min with the storm at the end')));
 if (STATIC) warm(STATIC);   // the compressed copies of the page's files, made in the background (compress.mjs)
 
 if (LB || ACC) {   // the table, the accounts and the teams are saved every 20 s and when the server is stopped

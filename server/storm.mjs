@@ -19,9 +19,10 @@ export const MATCH = {
   warnMs: [300000, 60000], // the chat warns of the storm five minutes and one minute ahead
 };
 
-/* The schedule of the match running at t (ms since 1970). */
-export function matchAt(t, len = MATCH.lenMs) {
-  const n = Math.floor(t / len), start = n * len, stormMs = Math.round(len * MATCH.stormShare);
+/* The schedule of the match running at t (ms since 1970). off shifts the whole schedule: the servers of one process
+   (server/index.mjs, SERVERS) start their matches one after another, SERVER_STEP_MIN apart. */
+export function matchAt(t, len = MATCH.lenMs, off = 0) {
+  const n = Math.floor((t - off) / len), start = n * len + off, stormMs = Math.round(len * MATCH.stormShare);
   return { n, len, start, end: start + len, joinUntil: start + Math.round(len * MATCH.joinShare), stormAt: start + len - stormMs, stormMs };
 }
 

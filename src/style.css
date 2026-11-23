@@ -938,6 +938,19 @@ body.mp:not(:has(#view.locked)) .mp-sys { bottom: 64px; }   /* above the returne
 /* the lobby card of the match */
 .storm-sec h3 { color: #57c8ff; }
 .storm-lore { margin: 0; font: 400 12.5px/1.5 var(--f-body); color: rgba(255, 255, 255, .68); }
+/* the list of servers: a row per server — the name, its phase and door, the people; the picked one lit */
+.srv-list { display: grid; gap: 6px; }
+.srv-row { display: grid; grid-template-columns: auto 1fr auto; grid-template-areas: "dot name n" "dot st st"; align-items: center; column-gap: 9px; row-gap: 2px; width: 100%; padding: 8px 11px; text-align: left; border-radius: 10px; border: 1px solid rgba(255, 255, 255, .14); background: rgba(255, 255, 255, .04); color: #fff; font: inherit; cursor: pointer; transition: border-color .15s, background .15s; }
+.srv-row:hover { border-color: rgba(87, 200, 255, .5); background: rgba(87, 200, 255, .06); }
+.srv-row:focus-visible { outline: 2px solid #57c8ff; outline-offset: 2px; }
+.srv-row[aria-checked="true"] { border-color: #57c8ff; background: rgba(87, 200, 255, .13); box-shadow: inset 3px 0 0 #57c8ff; }
+.srv-row b { grid-area: name; font: 700 13px/1.25 var(--f-body); }
+.srv-st { grid-area: st; font: 500 11.5px/1.3 var(--f-body); color: rgba(255, 255, 255, .62); }
+.srv-n { grid-area: n; font: 600 11px/1.2 var(--f-body); color: rgba(255, 255, 255, .55); white-space: nowrap; }
+.srv-dot { grid-area: dot; width: 8px; height: 8px; border-radius: 50%; background: #ffd24d; box-shadow: 0 0 8px rgba(255, 210, 77, .7); }
+.srv-row[data-phase="open"] .srv-dot { background: #6edc96; box-shadow: 0 0 8px rgba(110, 220, 150, .8); }
+.srv-row[data-phase="open"] .srv-st { color: #c9f5d8; }
+.srv-row[data-phase="storm"] .srv-dot { background: #ff8a7a; box-shadow: 0 0 8px rgba(255, 138, 122, .8); }
 .storm-status { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(87, 200, 255, .3); background: rgba(87, 200, 255, .07); font: 600 12.5px/1.35 var(--f-body); color: #bfe7ff; }
 .storm-pulse { width: 9px; height: 9px; border-radius: 50%; background: #57c8ff; box-shadow: 0 0 10px #57c8ff; flex: none; animation: storm-blink 1.6s ease-in-out infinite; }
 .storm-rules { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }

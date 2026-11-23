@@ -13,7 +13,7 @@ import { FLASH_SIZE, makeFlash } from './muzzle.js';
 import { SET, keyName, onChange } from './settings.js';
 import { firstGames } from './help.js';
 import { requireAccount } from '../ui/auth.js';
-import { serverUrl } from './server.js';
+import { gameUrl, noteServer, serverPick, serverUrl } from './server.js';
 import { addNade, addZone, endZone, douseFire, burnBodies, fireNow, blastGlow, boomNade, clearBlasts, clearNades, nadeSamples, tickNades, onNadeBounce, setNadeBodies, syncNade, liveNades, liveZones, smokeCores, smokeHides, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
 import { KINDS, SLOT_SVG, bindInv, setItems, itemBack, itemTook, tickItems, renderInv, invTick, closeInv, toggleInv } from './inventory.js';
 import { cargoDrop, cargoLand, cargoTook, cargoEnd, cargoSelf, cargoTick, cargoMap, cargoClock, clearCargo } from './cargo.js';
@@ -855,7 +855,7 @@ function respawn() {
 /* ---------- messages from the server ---------- */
 function onMsg(m) {
   switch (m.t) {
-    case 'hello': dayOf(m); document.body.classList.add('ffa'); MP.match = null; if (m.match) setMatch(m.match); if (m.storm) { setStorm(m.storm); document.body.classList.toggle('storm', stormOn()); feed('Идёт шторм: одна жизнь, зона сужается — последний выживший побеждает', 'sys'); } else if (m.match) feed('Катка ' + span(m.match.len) + ': вход открыт ' + span(m.match.joinMs) + ', последние ' + span(m.match.stormMs) + ' — шторм', 'sys'); MP.clan = m.clan ? m.clan.id : ''; MP.tag = m.clan ? m.clan.tag : ''; if (!MP.clan) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } setWhere(MP.local ? 'train' : stormOn() ? 'storm' : 'game'); voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.win = m.win; MP.server = m.server || ''; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.char);
+    case 'hello': dayOf(m); document.body.classList.add('ffa'); MP.match = null; if (m.match) setMatch(m.match); if (m.storm) { setStorm(m.storm); document.body.classList.toggle('storm', stormOn()); feed('Идёт шторм: одна жизнь, зона сужается — последний выживший побеждает', 'sys'); } else if (m.match) feed('Катка ' + span(m.match.len) + ': вход открыт ' + span(m.match.joinMs) + ', последние ' + span(m.match.stormMs) + ' — шторм', 'sys'); MP.clan = m.clan ? m.clan.id : ''; MP.tag = m.clan ? m.clan.tag : ''; if (!MP.clan) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } setWhere(MP.local ? 'train' : stormOn() ? 'storm' : 'game'); voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.win = m.win; MP.server = m.server || ''; MP.board = m.board; if (!MP.local && m.match) noteServer(m.srv || serverPick(), m.match.n); for (const e of m.board) addRemote(e.id, e.name, e.char);
       MP.arena = m.arena || null; clearFx(); clearBlasts(); stopZoneSounds(); setItems(m.items); for (const z of m.zones || []) { addZone(z); zoneSound(z); }   // the screens and patches already burning when we joined
       cargoClock(m.now || Date.now()); clearCargo(); for (const id of [...marks.keys()]) markRemote(id, false); marks.clear();
       if (m.cargo) { cargoDrop(m.cargo); if (m.cargo.state === 'landed') cargoLand(m.cargo); }
@@ -1006,7 +1006,8 @@ function onMsg(m) {
       el('stormDeadBy').textContent = m.by === 'storm' ? 'Вас поглотил шторм за пределами круга' : m.by ? 'Вас убил ' + m.by : 'Вы погибли';
       break;
     }
-    case 'closed': el('mpMsg').textContent = (m.out ? 'Шторм уже забрал вас в этой катке' : m.phase === 'fight' ? 'Катка уже идёт: войти можно только в первые ' + span(m.joinMs || 1800000) : m.phase === 'storm' ? 'Катка в шторме: вход закрыт' : 'Катка завершена') + ' — следующая через ' + hms(m.left || 0) + '. Пока можно потренироваться с ботами.'; break;   // the door of the match (server/game.mjs)
+    case 'closed': el('mpMsg').textContent = (m.out ? 'Шторм уже забрал вас в этой катке' : m.phase === 'fight' ? 'Катка уже идёт: войти можно только в первые ' + span(m.joinMs || 1800000) : m.phase === 'storm' ? 'Катка в шторме: вход закрыт' : 'Катка завершена') + ' — следующая через ' + hms(m.left || 0) + '. Выберите в списке сервер с открытым входом или потренируйтесь с ботами.'; break;   // the door of the match (server/game.mjs); the list of servers has another one open (src/ui/lobby.js)
+    case 'noserver': el('mpMsg').textContent = 'Такого сервера нет — выберите другой в списке.'; break;   // a server of an older list (server/index.mjs SERVERS)
     case 'chat': feed(m.text, 'sys'); break;
     case 'full': el('mpMsg').textContent = 'На сервере нет мест.'; break;
     case 'auth-required': el('mpMsg').textContent = 'Сервер пускает только игроков с аккаунтом: войдите или зарегистрируйтесь.'; requireAccount(); break;
@@ -1031,12 +1032,12 @@ function join(local) {   // local: { bots, level, mode, arena, time } for the ga
   const name = el('mpName').value.trim(), url = local ? 'local:' : serverUrl(), msg = el('mpMsg');
   try { localStorage.setItem('dpils.mp', JSON.stringify({ name, spawn: el('mpSpawn').value, char: el('mpChar').value })); } catch (e) {}
   MP.spawn = +el('mpSpawn').value; MP.url = url; MP.local = local || null; MP.match = null; loadModels(); msg.textContent = 'Подключаюсь…'; el('goPlay').disabled = true; el('goTrain').disabled = true;
-  let ws; try { ws = local ? openLocal(local) : new WebSocket(url); } catch (e) { msg.textContent = 'Неверный адрес сервера.'; el('goPlay').disabled = false; el('goTrain').disabled = false; return; }
+  let ws; try { ws = local ? openLocal(local) : new WebSocket(gameUrl()); } catch (e) { msg.textContent = 'Неверный адрес сервера.'; el('goPlay').disabled = false; el('goTrain').disabled = false; return; }
   MP.ws = ws; MP.started = false;
   ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, char: el('mpChar').value || undefined, key: local ? undefined : playerKey() || undefined, board: local ? undefined : boardOn(), ...s })); };
   ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (err) { console.error(err); } };
   ws.onerror = () => { if (!MP.started) msg.textContent = 'Не удалось подключиться к ' + url; };
-  ws.onclose = () => { setWhere('lobby'); nadeCancel(); stopZoneSounds(); el('nadeWarn').hidden = true; clearStorm(); clearSiege(); document.body.classList.remove('storm', 'storm-out', 'match-soon'); if (MP.started) { el('mpDead').hidden = true; el('stormDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; if (!/^(На сервере|Не удалось|Сервер пускает|Шторм|Катка)/.test(msg.textContent)) msg.textContent = 'Соединение закрыто.'; } };
+  ws.onclose = () => { setWhere('lobby'); nadeCancel(); stopZoneSounds(); el('nadeWarn').hidden = true; clearStorm(); clearSiege(); document.body.classList.remove('storm', 'storm-out', 'match-soon'); if (MP.started) { el('mpDead').hidden = true; el('stormDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; if (!/^(На сервере|Не удалось|Сервер пускает|Шторм|Катка|Такого)/.test(msg.textContent)) msg.textContent = 'Соединение закрыто.'; } };
 }
 let uiReady = false;
 function initUi() {   // the fields of the player and of the training: once, when the start card first needs them (or when the city is ready)
