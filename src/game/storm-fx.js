@@ -366,7 +366,7 @@ export function fxTick(dt, now, c, phase) {
   }
   // the bolts and the light they throw: the nearer, the brighter the city round them
   let L = 0;
-  for (const B of bolts) { boltTick(B, dt); if (B.I > 0) L += B.I * (B.ground ? 1 : 0.55) * clamp(1.2 - B.d / 1600, 0.1, 1); }
+  for (const B of bolts) { boltTick(B, dt); if (B.I > 0) L += B.I * (B.ground ? 1 : 0.55) * clamp(1.25 - B.d / 900, 0.08, 1); }
   FX.light = Math.min(1.6, L);
   for (const A of arcs) arcTick(A, dt);
   // the air of the storm round the camera
@@ -429,15 +429,15 @@ export function stormLight() {
   if (L < 0.002 && o < 0.002) { if (!lifted) return; lifted = false; L = 0; o = 0; }   // the last pass writes the day's own back
   else lifted = true;
   const su = sky.material.uniforms;
-  liftN(hemi, 'intensity', LIFT.hemi, b => b * (1 - 0.4 * o) + L * 1.5);
+  liftN(hemi, 'intensity', LIFT.hemi, b => b * (1 - 0.4 * o) + L * 0.7);
   liftN(sun, 'intensity', LIFT.sunI, b => b * (1 - 0.75 * o));
   liftC(U.sunCol.value, LIFT.sunCol, null, 0.75 * o, 0);
   liftN(scene.fog, 'near', LIFT.haze, b => b * (1 + 3 * o));
-  liftC(scene.fog.color, LIFT.fog, DARK.fog, 0.6 * o, L * 0.32);
-  liftC(su.uSkyTop.value, LIFT.top, DARK.top, 0.7 * o, L * 0.22);
-  liftC(su.uSkyHor.value, LIFT.hor, DARK.hor, 0.65 * o, L * 0.42);
+  liftC(scene.fog.color, LIFT.fog, DARK.fog, 0.6 * o, L * 0.12);
+  liftC(su.uSkyTop.value, LIFT.top, DARK.top, 0.7 * o, L * 0.06);
+  liftC(su.uSkyHor.value, LIFT.hor, DARK.hor, 0.65 * o, L * 0.16);
   liftC(su.uSunDisc.value, LIFT.disc, null, o, 0);
-  liftC(su.uCloudLit.value, LIFT.cLit, DARK.lit, 0.8 * o, L * 0.5);
-  liftC(su.uCloudDark.value, LIFT.cDark, DARK.dk, 0.8 * o, L * 0.25);
+  liftC(su.uCloudLit.value, LIFT.cLit, DARK.lit, 0.8 * o, L * 0.25);
+  liftC(su.uCloudDark.value, LIFT.cDark, DARK.dk, 0.8 * o, L * 0.1);
   liftN(su.uCover, 'value', LIFT.cover, b => b + (0.92 - b) * o);
 }

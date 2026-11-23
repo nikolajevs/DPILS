@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { P } from './player.js';
-import { camera, scene } from '../render/renderer.js';
+import { camera, renderer, scene } from '../render/renderer.js';
 import { worldSpace } from '../render/world-space.js';
 import { terrainH } from '../world/terrain.js';
 import { $ } from '../core/env.js';
@@ -39,7 +39,7 @@ void main() {
   gl_Position = projectionMatrix * viewMatrix * w;
 }`;
 const WALL_FS = `
-uniform float uTime, uOutside, uCx, uCz, uPer12, uPer5, uPer9, uCirc;
+uniform float uTime, uOutside, uCx, uCz, uPer12, uPer5, uPer9, uCirc, uLum;
 uniform vec4 uS1, uS2;
 varying vec2 vUv; varying vec3 vW; varying vec3 vN;
 float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -78,11 +78,19 @@ void main() {
   float swirl = fbm(vec2(ca * 8.0, sa * 8.0) + vec2(uTime * 0.02, h * 0.004 + uTime * 0.01));   // the slow weather around the ring
   // the height profile: a dense wall from the street to ~120 m, gone by ~360 m
   float hf = pow(1.0 - smoothstep(90.0, 360.0, h), 1.4);
-  // the crackle: thin veins of current on the ridges of a noise (~9 m cells) that re-forms eleven times a second,
-  // lit in patches over the brighter streaks — the wall fizzes instead of flowing
-  float tq = floor(uTime * 11.0);
-  float vn = pnoise(vec2(ang * uPer9 + tq * 0.37, h * 0.085 + tq * 7.31), uPer9);
-  float vein = smoothstep(0.9, 0.985, 1.0 - abs(2.0 * vn - 1.0)) * smoothstep(0.25, 0.6, f1) * step(0.5, hash2(vec2(floor(ang * uPer9 * 0.2), tq))) * hf;
+  // the crackle: in some of the ~9 m columns of the arc a jagged thread of current runs up the wall — a polyline
+  // kinking every ~7 m at random, over a random stretch of height — and the threads are drawn anew eleven times a
+  // second, so the wall fizzes instead of flowing. Its width is held to a pixel or so at any distance (the metres per
+  // pixel from the derivatives of the world position: the angle jumps at the atan seam, the position does not)
+  float tq = floor(uTime * 11.0), cx = ang * uPer9, ci = mod(floor(cx), uPer9);
+  float hy = h / 7.0 + hash2(vec2(ci, tq + 3.0)) * 10.0, k0 = floor(hy);
+  float xl = 0.25 + 0.5 * mix(hash2(vec2(ci * 1.7 + k0, tq)), hash2(vec2(ci * 1.7 + k0 + 1.0, tq)), fract(hy));
+  float h0 = hash2(vec2(ci, tq + 7.0)) * 130.0, h1 = h0 + 25.0 + hash2(vec2(ci, tq + 9.0)) * 110.0;
+  float mpp = max(fwidth(vW.x), fwidth(vW.z)) + 1e-3, dxm = abs(fract(cx) - xl) * uCirc / uPer9;
+  float edge = min(fract(cx), 1.0 - fract(cx));   // the glow dies before the column's border: no box round the thread
+  float vein = step(0.8, hash2(vec2(ci, tq + 1.0))) * smoothstep(h0, h0 + 5.0, h) * (1.0 - smoothstep(h1 - 5.0, h1, h))
+             * (1.0 - smoothstep(0.0, max(0.3, mpp * 1.3), dxm) + 0.3 * exp(-dxm / (0.6 + mpp)) * smoothstep(0.0, 0.2, edge))
+             * (1.0 - smoothstep(1.5, 4.0, mpp));   // a column narrower than a few pixels far away: the threads would only shimmer
   // the glowing hem: an electric band hugging the ground, ~30 m tall, flickering with the fine streaks
   float hem = exp(-max(0.0, h + 6.0) * 0.075) * (0.6 + 0.8 * f2);
   // the grazing fire: seen edge-on the wall burns bright (the view along the ring from inside)
@@ -98,11 +106,12 @@ void main() {
   vec3 col = mix(deep, mid, swirl);
   col = mix(col, glow, clamp(fil, 0.0, 1.0) * 0.8);
   col += glow * hem * 1.6;
-  col += glow * fres * 0.6;
-  col += vec3(0.75, 0.92, 1.0) * vein * 2.6;
-  col += vec3(0.5, 0.7, 1.0) * bolt * (1.2 + 2.6 * fil);
+  col += glow * fres * (0.12 + 0.5 * fil);   // along the filaments: seen edge-on near by, a flat glow would wash the wall out
+  col += vec3(0.75, 0.92, 1.0) * vein * 2.8;
+  col += vec3(0.5, 0.7, 1.0) * bolt * (0.45 + 1.4 * fil);
   col = mix(col, vec3(0.12, 0.006, 0.20) + glow * fil * 0.6, uOutside * 0.45);   // the storm angers when you stand outside
-  float a = (0.74 + 0.18 * fil + 0.04 * swirl) * hf + hem * 0.85 + fres * 0.30 * hf + vein * 0.5 + bolt * 0.25;
+  col *= uLum;   // the wall shines by itself: as bright at night as by day, not lifted by the night's exposure into one flat bloom
+  float a = (0.74 + 0.18 * fil + 0.04 * swirl) * hf + hem * 0.85 + fres * 0.2 * hf + vein * 0.5 + bolt * 0.2;
   gl_FragColor = vec4(col, clamp(a, 0.0, 0.96));
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -121,7 +130,7 @@ void main() {
 function build() {
   if (built) return; built = true;
   const wm = new THREE.ShaderMaterial({
-    uniforms: { uTime: { value: 0 }, uOutside: { value: 0 }, uCx: { value: -1000 }, uCz: { value: 500 }, uPer12: { value: 1676 }, uPer5: { value: 4021 }, uPer9: { value: 2234 }, uCirc: { value: 20106 }, uS1: { value: new THREE.Vector4(0, 0, 0, 1) }, uS2: { value: new THREE.Vector4(0, 0, 0, 1) } },
+    uniforms: { uTime: { value: 0 }, uOutside: { value: 0 }, uCx: { value: -1000 }, uCz: { value: 500 }, uPer12: { value: 1676 }, uPer5: { value: 4021 }, uPer9: { value: 2234 }, uCirc: { value: 20106 }, uLum: { value: 1 }, uS1: { value: new THREE.Vector4(0, 0, 0, 1) }, uS2: { value: new THREE.Vector4(0, 0, 0, 1) } },
     vertexShader: WALL_VS, fragmentShader: WALL_FS,
     transparent: true, depthWrite: false, side: THREE.DoubleSide,   // depth-tested like the city: drawn over everything, the wall covered the houses in front of it and showed its hem through the ground
   });
@@ -178,6 +187,7 @@ export function stormTick(dt, now) {
   wall.scale.set(Math.max(1, c.r), 520, Math.max(1, c.r)); wall.position.set(c.x, 220, c.z);
   const u = wall.material.uniforms;
   u.uTime.value = now / 1000; u.uOutside.value = outK; u.uCx.value = c.x; u.uCz.value = c.z;
+  u.uLum.value = Math.min(1.1, Math.max(0.55, 0.85 / (renderer.toneMappingExposure || 1)));   // the exposure of the day (lighting.js) taken back
   const circ = 6.2831853 * c.r;
   u.uPer12.value = Math.max(8, Math.round(circ / 12)); u.uPer5.value = Math.max(16, Math.round(circ / 5)); u.uPer9.value = Math.max(12, Math.round(circ / 9)); u.uCirc.value = Math.max(1, circ);
   // the weather of the storm: the bolts, the arcs, the air, the hum (storm-fx.js); the wall glows round its bolts
