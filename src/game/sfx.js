@@ -179,6 +179,41 @@ function fireSound(ctx, out, vol = 1, d = 0, pan = 0) {
     for (let i = 0; i < 6; i++) noisePlay(ctx, out, { type: 'highpass', freq: 2600, vol: vol * 0.22 * (0.5 + Math.random() * 0.5), dur: 0.05, attack: 0.004, delay: dl + 0.15 + Math.random() * 1.1, pan: pan + (Math.random() - 0.5) * 0.4 });
   } catch (e) {}
 }
+// the napalm's patch burning (mp.js zoneSoundTick drives it every frame): a low roar of the flames that breathes, a
+// softer rush over it and the hiss of the burning filler, and the dry crackle of it — pops the caller throws in by the
+// heat (pop). The loudness by distance and the heat, and the side, are the caller's: level(v, pan, k) sets them; the
+// roar opens up (its filter rises) with the heat k. stop() fades it out.
+function fireBed(ctx, out) {
+  try {
+    const t = ctx.currentTime, src = [];
+    const pos = ctx.createGain(), pan = ctx.createStereoPanner(); pos.gain.value = 0; pos.connect(pan); pan.connect(out);
+    const band = (type, freq, q, vol) => {
+      const s = ctx.createBufferSource(); s.buffer = noise(ctx); s.loop = true;
+      const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+      const g = ctx.createGain(); g.gain.value = vol; s.connect(f); f.connect(g); g.connect(pos); s.start(t, Math.random() * 1.5); src.push(s);
+      return { f, g };
+    };
+    const roar = band('lowpass', 260, 0.9, 0.9), rush = band('bandpass', 850, 0.55, 0.32), hiss = band('highpass', 3600, 0.6, 0.06);
+    // the flames breathe: two slow wobbles of the roar's loudness that never quite repeat
+    for (const [hz, amt] of [[0.7 + Math.random() * 0.4, 0.28], [2.3 + Math.random() * 0.8, 0.16]]) {
+      const o = ctx.createOscillator(), og = ctx.createGain(); o.frequency.value = hz; og.gain.value = amt; o.connect(og); og.connect(roar.g.gain); o.start(t); src.push(o);
+    }
+    return {
+      pos, pan,
+      level(v, p, k) { const n = ctx.currentTime; pos.gain.setTargetAtTime(v, n, 0.1); pan.pan.setTargetAtTime(p, n, 0.1); roar.f.frequency.setTargetAtTime(180 + 260 * k, n, 0.2); rush.g.gain.setTargetAtTime(0.12 + 0.3 * k, n, 0.2); },
+      pop(vol) { noisePlay(ctx, pos, { type: 'bandpass', freq: 1400 + Math.random() * 3200, q: 1.3, vol: vol * (0.35 + Math.random() * 0.5), dur: 0.025 + Math.random() * 0.05, attack: 0.002 }); },
+      stop() { try { const n = ctx.currentTime; pos.gain.cancelScheduledValues(n); pos.gain.setTargetAtTime(0, n, 0.25); for (const s of src) s.stop(n + 1.5); } catch (e) {} }
+    };
+  } catch (e) { return null; }
+}
+// the smoke putting the napalm out: the hiss of the quenched fire, a sizzle that dies down, a few last pops
+function steamHiss(ctx, out, vol = 1, pan = 0) {
+  try {
+    noisePlay(ctx, out, { type: 'highpass', freq: 2400, q: 0.5, vol: vol * 0.45, dur: 1.3, attack: 0.04, pan });
+    noisePlay(ctx, out, { type: 'bandpass', freq: 5200, q: 0.8, vol: vol * 0.25, dur: 0.8, attack: 0.02, pan });
+    for (let i = 0; i < 4; i++) noisePlay(ctx, out, { type: 'bandpass', freq: 1800 + Math.random() * 2400, q: 1.4, vol: vol * 0.2 * Math.random(), dur: 0.04, attack: 0.003, delay: 0.1 + Math.random() * 0.8, pan });
+  } catch (e) {}
+}
 // the crackle of the fire round you (the hurt of the napalm): a few dry pops at the ear
 function burnSound(ctx, out, vol = 1) {
   try { for (let i = 0, n = 3 + (Math.random() * 3 | 0); i < n; i++) noisePlay(ctx, out, { type: 'bandpass', freq: 1800 + Math.random() * 2600, q: 1.2, vol: vol * 0.3 * (0.4 + Math.random() * 0.6), dur: 0.04 + Math.random() * 0.05, attack: 0.003, delay: Math.random() * 0.3 }); } catch (e) {}
@@ -272,4 +307,4 @@ function bellSound(ctx, out, f0 = 220, vol = 1, d = 0, pan = 0, delay = 0) {
     n.connect(nf); nf.connect(ng); ng.connect(head); n.start(t); n.stop(t + 0.08);
   } catch (e) {}
 }
-export { arcCrackle, bellSound, boomSound, burnSound, crackSound, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeHiss, stepSound, stormBed, stormZap, thunderSound };
+export { arcCrackle, bellSound, boomSound, burnSound, crackSound, fireBed, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeHiss, steamHiss, stepSound, stormBed, stormZap, thunderSound };

@@ -191,7 +191,7 @@ export function createGame(opts) {
     }
     zones.set(z.id, z);
     all({ t: 'zone', ...zoneMsg(z) });
-    if (z.kind === 'smoke') douse(t0);   // a screen laid into a burning patch starts putting it out at once
+    douse(t0);   // a screen laid into a burning patch starts putting it out at once, a patch laid into a screen fizzles at once
   }
   // the smoke puts the fire out: a cell under a screen's dense core (smokeCore, as it stands now — it swells out of the
   // canister, so a smoke thrown into the fire quenches it from the canister outward) goes out in douseMs and never
@@ -213,13 +213,14 @@ export function createGame(opts) {
       all({ t: 'fireOut', id: z.id, cells: out });
     }
   }
+  let lastDouse = 0;
   function stepZones() {
     const t = now();
+    if (t - lastDouse >= NAPALM.tickMs) { lastDouse = t; douse(t); }
     for (const z of [...zones.values()]) {
       if (t >= z.until) { zones.delete(z.id); all({ t: 'zoneEnd', id: z.id }); continue; }
       if (z.kind !== 'fire' || roundOver || t - z.lastTick < NAPALM.tickMs) continue;
       z.lastTick = t;
-      douse(t);
       const thrower = players.get(z.by); if (!thrower) continue;
       const age = t - z.t0;
       for (const v of players.values()) {

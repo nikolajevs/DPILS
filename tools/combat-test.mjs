@@ -1033,7 +1033,7 @@ console.log('smoke and napalm (zones):');
   for (let i = 0; i < 70; i++) { clock += 1000 / 30; g.stepNades(); }
   ok(A.last('fireOut') && A.last('fireOut').cells.length > 0, 'a napalm thrown into a standing smoke fizzles: the screen puts its cells out', JSON.stringify(A.last('fireOut')));
   for (let i = 0; i < 30; i++) { clock += 1000 / 30; g.stepNades(); }
-  ok(p.hp >= hpIn - 8 && ![...g.zones.values()].some(z => z.kind === 'fire'), 'the fizzled napalm burns no one and is gone in a moment', hpIn + '->' + p.hp);
+  ok(p.hp === hpIn && ![...g.zones.values()].some(z => z.kind === 'fire'), 'the fizzled napalm burns no one and is gone in a moment', hpIn + '->' + p.hp);
   clock += SMOKE.durMs; g.stepNades();   // the screen is gone
   ok(g.zones.size === 0, 'the screen is out');
   p.napalms = 1; msg(A, { t: 'throw', kind: 'napalm', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });
