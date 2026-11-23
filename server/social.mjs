@@ -27,12 +27,19 @@ export function createSocial({ accounts, teams, now = Date.now, onTeams = () => 
     let best = 'lobby'; for (const s of u.sessions) if ((WHERE[s.where] || 0) > WHERE[best]) best = s.where;
     return best;
   }
+  // the server of the list a player fights on (index.mjs SERVERS): the one of his busiest tab; 0 — not in a fight
+  function srvOf(name) {
+    const u = users.get(low(name)); if (!u) return 0;
+    let best = null; for (const s of u.sessions) if (s.srv && (!best || (WHERE[s.where] || 0) > (WHERE[best.where] || 0))) best = s;
+    return best ? best.srv : 0;
+  }
+  const okSrv = (w, v) => (w === 'game' || w === 'storm') && Number.isInteger(v) && v >= 1 && v <= 8 ? v : 0;
   const tagOf = name => { const t = teams.of(name); return t ? t.tag : ''; };
   function stateOf(name) {
     const t = teams.of(name);
     const team = t && {
       id: t.id, name: t.name, tag: t.tag, leader: t.leader, max: TEAM.max,
-      members: t.members.map(m => ({ name: m, leader: low(m) === low(t.leader), where: whereOf(m) })),
+      members: t.members.map(m => ({ name: m, leader: low(m) === low(t.leader), where: whereOf(m), srv: srvOf(m) || undefined })),
       sent: teams.invitesFrom(t.id).map(i => ({ name: i.to, from: i.from, at: i.at })),
     };
     const invites = teams.invitesOf(name).map(i => { const x = teams.get(i.team); return x && { team: x.id, name: x.name, tag: x.tag, size: x.members.length, from: i.from, at: i.at }; }).filter(Boolean);
@@ -114,8 +121,8 @@ export function createSocial({ accounts, teams, now = Date.now, onTeams = () => 
         return;
       }
       case 'where': {
-        const w = WHERE[m.where] ? m.where : 'lobby'; if (w === s.where) return;
-        s.where = w; presence(me); return;
+        const w = WHERE[m.where] ? m.where : 'lobby', v = okSrv(w, m.srv); if (w === s.where && v === s.srv) return;
+        s.where = w; s.srv = v; presence(me); return;
       }
       case 'online': {   // who to invite: the accounts online now, with their team and where they are
         const list = [...users.values()].filter(u => low(u.name) !== low(me)).slice(0, 200).map(u => ({ name: u.name, tag: tagOf(u.name), where: whereOf(u.name) }))
@@ -127,7 +134,7 @@ export function createSocial({ accounts, teams, now = Date.now, onTeams = () => 
   }
 
   function attach(conn) {
-    const s = { conn, name: '', where: 'lobby', win: 0, msgs: 0, lastSay: 0, since: now() };
+    const s = { conn, name: '', where: 'lobby', srv: 0, win: 0, msgs: 0, lastSay: 0, since: now() };
     return {
       get joined() { return !!s.name; },
       get name() { return s.name; },
@@ -140,7 +147,7 @@ export function createSocial({ accounts, teams, now = Date.now, onTeams = () => 
           if (m.t !== 'auth') return;
           const who = accounts && accounts.byKey(m.key);
           if (!who) { conn.send(enc({ t: 'auth-required' })); conn.close(); return; }
-          s.name = who.name; s.where = WHERE[m.where] ? m.where : 'lobby';
+          s.name = who.name; s.where = WHERE[m.where] ? m.where : 'lobby'; s.srv = okSrv(s.where, m.srv);
           let u = users.get(low(s.name)); const first = !u;
           if (!u) { u = { name: s.name, sessions: new Set() }; users.set(low(s.name), u); }
           u.sessions.add(s);

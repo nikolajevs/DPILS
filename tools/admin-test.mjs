@@ -172,6 +172,27 @@ try {
   ok(!(await api('players')).j.rows.some(r => !r.bot), 'the kicked human is out');
   ok((await api('kick', { method: 'POST', body: { id: 99999 } })).status === 404, 'kicking nobody is a 404');
 
+  // the list of servers: four games in one process, their matches 15 minutes apart, each on its own door /play/<n>
+  const hl = (await req('/health')).j;
+  ok(hl.servers && hl.servers.length === 4 && hl.servers.map(v => v.name).join() === 'Тест 1,Тест 2,Тест 3,Тест 4' && hl.name === 'Тест 1' && hl.servers.every((v, i) => v.id === i + 1 && v.bots === (i ? 2 : 1) && v.match), 'the health lists four servers with their matches and bots (the first one set to 1 above), the first one on top');
+  const L = hl.servers.map(v => v.match.left), mlen = hl.servers[0].match.len;
+  ok(L.every((x, i) => !i || Math.abs((((x - L[i - 1]) % mlen) + mlen) % mlen - 900000) < 3000), 'each next server ends its match 15 minutes after the one before', L.join());
+  ok(hl.servers.every((v, i) => !i || Math.abs((((hl.servers[i - 1].day.f - v.day.f) % 1) + 1) % 1 - 0.125) < 0.001), 'and its day runs 15 minutes behind: the midnight comes with its match');
+  ok((await api('overview')).j.servers.length === 4, 'the admin overview lists the servers');
+  const ws3 = new WebSocket('ws://127.0.0.1:' + PORT + '/play/3');
+  await new Promise((res, rej) => { ws3.once('open', res); ws3.once('error', rej); });
+  const hello3 = waitFor(ws3, m => m.t === 'hello');
+  ws3.send(JSON.stringify({ t: 'join', name: 'Аня', key: reg.j.key, char: 'soldier', x: -1487, z: 1263, yaw: 0, board: true }));
+  const h3 = await hello3;
+  ok(h3.srv === 3 && h3.server === 'Тест 3', 'the door /play/3 joins the third server');
+  ok((await api('players', { q: '?srv=3' })).j.rows.some(r => r.name === 'Аня') && !(await api('players')).j.rows.some(r => !r.bot), 'the admin reads the server of ?srv=: the human on the third, nobody on the first');
+  ok((await req('/health')).j.servers[2].players === 1 && (await req('/health')).j.servers[0].players === 0, 'the health counts the human on his server');
+  const gone3 = new Promise(res => ws3.once('close', res)); ws3.close(); await gone3;
+  const ws9 = new WebSocket('ws://127.0.0.1:' + PORT + '/play/9');
+  const no9 = await new Promise((res, rej) => { ws9.once('message', raw => res(JSON.parse(raw.toString()))); ws9.once('error', rej); });
+  ok(no9.t === 'noserver', 'a door beyond the list is no game');
+  ws9.close();
+
   // the cargo on demand
   ok((await api('cargo', { method: 'POST', body: {} })).j.ok, 'the cargo dropped');
   ok((await api('cargo', { method: 'POST', body: {} })).status === 409, 'a second crate while one is live refused');

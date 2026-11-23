@@ -45,12 +45,13 @@ export function createGame(opts) {
   const world = opts.world, MODE = 'ffa', NAME = opts.name || 'Даугавпилс', MAX = opts.maxPlayers || R.maxPlayers;
   // the match of the server (storm.mjs): its length (the day of the game), the door of its first half hour, the grace of
   // a restart; no kill target — the storm of the last twenty minutes decides it. null: the endless rounds of the training
-  const MATCH = opts.match ? { len: Math.max(60000, +opts.match.len || MATCHC.lenMs), grace: opts.match.graceMs ?? MATCHC.bootGraceMs } : null;
+  // off: the shift of the schedule — the servers of one process start their matches one after another (index.mjs SERVERS)
+  const MATCH = opts.match ? { len: Math.max(60000, +opts.match.len || MATCHC.lenMs), grace: opts.match.graceMs ?? MATCHC.bootGraceMs, off: +opts.match.offset || 0 } : null;
   const WIN = MATCH ? Infinity : opts.win || 20;
   const now = opts.now || (() => Date.now()), players = new Map();
   // the day of the game (daycycle.mjs): its length; null — no clock, the page keeps the time of day it has
-  const DAY = opts.day ? { len: Math.max(60000, +opts.day.len || DAY_MS) } : null;
-  const dayNow = () => DAY && { f: +dayPhase(now(), DAY.len).toFixed(6), len: DAY.len };
+  const DAY = opts.day ? { len: Math.max(60000, +opts.day.len || DAY_MS), off: +opts.day.offset || 0 } : null;   // off: the midnight of this server, with its match
+  const dayNow = () => DAY && { f: +dayPhase(now(), DAY.len, DAY.off).toFixed(6), len: DAY.len };
   let nextId = 1, roundOver = false, nextNade = 1, nextBid = 1;
   const nades = new Map(), bullets = new Map(), zones = new Map(), timers = [];   // zones: the smoke screens and the burning patches left by the special grenades
   // the arena: its bases stood on something walkable; without an arena bots roam round the square
@@ -566,7 +567,7 @@ export function createGame(opts) {
     if (t > storm.playStart + 5000 && units(stormAlive()) <= 1) endStorm();   // the last survivor (the last team standing) takes the match
   }
   function tickMatch() {
-    const t = now(), s = matchAt(t, MATCH.len);
+    const t = now(), s = matchAt(t, MATCH.len, MATCH.off);
     if (!match || s.n !== match.n) startMatch(s);
     if (!storm) {
       for (const w of MATCHC.warnMs) if (!match.warned.has(w) && t < match.stormAt && t >= match.stormAt - w && match.stormAt - w > match.start) {
@@ -624,7 +625,7 @@ export function createGame(opts) {
           if (lb && m.board !== false && validKey(m.key) && ![...players.values()].some(q => q.key === m.key)) { p.key = m.key; const r = lb.identify(m.key, nameBase(m.name), n => !taken(n)); p.name = r.name; p.prof = r.prof; } else p.name = cleanName(m.name);
           p.acct = who ? who.name : ''; p.clan = clanOf(p);
           p.char = cleanChar(m.char); p.joined = true; p.joinedAt = t0; players.set(p.id, p);
-          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, win: WIN, clan: p.clan || undefined, now: now(), arena: arenaPub(fieldArena()), holy: holyPublic() || undefined, siege: siegePublic() || undefined, mySide: p.siege || undefined, rules: { hp: R.hp, range: R.range }, day: dayNow() || undefined, board: board(), items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), zones: [...zones.values()].map(z => ({ ...zoneMsg(z), left: Math.max(0, z.until - now()) })), cargo: cargoMsg(), marks: marks(), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])), match: matchPublic() || undefined, storm: stormPublic() || undefined });
+          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, srv: opts.id || 1, name: p.name, win: WIN, clan: p.clan || undefined, now: now(), arena: arenaPub(fieldArena()), holy: holyPublic() || undefined, siege: siegePublic() || undefined, mySide: p.siege || undefined, rules: { hp: R.hp, range: R.range }, day: dayNow() || undefined, board: board(), items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), zones: [...zones.values()].map(z => ({ ...zoneMsg(z), left: Math.max(0, z.until - now()) })), cargo: cargoMsg(), marks: marks(), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])), match: matchPublic() || undefined, storm: stormPublic() || undefined });
           const mate = besideMate(p);   // a team appears together: next to a living teammate (in an arena the base decides)
           if (stormFight()) { const [sx, sz, syaw] = mate || stormSpawnPoint(); spawn(p, sx, sz, syaw, true); }   // a join in the storm appears inside the circle
           else if (mate && !fieldArena()) spawn(p, mate[0], mate[1], mate[2]); else spawn(p, m.x, m.z, m.yaw);
@@ -1152,7 +1153,7 @@ export function createGame(opts) {
     get match() { return match; },   // the schedule of the match, its roster and the fallen of its storm
     get storm() { return storm; },   // the storm's state: the tests read the circle and the phase
     stop() { for (const t of timers) { clearInterval(t); clearTimeout(t); } timers.length = 0; },
-    health() { return { ok: true, mode: MODE, name: NAME, players: humans().length, bots: players.size - humans().length, max: MAX, win: WIN === Infinity ? null : WIN, round: roundOver ? 'end' : 'play', arena: fieldArena() ? fieldArena().name : null, holy: holy ? { left: Math.max(0, holy.until - now()), held: holy.points.filter(pt => pt.owner).length, hold: holy.holdSide ? Math.max(0, holy.holdStart + HOLY.holdMs - now()) : 0 } : undefined, siege: siege ? { phase: siege.phase, left: Math.max(0, siege.until - now()), counts: siegeCounts(), prog: +siege.prog.toFixed(3) } : undefined, leaderboard: !!lb, day: dayNow(), match: matchPublic() || undefined, storm: storm ? { phase: storm.phase, pi: storm.pi, stages: storm.plan.length, kind: storm.kind, left: Math.max(0, storm.t1 - now()), alive: stormAlive().length, total: players.size } : undefined }; },
+    health() { return { ok: true, mode: MODE, id: opts.id || 1, name: NAME, players: humans().length, bots: players.size - humans().length, max: MAX, win: WIN === Infinity ? null : WIN, round: roundOver ? 'end' : 'play', arena: fieldArena() ? fieldArena().name : null, holy: holy ? { left: Math.max(0, holy.until - now()), held: holy.points.filter(pt => pt.owner).length, hold: holy.holdSide ? Math.max(0, holy.holdStart + HOLY.holdMs - now()) : 0 } : undefined, siege: siege ? { phase: siege.phase, left: Math.max(0, siege.until - now()), counts: siegeCounts(), prog: +siege.prog.toFixed(3) } : undefined, leaderboard: !!lb, day: dayNow(), match: matchPublic() || undefined, storm: storm ? { phase: storm.phase, pi: storm.pi, stages: storm.plan.length, kind: storm.kind, left: Math.max(0, storm.t1 - now()), alive: stormAlive().length, total: players.size } : undefined }; },
   };
 }
 export { LEVELS };

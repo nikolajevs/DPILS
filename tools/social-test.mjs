@@ -126,6 +126,13 @@ const say = (c, m) => c.h.message(JSON.stringify(m));
   const bo2 = open('Боря', 'lobby');
   ok(an.last('state').team.members.find(m => m.name === 'Боря').where === 'storm', 'a second tab in the lobby: the busier one counts');
   bo2.h.close();
+  // the list of servers (index.mjs SERVERS): the team sees the server a member fights on, so «К нему» opens it
+  say(bo, { t: 'where', where: 'game', srv: 3 });
+  ok(an.last('state').team.members.find(m => m.name === 'Боря').srv === 3, 'Боря fights on server 3: his team sees which one');
+  say(bo, { t: 'where', where: 'lobby', srv: 3 });
+  ok(an.last('state').team.members.find(m => m.name === 'Боря').srv === undefined, 'back in the lobby: no server');
+  say(bo, { t: 'where', where: 'storm', srv: 99 });
+  ok(an.last('state').team.members.find(m => m.name === 'Боря').srv === undefined && an.last('state').team.members.find(m => m.name === 'Боря').where === 'storm', 'a server beyond the list is dropped, the place stays');
   say(an, { t: 'say', text: '  привет,   команда ' });
   ok(bo.last('say') && bo.last('say').text === 'привет, команда' && bo.last('say').from === 'Аня', 'the team chat reaches the members');
   say(an, { t: 'say', text: 'ещё' });

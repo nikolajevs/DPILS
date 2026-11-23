@@ -34,6 +34,7 @@ import { BULLET_G, CARGO, FALL, HIT, HOLY, INV, WEAPONS, NADE, NAPALM, RESERVE, 
 import { createGame, MUZZLE } from '../server/game.mjs';
 import { makePhysics } from '../server/physics.mjs';
 import { MATCH as MATCHC, STORM as STORMC, matchAt, pickFinal, stageCircle, stormField, stormPlan, stormRadii } from '../server/storm.mjs';
+import { dayPhase } from '../server/daycycle.mjs';
 
 let pass = 0, fail = 0;
 const ok = (cond, name, extra = '') => { if (cond) { pass++; console.log('  ok   ' + name); } else { fail++; console.log('  FAIL ' + name + (extra ? ' вЂ” ' + extra : '')); } };
@@ -1351,6 +1352,11 @@ console.log('the match and the storm (createGame match, controlled clock):');
 {
   const s = matchAt(5 * MATCHC.lenMs + 1000);
   ok(s.start === 5 * MATCHC.lenMs && s.end - s.start === 7200000 && s.joinUntil - s.start === 1800000 && s.end - s.stormAt === 1200000, 'the match: two hours from a whole multiple, the door 30 min, the storm the last 20 min');
+  // the list of servers (index.mjs SERVERS): the next server shifts its whole schedule by 15 minutes
+  const Q = 900000, sh = matchAt(5 * MATCHC.lenMs + 1000, MATCHC.lenMs, Q), sh2 = matchAt(5 * MATCHC.lenMs + Q, MATCHC.lenMs, Q);
+  ok(sh.start === 4 * MATCHC.lenMs + Q && sh.end === 5 * MATCHC.lenMs + Q && sh.n === s.n - 1, 'a shifted server: at the first one\'s start its own match still runs for 15 minutes');
+  ok(sh2.start === 5 * MATCHC.lenMs + Q && sh2.n === s.n && sh2.joinUntil - sh2.start === 1800000 && sh2.end - sh2.stormAt === 1200000, 'a shifted server: its next match starts 15 minutes later, with the same door and storm');
+  ok(dayPhase(5 * MATCHC.lenMs + Q, MATCHC.lenMs, Q) === 0 && Math.abs(dayPhase(5 * MATCHC.lenMs, MATCHC.lenMs, Q) - 0.875) < 1e-9, 'its day starts with its match: midnight 15 minutes later');
   const f = stormField(null, 5200, 4200);
   ok(f.r0 > Math.hypot(5200, 4200) && f.c.x === 0 && f.c.z === 0, 'the first circle holds every corner of the field', String(f.r0));
   const fa = stormField({ cx: 10, cz: 20, r: 300 });

@@ -20,6 +20,9 @@
    «Царь горы» race, the cargo drop and the storm; /events/<kind> tunes the rules and the auto-run flag (events.mjs
    keeps them in server/data/events.json), /events/holy/start|stop|next and /events/cargo/drop|remove|next drive the
    events by hand, /events/reset restores the defaults. The storm settings apply to the next match.
+   Servers: one process holds the list of servers (index.mjs SERVERS); every door that reads or drives the fight
+   works on the server named by ?srv=<n> (the first one without it), the overview lists them all, and the books
+   (the accounts, the teams) reach every server at once.
    Restart: POST /admin/api/restart saves the books, warns the fight in the chat and lets the process exit (code 0)
    after a short grace — the supervisor brings it back (pm2 autorestart, systemd Restart=always); a bare `node
    server/index.mjs` without a supervisor just stops. The sessions and the login tries live in the process memory,
@@ -34,10 +37,10 @@ import { idOf } from './leaderboard.mjs';
 import { CARGO, HOLY, SIEGE } from './combat.mjs';
 
 const TTL = 12 * 3600 * 1000, MAX_SESSIONS = 64, LOG_CAP = 1000;
-const ENV_KEYS = ['PORT', 'SERVER_NAME', 'ARENA', 'BOTS', 'BOT_LEVEL', 'WIN_SCORE', 'MATCH', 'DAY_MIN', 'LEADERBOARD', 'ACCOUNTS', 'TEAMS', 'EVENTS', 'STATIC', 'NODE_ENV'];
+const ENV_KEYS = ['PORT', 'SERVER_NAME', 'SERVERS', 'SERVER_STEP_MIN', 'ARENA', 'BOTS', 'BOT_LEVEL', 'WIN_SCORE', 'MATCH', 'DAY_MIN', 'LEADERBOARD', 'ACCOUNTS', 'TEAMS', 'EVENTS', 'STATIC', 'NODE_ENV'];
 const mb = b => Math.round(b / 1048576 * 10) / 10;
 
-export function createAdmin({ pass, game, accounts = null, board = null, teams = null, social = null, events = null, clients = () => 0, sockets = () => [], files = [] }) {
+export function createAdmin({ pass, game: one = null, games = one ? [one] : [], accounts = null, board = null, teams = null, social = null, events = null, clients = () => 0, sockets = () => [], files = [] }) {
   if (!pass) return { route: () => false, note: () => {} };   // no password — no panel: the paths fall through to the usual 404
   const page = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'admin.html'), 'utf8');
   const want = crypto.createHash('sha256').update(String(pass)).digest();
@@ -112,7 +115,11 @@ export function createAdmin({ pass, game, accounts = null, board = null, teams =
       req.on('error', () => resolve(null));
     });
   }
-  const humans = () => [...game.players.values()].filter(p => !p.bot);
+  // the server the request works on (?srv=<n>, the first by default): set by route() before the handler runs
+  let game = games[0];
+  const pick = q => games[(+q.get('srv') || 1) - 1] || games[0];
+  const refreshAll = () => { for (const g of games) g.refreshClans(); };
+  const humans = () => games.flatMap(g => [...g.players.values()].filter(p => !p.bot));
   const saveAll = () => { if (accounts) accounts.save(); if (board) board.save(); if (teams) teams.save(); };
   const envView = () => { const e = {}; for (const k of ENV_KEYS) if (process.env[k] !== undefined) e[k] = String(process.env[k]); e.ADMIN_PASS = '(задан)'; return e; };
   const circle = c => c && { x: Math.round(c.x), z: Math.round(c.z), r: c.r == null ? 0 : Math.round(c.r) };
@@ -122,13 +129,13 @@ export function createAdmin({ pass, game, accounts = null, board = null, teams =
     'GET /overview': () => {
       const mem = process.memoryUsage();
       return {
-        server: game.health(), uptime: Math.round(process.uptime()), boot: bootAt, node: process.version,
+        server: game.health(), servers: games.map(g => { const h = g.health(); return { id: h.id, name: h.name, players: h.players, bots: h.bots, match: h.match || null, storm: h.storm ? { alive: h.storm.alive } : null }; }), uptime: Math.round(process.uptime()), boot: bootAt, node: process.version,
         mem: Math.round(mem.rss / 1048576), heap: Math.round(mem.heapUsed / 1048576), clients: clients(),
         loop: { last: lagLast, max: lagMax }, journal: { errors: totals.error, warns: totals.warn, held: logs.length },
         http: { total: http.total, perMin: perMin(), s4: http.s4, s5: http.s5 },
         counts: { accounts: accounts ? accounts.count() : null, board: board ? board.count() : null, teams: teams ? teams.count() : null, online: social ? social.online() : null },
         files: files.map(f => { try { const st = fs.statSync(f.path); return { name: f.name, size: st.size, mtime: st.mtimeMs }; } catch (e) { return { name: f.name, size: 0, mtime: 0 }; } }),
-        env: { name: process.env.SERVER_NAME || 'Даугавпилс', arena: process.env.ARENA || '', bots: process.env.BOTS || '0', level: process.env.BOT_LEVEL || 'normal', match: process.env.MATCH === 'off' ? 'off' : 'on', day: process.env.DAY_MIN || '120' },
+        env: { name: process.env.SERVER_NAME || 'Даугавпилс', arena: process.env.ARENA || '', bots: process.env.BOTS || '0', level: process.env.BOT_LEVEL || 'normal', match: process.env.MATCH === 'off' ? 'off' : 'on', day: process.env.DAY_MIN || '120', servers: games.length, step: process.env.SERVER_STEP_MIN || '15' },
       };
     },
     'GET /players': () => ({
@@ -157,7 +164,7 @@ export function createAdmin({ pass, game, accounts = null, board = null, teams =
       if (restarting) return { code: 409, error: 'busy' };
       restarting = true;
       saveAll();
-      game.say('🛡 Админ: сервер перезагружается — зайдите снова через несколько секунд');
+      for (const g of games) g.say('🛡 Админ: сервер перезагружается — зайдите снова через несколько секунд');
       setTimeout(() => process.exit(0), 1500);   // the answer and the chat line reach the clients first
       return { ok: true, inMs: 1500 };
     },
@@ -205,10 +212,10 @@ export function createAdmin({ pass, game, accounts = null, board = null, teams =
       if (!accounts) return { code: 501, error: 'off' };
       const r = accounts.remove(m.name);
       if (!r) return { code: 404, error: 'no-user' };
-      for (const p of [...game.players.values()]) if (p.key === r.key) game.kick(p.id, 'аккаунт удалён');   // whoever plays with it now goes too
+      for (const g of games) for (const p of [...g.players.values()]) if (p.key === r.key) g.kick(p.id, 'аккаунт удалён');   // whoever plays with it now goes too, on any server
       if (teams && teams.of(r.name)) teams.leave(r.name);   // the team seat goes, the lead passes on
       if (board) board.remove(idOf(r.key));   // and the results of the key
-      game.refreshClans(); saveAll();
+      refreshAll(); saveAll();
       return { ok: true, name: r.name };
     },
     'GET /board': (m, q) => board ? board.list({ period: q.get('period') === 'week' ? 'week' : 'all', sort: q.get('sort') || 'kills', limit: +q.get('limit') || 500 }) : { code: 501, error: 'off' },
@@ -232,13 +239,13 @@ export function createAdmin({ pass, game, accounts = null, board = null, teams =
       if (!teams) return { code: 501, error: 'off' };
       const t = teams.remove(String(m.id || ''));
       if (!t) return { code: 404, error: 'no-team' };
-      game.refreshClans(); teams.save(); return { ok: true, team: t };
+      refreshAll(); teams.save(); return { ok: true, team: t };
     },
     'POST /teams/kick': m => {
       if (!teams) return { code: 501, error: 'off' };
       const r = teams.kickMember(String(m.id || ''), String(m.name || ''));
       if (r.error) return { code: 404, error: r.error };
-      game.refreshClans(); teams.save(); return r;
+      refreshAll(); teams.save(); return r;
     },
     // the journal: the ring of the console and the audit, read incrementally (?after=<last id>), filtered by level and text
     'GET /logs': (m, q) => {
@@ -345,8 +352,9 @@ export function createAdmin({ pass, game, accounts = null, board = null, teams =
     if (p === '/admin/logout' && req.method === 'POST') { sessions.delete(String(req.headers['x-admin-token'] || '')); reply(res, 200, { ok: true }); return true; }
     if (!p.startsWith('/admin/api/')) { reply(res, 404, { ok: false, error: 'bad-request' }); return true; }
     if (!sessionOf(req)) { reply(res, 401, { ok: false, error: 'no-session' }); return true; }
-    const name = p.slice('/admin/api/'.length), h = api[req.method + ' /' + name];
-    if (!h) { reply(res, 404, { ok: false, error: 'bad-request' }); return true; }
+    const name = p.slice('/admin/api/'.length), h0 = api[req.method + ' /' + name];
+    const srv = pick(url.searchParams), h = h0 && ((m, q) => { game = srv; return h0(m, q); });   // the handlers read the chosen server as `game`
+    if (!h0) { reply(res, 404, { ok: false, error: 'bad-request' }); return true; }
     const ip = req.socket.remoteAddress || '?';
     if (req.method === 'GET') {
       let r; try { r = h({}, url.searchParams); } catch (e) { console.error('admin:', e); reply(res, 500, { ok: false, error: 'internal' }); return true; }
@@ -355,7 +363,7 @@ export function createAdmin({ pass, game, accounts = null, board = null, teams =
     body(req).then(m => {
       if (!m) { reply(res, 400, { ok: false, error: 'bad-request' }); return; }
       let r; try { r = h(m, url.searchParams); } catch (e) { console.error('admin:', e); reply(res, 500, { ok: false, error: 'internal' }); return; }
-      if (!(r && r.code)) audit(name, m, ip);
+      if (!(r && r.code)) audit(name + (games.length > 1 ? ' srv=' + (games.indexOf(srv) + 1) : ''), m, ip);
       finish(res, r);
     });
     return true;

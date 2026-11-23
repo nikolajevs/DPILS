@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { CHARS, CHAR_KEYS, hasChar, loadAvatar, loadChar, makeAvatar, parseChar } from '../game/avatar.js';
 import { akReady, loadAK } from '../game/viewmodel.js';
 import { worldSpace } from '../render/world-space.js';
-import { serverHttp } from '../game/server.js';
+import { lastServer, serverHttp, serverPick, setServerPick } from '../game/server.js';
+import { STATE } from '../core/state.js';
 import { $, reduceMotion } from '../core/env.js';
 
 /* ---------- the lobby (src/ui/start.js opens it once a game mode is chosen) ----------
@@ -286,40 +287,93 @@ function tick(t) {
   renderer.render(scene, camera);
 }
 
-/* ---------- the match of the server: its live status on the online card ----------
-   The lobby polls /health (server/index.mjs) from the first frame: the match of two hours (server/storm.mjs) — the
-   fight, the storm of its last twenty minutes, the victory table — the door of its first half hour and the time to
-   the next match. The home door «Играть онлайн» carries a live badge, the online card the full status; the countdowns
-   tick every second between the polls. Past the first half hour the door still lets in whoever already plays in this
-   match (a reload), so the button stays and changes its words; the server answers a stranger 'closed'. */
-let matchPoll = 0, matchLast = null, matchAt = 0;
+/* ---------- the list of servers and their matches: the live status on the online card ----------
+   The lobby polls /health (server/index.mjs) from the first frame: the list of servers of one process — the same
+   city, matches of two hours (server/storm.mjs) started 15 minutes apart — each with its phase (the fight, the storm
+   of its last twenty minutes, the victory table), the door of its first half hour and the time to its next match.
+   The online card lists them, a row per server picked with a click (src/game/server.js setServerPick); the status
+   line under the list is the full picture of the picked one. Until the player picks, the lobby picks for him: the
+   server of the match he joined last while that match runs (a reload comes back to it), else the one whose door
+   stays open the longest, else the one whose next match comes first. The home door «Играть онлайн» carries a live
+   badge: the best door of the list. The countdowns tick every second between the polls. Past the first half hour a
+   door still lets in whoever already plays in that match (a reload), so the button stays and changes its words; the
+   server answers a stranger 'closed'. «К нему» of the team panel (src/ui/team.js) picks the teammate's server. */
+let matchPoll = 0, matchLast = null, matchAt = 0, userPick = false;
 const clock = ms => { const s = Math.max(0, Math.ceil(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, ss = String(s % 60).padStart(2, '0'); return h ? h + ':' + String(m).padStart(2, '0') + ':' + ss : m + ':' + ss; };
+const left = ms => Math.max(0, ms - (performance.now() - matchAt));   // a countdown of the last poll, counted on
+const isOpen = v => v.match.phase === 'fight' && v.match.open && left(v.match.joinLeft) > 0;   // the victory table is no door, whatever the grace of a restart says
+const doorOrder = (a, b) => { const d = b.match.joinLeft - a.match.joinLeft; return Math.abs(d) > 5000 ? d : b.match.stormIn - a.match.stormIn; };
+const openFirst = list => list.filter(isOpen).sort(doorOrder)[0] || null;   // the door that stays open the longest; after a restart (every door open alike) the freshest match
+const nextFirst = list => [...list].sort((a, b) => a.match.left - b.match.left)[0];   // the next match that comes first
 async function matchStatus() {
   try {
     const r = await fetch(serverHttp() + '/health', { cache: 'no-store' });
     const j = r.ok ? await r.json() : null;
-    matchLast = j && j.ok && j.match ? j : null; matchAt = performance.now();
+    const list = j && j.ok ? (j.servers || [{ ...j, id: 1 }]).filter(v => v.match) : [];   // an older server: itself alone
+    matchLast = list.length ? list : null; matchAt = performance.now();
   } catch (e) { matchLast = null; }
+  if (matchLast && !STATE.mp && (!userPick || !matchLast.some(v => v.id === serverPick()))) autoPick();   // never under a running fight: the social side tells the teammates its server
   paintMatch();
+}
+function autoPick() {
+  const list = matchLast, last = lastServer();
+  const back = last && list.find(v => v.id === last.id && v.match.n === last.n && v.match.phase !== 'over');
+  setServerPick((back || openFirst(list) || nextFirst(list)).id);
+}
+function pickServer(id) { userPick = true; setServerPick(id); $('mpMsg').textContent = ''; if (matchLast) paintMatch(); }
+// the rows of the list: made when the set of servers changes, their words refreshed every second
+let rows = new Map();
+function paintList(list) {
+  const box = $('srvList');
+  box.hidden = list.length < 2;
+  if (list.length < 2) return;
+  if (list.map(v => v.id).join() !== [...rows.keys()].join()) {
+    box.textContent = ''; rows = new Map();
+    for (const v of list) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'srv-row'; b.setAttribute('role', 'radio');
+      const dot = document.createElement('i'), name = document.createElement('b'), st = document.createElement('span'), n = document.createElement('small');
+      dot.className = 'srv-dot'; dot.setAttribute('aria-hidden', 'true'); st.className = 'srv-st'; n.className = 'srv-n';
+      b.append(dot, name, st, n); b.onclick = () => pickServer(v.id);
+      box.append(b); rows.set(v.id, { b, name, st, n });
+    }
+  }
+  const pick = serverPick();
+  for (const v of list) {
+    const r = rows.get(v.id), m = v.match, open = isOpen(v), next = clock(left(m.left));
+    r.name.textContent = v.name;
+    r.st.textContent = m.phase === 'storm' ? 'шторм' + (v.storm ? ' · ' + v.storm.alive + ' в живых' : '') + ' · новая через ' + next
+      : m.phase === 'over' ? 'итоги · новая через ' + next
+      : open ? 'вход открыт ещё ' + clock(left(m.joinLeft))
+      : 'бой · шторм через ' + clock(left(m.stormIn)) + ' · новая через ' + next;
+    r.n.textContent = v.players + ' игр.' + (v.bots ? ' + ' + v.bots + ' ботов' : '');
+    r.b.dataset.phase = open ? 'open' : m.phase;
+    r.b.setAttribute('aria-checked', String(v.id === pick));
+  }
 }
 function paintMatch() {
   const badge = $('chOnlineBadge'), box = $('matchStatus'), txt = $('matchStatusText'), go = $('goPlay');
-  const j = matchLast;
-  if (!j) { badge.hidden = true; box.dataset.phase = ''; txt.textContent = 'Статус катки недоступен — сервер не ответил'; go.textContent = 'Играть'; return; }
-  const m = j.match, gone = performance.now() - matchAt, left = ms => Math.max(0, ms - gone), next = clock(left(m.left));
-  const open = m.open && left(m.joinLeft) > 0, people = j.players + (j.bots ? ' + ботов ' + j.bots : '');
+  const list = matchLast;
+  if (!list) { badge.hidden = true; box.dataset.phase = ''; $('srvList').hidden = true; txt.textContent = 'Статус катки недоступен — сервер не ответил'; go.textContent = 'Играть'; return; }
+  paintList(list);
+  const j = list.find(v => v.id === serverPick()) || list[0];
+  const m = j.match, next = clock(left(m.left));
+  const open = isOpen(j), people = j.players + (j.bots ? ' + ботов ' + j.bots : '');
   const label = m.phase === 'storm' ? 'Шторм! ' + (j.storm ? j.storm.alive + ' в живых · ' : '') + 'вход закрыт · следующая катка через ' + next
     : m.phase === 'over' ? 'Катка завершена · следующая через ' + next
     : open ? 'Идёт бой · вход открыт ещё ' + clock(left(m.joinLeft)) + ' · шторм через ' + clock(left(m.stormIn))
     : 'Идёт бой · вход закрыт · шторм через ' + clock(left(m.stormIn)) + ' · следующая катка через ' + next;
-  txt.textContent = label + ' · игроков: ' + people + (open || m.phase === 'over' ? '' : '. Если вы уже в этой катке — можно вернуться.');
+  const other = !open && list.length > 1 && openFirst(list);   // the door of this one is shut, another one is open
+  txt.textContent = (list.length > 1 ? j.name + ': ' : '') + label + ' · игроков: ' + people + (open || m.phase === 'over' ? '' : '. Если вы уже в этой катке — можно вернуться.') + (other ? ' Вход открыт на сервере «' + other.name + '».' : '');
   box.dataset.phase = open ? 'open' : m.phase;
+  // the home door: the best of the list — an open door first, then a storm to watch, then the next match
+  const best = openFirst(list), storm = list.find(v => v.match.phase === 'storm'), soon = nextFirst(list);
   badge.hidden = false;
-  badge.textContent = m.phase === 'storm' ? 'шторм' : open ? 'вход ' + clock(left(m.joinLeft)) : 'новая через ' + next;
-  badge.dataset.phase = m.phase === 'storm' ? 'play' : open ? 'open' : 'wait';
-  go.textContent = open ? 'Играть' : 'Вернуться в катку';
+  badge.textContent = best ? 'вход ' + clock(left(best.match.joinLeft)) : storm ? 'шторм' : 'новая через ' + clock(left(soon.match.left));
+  badge.dataset.phase = best ? 'open' : storm ? 'play' : 'wait';
+  go.textContent = open ? 'Играть' + (list.length > 1 ? ' на «' + j.name + '»' : '') : 'Вернуться в катку';
 }
-window.addEventListener('dpils-ready', paintMatch);
+window.addEventListener('dpils-ready', () => { if (matchLast) paintMatch(); });
+window.addEventListener('dpils-server', e => { if (!STATE.mp) pickServer(+e.detail); });   // «К нему»: the teammate's server
 matchStatus(); matchPoll = setInterval(matchStatus, 10000);   // the poll lives from the first frame: the home door's badge must not wait for the lobby to open
 setInterval(() => { if (matchLast && !$('start').hidden) paintMatch(); }, 1000);   // the countdowns tick between the polls
 

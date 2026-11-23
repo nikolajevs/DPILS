@@ -1,5 +1,5 @@
 import { account } from './identity.js';
-import { serverReady, serverUrl } from './server.js';
+import { serverPick, serverReady, serverUrl } from './server.js';
 
 /* ---------- the social connection: the teams of the players ----------
    One WebSocket on the server's path /social (server/social.mjs), open for as long as the page is and an account is
@@ -16,7 +16,9 @@ let ws = null, wait = 2000, timer = 0;
 const emit = (ev, m) => { for (const f of subs) { try { f(ev, m); } catch (e) { console.error(e); } } };
 function onSocial(f) { subs.add(f); return () => subs.delete(f); }
 function socialSend(m) { if (ws && ws.readyState === 1 && SOC.on) { ws.send(JSON.stringify(m)); return true; } return false; }
-function setWhere(w) { if (SOC.where === w) return; SOC.where = w; socialSend({ t: 'where', where: w }); }
+// in a fight the server of the list goes along: a teammate's «К нему» opens that server (src/ui/team.js)
+const srvOf = w => (w === 'game' || w === 'storm' ? serverPick() : undefined);
+function setWhere(w) { if (SOC.where === w) return; SOC.where = w; socialSend({ t: 'where', where: w, srv: srvOf(w) }); }
 
 function retry() { clearTimeout(timer); timer = setTimeout(connect, wait); wait = Math.min(30000, wait * 2); }
 function connect() {
@@ -27,7 +29,7 @@ function connect() {
   if (!a || SOC.off) { emit('state'); return; }
   let s; try { s = new WebSocket(serverUrl() + '/social'); } catch (e) { retry(); return; }
   ws = s;
-  s.onopen = () => s.send(JSON.stringify({ t: 'auth', key: a.key, where: SOC.where }));
+  s.onopen = () => s.send(JSON.stringify({ t: 'auth', key: a.key, where: SOC.where, srv: srvOf(SOC.where) }));
   s.onmessage = e => { if (ws !== s) return; let m; try { m = JSON.parse(e.data); } catch (err) { return; } onMsg(m); };
   s.onclose = () => { if (ws !== s) return; ws = null; SOC.on = false; emit('state'); if (!SOC.off) retry(); };
   s.onerror = () => {};
