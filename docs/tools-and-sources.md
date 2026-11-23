@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Claude | claude/keen-franklin-hu2dnu | Напалм: огонь растекается ячейками, стены держат, дым тушит; боты, звук, вид | server/combat.mjs, server/game.mjs, server/bots.mjs, src/game/nades.js, src/game/mp.js, src/game/sfx.js |
 
 ## Автономный цикл улучшений
 

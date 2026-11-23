@@ -12,7 +12,7 @@
    (WEAPONS.vel) and the damage lands when the bullet arrives, not at the click. The hit is still judged against the target
    as the shooter saw it at the click (the position rewound by the shooter's lag, frozen for the flight), so “shoot where
    you see” holds while the bullet takes its time to get there. */
-import { CARGO, FALL, HIT, HOLY, INV, ITEMS, LOADOUT, NADE, NADE_KINDS, NAPALM, PACK, RELOAD_MS, RESERVE, RULES as R, SIEGE, SMOKE, WEAPONS, W_FALL, W_FIRE, W_NADE, W_STORM, bulletAt, bulletDir, dragDist, dragTime, rayHit, rayToSegment } from './combat.mjs';
+import { CARGO, FALL, HIT, HOLY, INV, ITEMS, LOADOUT, NADE, NADE_KINDS, NAPALM, PACK, RELOAD_MS, RESERVE, RULES as R, SIEGE, SMOKE, WEAPONS, W_FALL, W_FIRE, W_NADE, W_STORM, bulletAt, bulletDir, dragDist, dragTime, fireUnder, napalmCells, rayHit, rayToSegment, smokeCore } from './combat.mjs';
 import { MATCH as MATCHC, STORM as STORMC, matchAt, pickFinal, stageCircle, stormField, stormPlan } from './storm.mjs';
 import { ARENAS } from './arenas.mjs';
 import { LEVELS, botName, createBrain } from './bots.mjs';
@@ -174,15 +174,44 @@ export function createGame(opts) {
     if (hh > FALL.safe) hurt(p, p, Math.round((hh - FALL.safe) * FALL.k), 0, W_FALL, [p.x, p.y, p.z]);
   }
   // the smoke and the napalm go off into a zone lying on the surface under them (the ground, or the roof they reached);
-  // the zone lives in `zones` until its time is out — the fire burns whoever stands in it (stepZones), the smoke hides
+  // the zone lives in `zones` until its time is out — the fire burns whoever stands in its cells (stepZones), the smoke hides
   // the street from the bots' eyes (bots.mjs; its shape at a moment is smokeCore of combat.mjs, by t0 and dur). The page
   // draws both from the 'zone' message (src/game/nades.js); a late joiner gets durMs and what is left in 'hello'.
+  // The fire's patch is its cells (napalmCells of combat.mjs: spread over the surface, stopped by the walls), sent as
+  // [dx, dy, dz, on, off] from the burst; a cell a smoke puts out gets an earlier off ('fireOut' to the page).
   const surfaceAt = (x, y, z) => { const g = world.ground(x, z), b = world.buildingAt(x, z, y); return b && y > g + (b.top || 12) - 0.6 ? g + (b.top || 12) : g; };
+  const cellsMsg = z => z.cells.map(c => [+(c.x - z.x).toFixed(2), +(c.y - z.y).toFixed(2), +(c.z - z.z).toFixed(2), c.on, c.off]);
+  const zoneMsg = z => ({ id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, r: z.r, durMs: z.dur, by: z.kind === 'fire' ? z.by : undefined, cells: z.cells ? cellsMsg(z) : undefined });
   function layZone(n) {
     const K = n.kind === 'smoke' ? SMOKE : NAPALM, y = surfaceAt(n.p[0], n.p[1], n.p[2]);
     const t0 = now(), z = { id: n.id, kind: n.kind === 'smoke' ? 'smoke' : 'fire', x: n.p[0], y, z: n.p[2], r: K.radius, t0, dur: K.durMs, until: t0 + K.durMs, by: n.by, lastTick: 0 };
+    if (z.kind === 'fire') {
+      z.cells = napalmCells(world, z.x, y, z.z);
+      z.dur = Math.max(...z.cells.map(c => c.off)); z.until = t0 + z.dur;
+    }
     zones.set(z.id, z);
-    all({ t: 'zone', id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, r: z.r, durMs: K.durMs });
+    all({ t: 'zone', ...zoneMsg(z) });
+    if (z.kind === 'smoke') douse(t0);   // a screen laid into a burning patch starts putting it out at once
+  }
+  // the smoke puts the fire out: a cell under a screen's dense core (smokeCore, as it stands now — it swells out of the
+  // canister, so a smoke thrown into the fire quenches it from the canister outward) goes out in douseMs and never
+  // lights again; a cell not lit yet does not light. The patch ends when its last cell is out.
+  function douse(t) {
+    const cores = [];
+    for (const s of zones.values()) if (s.kind === 'smoke') { const c = smokeCore(s.r, t - s.t0, s.dur); if (c) cores.push({ x: s.x, y: s.y, z: s.z, rc: c.rc, hc: c.hc }); }
+    if (!cores.length) return;
+    for (const z of zones.values()) {
+      if (z.kind !== 'fire' || !z.cells) continue;
+      const age = t - z.t0, out = [];
+      z.cells.forEach((c, i) => {
+        if (c.off <= age + NAPALM.douseMs) return;   // out already, or going out
+        if (!cores.some(k => c.y > k.y - 1 && c.y < k.y + k.hc && Math.hypot(c.x - k.x, c.z - k.z) < k.rc + 0.3)) return;
+        c.off = age < c.on ? c.on : Math.round(age + NAPALM.douseMs); out.push([i, c.off]);
+      });
+      if (!out.length) continue;
+      z.dur = Math.max(...z.cells.map(c => c.off)); z.until = z.t0 + z.dur;
+      all({ t: 'fireOut', id: z.id, cells: out });
+    }
   }
   function stepZones() {
     const t = now();
@@ -190,13 +219,15 @@ export function createGame(opts) {
       if (t >= z.until) { zones.delete(z.id); all({ t: 'zoneEnd', id: z.id }); continue; }
       if (z.kind !== 'fire' || roundOver || t - z.lastTick < NAPALM.tickMs) continue;
       z.lastTick = t;
+      douse(t);
       const thrower = players.get(z.by); if (!thrower) continue;
+      const age = t - z.t0;
       for (const v of players.values()) {
         if (!v.alive) continue;
         if (ally(thrower, v)) continue;   // teammates walk through their own napalm unburnt
         if (v !== thrower && t <= v.protectUntil) continue;
-        if (Math.hypot(v.x - z.x, v.z - z.z) >= z.r) continue;
-        const feet = v.y - v.eye; if (feet < z.y - 1 || feet > z.y + 2.5) continue;   // on the burning surface, not above it
+        if (Math.hypot(v.x - z.x, v.z - z.z) >= z.r + NAPALM.cellR) continue;
+        if (fireUnder(z.cells, age, v.x, v.y - v.eye, v.z) < NAPALM.hot) continue;   // the feet in a burning cell, on its surface, not above it
         hurt(thrower, v, Math.round(NAPALM.dps * NAPALM.tickMs / 1000), 0, W_FIRE, [z.x, z.y + 0.3, z.z]);
       }
     }
@@ -592,7 +623,7 @@ export function createGame(opts) {
           if (lb && m.board !== false && validKey(m.key) && ![...players.values()].some(q => q.key === m.key)) { p.key = m.key; const r = lb.identify(m.key, nameBase(m.name), n => !taken(n)); p.name = r.name; p.prof = r.prof; } else p.name = cleanName(m.name);
           p.acct = who ? who.name : ''; p.clan = clanOf(p);
           p.char = cleanChar(m.char); p.joined = true; p.joinedAt = t0; players.set(p.id, p);
-          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, win: WIN, clan: p.clan || undefined, now: now(), arena: arenaPub(fieldArena()), holy: holyPublic() || undefined, siege: siegePublic() || undefined, mySide: p.siege || undefined, rules: { hp: R.hp, range: R.range }, day: dayNow() || undefined, board: board(), items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), zones: [...zones.values()].map(z => ({ id: z.id, kind: z.kind, x: z.x, y: z.y, z: z.z, r: z.r, durMs: z.dur, left: Math.max(0, z.until - now()) })), cargo: cargoMsg(), marks: marks(), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])), match: matchPublic() || undefined, storm: stormPublic() || undefined });
+          send(p, { t: 'hello', mode: MODE, id: p.id, server: NAME, name: p.name, win: WIN, clan: p.clan || undefined, now: now(), arena: arenaPub(fieldArena()), holy: holyPublic() || undefined, siege: siegePublic() || undefined, mySide: p.siege || undefined, rules: { hp: R.hp, range: R.range }, day: dayNow() || undefined, board: board(), items: [...items.values()].filter(i => i.active).map(i => ({ id: i.id, kind: i.kind, x: i.x, z: i.z })), zones: [...zones.values()].map(z => ({ ...zoneMsg(z), left: Math.max(0, z.until - now()) })), cargo: cargoMsg(), marks: marks(), attach: Object.fromEntries([...players.values()].map(q => [q.id, q.attach])), match: matchPublic() || undefined, storm: stormPublic() || undefined });
           const mate = besideMate(p);   // a team appears together: next to a living teammate (in an arena the base decides)
           if (stormFight()) { const [sx, sz, syaw] = mate || stormSpawnPoint(); spawn(p, sx, sz, syaw, true); }   // a join in the storm appears inside the circle
           else if (mate && !fieldArena()) spawn(p, mate[0], mate[1], mate[2]); else spawn(p, m.x, m.z, m.yaw);

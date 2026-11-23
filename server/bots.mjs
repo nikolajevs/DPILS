@@ -7,8 +7,9 @@
    distance, dances in a fight (irregular strafe, diagonal jukes, brief stops, a dodge hop now and then), falls back to
    cover when hurt or reloading a slow gun, crouches behind the wall and peeks out, chases an enemy that broke the line
    of sight to where it was last seen, turns on an unseen attacker that hit it, picks up the kits and ammo it needs,
-   reloads when safe, throws a grenade at a cluster and comes back after the death by itself. */
-import { FALL, HIT, INV, NADE, SIEGE, SMOKE, bulletDrop, smokeCore, smokeDepth } from './combat.mjs';
+   reloads when safe, throws a grenade at a cluster and a napalm at an enemy who sits still, keeps out of the fire
+   and comes back after the death by itself. */
+import { FALL, HIT, INV, NADE, NAPALM, SIEGE, SMOKE, bulletDrop, fireHeat, smokeCore, smokeDepth } from './combat.mjs';
 const NAMES = ['Андрис', 'Янис', 'Артур', 'Лиена', 'Виктор', 'Ольга', 'Эдгар', 'Дайна', 'Максим', 'Илзе', 'Роман', 'Кристап', 'Анна', 'Игорь', 'Мартиньш', 'Светлана'];
 // sigma: the aim error in radians — tuned for the small hitboxes (a torso half a metre wide, a head 0.36 m), so the
 // error is about half of what it was against the old metre-wide capsule; head: the share of shots aimed at the head
@@ -94,12 +95,13 @@ export function createBrain(g) {
   }
   const lowAmmo = p => p.reserve[p.wep] <= 0 || p.reserve.reduce((a, b) => a + b, 0) < 40;
   // a pickup the bot wants and can reach: a kit when hurt and the belt not full, ammo when dry, a grenade when the belt
-  // is short, a smoke when it has none to cover a retreat with. The nearest within 45 m.
+  // is short, a smoke when it has none to cover a retreat with, a napalm when it has none to smoke a camper out with.
+  // The nearest within 45 m.
   function needItem(p) {
     if (!g.items) return null; let best = null, bd = 1e9;
     for (const it of g.items.values()) {
       if (!it.active) continue;
-      const want = (it.kind === 'med' && p.hp < 65 && p.meds < INV.medMax) || (it.kind === 'ammo' && lowAmmo(p)) || (it.kind === 'nade' && p.nades < INV.nadeMax) || (it.kind === 'smoke' && !(p.smokes > 0));
+      const want = (it.kind === 'med' && p.hp < 65 && p.meds < INV.medMax) || (it.kind === 'ammo' && lowAmmo(p)) || (it.kind === 'nade' && p.nades < INV.nadeMax) || (it.kind === 'smoke' && !(p.smokes > 0)) || (it.kind === 'napalm' && !(p.napalms > 0));
       if (!want) continue;
       const d = Math.hypot(it.x - p.x, it.z - p.z);
       if (d < 45 && d < bd && inArea(it.x, it.z) && world.walkable(it.x, it.z)) { bd = d; best = [it.x, it.z]; }
@@ -174,9 +176,11 @@ export function createBrain(g) {
     const want = Math.atan2(hz - p.z, hx - p.x);
     const dm = g.dome;   // the siege's dome: no step across it, in or out (the players are held by the server's 'state' check)
     const dSide = dm ? Math.hypot(p.x - dm.cx, p.z - dm.cz) < dm.r : false;
+    const burnt = !!fireAt(p);   // out of the fire, no step goes into it (the bot walks round the patch); in it, any step out will do
     for (const off of [0, 0.5, -0.5, 1, -1, 1.6, -1.6, 2.4, 3, -3]) {
       const a = want + off, nx = p.x + Math.cos(a) * v * dt * 2.5, nz = p.z + Math.sin(a) * v * dt * 2.5;
       if (dm && (Math.hypot(nx - dm.cx, nz - dm.cz) < dm.r) !== dSide) continue;
+      if (!burnt && fireAt(p, nx, nz, 0.35)) continue;
       if (world.walkable(nx, nz) && inArea(nx, nz)) { p.x += Math.cos(a) * v * dt; p.z += Math.sin(a) * v * dt; b.moving = true; return; }
     }
     b.moving = false;
@@ -194,10 +198,28 @@ export function createBrain(g) {
     return out;
   }
   const smoked = (cores, ax, ay, az, bx, by, bz) => cores.length > 0 && smokeDepth(cores, [ax, ay, az], [bx, by, bz]) >= SMOKE.hide;
-  // the burning patch under the bot's feet, if any (napalm, game.mjs stepZones)
-  function fireAt(p) {
-    for (const z of g.zones.values()) if (z.kind === 'fire' && Math.hypot(p.x - z.x, p.z - z.z) < z.r + 0.5 && Math.abs((p.y - 1.7) - z.y) < 2.5) return z;
-    return null;
+  // the napalm's fire at the bot's feet (game.mjs stepZones: the burning cells of the patch, napalmCells in combat.mjs):
+  // the middle of the cells burning within reach of (x, z) — or about to catch, the spread is coming — weighted by their
+  // heat, and the patch they belong to; null out of the fire. margin: how far past a cell's own reach it still counts
+  function fireAt(p, x = p.x, z = p.z, margin = 0.6) {
+    const now = g.now(), feet = p.y - (p.eye || 1.7), reach = NAPALM.cellR + margin;
+    let sx = 0, sz = 0, sw = 0, zone = null;
+    for (const f of g.zones.values()) {
+      if (f.kind !== 'fire' || !f.cells || Math.hypot(x - f.x, z - f.z) > f.r + reach) continue;
+      const age = now - f.t0;
+      for (const c of f.cells) {
+        if (feet < c.y - NAPALM.under || feet > c.y + NAPALM.over || (x - c.x) ** 2 + (z - c.z) ** 2 >= reach * reach) continue;
+        const k = age < c.off && c.on - age < 400 ? Math.max(0.3, fireHeat(c, age)) : 0; if (!k) continue;
+        sx += c.x * k; sz += c.z * k; sw += k; zone = f;
+      }
+    }
+    return sw ? { x: sx / sw, z: sz / sw, zone } : null;
+  }
+  // where a throw from p along u (unit) at speed sp lies when its fuse runs out: the server's own flight (physics.mjs)
+  function landing(p, u, sp, fuseMs) {
+    const n = { p: [p.x + u[0] * 0.6, p.y - 0.2 + u[1] * 0.6, p.z + u[2] * 0.6], v: [u[0] * sp, u[1] * sp + NADE.loft * sp, u[2] * sp] };
+    for (let t = 0; t < fuseMs; t += 1000 / 30) world.stepNade(n, 1 / 30, NADE.g);
+    return n.p;
   }
   function visible(p, q, cores = smokeCores(g.now())) {
     const dx = q.x - p.x, dz = q.z - p.z, dy = (q.y - 0.5) - p.y, d = Math.hypot(dx, dy, dz);
@@ -220,8 +242,12 @@ export function createBrain(g) {
       if (Math.hypot(b.kx, b.kz) < 0.05) b.kx = b.kz = 0;
     }
     const fz = fireAt(p);
-    if (fz) {   // napalm underfoot: run out of the fire before anything else — the fight waits
-      const dx = p.x - fz.x, dz = p.z - fz.z, d = Math.hypot(dx, dz) || 1;
+    if (fz) {   // napalm underfoot: run out of the fire before anything else — the fight waits. Away from the heart of
+      // the burning cells round the feet; standing right on it, away from the burst; on the burst itself, anywhere
+      let dx = p.x - fz.x, dz = p.z - fz.z;
+      if (Math.hypot(dx, dz) < 0.3) { dx = p.x - fz.zone.x; dz = p.z - fz.zone.z; }
+      if (Math.hypot(dx, dz) < 0.3) { const a = Math.random() * 6.283; dx = Math.cos(a); dz = Math.sin(a); }
+      const d = Math.hypot(dx, dz);
       walk(p, p.x + dx / d * 12, p.z + dz / d * 12, SPD.retreat, dt);
       p.yaw = Math.atan2(-dx / d, -dz / d);
       b.path = null; b.cover = null; b.target = 0;
@@ -410,6 +436,28 @@ export function createBrain(g) {
     g.throwNade(p, [dx / l, 0.36 / l, dz / l], sp, 'smoke');
     return true;
   }
+  // a napalm at an enemy who sits still (a camper at a corner or a window, a sniper lying in wait — the normal and hard
+  // levels, if the bot has one): the fire drives him out of his spot. The bot tries the throw at a few speeds through the
+  // server's own flight and takes the one that comes to rest nearest his feet; none within 2.5 m of them, or one that would
+  // burn the bot itself, and it does not throw. Once in 9 s at most.
+  function napalmCamper(p, q, now, L) {
+    const b = p.bot, cs = b.camp;
+    if (!cs || cs.id !== q.id || Math.hypot(q.x - cs.x, q.z - cs.z) > 1.5) { b.camp = { id: q.id, x: q.x, z: q.z, at: now }; return false; }
+    const hd = Math.hypot(q.x - p.x, q.z - p.z);
+    if (!L.nades || !(p.napalms > 0) || now - cs.at < 2500 || hd < 10 || hd > 26 || now - p.lastNade < NADE.cooldownMs || now < (b.napalmAt || 0)) return false;
+    b.napalmAt = now + 9000;   // tried: not again for a while, thrown or not
+    const l = Math.hypot(1, 0.36), u = [(q.x - p.x) / hd / l, 0.36 / l, (q.z - p.z) / hd / l], fy = q.y - (q.eye || 1.7);
+    let best = null, bd = 1e9;
+    const tryAt = sp => {
+      const e = landing(p, u, sp, NAPALM.fuseMs), d = Math.hypot(e[0] - q.x, e[2] - q.z);
+      if (d < bd && Math.abs(e[1] - 0.12 - fy) < 1.5 && Math.hypot(e[0] - p.x, e[2] - p.z) > NAPALM.radius + 2) { bd = d; best = sp; }
+    };
+    for (let sp = NADE.minSpeed; sp <= NADE.maxSpeed; sp += 1.5) tryAt(sp);   // the coarse sweep, then closer round the best
+    for (const h of [0.75, 0.375]) { const c = best; if (c != null) { tryAt(Math.max(NADE.minSpeed, c - h)); tryAt(Math.min(NADE.maxSpeed, c + h)); } }
+    if (best == null || bd > 2.5) return false;
+    g.throwNade(p, u, best, 'napalm');
+    return true;
+  }
   function fight(p, q, dist, now, L) {
     const b = p.bot, w = p.wep, W = g.WEAPONS[w];
     if (now < b.switchAt) return;   // still bringing the new gun up
@@ -418,6 +466,7 @@ export function createBrain(g) {
       let cluster = 0; for (const r of g.players.values()) if (r !== p && r.alive && !g.ally(p, r) && Math.hypot(r.x - q.x, r.z - q.z) < 6) cluster++;
       if (cluster >= 2 || Math.random() < L.nades * 3) { const d = [q.x - p.x, 0.28 * dist / 20, q.z - p.z], l = Math.hypot(...d); g.throwNade(p, d.map(x => x / l)); return; }
     }
+    if (napalmCamper(p, q, now, L)) return;
     if (now < b.pauseUntil || now < b.nextShot) return;
     const aimY = q.y - (Math.random() < L.head ? HIT.headDrop : 0.56 * (q.eye / 1.7));   // the head centre, otherwise the chest (lower on a crouched target)
     const dx = q.x - p.x, dz = q.z - p.z, dy2 = aimY - p.y, d3 = Math.hypot(dx, dy2, dz);

@@ -30,7 +30,7 @@
       go cold until the next match, which brings everybody back with the door open; a bot outside runs in.
    3. A real bot fight on a flat arena (12 s of real time): with the small hitboxes the bots must still see,
       shoot and kill each other. */
-import { BULLET_G, CARGO, FALL, HIT, HOLY, INV, WEAPONS, NADE, RESERVE, SIEGE, SMOKE, W_FALL, bulletAt, bulletDir, bulletDrop, dragDist, dragTime, dragVel, rayHit, smokeCore, smokeDepth } from '../server/combat.mjs';
+import { BULLET_G, CARGO, FALL, HIT, HOLY, INV, WEAPONS, NADE, NAPALM, RESERVE, SIEGE, SMOKE, W_FALL, bulletAt, bulletDir, bulletDrop, dragDist, dragTime, dragVel, fireHeat, fireUnder, napalmCells, rayHit, smokeCore, smokeDepth } from '../server/combat.mjs';
 import { createGame, MUZZLE } from '../server/game.mjs';
 import { makePhysics } from '../server/physics.mjs';
 import { MATCH as MATCHC, STORM as STORMC, matchAt, pickFinal, stageCircle, stormField, stormPlan, stormRadii } from '../server/storm.mjs';
@@ -982,6 +982,10 @@ console.log('smoke and napalm (zones):');
   for (let i = 0; i < 70; i++) { clock += 1000 / 30; g.stepNades(); }
   const fz = A.last('zone');
   ok(fz && fz.kind === 'fire' && fz.r === 4, 'the napalm lays a burning patch of radius 4', JSON.stringify(fz));
+  ok(fz && Array.isArray(fz.cells) && fz.cells.length >= 15 && fz.cells.every(c => c.length === 5 && Math.hypot(c[0], c[2]) <= 4.01), 'the patch comes as its burning cells, all within the radius', fz && fz.cells && fz.cells.length);
+  const lateF = seat(g, conn()); msg(lateF, { t: 'join', key: 'late2', name: 'Опоздавший 2', x: 30, z: 30, yaw: 0 });
+  const hf = lateF.last('hello') && lateF.last('hello').zones.find(z => z.kind === 'fire');
+  ok(hf && hf.cells && hf.cells.length === fz.cells.length && hf.by === p.id, 'a late joiner gets the patch with its cells and its thrower');
   const hpB = q.hp, hpA = p.hp;
   for (let i = 0; i < 30; i++) { clock += 1000 / 30; g.stepNades(); }   // a second in the fire
   ok(q.hp < hpB && q.hp >= hpB - 40, 'the enemy standing in the fire burns (~30 HP/s)', hpB + '->' + q.hp);
@@ -1024,7 +1028,16 @@ console.log('smoke and napalm (zones):');
   bot.bot.look = 0; g.stepBots(0.3); bot.bot.look = 0; g.stepBots(0.3);
   ok(bot.bot.target === 0, 'the smoke hides the enemy from the bot');
   clock += 1000;
-  msg(A, { t: 'throw', kind: 'napalm', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });
+  msg(A, { t: 'throw', kind: 'napalm', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });   // into the standing screen
+  const hpIn = p.hp;
+  for (let i = 0; i < 70; i++) { clock += 1000 / 30; g.stepNades(); }
+  ok(A.last('fireOut') && A.last('fireOut').cells.length > 0, 'a napalm thrown into a standing smoke fizzles: the screen puts its cells out', JSON.stringify(A.last('fireOut')));
+  for (let i = 0; i < 30; i++) { clock += 1000 / 30; g.stepNades(); }
+  ok(p.hp >= hpIn - 8 && ![...g.zones.values()].some(z => z.kind === 'fire'), 'the fizzled napalm burns no one and is gone in a moment', hpIn + '->' + p.hp);
+  clock += SMOKE.durMs; g.stepNades();   // the screen is gone
+  ok(g.zones.size === 0, 'the screen is out');
+  p.napalms = 1; msg(A, { t: 'throw', kind: 'napalm', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });
+  p.x = 0; p.z = 12;   // the thrower steps out of their own fire
   for (let i = 0; i < 70; i++) { clock += 1000 / 30; g.stepNades(); }
   ok([...g.zones.values()].some(z => z.kind === 'fire'), 'the napalm burns at the square');
   bot.x = 0.5; bot.z = 0.5; bot.y = 1.7; bot.bot.target = 0;
@@ -1033,6 +1046,137 @@ console.log('smoke and napalm (zones):');
   const hp0 = bot.hp;
   for (let i = 0; i < 30; i++) { clock += 1000 / 30; g.stepNades(); }
   ok(bot.hp < hp0, 'the fire burns the bot too');
+  g.stop();
+}
+
+console.log('the napalm: the patch of burning cells, the walls and roofs, the spread, the smoke that puts it out, the bots:');
+{
+  // the shape alone (napalmCells over a fake world): the seeded jitter keeps it the same run to run
+  const seeded = (k = 7) => () => { k = (k * 16807) % 2147483647; return k / 2147483647; };
+  const flat = flatWorld();
+  const cells = napalmCells(flat, 0, 0, 0, seeded());
+  ok(cells.length >= 18 && cells.length <= 40, 'a patch on open ground is a couple of dozen cells', cells.length);
+  ok(cells.every(c => Math.hypot(c.x, c.z) <= NAPALM.radius + 0.01 && c.y === 0), 'all within the radius, on the ground');
+  ok(cells[0].x === 0 && cells[0].z === 0 && cells[0].on === 0, 'the burst itself catches first');
+  const rim = cells.filter(c => Math.hypot(c.x, c.z) > 2.5), heart = cells.filter(c => Math.hypot(c.x, c.z) < 1.4);
+  ok(rim.length > 0 && rim.every(c => c.on > 250 && c.on <= NAPALM.spreadMs * 1.15), 'the fire spreads out to the rim over the spread time', rim.map(c => c.on).join(','));
+  const mean = a => a.reduce((s, c) => s + c.off, 0) / a.length;
+  ok(mean(rim) < mean(heart) && Math.max(...cells.map(c => c.off)) <= NAPALM.durMs, 'the rim burns out first, the heart last, all within the burn time', Math.round(mean(rim)) + ' < ' + Math.round(mean(heart)));
+  const lob = napalmCells(flat, 0, 0, 0, seeded(99)), far = a => Math.max(...a.map(c => Math.hypot(c.x, c.z)));
+  ok(lob.length !== cells.length || far(lob) !== far(cells), 'the rim is ragged, not the same disc every time');
+  ok(fireHeat(cells[0], 0) === 0 && fireHeat(cells[0], NAPALM.inMs) === 1 && fireHeat(cells[0], cells[0].off) === 0, 'a cell catches, burns, goes out');
+  ok(fireUnder(cells, 1000, 0.3, 0, 0.2) === 1 && fireUnder(cells, 1000, 0.3, 3, 0.2) === 0 && fireUnder(cells, 1000, 6, 0, 0) === 0, 'the heat is under the feet on the surface, not above it or out of the patch');
+  // a wall beside the burst: the fire stops at it, nothing on the far side
+  const wall = (x, z) => (x >= 1.6 && x <= 2.0 && Math.abs(z) < 20 ? { top: 6, ring: base(1.8, 0, 0.2) } : null);
+  const wc = napalmCells(flatWorld(wall), 0, 0, 0, seeded());
+  ok(wc.length > 5 && wc.every(c => c.x < 1.6), 'a wall stops the fire: no cell beyond it', wc.filter(c => c.x >= 1.6).length);
+  // an arch through the wall: the fire flows through the gap, not through the stone round it
+  const arch = (x, z) => (x >= 1.6 && x <= 2.0 && Math.abs(z) < 20 && Math.abs(z) > 0.9 ? { top: 6 } : null);
+  const ac = napalmCells(flatWorld(arch), 0, 0, 0, seeded());
+  ok(ac.some(c => c.x > 2.0) && ac.filter(c => c.x > 2.0).every(c => c.on > 200), 'through an arch the fire flows on, a little later', ac.filter(c => c.x > 2.0).length);
+  // a roof: the burst on it keeps the fire on that roof; near the edge none spills into the air
+  const house = (x, z) => (Math.abs(x) <= 10 && Math.abs(z) <= 10 ? { top: 6 } : null);
+  const rc = napalmCells(flatWorld(house), 8.5, 6, 0, seeded());
+  ok(rc.length > 5 && rc.every(c => c.y === 6 && c.x <= 10), 'on a roof the fire stays on the roof, none over its edge', rc.filter(c => c.x > 10).length);
+  // a kerb is climbed, a terrace wall is not
+  const kerb = napalmCells(flatWorld(() => null, x => (x > 1 ? 0.15 : 0)), 0, 0, 0, seeded());
+  ok(kerb.some(c => c.x > 1.3 && c.y === 0.15), 'the fire runs over a kerb onto the pavement');
+  const terrace = napalmCells(flatWorld(() => null, x => (x > 1 ? 2 : 0)), 0, 0, 0, seeded());
+  ok(terrace.every(c => c.x <= 1), 'a terrace two metres high stops it', terrace.filter(c => c.x > 1).length);
+}
+{
+  // in the game: a wall between the fire and a player spares him; the spread reaches the rim later than the heart
+  let clock = 1e6;
+  const wall = (x, z) => (x >= 1.6 && x <= 2.0 && Math.abs(z) < 20 ? { top: 6, ring: base(1.8, 0, 0.2) } : null);
+  const g = createGame({ world: flatWorld(wall), area: { cx: 0, cz: 0 }, now: () => clock, name: 'napalm-wall' });
+  const A = seat(g, conn()), B = seat(g, conn()), C = seat(g, conn());
+  msg(A, { t: 'join', name: 'Поджигатель', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', name: 'За стеной', x: 2.8, z: 0, yaw: 0 });
+  msg(C, { t: 'join', name: 'На открытом', x: -2.2, z: 0, yaw: 0 });
+  const p = A.handle.player, q = B.handle.player, r = C.handle.player;
+  clock += 3000;
+  for (const c of [A, B, C]) msg(c, { t: 'state', x: c.handle.player.x, y: 1.7, z: c.handle.player.z, yaw: 0, pitch: 0 });
+  msg(A, { t: 'throw', kind: 'napalm', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });
+  p.x = -12; p.z = 0;   // the thrower steps away
+  for (let i = 0; i < 61; i++) { clock += 1000 / 30; g.stepNades(); }   // just past the fuse
+  const z = [...g.zones.values()].find(f => f.kind === 'fire');
+  ok(z && z.cells.every(c => c.x < 1.6), 'the patch lies on the thrower’s side of the wall');
+  ok(r.hp === 100, 'the rim has not caught yet the moment the napalm bursts', r.hp);
+  for (let i = 0; i < 45; i++) { clock += 1000 / 30; g.stepNades(); }
+  ok(r.hp < 100, 'the spread reaches the player on the open side');
+  ok(q.hp === 100, 'the player behind the wall, 2.8 m from the burst, does not burn', q.hp);
+  g.stop();
+}
+{
+  // a smoke thrown into the fire puts it out: from its canister outward, the cells under its core go out, the burning stops,
+  // the patch ends before its time
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'douse', ...teamed({ shooter: 'DVN', mate: 'DVN' }) });
+  const A = seat(g, conn()), B = seat(g, conn()), C = seat(g, conn());
+  msg(A, { t: 'join', key: 'shooter', name: 'Поджигатель', x: 0, z: 0, yaw: 0 });
+  msg(B, { t: 'join', key: 'target', name: 'Мишень', x: 15, z: 0, yaw: 0 });
+  msg(C, { t: 'join', key: 'mate', name: 'Пожарный', x: 0, z: -15, yaw: 0 });
+  const p = A.handle.player, q = B.handle.player, r = C.handle.player;
+  clock += 3000;
+  for (const c of [A, B, C]) msg(c, { t: 'state', x: c.handle.player.x, y: 1.7, z: c.handle.player.z, yaw: 0, pitch: 0 });
+  const t0 = clock;
+  msg(A, { t: 'throw', kind: 'napalm', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });
+  p.x = -15; p.z = 0;
+  const run = ms => { const end = clock + ms; while (clock < end) { clock += 1000 / 30; g.stepNades(); } };
+  run(2600);
+  const f = [...g.zones.values()].find(z => z.kind === 'fire');
+  r.x = f.x; r.z = f.z; r.hist.length = 0;   // the teammate walks into the heart of the fire (its burst, wherever it lay)
+  run(300);
+  ok(r.hp === 100, 'the teammate stands in the fire unburnt');
+  msg(C, { t: 'throw', kind: 'smoke', dx: 0, dy: -1, dz: 0, sp: NADE.minSpeed });   // the teammate drops a smoke into it
+  run(1500);
+  q.x = f.x + 1; q.z = f.z; q.hist.length = 0;   // the enemy walks into the fire just before the smoke goes off
+  run(500);
+  ok(q.hp < 100, 'the enemy in the fire burns', q.hp);
+  run(1200);
+  const out = A.all('fireOut');
+  ok(out.length > 0 && out[0].cells.every(([i, off]) => Number.isInteger(i) && off > 0), 'the smoke puts the cells out and tells the page which', out.length);
+  const h1 = q.hp;
+  run(1500);
+  ok(q.hp === h1, 'under the smoke the fire burns no more', h1 + '->' + q.hp);
+  const end = A.all('zoneEnd').length;
+  ok(end >= 1 && ![...g.zones.values()].some(f => f.kind === 'fire') && clock - t0 < 2000 + NAPALM.durMs - 1000, 'the doused patch ends before its time', (clock - t0) + ' ms');
+  g.stop();
+}
+{
+  // the bots: one out of the fire does not step into it; a camper holding still gets a napalm under his feet
+  let clock = 1e6;
+  const g = createGame({ world: flatWorld(), area: { cx: 0, cz: 0 }, now: () => clock, name: 'napalm-bots' });
+  const A = seat(g, conn());
+  msg(A, { t: 'join', name: 'Сидит в углу', x: 0, z: 0, yaw: 0 });
+  const p = A.handle.player;
+  const bot = g.addBot('hard');
+  clock += 3000;
+  bot.x = 0; bot.z = -18; bot.y = 1.7; bot.hist = []; bot.nades = 0; bot.napalms = 1; bot.protectUntil = 0; bot.bot.role = 0; bot.wep = 0;   // a rifleman: a sniper would hold the far side, out of a throw
+  msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+  p.hp = 1e6;   // the camper outlives the shooting: the test waits for the napalm
+  let thrown = null;
+  for (let i = 0; i < 80 && !thrown; i++) {
+    clock += 100; g.stepBots(0.1);
+    msg(A, { t: 'state', x: 0, y: 1.7, z: 0, yaw: 0, pitch: 0 });
+    thrown = A.all('nade').find(m => m.by === bot.id && m.kind === 'napalm');
+  }
+  ok(thrown, 'the bot throws a napalm at an enemy who holds still');
+  let land = null;
+  if (thrown) {
+    bot.x = 30; bot.z = -18;   // out of the way of its own flight
+    for (let i = 0; i < 70 && !land; i++) { clock += 1000 / 30; g.stepNades(); land = [...g.zones.values()].find(z => z.kind === 'fire'); }
+  }
+  ok(land && Math.hypot(land.x, land.z) < 2.5, 'the napalm comes to rest at the camper’s feet', land ? land.x.toFixed(1) + ',' + land.z.toFixed(1) : 'none');
+  ok(bot.napalms === 0, 'the bot spends its napalm');
+  // a bot beside the patch, out of it, fighting: it keeps its feet out of the fire
+  if (land) {
+    bot.x = land.x - 5.2; bot.z = land.z; bot.y = 1.7; bot.hp = 100; bot.bot.target = 0; bot.bot.path = null;
+    p.x = land.x + 12; p.z = land.z; msg(A, { t: 'state', x: p.x, y: 1.7, z: p.z, yaw: 0, pitch: 0 });
+    let burnt = 0;
+    for (let i = 0; i < 40; i++) { clock += 50; g.stepBots(0.05); g.stepNades(); if (fireUnder(land.cells, clock - land.t0, bot.x, bot.y - bot.eye, bot.z) >= NAPALM.hot) burnt++; }
+    ok(burnt === 0, 'a bot out of the fire does not step into it', burnt + ' steps in the fire');
+  }
   g.stop();
 }
 
