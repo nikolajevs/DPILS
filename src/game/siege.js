@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import { STATE } from '../core/state.js';
 import { P } from './player.js';
-import { camera, scene } from '../render/renderer.js';
+import { camera, renderer, scene } from '../render/renderer.js';
 import { terrainH } from '../world/terrain.js';
 import { $, reduceMotion } from '../core/env.js';
 import { SIEGE } from '../../server/combat.mjs';
@@ -189,17 +189,43 @@ let domeVis = null, domeFall = 0;   // domeFall: the collapse animation after th
 const domeLight = new THREE.PointLight(0xcfeaff, 0, 1300, 1.3);
 domeLight.position.set(0, -500, 0); scene.add(domeLight);
 const panOf = (x, z) => { const dx = x - P.x, dz = z - P.z, d = Math.hypot(dx, dz); return d > 0.01 ? Math.max(-1, Math.min(1, (Math.cos(P.yaw) * dx - Math.sin(P.yaw) * dz) / d)) : 0; };
+// the materials live from the start and their shaders are warmed below while the page is still loading, before
+// anyone joins a fight: a first compile in the middle of the prep would block the page for seconds and the server's
+// heartbeat would drop the player. One dome at a time shares them; buildDome resets the uniforms.
+const UV_VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+const domeU = {
+  uTime: { value: 0 }, uOpacity: { value: 0 }, uRise: { value: 0 }, uFall: { value: 0 }, uHot: { value: 0 },
+  uFlicker: { value: reduceMotion ? 0 : 1 }, uColor: { value: SHIELD.clone() }, uSquash: { value: 0.38 }, uHits: { value: Array.from({ length: 6 }, () => new THREE.Vector4(0, 0, 0, -10)) },
+};
+const shellMat = new THREE.ShaderMaterial({ uniforms: domeU, vertexShader: DOME_VS, fragmentShader: DOME_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+const glassMat = new THREE.ShaderMaterial({ uniforms: { ...domeU }, vertexShader: DOME_VS, fragmentShader: GLASS_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+const ringMat = new THREE.ShaderMaterial({ uniforms: { uColor: domeU.uColor, uTime: domeU.uTime, uOpacity: domeU.uOpacity, uFall: domeU.uFall }, vertexShader: UV_VS, fragmentShader: DOME_RING_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+const moteMat = new THREE.ShaderMaterial({ uniforms: { uTime: domeU.uTime, uOpacity: domeU.uOpacity, uFall: domeU.uFall }, vertexShader: MOTE_VS, fragmentShader: MOTE_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+const shardMat = new THREE.ShaderMaterial({ uniforms: { uT: { value: -1 }, uColor: { value: SHIELD.clone() } }, vertexShader: SHARD_VS, fragmentShader: SHARD_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+const waveMat = new THREE.ShaderMaterial({ uniforms: { uW: { value: 0 }, uColor: { value: SHIELD.clone() } }, vertexShader: UV_VS, fragmentShader: WAVE_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+try {   // warm the six programs on the loading page, not in the fight
+  const ws = new THREE.Scene(), tg = [];
+  const sg = new THREE.SphereGeometry(1, 8, 4); tg.push(sg);
+  ws.add(new THREE.Mesh(sg, shellMat)); ws.add(new THREE.Mesh(sg, glassMat));
+  const pg = new THREE.PlaneGeometry(1, 1); tg.push(pg);
+  ws.add(new THREE.Mesh(pg, ringMat)); ws.add(new THREE.Mesh(pg, waveMat));
+  const bg = new THREE.BufferGeometry(); tg.push(bg);
+  bg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3));
+  bg.setAttribute('aSeed', new THREE.BufferAttribute(new Float32Array(1), 1));
+  bg.setAttribute('aMax', new THREE.BufferAttribute(new Float32Array([10]), 1));
+  bg.setAttribute('aVel', new THREE.BufferAttribute(new Float32Array(3), 3));
+  ws.add(new THREE.Points(bg, moteMat)); ws.add(new THREE.Points(bg, shardMat));
+  renderer.compile(ws, camera);
+  for (const g of tg) g.dispose();
+} catch (e) { /* a lost context warms them later, on the first frame */ }
 function buildDome(d) {
   clearDome();
   const gy = terrainH(d.cx, d.cz);
+  domeU.uRise.value = 0; domeU.uFall.value = 0; domeU.uHot.value = 0; domeU.uOpacity.value = 0;
+  for (const h of domeU.uHits.value) h.set(0, 0, 0, -10);
+  shardMat.uniforms.uT.value = -1; waveMat.uniforms.uW.value = 0;
   const geo = new THREE.SphereGeometry(d.r, 96, 48, 0, Math.PI * 2, 0, Math.PI / 2);
-  const hits = Array.from({ length: 6 }, () => new THREE.Vector4(0, 0, 0, -10));
-  const u = {
-    uTime: { value: 0 }, uOpacity: { value: 0 }, uRise: { value: 0 }, uFall: { value: 0 }, uHot: { value: 0 },
-    uFlicker: { value: reduceMotion ? 0 : 1 }, uColor: { value: SHIELD.clone() }, uSquash: { value: 0.38 }, uHits: { value: hits },
-  };
-  const glass = new THREE.Mesh(geo, new THREE.ShaderMaterial({ uniforms: { ...u }, vertexShader: DOME_VS, fragmentShader: GLASS_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
-  const shell = new THREE.Mesh(geo, new THREE.ShaderMaterial({ uniforms: u, vertexShader: DOME_VS, fragmentShader: DOME_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+  const glass = new THREE.Mesh(geo, glassMat), shell = new THREE.Mesh(geo, shellMat);
   for (const m of [glass, shell]) { m.scale.y = 0.38; m.position.set(d.cx, gy - 3, d.cz); m.frustumCulled = false; m.userData.noProbe = true; scene.add(m); }   // a low shell over the ramparts, not a half-sphere to the sky
   glass.renderOrder = 14; shell.renderOrder = 15;
   // the base ring, laid on the terrain itself so it follows the ramparts' ground
@@ -207,7 +233,7 @@ function buildDome(d) {
   rg.rotateX(-Math.PI / 2);
   const rp = rg.attributes.position;
   for (let i = 0; i < rp.count; i++) rp.setY(i, terrainH(d.cx + rp.getX(i), d.cz + rp.getZ(i)) + 0.35 - gy);
-  const ring = new THREE.Mesh(rg, new THREE.ShaderMaterial({ uniforms: { uColor: u.uColor, uTime: u.uTime, uOpacity: u.uOpacity, uFall: u.uFall }, vertexShader: BEAM_VS, fragmentShader: DOME_RING_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+  const ring = new THREE.Mesh(rg, ringMat);
   ring.position.set(d.cx, gy, d.cz); ring.renderOrder = 12; ring.frustumCulled = false; ring.userData.noProbe = true; scene.add(ring);
   // the motes: slow sparks drifting up inside the field, each under its own patch of shell
   const N = 220, mp = new Float32Array(N * 3), ms = new Float32Array(N), mm = new Float32Array(N);
@@ -221,10 +247,10 @@ function buildDome(d) {
   mg.setAttribute('position', new THREE.BufferAttribute(mp, 3));
   mg.setAttribute('aSeed', new THREE.BufferAttribute(ms, 1));
   mg.setAttribute('aMax', new THREE.BufferAttribute(mm, 1));
-  const motes = new THREE.Points(mg, new THREE.ShaderMaterial({ uniforms: { uTime: u.uTime, uOpacity: u.uOpacity, uFall: u.uFall }, vertexShader: MOTE_VS, fragmentShader: MOTE_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  const motes = new THREE.Points(mg, moteMat);
   motes.position.set(d.cx, gy - 3, d.cz); motes.renderOrder = 15; motes.frustumCulled = false; motes.userData.noProbe = true; scene.add(motes);
   domeLight.position.set(d.cx, gy + 70, d.cz); domeLight.distance = d.r * 2.6;
-  domeVis = { d: { ...d }, gy, geo, glass, shell, ring, motes, u, hits, hitIdx: 0, rise: 0, shards: null, wave: null };
+  domeVis = { d: { ...d }, gy, geo, glass, shell, ring, motes, u: domeU, hits: domeU.uHits.value, hitIdx: 0, rise: 0, shards: null, wave: null };
 }
 // the burst: seven hundred hex plates torn off the shell, each with its own hour, toss and spin (GPU-ballistic)
 function burstShards(dv) {
@@ -243,18 +269,18 @@ function burstShards(dv) {
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('aVel', new THREE.BufferAttribute(vel, 3));
   g.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
-  const mat = new THREE.ShaderMaterial({ uniforms: { uT: { value: -1 }, uColor: { value: SHIELD.clone() } }, vertexShader: SHARD_VS, fragmentShader: SHARD_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
-  const points = new THREE.Points(g, mat);
+  shardMat.uniforms.uT.value = -1;
+  const points = new THREE.Points(g, shardMat);
   points.frustumCulled = false; points.userData.noProbe = true; points.renderOrder = 16; scene.add(points);
-  dv.shards = { points, geo: g, mat, t0: performance.now() + 320 };
+  dv.shards = { points, geo: g, mat: shardMat, t0: performance.now() + 320 };
 }
 function buildWave(dv) {
   const { d, gy } = dv, R = d.r * 1.35;
   const g = new THREE.PlaneGeometry(R * 2, R * 2); g.rotateX(-Math.PI / 2);
-  const mat = new THREE.ShaderMaterial({ uniforms: { uW: { value: 0 }, uColor: { value: SHIELD.clone() } }, vertexShader: BEAM_VS, fragmentShader: WAVE_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
-  const mesh = new THREE.Mesh(g, mat);
+  waveMat.uniforms.uW.value = 0;
+  const mesh = new THREE.Mesh(g, waveMat);
   mesh.position.set(d.cx, gy + 0.5, d.cz); mesh.renderOrder = 13; mesh.frustumCulled = false; mesh.userData.noProbe = true; scene.add(mesh);
-  dv.wave = { mesh, geo: g, mat };
+  dv.wave = { mesh, geo: g, mat: waveMat };
 }
 function startFall() {
   domeFall = performance.now();
@@ -268,10 +294,10 @@ function startFall() {
 function clearDome() {
   if (!domeVis) return;
   const dv = domeVis;
-  for (const m of [dv.glass, dv.shell, dv.ring, dv.motes]) { scene.remove(m); m.material.dispose(); }
+  for (const m of [dv.glass, dv.shell, dv.ring, dv.motes]) scene.remove(m);   // the materials stay: they are shared and prewarmed
   dv.geo.dispose(); dv.ring.geometry.dispose(); dv.motes.geometry.dispose();
-  if (dv.shards) { scene.remove(dv.shards.points); dv.shards.geo.dispose(); dv.shards.mat.dispose(); }
-  if (dv.wave) { scene.remove(dv.wave.mesh); dv.wave.geo.dispose(); dv.wave.mat.dispose(); }
+  if (dv.shards) { scene.remove(dv.shards.points); dv.shards.geo.dispose(); }
+  if (dv.wave) { scene.remove(dv.wave.mesh); dv.wave.geo.dispose(); }
   domeLight.intensity = 0;
   domeVis = null; domeFall = 0;
 }
