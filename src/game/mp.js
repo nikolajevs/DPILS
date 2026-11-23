@@ -18,7 +18,7 @@ import { addNade, addZone, endZone, douseFire, burnBodies, fireNow, blastGlow, b
 import { KINDS, SLOT_SVG, bindInv, setItems, itemBack, itemTook, tickItems, renderInv, invTick, closeInv, toggleInv } from './inventory.js';
 import { cargoDrop, cargoLand, cargoTook, cargoEnd, cargoSelf, cargoTick, cargoMap, cargoClock, clearCargo } from './cargo.js';
 import { setHoly, clearHoly, holyBell, holyWin, holyTick, holyMap, holyMe, holySpeedMul, holyState, holyAudio, holyEnlist, holyEnlisted } from './holy.js';
-import { setSiege, siegeYou, siegeOut, siegeWin, clearSiege, siegeTick, siegeMap, siegeNet } from './siege.js';
+import { setSiege, siegeYou, siegeOut, siegeWin, clearSiege, siegeTick, siegeMap, siegeNet, siegeAudio, domeHit } from './siege.js';
 import { terrainH } from '../world/terrain.js';
 import { camera, canvas, renderer, scene } from '../render/renderer.js';
 import { setCycle, setTime } from '../render/lighting.js';
@@ -31,7 +31,7 @@ import { playerKey, account } from './identity.js';
 import { initLeaders } from './leaders.js';
 import { rest } from '../core/pause.js';
 import { $, reduceMotion } from '../core/env.js';
-import { arcCrackle, bellSound, boomSound, burnSound, crackSound, fireBed, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeHiss, steamHiss, stepSound, stormBed, stormZap, thunderSound } from './sfx.js';
+import { arcCrackle, bellSound, boomSound, burnSound, crackSound, domeDownSound, domeHitSound, domeUpSound, fireBed, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeHiss, steamHiss, stepSound, stormBed, stormZap, thunderSound } from './sfx.js';
 import { clearStorm, setStorm, stormAudio, stormMapOverlay, stormState, stormTick } from './storm.js';
 import { carAt, carPath } from '../world/car-hit.js';
 import { setWhere } from './social.js';
@@ -387,6 +387,9 @@ stormAudio.zap = vol => stormZap(ac(), actx.master, vol);
 stormAudio.arc = (vol, pan) => arcCrackle(ac(), actx.master, vol, pan);
 stormAudio.bed = () => stormBed(ac(), actx.master);
 holyAudio.bell = (f0, vol, d, pan, delay) => bellSound(ac(), actx.master, f0, vol, d, pan, delay);   // the church bells of the race ring through the same audio
+siegeAudio.up = (vol, d, pan) => domeUpSound(ac(), actx.master, vol, d, pan);   // the siege dome speaks through the same audio: its rise, its fall, the slap of a hit
+siegeAudio.down = (vol, d, pan) => domeDownSound(ac(), actx.master, vol, d, pan);
+siegeAudio.hit = (vol, pan) => domeHitSound(ac(), actx.master, vol, pan);
 siegeNet.join = side => { if (MP.ws) MP.ws.send(JSON.stringify({ t: 'siegeJoin', side })); };   // the siege registration buttons send through the socket
 // a blast close by (k: 1 at the heart, 0 at the edge): after its bang the world goes dull and the ears ring, the closer the longer
 function deafen(k, delay) {
@@ -883,7 +886,7 @@ function onMsg(m) {
       const s = MP.rtts; s.push(performance.now() - m.c); if (s.length > 5) s.shift();
       MP.rtt = Math.round(Math.min(...s)); el('mpPing').textContent = 'пинг ' + MP.rtt + ' мс'; updatePanel(); if (!el('mpBoard').hidden) drawBoard(); break;
     }
-    case 'correct': P.x = m.x; P.z = m.z; if (m.out) edgeNotice(); else if (m.dome) domeNotice(); break;
+    case 'correct': P.x = m.x; P.z = m.z; if (m.out) edgeNotice(); else if (m.dome) { domeNotice(); domeHit(m.x, (m.y ?? P.y) + 1.0, m.z, 1); } break;   // thrown against the field: a ripple spreads from the body
     case 'snap': {
       cargoClock(m.now);
       const t = performance.now(), seen = new Set();
@@ -974,7 +977,7 @@ function onMsg(m) {
     case 'siege': { const r = setSiege(m);   // the siege of the fortress: the registration, the dome, the assault
       if (r && r.first) { banner('ШТУРМ ДИНАБУРГА', 'siege'); tone(392, 392, 0.3, 0.25, 'triangle'); tone(523, 523, 0.35, 0.22, 'triangle', 0.14); tone(659, 659, 0.5, 0.2, 'triangle', 0.28); }
       else if (r && r.prevPhase === 'reg' && m.phase === 'prep') { banner('КУПОЛ ПОДНЯТ — ПОДГОТОВКА', 'siege'); tone(330, 220, 0.5, 0.25, 'sine'); }
-      else if (r && r.prevPhase === 'prep' && m.phase === 'assault') { banner('КУПОЛ ПАЛ — ШТУРМ!', 'siege'); try { boomSound(ac(), actx.master, 1.1, 0, 0, 0); } catch (e) {} tone(196, 196, 0.4, 0.3, 'sawtooth'); tone(262, 262, 0.5, 0.25, 'triangle', 0.18); }
+      else if (r && r.prevPhase === 'prep' && m.phase === 'assault') { banner('КУПОЛ ПАЛ — ШТУРМ!', 'siege'); tone(196, 196, 0.4, 0.3, 'sawtooth'); tone(262, 262, 0.5, 0.25, 'triangle', 0.18); }   // the collapse itself speaks from siege.js (domeDownSound): overload, fracture, thump, dying sweep, shards
       break; }
     case 'siegeYou': siegeYou(m); feed(m.side ? 'Вы записаны в ' + (m.side === 'a' ? 'штурмующие' : 'гарнизон') : 'Заявка на штурм снята', 'sys'); tone(m.side ? 660 : 440, m.side ? 880 : 330, 0.12, 0.2, 'triangle'); break;
     case 'siegeDeny': feed(m.reason === 'balance' ? 'Баланс сторон: эта сторона уже полнее — выберите другую' : 'Регистрация на штурм закрыта', 'sys'); break;

@@ -6,6 +6,7 @@ import { camera, scene } from '../render/renderer.js';
 import { worldSpace } from '../render/world-space.js';
 import { carAt } from '../world/car-hit.js';
 import { WEAPONS, bulletAt, bulletDir, bulletDrop, dragDist } from '../../server/combat.mjs';
+import { domeCross, domeHit } from './siege.js';
 
 /* ---------- realistic shots: flying tracers, bullet marks, dust, sparks, shells ----------
    The game (mp.js) knows where every bullet stops: a wall, the ground or a body. This module draws the consequences.
@@ -286,6 +287,13 @@ function tickFx(dt) {
   for (let i = tracers.length - 1; i >= 0; i--) {
     const tr = tracers[i]; tr.t += dt;
     const head = Math.min(tr.len, tr.start + dragDist(tr.t, tr.speed, tr.k)), tail = Math.max(Math.min(tr.start, head), head - tr.trail);   // the drag brakes the streak as it brakes the bullet
+    // the siege shield: a bystander's bullet crosses the field — a ripple and an electric slap exactly where it passes
+    if (!tr.domed && head > (tr.lastHead ?? tr.start)) {
+      const p0 = bulletAt(tr.o, tr.d, tr.lastHead ?? tr.start, tr.speed, tr.k), p1 = bulletAt(tr.o, tr.d, head, tr.speed, tr.k);
+      const dh = domeCross(p0[0], p0[1], p0[2], p1[0], p1[1], p1[2]);
+      if (dh) { tr.domed = true; domeHit(dh[0], dh[1], dh[2], 0.8); }
+    }
+    tr.lastHead = head;
     if (!tr.done && head >= tr.len) {
       tr.done = true;
       if (tr.kind === 'surface') surfaceImpact(tr.o, tr.d, tr.len, tr.w);
