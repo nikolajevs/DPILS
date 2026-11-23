@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Claude | claude/servers-step-30 | Серверы со сдвигом 30 минут (длина раунда / число серверов) | server/index.mjs, server/admin.*, index.html, README.md |
 
 ## Автономный цикл улучшений
 
