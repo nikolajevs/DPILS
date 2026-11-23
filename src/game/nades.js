@@ -248,13 +248,13 @@ const SMOKE = cloud(bentQuad(), smokeMat, 900, 1), FIRE = cloud(new THREE.PlaneG
 // the napalm's carpet of flame: ordinary blending, not additive — added light washes out on a sunlit street, while
 // solid flame quads read by day as well as by night; the additive FIRE on top of them gives the bloom its glow
 const flameMat = particleMat(new THREE.MeshBasicMaterial({ map: FIRE_TEX, transparent: true, depthWrite: false, fog: false }), 'nade-flame');
-const FLAME = cloud(new THREE.PlaneGeometry(1, 1), flameMat, 520, 2);
+const FLAME = cloud(new THREE.PlaneGeometry(1, 1), flameMat, 760, 2);
 const WHITE = [1, 1, 1];
 // a particle: where it is and flies, how long it lives, its size from s0 to s1 (grow: how soon it gets there), its turn and spin,
 // drag towards the air around (rise: the speed it climbs at, wind: how much of the wind takes it), gravity, colour from
-// c0 to c1, opacity (fin: the fade-in, fout: the share of its life before it fades out), the glow of the fire for heatT
+// c0 to c1 (sy: its height over its width — a flame tongue stands tall), opacity (fin: the fade-in, fout: the share of its life before it fades out), the glow of the fire for heatT
 // seconds, the atlas cell; len and w make a streak along the flight; a clod falls to the ground and may trail dust
-const PD = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, t: 0, life: 1, s0: 1, s1: 1, grow: 2, roll: 0, spin: 0, drag: 0, rise: 0, wind: 0, grav: 0, c0: WHITE, c1: WHITE, op: 1, fin: 0, fout: 0.5, heat: 0, heatT: 0.25, frame: 0, len: 0, w: 0, floor: -1e9, clod: false, roof: 0, trail: 0, tt: 0, dust: WHITE, d: 0, zone: null, body: false };
+const PD = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, t: 0, life: 1, s0: 1, s1: 1, sy: 1, grow: 2, roll: 0, spin: 0, drag: 0, rise: 0, wind: 0, grav: 0, c0: WHITE, c1: WHITE, op: 1, fin: 0, fout: 0.5, heat: 0, heatT: 0.25, frame: 0, len: 0, w: 0, floor: -1e9, clod: false, roof: 0, trail: 0, tt: 0, dust: WHITE, d: 0, zone: null, body: false };
 // zone: the smoke screen a puff belongs to (it thins with it, see drawCloud); body: it is one of the screen's own count
 function emit(sys, o) {
   const p = sys.free.pop() || sys.list.shift();
@@ -439,7 +439,7 @@ function discCells(r) {
   return out;
 }
 const onRoof = (x, y, z) => { const b = buildingAt(x, z, y); return !!b && y > gnd(x, z) + (b.top || 12) - 0.6; };
-const SOOT0 = [0.09, 0.08, 0.07], SOOT1 = [0.3, 0.29, 0.27];
+const SOOT0 = [0.045, 0.04, 0.035], SOOT1 = [0.2, 0.19, 0.18];
 // the smoke puts cells out ('fireOut' from the server, game.mjs douse): they go out at the server's new time, and the
 // burning ones hiss off in steam at once (the patch may be gone by the time they are out)
 function douseFire(m) {
@@ -513,15 +513,19 @@ function tickFire(z, dt) {
     const k = fireHeat(c, ms);
     if (!k) { if (c.was) { c.was = false; smoulder(c); } continue; }
     if (!c.doused) c.was = true; sum += k; sx += c.x * k; sy += c.y * k; sz += c.z * k; LIT.push(c);
-    const tall = 0.75 + 0.6 * c.w;
-    c.acc += (3.6 + 2.4 * c.w) * k * dt;
-    while (c.acc >= 1) {
-      c.acc--; const a = rnd(0, 6.283), r = Math.sqrt(Math.random()) * 0.62, x = c.x + Math.cos(a) * r, zz = c.z + Math.sin(a) * r;
-      emit(FLAME, { x, y: c.y + 0.06, z: zz, vx: rnd(-0.3, 0.3), vy: rnd(1.1, 2.5) * tall, vz: rnd(-0.3, 0.3), drag: 1.2, rise: 0.4, wind: 0.3, life: rnd(0.35, 0.75) * (0.75 + 0.35 * k), s0: rnd(0.4, 0.65), s1: rnd(1.1, 1.9) * tall * (0.55 + 0.45 * k), grow: 2, roll: rnd(0, 6.28), spin: rnd(-2, 2), c0: [1, 0.48, 0.13], c1: [0.78, 0.17, 0.02], op: 0.95, fout: 0.25, floor: c.y, frame: (Math.random() * 2) | 0 });
-      if (Math.random() < 0.28) emit(FIRE, { x, y: c.y + 0.35, z: zz, vy: rnd(1, 2), life: rnd(0.2, 0.4), s0: rnd(0.5, 0.9), s1: rnd(1, 1.6), grow: 2, c0: [2.5, 1.2, 0.4], c1: [1.2, 0.4, 0.1], op: 0.5, fout: 0.3, frame: 2 });   // the glow the bloom takes
+    const tall = (0.7 + 0.65 * c.w) * (0.45 + 0.55 * k);   // the heart burns higher, and a cell catching or dying lower
+    c.acc += (5.5 + 4.5 * c.w) * k * dt;
+    while (c.acc >= 1) {   // the tongues: yellow at the root, deep orange as they lick up and tear off
+      c.acc--; const a = rnd(0, 6.283), r = Math.sqrt(Math.random()) * 0.65, x = c.x + Math.cos(a) * r, zz = c.z + Math.sin(a) * r;
+      emit(FLAME, { x, y: c.y + 0.05, z: zz, vx: rnd(-0.25, 0.25), vy: rnd(0.8, 1.8) * tall, vz: rnd(-0.25, 0.25), drag: 1.5, rise: 0.8, wind: 0.35, life: rnd(0.45, 0.85), s0: rnd(0.35, 0.55), s1: rnd(1, 1.6) * tall, sy: rnd(1.6, 2.3), grow: 1.6, roll: rnd(-0.22, 0.22), spin: rnd(-0.5, 0.5), c0: [1.55, 1.05, 0.4], c1: [1.15, 0.33, 0.05], op: 1, fin: 0.05, fout: 0.45, floor: c.y, frame: (Math.random() * 2) | 0 });
+      if (Math.random() < 0.2) emit(FIRE, { x, y: c.y + 0.4, z: zz, vy: rnd(1, 2), life: rnd(0.2, 0.4), s0: rnd(0.5, 0.9), s1: rnd(1, 1.6), grow: 2, c0: [2.5, 1.2, 0.4], c1: [1.2, 0.4, 0.1], op: 0.5, fout: 0.3, frame: 2 });   // the glow the bloom takes
     }
-    c.acc2 += 1.2 * k * dt;
-    if (c.acc2 >= 1) { c.acc2--; emit(FIRE, { x: c.x + rnd(-0.3, 0.3), y: c.y + 0.15, z: c.z + rnd(-0.3, 0.3), life: rnd(0.5, 0.8), s0: 1.3, s1: 1.8, grow: 1, c0: [1.4, 0.5, 0.12], c1: [0.9, 0.25, 0.05], op: 0.3, fin: 0.15, fout: 0.4, frame: 2 }); }   // the ground glowing under the flames
+    c.acc2 += 3 * k * dt;
+    while (c.acc2 >= 1) {   // the carpet: low wide flame lying over the burning filler between the tongues, and its glow
+      c.acc2--; const a = rnd(0, 6.283), r = Math.sqrt(Math.random()) * 0.5;
+      emit(FLAME, { x: c.x + Math.cos(a) * r, y: c.y + 0.1, z: c.z + Math.sin(a) * r, vy: rnd(0.2, 0.5), drag: 2, rise: 0.3, life: rnd(0.5, 0.8), s0: rnd(0.8, 1.1), s1: rnd(1.4, 1.9) * (0.6 + 0.4 * k), sy: rnd(0.55, 0.75), grow: 2, roll: rnd(-0.3, 0.3), spin: rnd(-0.3, 0.3), c0: [1.5, 0.92, 0.32], c1: [1.1, 0.4, 0.08], op: 0.85, fin: 0.08, fout: 0.4, floor: c.y, frame: (Math.random() * 2) | 0 });
+      if (Math.random() < 0.4) emit(FIRE, { x: c.x + rnd(-0.3, 0.3), y: c.y + 0.15, z: c.z + rnd(-0.3, 0.3), life: rnd(0.5, 0.8), s0: 1.3, s1: 1.8, grow: 1, c0: [1.4, 0.5, 0.12], c1: [0.9, 0.25, 0.05], op: 0.3, fin: 0.15, fout: 0.4, frame: 2 });   // the ground glowing under the flames
+    }
   }
   z.heat = sum / z.cells.length;
   if (sum) { z.hx0 = sx / sum; z.hy0 = sy / sum; z.hz0 = sz / sum; }
@@ -534,7 +538,7 @@ function tickFire(z, dt) {
     z.acc2 += (z.t < 2.5 ? 15 : 8) * Math.min(1, z.heat * 1.6) * dt;   // the soot: thick at first, then a steady column
     while (z.acc2 >= 1) {
       z.acc2--; const c = LIT[(Math.random() * LIT.length) | 0];
-      emit(SMOKE, { x: c.x + rnd(-0.4, 0.4), y: c.y + rnd(0.9, 1.6), z: c.z + rnd(-0.4, 0.4), vx: rnd(-0.3, 0.3), vy: rnd(1.2, 2.2), vz: rnd(-0.3, 0.3), drag: 1.2, rise: rnd(1, 1.8), wind: 0.85, life: rnd(2.8, 5), s0: rnd(0.7, 1), s1: rnd(2.6, 4.2), grow: 2.5, roll: rnd(0, 6.28), spin: rnd(-0.5, 0.5), c0: SOOT0, c1: SOOT1, op: 0.55, fin: 0.1, fout: 0.3, floor: c.y, frame: (Math.random() * 3) | 0 });
+      emit(SMOKE, { x: c.x + rnd(-0.4, 0.4), y: c.y + rnd(0.9, 1.6), z: c.z + rnd(-0.4, 0.4), vx: rnd(-0.3, 0.3), vy: rnd(1.2, 2.2), vz: rnd(-0.3, 0.3), drag: 1.2, rise: rnd(1, 1.8), wind: 0.85, life: rnd(2.8, 5), s0: rnd(0.7, 1), s1: rnd(2.6, 4.2), grow: 2.5, roll: rnd(0, 6.28), spin: rnd(-0.5, 0.5), c0: SOOT0, c1: SOOT1, op: 0.68, fin: 0.1, fout: 0.3, floor: c.y, frame: (Math.random() * 3) | 0 });
     }
   }
   if (z.can && !z.charred) {
@@ -581,7 +585,7 @@ function burnBodies(list, dt, spared) {
     s.acc += 24 * f * dt;
     while (s.acc >= 1) {
       s.acc--; const a = rnd(0, 6.283), r = rnd(0.05, 0.24), hy = rnd(0.05, s.h * 0.85);
-      emit(FLAME, { x: s.x + Math.cos(a) * r, y: s.y + hy, z: s.z + Math.sin(a) * r, vy: rnd(1.2, 2.4), drag: 1.5, life: rnd(0.25, 0.45), s0: rnd(0.18, 0.28), s1: rnd(0.45, 0.8) * (1.1 - 0.5 * hy / s.h), grow: 2, roll: rnd(0, 6.28), spin: rnd(-3, 3), c0: [1, 0.55, 0.16], c1: [0.8, 0.2, 0.03], op: 0.9, fout: 0.25, frame: (Math.random() * 2) | 0 });
+      emit(FLAME, { x: s.x + Math.cos(a) * r, y: s.y + hy, z: s.z + Math.sin(a) * r, vy: rnd(1.2, 2.4), drag: 1.5, life: rnd(0.3, 0.5), s0: rnd(0.18, 0.28), s1: rnd(0.45, 0.75) * (1.1 - 0.5 * hy / s.h), sy: rnd(1.4, 1.9), grow: 2, roll: rnd(-0.25, 0.25), spin: rnd(-0.6, 0.6), c0: [1.5, 0.98, 0.36], c1: [1.1, 0.3, 0.04], op: 0.95, fin: 0.05, fout: 0.4, frame: (Math.random() * 2) | 0 });
       if (Math.random() < 0.22) emit(FIRE, { x: s.x, y: s.y + hy, z: s.z, vy: rnd(0.8, 1.6), life: rnd(0.2, 0.35), s0: 0.5, s1: 0.9, grow: 2, c0: [2.4, 1.1, 0.35], c1: [1.1, 0.35, 0.08], op: 0.45, fout: 0.3, frame: 2 });
     }
     if (Math.random() < 3 * f * dt) emit(SMOKE, { x: s.x, y: s.y + s.h, z: s.z, vy: rnd(1, 1.8), drag: 1.2, rise: 1.2, wind: 0.8, life: rnd(1.5, 2.5), s0: 0.3, s1: rnd(1, 1.6), grow: 2.2, roll: rnd(0, 6.28), spin: rnd(-0.5, 0.5), c0: SOOT0, c1: SOOT1, op: 0.4, fin: 0.1, fout: 0.35, frame: (Math.random() * 3) | 0 });
@@ -712,9 +716,9 @@ function drawCloud(sys, sort) {
       PS.set(l, p.w, 1); PV.set(p.x - p.vx / sp * l * 0.5, p.y - p.vy / sp * l * 0.5, p.z - p.vz / sp * l * 0.5);
     } else {
       let s = p.s0 + (p.s1 - p.s0) * (1 - (1 - k) ** p.grow), y = p.y;
-      if (y < p.floor + s * 0.28) y = p.floor + s * 0.28;   // a puff does not sink into the ground it rolls on
+      if (y < p.floor + s * p.sy * 0.28) y = p.floor + s * p.sy * 0.28;   // a puff does not sink into the ground it rolls on
       if (sort) { const dd = Math.sqrt(p.d); if (dd < 0.35 + 0.45 * s) ap[i * 4] *= clamp((dd - 0.35) / (0.45 * s)); }   // a puff the camera walks into melts away instead of cutting the near plane
-      QR.setFromAxisAngle(ZA, p.roll); Q.copy(camera.quaternion).multiply(QR); PS.set(s, s, s); PV.set(p.x, y, p.z);
+      QR.setFromAxisAngle(ZA, p.roll); Q.copy(camera.quaternion).multiply(QR); PS.set(s, s * p.sy, s); PV.set(p.x, y, p.z);
     }
     M.compose(PV, Q, PS); mesh.setMatrixAt(i, M);
   }
