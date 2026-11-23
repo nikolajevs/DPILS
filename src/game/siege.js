@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import { STATE } from '../core/state.js';
 import { P } from './player.js';
-import { camera, renderer, scene } from '../render/renderer.js';
+import { camera, scene } from '../render/renderer.js';
 import { terrainH } from '../world/terrain.js';
 import { $, reduceMotion } from '../core/env.js';
 import { SIEGE } from '../../server/combat.mjs';
@@ -203,31 +203,9 @@ const ringMat = new THREE.ShaderMaterial({ uniforms: { uColor: domeU.uColor, uTi
 const moteMat = new THREE.ShaderMaterial({ uniforms: { uTime: domeU.uTime, uOpacity: domeU.uOpacity, uFall: domeU.uFall }, vertexShader: MOTE_VS, fragmentShader: MOTE_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
 const shardMat = new THREE.ShaderMaterial({ uniforms: { uT: { value: -1 }, uColor: { value: SHIELD.clone() } }, vertexShader: SHARD_VS, fragmentShader: SHARD_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
 const waveMat = new THREE.ShaderMaterial({ uniforms: { uW: { value: 0 }, uColor: { value: SHIELD.clone() } }, vertexShader: UV_VS, fragmentShader: WAVE_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
-// the shard and wave programs warm too: tiny dummies parked under the ground (depth-tested away, two cheap draws),
-// so the fall never compiles a shader in the middle of the fight
-{
-  const bg = new THREE.BufferGeometry();
-  bg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3));
-  bg.setAttribute('aSeed', new THREE.BufferAttribute(new Float32Array(1), 1));
-  bg.setAttribute('aVel', new THREE.BufferAttribute(new Float32Array(3), 3));
-  const bp = new THREE.Points(bg, shardMat); bp.position.set(0, -500, 0); bp.userData.noProbe = true; scene.add(bp);
-  const wp = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), waveMat); wp.position.set(0, -500, 0); wp.userData.noProbe = true; scene.add(wp);
-}
-try {   // warm the six programs on the loading page, not in the fight
-  const ws = new THREE.Scene(), tg = [];
-  const sg = new THREE.SphereGeometry(1, 8, 4); tg.push(sg);
-  ws.add(new THREE.Mesh(sg, shellMat)); ws.add(new THREE.Mesh(sg, glassMat));
-  const pg = new THREE.PlaneGeometry(1, 1); tg.push(pg);
-  ws.add(new THREE.Mesh(pg, ringMat)); ws.add(new THREE.Mesh(pg, waveMat));
-  const bg = new THREE.BufferGeometry(); tg.push(bg);
-  bg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3));
-  bg.setAttribute('aSeed', new THREE.BufferAttribute(new Float32Array(1), 1));
-  bg.setAttribute('aMax', new THREE.BufferAttribute(new Float32Array([10]), 1));
-  bg.setAttribute('aVel', new THREE.BufferAttribute(new Float32Array(3), 3));
-  ws.add(new THREE.Points(bg, moteMat)); ws.add(new THREE.Points(bg, shardMat));
-  const drop = () => { for (const g of tg) g.dispose(); };
-  renderer.compileAsync(ws, camera).then(drop, drop);   // parallel: the loading page must not freeze either
-} catch (e) { /* a lost context warms them later, on the first frame */ }
+// no prewarm: on ANGLE/D3D11 a parallel compile of these programs saturates the GPU thread and every GL call of
+// the city's own first frames queues behind it (the page freezes, the heartbeat drops the player). The shaders are
+// kept cheap enough (one hex grid, no derivatives) that their first compile at the prep is a fraction of a second.
 function buildDome(d) {
   clearDome();
   const gy = terrainH(d.cx, d.cz);
