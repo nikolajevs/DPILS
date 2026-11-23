@@ -943,4 +943,12 @@ function nadeSamples() {
   return [flyNade() || new THREE.Mesh(GEO, MAT), flyNade('smoke'), flyNade('napalm'), cloudSample(SMOKE), cloudSample(FIRE), cloudSample(FLAME), new THREE.Mesh(scorchGeo, scorchMat()), new THREE.Mesh(GEO, charMat), ...aim, new THREE.Mesh(trails[0].geo, trailMat), new THREE.Mesh(spoonLong, spoonMat)];
 }
 
-export { nadeSamples, addNade, addZone, endZone, douseFire, burnBodies, fireNow, boomNade, blastGlow, camShake, clearBlasts, clearNades, tickNades, onNadeBounce, setNadeBodies, syncNade, liveNades, liveZones, smokeCores, smokeHides, inSmoke, NADE_THROW, showNadePreview, hideNadePreview };
+// a jolt with its own amplitude (the siege dome's collapse, siege.js): the blast's shake reaches 32 m, but the fall
+// of the shield is felt across the whole fortress — the amplitude is given by the caller, the delay is still the
+// sound's travel time, capped so the far staging ground jolts within a second and a bit
+function quake(x, y, z, a) {
+  if (reduceMotion || a <= 0.01) return;
+  const d = camera.position.distanceTo(V.set(x, y, z));
+  if (a >= shake.a * Math.exp(-Math.max(0, shake.t) * 5)) { shake.a = a; shake.t = -Math.min(1.2, d / 340); for (let i = 0; i < 6; i++) shake.ph[i] = rnd(0, 6.283); }
+}
+export { nadeSamples, addNade, addZone, endZone, douseFire, burnBodies, fireNow, boomNade, blastGlow, camShake, quake, clearBlasts, clearNades, tickNades, onNadeBounce, setNadeBodies, syncNade, liveNades, liveZones, smokeCores, smokeHides, inSmoke, NADE_THROW, showNadePreview, hideNadePreview };

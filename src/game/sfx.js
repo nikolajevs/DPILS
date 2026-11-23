@@ -307,4 +307,65 @@ function bellSound(ctx, out, f0 = 220, vol = 1, d = 0, pan = 0, delay = 0) {
     n.connect(nf); nf.connect(ng); ng.connect(head); n.start(t); n.stop(t + 0.08);
   } catch (e) {}
 }
-export { arcCrackle, bellSound, boomSound, burnSound, crackSound, fireBed, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeHiss, steamHiss, stepSound, stormBed, stormZap, thunderSound };
+// the protective dome of the «Штурм Динабурга» (src/game/siege.js): no recording of an energy shield exists, so
+// these are always synthesised. The rise is a swelling hum that opens into the air as the plates assemble; the fall
+// is the show — an overload whine climbing fast, the glassy fracture of the hex plates scattering across the shell,
+// the deep thump of the collapse, a dying power sweep with a fast tremolo, and the last shards tinkling down. The
+// hit is a short electric slap. Like the bells, the dome is heard across the whole city: the volume never falls
+// below a third, the air dulls the highs, and the sound arrives at the speed of sound (capped so the far side still
+// hears it within a couple of seconds).
+function domeUpSound(ctx, out, vol = 1, d = 0, pan = 0) {
+  try {
+    const dl = Math.min(2, d / 340), t = ctx.currentTime + dl, v = vol * Math.max(0.3, 1.1 / (1 + d * 0.004));
+    const flt = ctx.createBiquadFilter(); flt.type = 'lowpass'; flt.frequency.setValueAtTime(280, t); flt.frequency.exponentialRampToValueAtTime(Math.min(9000, 5200 / (1 + d * 0.01)), t + 1.2);
+    const pn = ctx.createStereoPanner(); pn.pan.value = Math.max(-1, Math.min(1, pan));
+    const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v * 0.5, t + 0.5); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.7);
+    flt.connect(g); g.connect(pn); pn.connect(out);
+    for (const [f0, f1, a] of [[55, 110, 0.5], [110.7, 221, 0.22], [164, 330, 0.1]]) {
+      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + 1.3);
+      const og = ctx.createGain(); og.gain.value = a; o.connect(og); og.connect(flt); o.start(t); o.stop(t + 1.8);
+    }
+    noisePlay(ctx, out, { type: 'bandpass', freq: 1500, q: 0.6, vol: v * 0.15, dur: 1.5, attack: 0.6, delay: dl, pan });   // the air opening
+    noisePlay(ctx, out, { type: 'lowpass', freq: 120, vol: v * 0.5, dur: 0.5, attack: 0.012, delay: dl, pan });   // the ignition thump
+  } catch (e) {}
+}
+function domeDownSound(ctx, out, vol = 1, d = 0, pan = 0) {
+  try {
+    const dl = Math.min(2.5, d / 340), t = ctx.currentTime + dl, v = vol * Math.max(0.3, 1.15 / (1 + d * 0.004));
+    const air = Math.min(16000, 10000 / (1 + d * 0.01));
+    // 1. the overload (0–0.35 s): a whine climbing fast, the field brighter and brighter
+    const wg = ctx.createGain(); wg.gain.setValueAtTime(0.0001, t); wg.gain.exponentialRampToValueAtTime(v * 0.28, t + 0.3); wg.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    const wf = ctx.createBiquadFilter(); wf.type = 'lowpass'; wf.frequency.value = air; wg.connect(wf); wf.connect(out);
+    for (const det of [0, 3.5]) { const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(160 + det, t); o.frequency.exponentialRampToValueAtTime(1150 + det * 4, t + 0.34); o.connect(wg); o.start(t); o.stop(t + 0.65); }
+    noisePlay(ctx, out, { type: 'highpass', freq: 3800, vol: v * 0.13, dur: 0.42, attack: 0.26, delay: dl, pan });
+    // 2. the fracture (0.3–0.9 s): glassy cracks scattering across the shell, each from its own side
+    for (let i = 0; i < 9; i++) noisePlay(ctx, out, { type: 'bandpass', freq: 2200 + Math.random() * 4800, q: 2.4, vol: v * (0.2 + Math.random() * 0.25), dur: 0.02 + Math.random() * 0.03, attack: 0.001, delay: dl + 0.3 + Math.random() * 0.55, pan: Math.max(-1, Math.min(1, pan + (Math.random() - 0.5) * 0.8)) });
+    // 3. the collapse (0.42 s): the deep thump and the rumble of the field letting go
+    noisePlay(ctx, out, { type: 'lowpass', freq: 100, q: 0.6, vol: v, dur: 1.7, attack: 0.012, delay: dl + 0.42, pan });
+    noisePlay(ctx, out, { type: 'lowpass', freq: 260, vol: v * 0.5, dur: 0.9, attack: 0.01, delay: dl + 0.44, pan });
+    const sub = ctx.createOscillator(); sub.type = 'sine'; sub.frequency.setValueAtTime(64, t + 0.42); sub.frequency.exponentialRampToValueAtTime(26, t + 1.5);
+    const sg = ctx.createGain(); sg.gain.setValueAtTime(0.0001, t + 0.42); sg.gain.exponentialRampToValueAtTime(v * 0.8, t + 0.46); sg.gain.exponentialRampToValueAtTime(0.0001, t + 1.8);
+    sub.connect(sg); sg.connect(out); sub.start(t + 0.42); sub.stop(t + 1.9);
+    // 4. the dying power (0.5–1.7 s): a sweep falling away under a fast tremolo
+    const po = ctx.createOscillator(); po.type = 'triangle'; po.frequency.setValueAtTime(520, t + 0.5); po.frequency.exponentialRampToValueAtTime(38, t + 1.6);
+    const pg = ctx.createGain(); pg.gain.setValueAtTime(0.0001, t + 0.5); pg.gain.exponentialRampToValueAtTime(v * 0.3, t + 0.56); pg.gain.exponentialRampToValueAtTime(0.0001, t + 1.8);
+    const trem = ctx.createOscillator(), tg = ctx.createGain(); trem.frequency.value = 17; tg.gain.value = v * 0.08; trem.connect(tg); tg.connect(pg.gain); trem.start(t + 0.5); trem.stop(t + 1.8);
+    po.connect(pg); pg.connect(out); po.start(t + 0.5); po.stop(t + 1.9);
+    // 5. the last shards tinkling down (0.7–1.9 s), wide across the stereo field
+    for (let i = 0; i < 7; i++) {
+      const tt = t + 0.7 + Math.random() * 1.2, o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 1500 + Math.random() * 2600;
+      const g = ctx.createGain(); g.gain.setValueAtTime(v * 0.07 * (0.5 + Math.random() * 0.5), tt); g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.09);
+      const p2 = ctx.createStereoPanner(); p2.pan.value = Math.max(-1, Math.min(1, pan + (Math.random() - 0.5)));
+      o.connect(g); g.connect(p2); p2.connect(out); o.start(tt); o.stop(tt + 0.12);
+    }
+  } catch (e) {}
+}
+function domeHitSound(ctx, out, vol = 1, pan = 0) {
+  try {
+    noisePlay(ctx, out, { type: 'bandpass', freq: 2400 + Math.random() * 900, q: 1.6, vol: vol * 0.3, dur: 0.07, attack: 0.002, pan });
+    const t = ctx.currentTime, o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(820, t); o.frequency.exponentialRampToValueAtTime(240, t + 0.09);
+    const g = ctx.createGain(); g.gain.setValueAtTime(vol * 0.12, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+    o.connect(g); g.connect(out); o.start(t); o.stop(t + 0.12);
+  } catch (e) {}
+}
+export { arcCrackle, bellSound, boomSound, burnSound, crackSound, domeDownSound, domeHitSound, domeUpSound, fireBed, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeHiss, steamHiss, stepSound, stormBed, stormZap, thunderSound };
