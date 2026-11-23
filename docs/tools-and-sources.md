@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Claude | claude/king-of-the-hill-event-4588e0 | Ивент «Царь горы»: без телепорта, захват в одиночку, спавн у горки, визуал алтарей | server/game.mjs (HOLY), server/combat.mjs (HOLY), server/bots.mjs, src/game/holy.js, src/style.css, index.html |
 
 ## Автономный цикл улучшений
 
