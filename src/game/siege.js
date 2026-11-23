@@ -80,18 +80,20 @@ const DOME_FS = [
   '  float local = (1.0 - vDir.y) * 0.9 + h * 0.35;',
   '  float th = uFall * 1.6 - 0.2;',
   '  float alive = smoothstep(th - 0.05, th + 0.05, local);',   // the fall: plates fail from the crown down, each at its own hour
-  '  float failEdge = smoothstep(0.10, 0.0, abs(local - th)) * step(0.001, uFall);',
-  '  vec3 col = mix(uColor * 0.45, uColor, clamp(vDir.y * 0.7 + f1 * 0.5, 0.0, 1.0));',
-  '  float energy = line * (0.85 + 0.5 * pulse) + glow * (0.22 + 0.2 * h) + f1 * 0.42 + f2 * 0.85 + 0.02;',
+  '  float failEdge = smoothstep(0.14, 0.0, abs(local - th)) * step(0.001, uFall);',
+  // normal blending, not additive: over the noon sky an additive net washes out to white, a saturated cyan plate
+  // keeps its colour by day and reads as glowing energy by night
+  '  vec3 col = mix(uColor * 0.5, uColor * 1.35, clamp(line + spark * 0.6, 0.0, 1.0));',
+  '  float energy = line * (0.85 + 0.5 * pulse) + glow * (0.16 + 0.14 * h) + f1 * 0.30 + f2 * 0.55 + 0.02;',
   '  energy *= 0.82 + 0.22 * band + 0.06 * scan;',
   '  energy += spark * 0.5 + hitGlow + riseEdge * 1.1;',
   '  float strobe = mix(1.0, 0.65 + 0.35 * sin(uTime * 55.0), uFlicker);',
   '  energy *= 1.0 + uHot * 2.6 * strobe;',   // the overload: the whole field strobes white-hot before it fails
-  '  col = mix(col, vec3(1.0, 0.98, 0.92), clamp(uHot * 0.75 * strobe + failEdge * 0.6, 0.0, 1.0));',
+  '  col = mix(col, vec3(1.0, 0.98, 0.92), clamp(uHot * 0.75 * strobe + failEdge * 0.6 + f2 * 0.35, 0.0, 1.0));',
   '  col += vec3(1.0, 0.62, 0.25) * failEdge * 1.6 + vec3(0.7, 0.95, 1.0) * hitGlow * 0.5;',
-  '  float alpha = energy * vis * alive * uOpacity;',
+  '  float alpha = min(energy, 0.95) * vis * alive * uOpacity;',
   '  if (alpha < 0.008) discard;',
-  '  gl_FragColor = vec4(col * (0.75 + 0.45 * f1), alpha);',
+  '  gl_FragColor = vec4(col, alpha);',
   '}',
 ].join('\n');
 const GLASS_FS = [
@@ -197,7 +199,7 @@ const domeU = {
   uTime: { value: 0 }, uOpacity: { value: 0 }, uRise: { value: 0 }, uFall: { value: 0 }, uHot: { value: 0 },
   uFlicker: { value: reduceMotion ? 0 : 1 }, uColor: { value: SHIELD.clone() }, uSquash: { value: 0.38 }, uHits: { value: Array.from({ length: 6 }, () => new THREE.Vector4(0, 0, 0, -10)) },
 };
-const shellMat = new THREE.ShaderMaterial({ uniforms: domeU, vertexShader: DOME_VS, fragmentShader: DOME_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+const shellMat = new THREE.ShaderMaterial({ uniforms: domeU, vertexShader: DOME_VS, fragmentShader: DOME_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide });
 const glassMat = new THREE.ShaderMaterial({ uniforms: { ...domeU }, vertexShader: DOME_VS, fragmentShader: GLASS_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide });
 const ringMat = new THREE.ShaderMaterial({ uniforms: { uColor: domeU.uColor, uTime: domeU.uTime, uOpacity: domeU.uOpacity, uFall: domeU.uFall }, vertexShader: UV_VS, fragmentShader: DOME_RING_FS, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
 const moteMat = new THREE.ShaderMaterial({ uniforms: { uTime: domeU.uTime, uOpacity: domeU.uOpacity, uFall: domeU.uFall }, vertexShader: MOTE_VS, fragmentShader: MOTE_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
@@ -469,13 +471,13 @@ export function siegeTick(dt) {
       // shockwave rings the ramparts (0.45–1.3) → the last embers and the ring die (to 2.5)
       const age = (now - domeFall) / 1000;
       u.uHot.value = age < 0.35 ? age / 0.35 : Math.max(0, 1 - (age - 0.35) * 3);
-      const f = Math.min(1, Math.max(0, (age - 0.32) / 0.85));
+      const f = Math.min(1, Math.max(0, (age - 0.32) / 1.0));
       u.uFall.value = f * f * (3 - 2 * f);
       u.uOpacity.value = 0.9;
       if (dv.shards) dv.shards.mat.uniforms.uT.value = (now - dv.shards.t0) / 1000;
-      if (dv.wave) dv.wave.mat.uniforms.uW.value = Math.min(1, Math.max(0, (age - 0.45) / 0.85));
-      domeLight.intensity = age > 0.4 && age < 1.6 ? 5200 * Math.exp(-(age - 0.4) * 5.5) : 0;
-      if (age > 2.5) clearDome();
+      if (dv.wave) dv.wave.mat.uniforms.uW.value = Math.min(1, Math.max(0, (age - 0.5) / 1.1));
+      domeLight.intensity = age > 0.4 && age < 1.8 ? 5200 * Math.exp(-(age - 0.4) * 5.0) : 0;
+      if (age > 2.8) clearDome();
     } else {
       dv.rise = Math.min(1, dv.rise + dt * 0.75);
       u.uRise.value = dv.rise;
