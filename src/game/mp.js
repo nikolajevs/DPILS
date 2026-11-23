@@ -101,6 +101,7 @@ function useMed() {
   MP.lastMed = now; MP.ws.send(JSON.stringify({ t: 'use', kind: 'med' }));
 }
 STATE.mp = false;
+initLeaders(() => (MP.on ? (MP.local ? '' : MP.url) : serverUrl()));   // the leaderboard needs no city: its buttons work from the first frame, while the town still loads
 let voice = null;
 const remotes = new Map();   // id → { name, group, buf: [{ t, x, y, z, yaw, pitch }], tag }
 const marks = new Map();   // id → until: the cargo carriers marked for everyone (server/game.mjs, 'marked'/'unmark')
@@ -1060,7 +1061,6 @@ function initUi() {   // the fields of the player and of the training: once, whe
   el('mpName').placeholder = 'Игрок' + (100 + Math.floor(Math.random() * 900));
   if (!el('mpName').value) el('mpName').value = el('mpName').placeholder;
   const rs = el('mpRespawnAt'); rs.textContent = ''; for (const [v, t] of [['mate', 'Рядом с товарищем'], ['rand', 'Случайное место']].concat(PLACES.map((p, i) => [i, p[0]]))) { const o = document.createElement('option'); o.value = v; o.textContent = t; rs.append(o); }
-  initLeaders(() => (MP.on ? (MP.local ? '' : MP.url) : serverUrl()));
   el('goPlay').onclick = () => join(); el('stormLobby').onclick = stormGoLobby; el('goTrain').onclick = () => { const o = { bots: +el('trBots').value, level: el('trLevel').value, arena: el('trArena').value }; try { localStorage.setItem('dpils.train', JSON.stringify(o)); } catch (e) {} join({ ...o, time: el('trTime').value }); };   // the time of day is kept apart (lighting.js timePref)
   try { const t = JSON.parse(localStorage.getItem('dpils.train') || '{}'); for (const [k, id] of [['bots', 'trBots'], ['level', 'trLevel'], ['arena', 'trArena']]) if (t[k] != null && [...el(id).options].some(o => o.value === String(t[k]))) el(id).value = t[k]; } catch (e) {} el('mpRespawn').onclick = respawn; el('mpSpecCam').onclick = specCam; specCamUi(); el('mpLeave').onclick = () => location.reload(); el('mpOverBtn').onclick = () => location.reload();
   el('bLeave').onclick = () => location.reload();
