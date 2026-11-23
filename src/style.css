@@ -937,7 +937,6 @@ body.mp:not(:has(#view.locked)) .mp-sys { bottom: 64px; }   /* above the returne
 .ch-badge[data-phase="open"] { background: rgba(70, 190, 120, .2); color: color-mix(in srgb, #2fae62 60%, var(--ink)); border-color: rgba(29, 122, 69, .5); }
 /* the lobby card of the match */
 .storm-sec h3 { color: #57c8ff; }
-.storm-lore { margin: 0; font: 400 12.5px/1.5 var(--f-body); color: rgba(255, 255, 255, .68); }
 /* the list of servers: a row per server — the name, its phase and door, the people; the picked one lit */
 .srv-list { display: grid; gap: 6px; }
 .srv-row { display: grid; grid-template-columns: auto 1fr auto; grid-template-areas: "dot name n" "dot st st"; align-items: center; column-gap: 9px; row-gap: 2px; width: 100%; padding: 8px 11px; text-align: left; border-radius: 10px; border: 1px solid rgba(255, 255, 255, .14); background: rgba(255, 255, 255, .04); color: #fff; font: inherit; cursor: pointer; transition: border-color .15s, background .15s; }
@@ -953,10 +952,6 @@ body.mp:not(:has(#view.locked)) .mp-sys { bottom: 64px; }   /* above the returne
 .srv-row[data-phase="storm"] .srv-dot { background: #ff8a7a; box-shadow: 0 0 8px rgba(255, 138, 122, .8); }
 .storm-status { display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(87, 200, 255, .3); background: rgba(87, 200, 255, .07); font: 600 12.5px/1.35 var(--f-body); color: #bfe7ff; }
 .storm-pulse { width: 9px; height: 9px; border-radius: 50%; background: #57c8ff; box-shadow: 0 0 10px #57c8ff; flex: none; animation: storm-blink 1.6s ease-in-out infinite; }
-.storm-rules { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
-.storm-rules li { position: relative; padding-left: 16px; font: 400 12px/1.4 var(--f-body); color: rgba(255, 255, 255, .6); }
-.storm-rules li::before { content: "⚡"; position: absolute; left: 0; top: 0; font-size: 10px; color: #57c8ff; }
-.storm-rules b { color: #fff; font-weight: 600; }
 .storm-status[data-phase="open"] { border-color: rgba(110, 220, 150, .4); background: rgba(110, 220, 150, .08); color: #c9f5d8; }
 .storm-status[data-phase="open"] .storm-pulse { background: #6edc96; box-shadow: 0 0 10px #6edc96; }
 .storm-status[data-phase="storm"] { border-color: rgba(255, 90, 77, .45); background: rgba(255, 90, 77, .08); color: #ffd0c9; }

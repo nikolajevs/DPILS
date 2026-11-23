@@ -507,7 +507,7 @@ export function createGame(opts) {
       const [x, z, yaw] = besideMate(p, q => q.matchSeat === match.n) || areaPoint(); spawn(p, x, z, yaw); p.matchSeat = match.n;   // a team gathers in one place
     }
     sendBoard(); all({ t: 'round' }); broadcastStorm(); broadcastMatch();
-    all({ t: 'chat', text: 'Новая катка: ' + fmtMin(match.len) + ', вход открыт ' + fmtMin(match.joinUntil - match.start) + ', в конце — шторм на ' + fmtMin(match.stormMs) });
+    all({ t: 'chat', text: 'Новый раунд: ' + fmtMin(match.len) + ', вход открыт ' + fmtMin(match.joinUntil - match.start) + ', в конце — шторм на ' + fmtMin(match.stormMs) });
   }
   function startStorm(t) {
     const f = stormField(arena, HX, HY), final = pickFinal(world, f.fin), k = match.stormMs / STORMC.windowMs, plan = stormPlan(f.c, final, match.stormAt, undefined, f.r0, k), last = plan[plan.length - 1];
@@ -515,7 +515,7 @@ export function createGame(opts) {
     // the fallen of the fight stand up for the storm: from here everybody has one life
     for (const p of players.values()) if (!p.alive) { if (p.bot) spawn(p); else { const [x, z] = walkSpot(p.x, p.z); spawn(p, x, z, p.yaw); } }
     storm.units0 = units(stormAlive());
-    all({ t: 'chat', text: '⚡ Шторм! Последние ' + fmtMin(match.stormMs) + ' катки: одна жизнь, зона сужается к случайной точке — последний выживший побеждает' });
+    all({ t: 'chat', text: '⚡ Шторм! Последние ' + fmtMin(match.stormMs) + ' раунда: одна жизнь, зона сужается к случайной точке — последний выживший побеждает' });
     broadcastStorm(); broadcastMatch();
   }
   function endStorm() {
@@ -531,7 +531,7 @@ export function createGame(opts) {
     const squad = winner && winner.clan && [...players.values()].filter(won).length > 1 ? winner.clan : null;   // a team of the players won together
     const name = !winner ? 'Шторм' : squad ? '[' + squad.tag + '] ' + squad.name : winner.name;
     all({ t: 'win', mode: 'storm', name, clan: squad ? squad.id : undefined, rows, mvp: winner ? winner.id : 0, nextMs: Math.max(0, match.end - t) });
-    all({ t: 'chat', text: !winner ? 'Шторм завершён: выживших нет' : squad ? 'Катка завершена: победила команда [' + squad.tag + '] ' + squad.name + ' — последние выжившие' : 'Катка завершена: победил ' + winner.name + ' — последний выживший' });
+    all({ t: 'chat', text: !winner ? 'Шторм завершён: выживших нет' : squad ? 'Раунд завершён: победила команда [' + squad.tag + '] ' + squad.name + ' — последние выжившие' : 'Раунд завершён: победил ' + winner.name + ' — последний выживший' });
     broadcastStorm(); broadcastMatch();
   }
   function tickStorm(t) {
@@ -571,12 +571,12 @@ export function createGame(opts) {
     if (!match || s.n !== match.n) startMatch(s);
     if (!storm) {
       for (const w of MATCHC.warnMs) if (!match.warned.has(w) && t < match.stormAt && t >= match.stormAt - w && match.stormAt - w > match.start) {
-        match.warned.add(w); all({ t: 'chat', text: '⚡ Шторм через ' + fmtMin(w) + ': последние ' + fmtMin(match.stormMs) + ' катки — одна жизнь, зона сужается' }); broadcastMatch();
+        match.warned.add(w); all({ t: 'chat', text: '⚡ Шторм через ' + fmtMin(w) + ': последние ' + fmtMin(match.stormMs) + ' раунда — одна жизнь, зона сужается' }); broadcastMatch();
       }
       if (t >= match.stormAt) { if (holy) endHoly(t, null, 'storm'); if (siege) endSiege(t, null, 'storm'); startStorm(t); }
     }
     if (storm) tickStorm(t);
-    if (!match.closedSaid && t >= joinUntil()) { match.closedSaid = true; all({ t: 'chat', text: 'Вход в катку закрыт: новые игроки — в следующей' }); broadcastMatch(); }
+    if (!match.closedSaid && t >= joinUntil()) { match.closedSaid = true; all({ t: 'chat', text: 'Вход в раунд закрыт: новые игроки — в следующем' }); broadcastMatch(); }
     if (t - match.lastBeat >= 10000) { match.lastBeat = t; broadcastMatch(); }
   }
   // ---- bots
@@ -1058,7 +1058,7 @@ export function createGame(opts) {
     all({ t: 'siegeEnd', reason, winner: winner || undefined });
     if (reason === 'storm') all({ t: 'chat', text: 'Штурм Динабурга прерван штормом' });
     else if (reason === 'admin') all({ t: 'chat', text: 'Штурм Динабурга остановлен администратором' });
-    else if (reason === 'match') all({ t: 'chat', text: 'Штурм Динабурга прерван новой каткой' });
+    else if (reason === 'match') all({ t: 'chat', text: 'Штурм Динабурга прерван новым раундом' });
     else if (reason === 'round') all({ t: 'chat', text: 'Штурм Динабурга прерван концом раунда' });
   }
   function stepSiege(t) {

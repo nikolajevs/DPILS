@@ -320,7 +320,7 @@ pre.dump { background: #070b11; border: 1px solid var(--seam); border-radius: 8p
       <div class="tab-head"><h2>Обзор</h2><span class="hint">сводка сервера · обновление каждые 3 с</span></div>
       <div class="cards" id="stats"></div>
       <div class="grid2">
-        <div class="card plate"><h3>Катка</h3><div id="matchInfo"></div></div>
+        <div class="card plate"><h3>Раунд</h3><div id="matchInfo"></div></div>
         <div class="card brick"><h3>Управление</h3>
           <div class="controls" style="margin-bottom:12px">
             <span class="hint">Боты:</span>
@@ -456,7 +456,7 @@ pre.dump { background: #070b11; border: 1px solid var(--seam); border-radius: 8p
         <h3>⚡ Шторм</h3>
         <div class="ev-status" id="evStormStatus"></div>
         <div class="ev-grid">
-          <label>Доля шторма в катке, %<input type="number" data-key="share" data-unit="pct" step="0.5" min="5" max="50"></label>
+          <label>Доля шторма в раунде, %<input type="number" data-key="share" data-unit="pct" step="0.5" min="5" max="50"></label>
           <label>Внезапная смерть, с<input type="number" data-key="suddenMs" data-unit="sec" step="5" min="0" max="300"></label>
           <label>Урон финала, HP/с<input type="number" data-key="suddenDps" step="1" min="1" max="100"></label>
           <label>Финальный круг, м<input type="number" data-key="rEnd" step="1" min="5" max="100"></label>
@@ -465,7 +465,7 @@ pre.dump { background: #070b11; border: 1px solid var(--seam); border-radius: 8p
           <button class="btn btn-brick btn-sm" data-act="ev-apply" data-kind="storm">Применить</button>
           <button class="btn btn-sm" data-act="ev-reset" data-kind="storm">По умолчанию</button>
         </div>
-        <div class="ev-note">Шторм — финал катки: одна жизнь, сужающийся круг. Настройки применяются со <b>следующей</b> катки; текущая идёт по своему расписанию. Длина катки — переменная сервера DAY_MIN, бесконечные раунды без шторма — MATCH=off.</div>
+        <div class="ev-note">Шторм — финал раунда: одна жизнь, сужающийся круг. Настройки применяются со <b>следующего</b> раунда; текущий идёт по своему расписанию. Длина раунда — переменная сервера DAY_MIN, бесконечные раунды без шторма — MATCH=off.</div>
       </div>
 
       <div class="card brick" id="ev-siege">
@@ -517,7 +517,7 @@ pre.dump { background: #070b11; border: 1px solid var(--seam); border-radius: 8p
         <div class="table-wrap" id="dbgZonesWrap" hidden style="margin-top:10px"><table><thead><tr><th>Зона</th><th>Тип</th><th class="r">Радиус</th><th class="r">Позиция</th><th class="r">Осталось</th></tr></thead><tbody id="dbgZones"></tbody></table></div>
       </div>
       <div class="grid2">
-        <div class="card plate"><h3>Катка</h3><div class="kv" id="dbgMatch"></div></div>
+        <div class="card plate"><h3>Раунд</h3><div class="kv" id="dbgMatch"></div></div>
         <div class="card plate"><h3>Шторм</h3><div class="kv" id="dbgStorm"></div></div>
       </div>
       <div class="card"><h3>Соединения WebSocket</h3><div class="table-wrap"><table><thead><tr><th>Адрес</th><th>Дверь</th><th>Вошёл</th><th class="r">Возраст</th><th class="r">Буфер</th><th>Жив</th></tr></thead><tbody id="dbgSockets"></tbody></table></div></div>
@@ -715,10 +715,10 @@ async function loadOverview() {
   let m = '';
   if (s.match) {
     const ph = s.match.phase === 'storm' ? ['storm', '⚡ Шторм'] : s.match.phase === 'over' ? ['over', 'Итоги'] : ['fight', 'Бой'];
-    m += '<div class="matchline"><span class="phase ' + ph[0] + '">' + ph[1] + '</span><span class="big num">' + fmtLeft(s.match.left) + '</span><span class="hint">до конца катки №' + s.match.n + '</span></div>';
+    m += '<div class="matchline"><span class="phase ' + ph[0] + '">' + ph[1] + '</span><span class="big num">' + fmtLeft(s.match.left) + '</span><span class="hint">до конца раунда №' + s.match.n + '</span></div>';
     m += '<div class="kv" style="margin-top:10px">';
     if (s.match.phase === 'fight') m += '<span class="k">Шторм через</span><span class="num">' + fmtLeft(s.match.stormIn) + '</span>';
-    m += '<span class="k">Вход</span><span>' + (s.match.open ? '<b style="color:var(--ok)">открыт</b> · ещё ' + fmtLeft(s.match.joinLeft) : '<b style="color:var(--red)">закрыт</b> — новые игроки в следующей катке') + '</span>';
+    m += '<span class="k">Вход</span><span>' + (s.match.open ? '<b style="color:var(--ok)">открыт</b> · ещё ' + fmtLeft(s.match.joinLeft) : '<b style="color:var(--red)">закрыт</b> — новые игроки в следующем раунде') + '</span>';
     if (s.storm) m += '<span class="k">Шторм</span><span>этап ' + (s.storm.pi + 1) + ' / ' + s.storm.stages + ' · живы ' + s.storm.alive + ' из ' + s.storm.total + '</span>';
     if (s.day) { const hh = s.day.f * 24; m += '<span class="k">Время города</span><span class="num">' + p2(Math.floor(hh)) + ':' + p2(Math.floor(hh % 1 * 60)) + '</span>'; }
     m += '</div>';
@@ -731,8 +731,8 @@ async function loadOverview() {
   $('#srvInfo').innerHTML = [
     ['Режим', 'каждый сам за себя, союзники — команда'], ['Арена', e.arena || 'весь город (центр)'],
     ['Уровень ботов', { easy: 'лёгкий', normal: 'обычный', hard: 'сложный' }[e.level] || e.level],
-    ['Катки', e.match === 'off' ? 'выключены' : 'по ' + e.day + ' мин'],
-    ['Серверы', e.servers > 1 ? e.servers + ', катки со сдвигом ' + e.step + ' мин' : 'один'], ['Node', j.node],
+    ['Раунды', e.match === 'off' ? 'выключены' : 'по ' + e.day + ' мин'],
+    ['Серверы', e.servers > 1 ? e.servers + ', раунды со сдвигом ' + e.step + ' мин' : 'один'], ['Node', j.node],
     ['Запущен', fmtDate(j.boot)],
   ].map(([k, v]) => '<span class="k">' + esc(k) + '</span><span>' + esc(v) + '</span>').join('');
   $('#fileInfo').innerHTML = j.files.map(f => '<span class="k">' + esc(f.name) + '</span><span class="num">' + (f.size ? fmtSize(f.size) + ' · ' + fmtAgo(f.mtime) : 'нет файла') + '</span>').join('')
@@ -838,8 +838,8 @@ async function loadEvents() {
   let ss = '';
   if (!s.match) ss = '<span class="phase over">Выключен</span><span class="hint">MATCH=off — бесконечные раунды без шторма</span>';
   else if (s.live) ss = '<span class="phase storm">⚡ Шторм</span><span class="big num">' + fmtLeft(s.live.left) + '</span><span class="hint">этап ' + (s.live.pi + 1) + ' / ' + s.live.stages + ' · живы ' + s.live.alive + ' из ' + s.live.total + '</span>';
-  else if (s.match.phase === 'over') ss = '<span class="phase over">Итоги</span><span class="hint">катка завершена — шторм в следующей</span>';
-  else ss = '<span class="phase fight">Бой</span><span class="big num">' + fmtLeft(s.match.stormIn) + '</span><span class="hint">до шторма · катка №' + s.match.n + '</span>';
+  else if (s.match.phase === 'over') ss = '<span class="phase over">Итоги</span><span class="hint">раунд завершён — шторм в следующем</span>';
+  else ss = '<span class="phase fight">Бой</span><span class="big num">' + fmtLeft(s.match.stormIn) + '</span><span class="hint">до шторма · раунд №' + s.match.n + '</span>';
   $('#evStormStatus').innerHTML = ss;
   // the siege: registration, the dome, the assault, or the wait
   const sg = t.siege;
@@ -1023,7 +1023,7 @@ async function loadDebug() {
   $('#dbgZonesWrap').hidden = !w.zones.length;
   $('#dbgZones').innerHTML = w.zones.map(z => '<tr><td class="num">#' + z.id + '</td><td>' + esc(z.kind) + '</td><td class="r num">' + z.r + ' м</td><td class="r num hint">' + z.x + ', ' + z.z + '</td><td class="r num">' + fmtLeft(z.left) + '</td></tr>').join('');
   const m = j.match;
-  $('#dbgMatch').innerHTML = m ? kvHtml([['Катка', '№' + m.n], ['Начало', fmtDate(m.start)], ['Конец', fmtDate(m.end)], ['Шторм с', fmtDate(m.stormAt)], ['Вход до', fmtDate(m.doorAt)], ['В ростере', m.roster], ['Выбыли в шторме', m.out], ['Предупреждения', m.warned.length ? m.warned.join(', ') : '—'], ['«Вход закрыт» сказано', m.closedSaid ? 'да' : 'нет']]) : '<span class="hint">MATCH=off — бесконечные раунды</span>';
+  $('#dbgMatch').innerHTML = m ? kvHtml([['Раунд', '№' + m.n], ['Начало', fmtDate(m.start)], ['Конец', fmtDate(m.end)], ['Шторм с', fmtDate(m.stormAt)], ['Вход до', fmtDate(m.doorAt)], ['В ростере', m.roster], ['Выбыли в шторме', m.out], ['Предупреждения', m.warned.length ? m.warned.join(', ') : '—'], ['«Вход закрыт» сказано', m.closedSaid ? 'да' : 'нет']]) : '<span class="hint">MATCH=off — бесконечные раунды</span>';
   const s = j.storm, c = v => v ? v.x + ', ' + v.z + ' · r ' + v.r : '—';
   $('#dbgStorm').innerHTML = s ? kvHtml([['Фаза', s.phase + ' / ' + s.kind], ['Этап', (s.pi + 1) + ' / ' + s.stages], ['Урон снаружи', s.dps + ' HP/с'], ['Текущий круг', c(s.cur)], ['Из', c(s.from)], ['В', c(s.to)], ['Финал', c(s.final)], ['До конца этапа', fmtLeft(s.left)], ['Живы', (s.alive == null ? '—' : s.alive) + ' / ' + (s.total == null ? '—' : s.total)]]) : '<span class="hint">шторм ещё не начался</span>';
   $('#dbgSockets').innerHTML = j.sockets.length ? j.sockets.map(x => '<tr><td class="num">' + esc(x.ip) + '</td><td>' + esc(x.path) + '</td><td>' + (x.joined ? 'да' : '<span class="hint">нет</span>') + '</td><td class="r num">' + fmtDur(x.age) + '</td><td class="r num">' + x.buffered + '</td><td><span class="dot' + (x.alive ? '' : ' dead') + '"></span></td></tr>').join('') : '<tr><td colspan="6" class="empty">Соединений нет</td></tr>';

@@ -19,7 +19,7 @@ import { openLobby, closeLobby } from './lobby.js';
 const card = $('startCard'), home = $('stepHome'), form = $('play');
 const STEPS = {
   train: { title: 'Тренировка с ботами', hint: 'Бой против ботов прямо в браузере, по правилам сервера: каждый сам за себя. Выберите карту и соперников.' },
-  online: { title: 'Играть онлайн', hint: 'Выберите сервер: на каждом катка 2 часа, следующий сервер начинает на 15 минут позже. Вход в первые 30 минут, в последние 20 минут — шторм до последнего выжившего. Каждый сам за себя, союзники — только ваша команда.' }
+  online: { title: 'Играть онлайн', hint: '' }
 };
 let came = null;   // the choice the card came back from, to put the focus on it again
 function showStep(step) {
@@ -29,7 +29,7 @@ function showStep(step) {
   $('mpMsg').textContent = '';
   if (step === 'home') { closeLobby(); if (came) came.focus(); return; }
   prepareUi(); came = step === 'train' ? $('chTrain') : $('chOnline');
-  $('stepTitle').textContent = STEPS[step].title; $('stepHint').textContent = STEPS[step].hint;
+  $('stepTitle').textContent = STEPS[step].title; $('stepHint').textContent = STEPS[step].hint; $('stepHint').hidden = !STEPS[step].hint;
   follow();
   openLobby(step);
   $('stepTitle').focus({ preventScroll: true }); $('start').scrollTop = 0;

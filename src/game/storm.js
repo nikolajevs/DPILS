@@ -196,10 +196,10 @@ export function stormTick(dt, now) {
   // the HUD: the phase, the countdown, the living
   const left = Math.max(0, S.left - (now - S.recvAt)), roundLeft = Math.max(0, S.roundLeft - (now - S.recvAt));
   const ph = $('stormPhase');
-  const label = S.phase === 'end' ? 'КАТКА ЗАВЕРШЕНА' : S.phase === 'sudden' ? 'ФИНАЛ · ЗОНА ИСЧЕЗАЕТ' : S.kind === 'shrink' ? 'ЗОНА СУЖАЕТСЯ' : 'ЗОНА СТАБИЛЬНА';
+  const label = S.phase === 'end' ? 'РАУНД ЗАВЕРШЁН' : S.phase === 'sudden' ? 'ФИНАЛ · ЗОНА ИСЧЕЗАЕТ' : S.kind === 'shrink' ? 'ЗОНА СУЖАЕТСЯ' : 'ЗОНА СТАБИЛЬНА';
   if (ph.textContent !== label) { ph.textContent = label; ph.dataset.kind = S.phase === 'sudden' ? 'sudden' : S.kind; }
   $('stormTimer').textContent = fmt(left);
-  const sub = S.phase === 'play' ? 'этап ' + (S.pi + 1) + '/' + S.stages + ' · до конца ' + fmt(roundLeft) : S.phase === 'sudden' ? 'последний выживший побеждает' : 'до следующей катки';
+  const sub = S.phase === 'play' ? 'этап ' + (S.pi + 1) + '/' + S.stages + ' · до конца ' + fmt(roundLeft) : S.phase === 'sudden' ? 'последний выживший побеждает' : 'до следующего раунда';
   const subEl = $('stormSub'); if (subEl.textContent !== sub) subEl.textContent = sub;
   const al = $('stormAlive'); if (al.textContent !== String(S.alive)) al.textContent = String(S.alive);
   $('stormHud').dataset.phase = S.phase;

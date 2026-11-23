@@ -1397,7 +1397,7 @@ const LEN = MATCHC.lenMs, KA = 'a'.repeat(32), KB = 'b'.repeat(32), KC = 'c'.rep
   ok(h.match && h.match.phase === 'fight' && h.match.open && h.match.left > LEN - 2000 && !h.storm, 'hello carries the match: the fight, the door open, no storm yet');
   ok(h.win == null, 'a match has no kill target');
   clock = 3 * LEN + 1800000 + 1000; g.stepMatch();
-  ok(A.all('chat').some(m => /Вход в катку закрыт/.test(m.text)), 'the door closes after thirty minutes (the chat says it)');
+  ok(A.all('chat').some(m => /Вход в раунд закрыт/.test(m.text)), 'the door closes after thirty minutes (the chat says it)');
   const C = seat(g, conn()); msg(C, { t: 'join', name: 'Поздний', key: KC, x: 0, z: 0, yaw: 0 });
   ok(C.last('closed') && !C.handle.joined && C.last('closed').left > 0 && !C.last('closed').open, 'a new player is refused after thirty minutes, with the time to the next match');
   A.handle.close();
