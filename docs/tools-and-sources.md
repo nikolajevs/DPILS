@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Claude | claude/scope-8x-placement-d4f416 | Расположение оптики 8x на оружии (в руках и у других игроков) | src/game/viewmodel.js, src/game/avatar.js |
 
 ## Автономный цикл улучшений
 
