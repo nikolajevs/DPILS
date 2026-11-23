@@ -1597,6 +1597,18 @@ console.log('king of the hill event (createGame, controlled clock):');
   msg(A, { t: 'shoot', w: 0, rays: [[20 / ql, -0.6 / ql, 0]] }); clock += 120; g.stepBullets();
   const dealt = 100 - q.hp;
   ok(dealt >= 25 && dealt <= 29, 'the cathedral buff raises the body damage', 'dealt ' + dealt);
+  // a taken altar is not snatched at once: a rival alone first drains it to nothing (neutral, the buff gone), then fills it
+  g.stepHoly();   // the race's own clock catches up with the shots above
+  stand(q, pt0); away(p); tick(HOLY.capMs * 0.5);
+  ok(pt0.owner === 'cRED' && pt0.prog > 0.4 && pt0.prog < 0.6, 'a rival in the ring drains the altar first, the holder keeps it meanwhile', 'prog ' + pt0.prog);
+  tick(HOLY.capMs * 0.5 + 400);
+  ok(!pt0.owner && pt0.progSide === 'p' + q.id, 'drained to nothing, the altar falls neutral');
+  const pr0 = pt0.prog; stand(p, pt0); tick(1000);
+  ok(pt0.contest && pt0.prog === pr0, 'two sides in the ring: contested, the bar stalls');
+  away(p); tick(HOLY.capMs + 200);
+  ok(pt0.owner === 'p' + q.id, 'then the rival takes it');
+  stand(p, pt0); away(q); tick(HOLY.capMs * 2 + 600);
+  ok(pt0.owner === 'cRED', 'and RED takes it back the same way: drain, then fill');
   // any one member takes a point for the whole team: a second member of RED takes the catholic church alone
   const C = seat(g, conn()); msg(C, { t: 'join', key: 'red2', name: 'Красный2', x: 0, z: 0, yaw: 0 });
   const r = C.handle.player, pt1 = g.holy.points[1];

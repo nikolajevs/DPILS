@@ -825,6 +825,7 @@ export function createGame(opts) {
   function speedMul(p) { return holyBuffs(p)?.speed ? HOLY.buffs.speed : 1; }
   function reloadMul(p) { return holyBuffs(p)?.reload ? HOLY.buffs.reload : 1; }
   function rateMul(p) { return holyBuffs(p)?.reload ? HOLY.buffs.rate : 1; }
+  const plural = u => String(u).startsWith('c');   // a team of the players: «захватили», one player alone: «захватил»
   const sideName = u => {
     const p = [...players.values()].find(q => unitOf(q) === u);
     return p ? (p.clan ? p.clan.name : p.name) : u;
@@ -834,7 +835,7 @@ export function createGame(opts) {
     const t = now(), H = HOLY.hill;
     return {
       id: holy.id, t0: holy.t0, until: holy.until, left: Math.max(0, holy.until - t), capMs: HOLY.capMs, capR: HOLY.capR, holdMs: HOLY.holdMs, buffs: { ...HOLY.buffs }, buffName: { ...HOLY.buffName },
-      points: holy.points.map(pt => ({ i: pt.i, x: pt.x, z: pt.z, gy: pt.gy, owner: pt.owner, name: pt.name, prog: +pt.prog.toFixed(3), progSide: pt.progSide, ringAt: pt.ringAt })),
+      points: holy.points.map(pt => ({ i: pt.i, x: pt.x, z: pt.z, gy: pt.gy, owner: pt.owner, name: pt.name, prog: +pt.prog.toFixed(3), progSide: pt.progSide, ringAt: pt.ringAt, contest: pt.contest || undefined })),
       hold: holy.holdSide ? { side: holy.holdSide, name: sideName(holy.holdSide), left: Math.max(0, holy.holdStart + HOLY.holdMs - t) } : null,
       hill: { name: H.name, cx: H.cx, cz: H.cz, r: H.r },
     };
@@ -886,7 +887,7 @@ export function createGame(opts) {
     pt.owner = side.u; pt.name = side.name; pt.prog = 1; pt.progSide = side.u; pt.ringAt = t;
     for (const p of players.values()) if (unitOf(p) === side.u && inRing(p, pt)) enlist(p);   // whoever stood in the ring for his side
     all({ t: 'bell', i: pt.i, side: side.u, name: side.name, by: byName });
-    all({ t: 'chat', text: '🔔 ' + side.name + ' захватили ' + HOLY.temples[pt.i].name + ' — ' + HOLY.buffName[HOLY.temples[pt.i].buff] });
+    all({ t: 'chat', text: '🔔 ' + side.name + (plural(side.u) ? ' захватили ' : ' захватил ') + HOLY.temples[pt.i].name + ' — ' + HOLY.buffName[HOLY.temples[pt.i].buff] });
   }
   function holyPrize(u, t) {
     const winners = [...players.values()].filter(p => unitOf(p) === u);
@@ -897,7 +898,7 @@ export function createGame(opts) {
       else { send(p, { t: 'heal', hp: p.hp, meds: p.meds, quiet: 1 }); invMsg(p); }
     }
     all({ t: 'holyWin', side: u, name: sideName(u) });
-    all({ t: 'chat', text: '🏆 ' + sideName(u) + ' удержали все храмы ' + fmtSpan(HOLY.holdMs) + ' — главный приз! +' + HOLY.prizeKills + ' очков каждому, все живы и снаряжены' });
+    all({ t: 'chat', text: '🏆 ' + sideName(u) + (plural(u) ? ' удержали все храмы ' + fmtSpan(HOLY.holdMs) + ' — главный приз! +' + HOLY.prizeKills + ' очков каждому, все живы и снаряжены' : ' удержал все храмы ' + fmtSpan(HOLY.holdMs) + ' в одиночку — главный приз! +' + HOLY.prizeKills + ' очков, полное здоровье и снаряжение') });
     sendBoard();
     endHoly(t, u, 'win');
     for (const p of winners) if (p.kills >= WIN) { endRound(p); break; }
@@ -950,20 +951,30 @@ export function createGame(opts) {
         const u = unitOf(p);
         if (!sides.has(u)) sides.set(u, { u, name: p.clan ? p.clan.name : p.name, by: p.name });
       }
+      // one side alone in the ring: an altar of another is first drained to nothing (it falls neutral, its buff with it),
+      // then filled for the newcomer; the holder standing in his own ring brings a drained bar back. Two sides or more
+      // stall it; left alone, the bar of a holder comes back by itself and the half-filled bar of nobody fades
+      const rate = dt * 1000 / HOLY.capMs;
+      pt.contest = sides.size > 1;
       if (sides.size === 1) {
         const s = [...sides.values()][0];
-        if (pt.owner === s.u) { pt.prog = 1; pt.progSide = s.u; }
-        else {
-          pt.progSide = s.u; pt.prog = Math.min(1, pt.prog + dt * 1000 / HOLY.capMs);
+        if (pt.owner === s.u) { pt.prog = Math.min(1, pt.prog + rate); pt.progSide = s.u; }
+        else if (pt.progSide && pt.progSide !== s.u && pt.prog > 0) {
+          pt.prog = Math.max(0, pt.prog - rate);
+          if (pt.prog <= 0) { if (pt.owner) { all({ t: 'chat', text: '⛪ ' + HOLY.temples[pt.i].name + ': алтарь снят — ' + pt.name + (plural(pt.owner) ? ' его потеряли' : ' его потерял') }); pt.owner = null; pt.name = ''; } pt.progSide = s.u; }
+        } else {
+          pt.progSide = s.u; pt.prog = Math.min(1, pt.prog + rate);
           if (pt.prog >= 1) capture(pt, s, s.by, t);
         }
-      } else if (sides.size > 1) pt.prog = Math.max(0, pt.prog - dt * 1000 / HOLY.capMs * 0.5);   // contested: the ring stalls
-      else if (pt.owner !== pt.progSide) pt.prog = Math.max(0, pt.prog - dt * 1000 / HOLY.capMs);   // left alone: the progress fades, the owner keeps it
+      } else if (!sides.size) {
+        if (pt.owner) { pt.prog = Math.min(1, pt.prog + rate * 0.5); pt.progSide = pt.owner; }
+        else pt.prog = Math.max(0, pt.prog - rate);
+      }
     }
     // all four in one hand: the three-minute hold begins
     const owned = holy.points.every(pt => pt.owner), one = owned && new Set(holy.points.map(pt => pt.owner)).size === 1 ? holy.points[0].owner : null;
     if (one) {
-      if (holy.holdSide !== one) { holy.holdSide = one; holy.holdStart = t; all({ t: 'chat', text: '⛪ ' + sideName(one) + ' держат все храмы — пошёл отсчёт ' + fmtSpan(HOLY.holdMs) + '!' }); all({ t: 'holy', ...holyPublic() }); holy.lastBeat = t; }
+      if (holy.holdSide !== one) { holy.holdSide = one; holy.holdStart = t; all({ t: 'chat', text: '⛪ ' + sideName(one) + (plural(one) ? ' держат' : ' держит') + ' все храмы — пошёл отсчёт ' + fmtSpan(HOLY.holdMs) + '!' }); all({ t: 'holy', ...holyPublic() }); holy.lastBeat = t; }
       else if (t - holy.holdStart >= HOLY.holdMs) { holyPrize(one, t); return; }
     } else if (holy.holdSide) { holy.holdSide = null; all({ t: 'chat', text: 'Удержание прервано — храмы снова врозь' }); all({ t: 'holy', ...holyPublic() }); holy.lastBeat = t; }
     // the catholic regen: a little health each tick to the living of the holding side

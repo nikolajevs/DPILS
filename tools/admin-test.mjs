@@ -64,7 +64,7 @@ console.log('admin events (the settings store):');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dpils-events-'));
   const file = path.join(dir, 'events.json');
   const E = createEvents({ file });
-  ok(E.view().holy.cfg.durMs === 420000 && E.view().cargo.cfg.loot.med === 2 && E.view().storm.cfg.rEnd === 22 && E.enabled('holy'), 'the defaults: the rules as written, the auto-run on');
+  ok(E.view().holy.cfg.durMs === 600000 && E.view().cargo.cfg.loot.med === 2 && E.view().storm.cfg.rEnd === 22 && E.enabled('holy'), 'the defaults: the rules as written, the auto-run on');
   ok(E.set('holy', { durMs: 300000, buffs: { dmg: 1.5 } }).ok && HOLY.durMs === 300000 && HOLY.buffs.dmg === 1.5 && HOLY.buffs.speed === 1.2, 'a patch applied to the rules at once, the rest kept');
   ok(HOLY.buffName.dmg === 'Урон +50%', 'the buff label follows the value');
   ok(E.set('cargo', { alt: 99999, speed: -5 }).ok && CARGO.alt === 500 && CARGO.speed === 1, 'out-of-range values clamped');
@@ -72,7 +72,7 @@ console.log('admin events (the settings store):');
   E.setEnabled('cargo', false);
   const E2 = createEvents({ file });
   ok(E2.view().holy.cfg.durMs === 300000 && E2.view().holy.cfg.buffs.dmg === 1.5 && !E2.enabled('cargo') && E2.enabled('holy'), 'the settings and the flag survive a reload');
-  ok(E2.reset('all').ok && HOLY.durMs === 420000 && CARGO.alt === 130 && HOLY.buffs.dmg === 1.25 && E2.enabled('cargo'), 'reset: the defaults and the auto-run back');
+  ok(E2.reset('all').ok && HOLY.durMs === 600000 && CARGO.alt === 130 && HOLY.buffs.dmg === 1.25 && E2.enabled('cargo'), 'reset: the defaults and the auto-run back');
   ok(HOLY.buffName.dmg === 'Урон +25%', 'the default buff label back');
   const E3 = createEvents({ file: null });
   ok(E3.set('holy', { capMs: 5000 }).ok && HOLY.capMs === 5000, 'a fileless store works in memory');
@@ -199,7 +199,7 @@ try {
 
   // the events: the settings, the auto-run flag, the manual control of the race and the crate
   const ev0 = (await api('events')).j;
-  ok(ev0.ok && ev0.holy.cfg.durMs === 420000 && ev0.holy.enabled === true && ev0.cargo.cfg.loot.optic === 1 && ev0.storm.cfg.rEnd === 22 && ev0.holy.defaults.durMs === 420000, 'the events view: the settings, the defaults, the auto-run');
+  ok(ev0.ok && ev0.holy.cfg.durMs === 600000 && ev0.holy.enabled === true && ev0.cargo.cfg.loot.optic === 1 && ev0.storm.cfg.rEnd === 22 && ev0.holy.defaults.durMs === 600000, 'the events view: the settings, the defaults, the auto-run');
   ok(ev0.state && typeof ev0.state.holy.nextIn === 'number' && ev0.state.storm.match, 'the events state: the countdowns and the match');
   ok((await api('events/holy', { method: 'POST', body: { cfg: { durMs: 300000, capMs: 5000, buffs: { dmg: 1.5 } } } })).j.ok, 'the race settings applied');
   const ev1 = (await api('events')).j;
@@ -232,9 +232,9 @@ try {
   ok((await api('events/storm', { method: 'POST', body: { cfg: { rEnd: 30 } } })).j.ok && (await api('events')).j.storm.cfg.rEnd === 30, 'the storm settings applied');
   ok((await api('events/reset', { method: 'POST', body: { kind: 'all' } })).j.ok, 'the reset of all events');
   const evR = (await api('events')).j;
-  ok(evR.holy.cfg.durMs === 420000 && evR.cargo.cfg.alt === 130 && evR.cargo.enabled === true && evR.storm.cfg.rEnd === 22, 'the defaults back after the reset');
+  ok(evR.holy.cfg.durMs === 600000 && evR.cargo.cfg.alt === 130 && evR.cargo.enabled === true && evR.storm.cfg.rEnd === 22, 'the defaults back after the reset');
   const savedEv = JSON.parse(fs.readFileSync(path.join(dir, 'events.json'), 'utf8'));
-  ok(savedEv.holy.cfg.durMs === 420000 && savedEv.cargo.enabled === true, 'the settings saved to the file');
+  ok(savedEv.holy.cfg.durMs === 600000 && savedEv.cargo.enabled === true, 'the settings saved to the file');
 
   // the accounts through the api
   let acc = (await api('accounts')).j;
