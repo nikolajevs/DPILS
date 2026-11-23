@@ -14,7 +14,7 @@ import { SET, keyName, onChange } from './settings.js';
 import { firstGames } from './help.js';
 import { requireAccount } from '../ui/auth.js';
 import { serverUrl } from './server.js';
-import { addNade, addZone, endZone, blastGlow, boomNade, clearBlasts, clearNades, nadeSamples, tickNades, onNadeBounce, setNadeBodies, syncNade, liveNades, liveZones, smokeCores, smokeHides, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
+import { addNade, addZone, endZone, douseFire, burnBodies, fireNow, blastGlow, boomNade, clearBlasts, clearNades, nadeSamples, tickNades, onNadeBounce, setNadeBodies, syncNade, liveNades, liveZones, smokeCores, smokeHides, NADE_THROW, showNadePreview, hideNadePreview } from './nades.js';
 import { KINDS, SLOT_SVG, bindInv, setItems, itemBack, itemTook, tickItems, renderInv, invTick, closeInv, toggleInv } from './inventory.js';
 import { cargoDrop, cargoLand, cargoTook, cargoEnd, cargoSelf, cargoTick, cargoMap, cargoClock, clearCargo } from './cargo.js';
 import { setHoly, clearHoly, holyBell, holyWin, holyTick, holyMap, holyMe, holySpeedMul, holyState, holyAudio } from './holy.js';
@@ -31,12 +31,12 @@ import { playerKey, boardOn, setBoardOn, account } from './identity.js';
 import { initLeaders } from './leaders.js';
 import { rest } from '../core/pause.js';
 import { $, reduceMotion } from '../core/env.js';
-import { arcCrackle, bellSound, boomSound, burnSound, crackSound, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeHiss, stepSound, stormBed, stormZap, thunderSound } from './sfx.js';
+import { arcCrackle, bellSound, boomSound, burnSound, crackSound, fireBed, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeHiss, steamHiss, stepSound, stormBed, stormZap, thunderSound } from './sfx.js';
 import { clearStorm, setStorm, stormAudio, stormMapOverlay, stormState, stormTick } from './storm.js';
 import { carAt, carPath } from '../world/car-hit.js';
 import { setWhere } from './social.js';
 import { fxSamples, tracerShot, bindTracer, hitTracer, tickFx, clearFx, dmgFloat, ejectShell, onShellBounce, muzzleSmoke } from './impacts.js';
-import { WEAPONS as WSRV, SMOKE, bulletAt, bulletDrop } from '../../server/combat.mjs';   // the server's own ballistics: the muzzle velocities, the drag and the bullet's fall
+import { WEAPONS as WSRV, NAPALM, SMOKE, bulletAt, bulletDrop } from '../../server/combat.mjs';   // the server's own ballistics: the muzzle velocities, the drag and the bullet's fall
 import { makePhysics } from '../../server/physics.mjs';   // the server's own shot scan: the page predicts the punched walls by the same code
 
 /* ---------- online shooter: deathmatch on the city map ----------
@@ -262,6 +262,10 @@ function nameOf(id) { const b = MP.board.find(e => e.id === id); return b ? labe
 const labelOf = (id, name) => { const b = MP.board.find(e => e.id === id); return b ? label(b) : name; };
 // a teammate: a member of the own team of the players — there are no sides, everybody else is a rival
 const isMate = r => !!(MP.clan && r.clan === MP.clan);
+// the napalm spares the thrower's teammates (server/game.mjs ally): the page goes by the team tags it knows
+const clanOf = id => id === MP.id ? MP.clan : (remotes.get(id) || {}).clan || '';
+const sparedBy = (by, id) => { const a = clanOf(by); return !!a && a === clanOf(id); };
+const BODIES = [], NAPALM_CELL = NAPALM.cellR;
 // the body of a killed remote: its last snapshot, the speed it had, and the throw of the killing blow —
 // along the bullet's own tangent at the hit (m.bd of the server's kill), or along the blast's normal (−m.dx/dz);
 // the known directions keep a tight spread, only an unknown one scatters wide, so no two falls match
@@ -406,9 +410,13 @@ function bang(vol, low) {
 // where a sound comes from: its distance (m) and side (-1 left … 1 right) for the camera
 const SV = new THREE.Vector3();
 // the burning smoke canisters: their hiss lasts while they burn (sfx.js smokeHiss), so its loudness and side follow
-// the listener every frame (zoneSoundTick) instead of being fixed at the moment it lit
-const zoneSnd = new Map(), ZONE_HEAR = 90;
+// the listener every frame (zoneSoundTick) instead of being fixed at the moment it lit. The napalm's patch roars and
+// crackles while it burns (sfx.js fireBed): as loud as its cells burn (nades.js fireNow), from the heart of them, and
+// gone when it is out
+const zoneSnd = new Map(), ZONE_HEAR = 90, FIRE_HEAR = 75;
 function zoneSound(m) {
+  if (m.kind === 'fire') { try { const h = fireBed(ac(), actx.master); if (h) { h.fire = true; zoneSnd.set(m.id, h); zoneSoundTick(true); } } catch (e) {} return; }
+  if (m.kind !== 'smoke') return;
   try {
     const durMs = m.durMs ?? SMOKE.durMs, age = m.left != null ? Math.max(0, durMs - m.left) / 1000 : 0, burn = (durMs - SMOKE.fadeMs) / 1000;
     if (age >= burn) return;
@@ -416,10 +424,18 @@ function zoneSound(m) {
     h.x = m.x; h.y = m.y + 0.2; h.z = m.z; zoneSnd.set(m.id, h); zoneSoundTick(true);
   } catch (e) {}
 }
+let zoneSndAt = 0;
 function zoneSoundTick(now0 = false) {
   if (!zoneSnd.size || !actx) return;
-  const now = performance.now(), t = actx.currentTime;
+  const now = performance.now(), t = actx.currentTime, dt = now0 ? 0 : Math.min(0.1, (now - zoneSndAt) / 1000); if (!now0) zoneSndAt = now;
   for (const [id, h] of zoneSnd) {
+    if (h.fire) {
+      const f = fireNow(id); if (!f) { h.stop(); zoneSnd.delete(id); continue; }
+      const s = spot(f.x, f.y + 0.4, f.z), d = Math.max(0, 1 - s.d / FIRE_HEAR), k = Math.min(1, f.k * 1.6), v = 0.8 * d * d * k;
+      h.level(v, s.pan, k);
+      if (v > 0.01 && Math.random() < 14 * k * dt) h.pop(0.5 + 0.5 * d);   // the crackle, thicker the hotter it burns
+      continue;
+    }
     if (now > h.until) { zoneSnd.delete(id); continue; }
     const s = spot(h.x, h.y, h.z), k = Math.max(0, 1 - s.d / ZONE_HEAR), v = 0.85 * k * k;
     if (now0) { h.pos.gain.value = v; h.pan.pan.value = s.pan; } else { h.pos.gain.setTargetAtTime(v, t, 0.08); h.pan.pan.setTargetAtTime(s.pan, t, 0.08); }
@@ -840,7 +856,7 @@ function respawn() {
 function onMsg(m) {
   switch (m.t) {
     case 'hello': dayOf(m); document.body.classList.add('ffa'); MP.match = null; if (m.match) setMatch(m.match); if (m.storm) { setStorm(m.storm); document.body.classList.toggle('storm', stormOn()); feed('Идёт шторм: одна жизнь, зона сужается — последний выживший побеждает', 'sys'); } else if (m.match) feed('Катка ' + span(m.match.len) + ': вход открыт ' + span(m.match.joinMs) + ', последние ' + span(m.match.stormMs) + ' — шторм', 'sys'); MP.clan = m.clan ? m.clan.id : ''; MP.tag = m.clan ? m.clan.tag : ''; if (!MP.clan) { const o = el('mpRespawnAt').querySelector('option[value=mate]'); if (o) o.remove(); } setWhere(MP.local ? 'train' : stormOn() ? 'storm' : 'game'); voice = createVoice({ myId: () => MP.id, send: (to, d) => MP.ws.send(JSON.stringify({ t: 'rtc', to, d })), info: voiceInfo, onSpeaking: showSpeaking }); voice.setVolume(SET.voiceVol); CH.send = (text, team) => MP.ws.send(JSON.stringify({ t: 'chat', text, team })); MP.id = m.id; MP.name = m.name; MP.win = m.win; MP.server = m.server || ''; MP.board = m.board; for (const e of m.board) addRemote(e.id, e.name, e.char);
-      MP.arena = m.arena || null; clearFx(); clearBlasts(); stopZoneSounds(); setItems(m.items); for (const z of m.zones || []) { addZone(z); if (z.kind === 'smoke') zoneSound(z); }   // the screens and patches already burning when we joined
+      MP.arena = m.arena || null; clearFx(); clearBlasts(); stopZoneSounds(); setItems(m.items); for (const z of m.zones || []) { addZone(z); zoneSound(z); }   // the screens and patches already burning when we joined
       cargoClock(m.now || Date.now()); clearCargo(); for (const id of [...marks.keys()]) markRemote(id, false); marks.clear();
       if (m.cargo) { cargoDrop(m.cargo); if (m.cargo.state === 'landed') cargoLand(m.cargo); }
       for (const mk of m.marks || []) { marks.set(mk.id, mk.until); if (mk.id === MP.id) cargoSelf(mk.until); else markRemote(mk.id, true); }
@@ -926,11 +942,16 @@ function onMsg(m) {
     case 'zone': {   // the smoke screen or the burning patch: the grenade's copy goes into it (nades.js)
       addZone(m);
       const dd = Math.hypot(m.x - P.x, m.z - P.z), hear = 120;
-      if (m.kind === 'smoke') zoneSound(m);
-      else if (dd < hear) { const v = 1 - dd / hear, s = spot(m.x, P.y, m.z); try { fireSound(ac(), actx.master, 0.9 * v, dd, s.pan); } catch (e) {} }
+      zoneSound(m);
+      if (m.kind === 'fire' && dd < hear) { const v = 1 - dd / hear, s = spot(m.x, P.y, m.z); try { fireSound(ac(), actx.master, 0.9 * v, dd, s.pan); } catch (e) {} }   // the whoomp of the burst
       break;
     }
     case 'zoneEnd': endZone(m.id); break;
+    case 'fireOut': {   // a smoke puts the napalm's cells out (server/game.mjs douse): steam and its hiss
+      const f = fireNow(m.id); douseFire(m);
+      if (f && f.k > 0) { const s = spot(f.x, f.y + 0.3, f.z), hear = 70; if (s.d < hear) { const v = 1 - s.d / hear; try { steamHiss(ac(), actx.master, Math.min(1, 0.35 + m.cells.length / 20) * v * v, s.pan); } catch (e) {} } }
+      break;
+    }
     case 'cargo': cargoDrop(m); tone(520, 780, 0.22, 0.28, 'triangle'); tone(780, 1040, 0.28, 0.22, 'triangle', 0.16); break;   // the event's own chime, over the chat line
     case 'cargoLand': cargoLand(m); tone(75, 34, 0.4, 0.35, 'sine'); break;   // the thud of the landing, heard across the city
     case 'cargoTook': cargoTook(m, m.to === MP.id); if (m.to === MP.id) { tone(660, 990, 0.12, 0.3, 'triangle'); tone(990, 1320, 0.2, 0.28, 'triangle', 0.1); } break;
@@ -1015,7 +1036,7 @@ function join(local) {   // local: { bots, level, mode, arena, time } for the ga
   ws.onopen = () => { const s = spawnPoint(); ws.send(JSON.stringify({ t: 'join', name, char: el('mpChar').value || undefined, key: local ? undefined : playerKey() || undefined, board: local ? undefined : boardOn(), ...s })); };
   ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch (err) { console.error(err); } };
   ws.onerror = () => { if (!MP.started) msg.textContent = 'Не удалось подключиться к ' + url; };
-  ws.onclose = () => { setWhere('lobby'); nadeCancel(); el('nadeWarn').hidden = true; clearStorm(); clearSiege(); document.body.classList.remove('storm', 'storm-out', 'match-soon'); if (MP.started) { el('mpDead').hidden = true; el('stormDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; if (!/^(На сервере|Не удалось|Сервер пускает|Шторм|Катка)/.test(msg.textContent)) msg.textContent = 'Соединение закрыто.'; } };
+  ws.onclose = () => { setWhere('lobby'); nadeCancel(); stopZoneSounds(); el('nadeWarn').hidden = true; clearStorm(); clearSiege(); document.body.classList.remove('storm', 'storm-out', 'match-soon'); if (MP.started) { el('mpDead').hidden = true; el('stormDead').hidden = true; el('mpOver').hidden = false; if (document.pointerLockElement) document.exitPointerLock(); } else { el('goPlay').disabled = false; el('goTrain').disabled = false; if (!/^(На сервере|Не удалось|Сервер пускает|Шторм|Катка)/.test(msg.textContent)) msg.textContent = 'Соединение закрыто.'; } };
 }
 let uiReady = false;
 function initUi() {   // the fields of the player and of the training: once, when the start card first needs them (or when the city is ready)
@@ -1233,6 +1254,7 @@ function mpTick(dt) {
   if (MP.firing && W().auto) fire(now);
   if (MP.dead) { const left = Math.max(0, 3 - (now - MP.deadAt) / 1000); el('mpRespawn').disabled = left > 0; el('mpRespawn').textContent = left > 0 ? 'Возрождение через ' + Math.ceil(left) : MP.specMode === 2 ? 'Возродиться (Enter)' : 'Возродиться (пробел)'; }
   else if ((MP.sendT -= dt) <= 0 && MP.ws.readyState === 1) { MP.sendT = 0.05; MP.ws.send(JSON.stringify({ t: 'state', x: +P.x.toFixed(2), y: +P.y.toFixed(2), z: +P.z.toFixed(2), yaw: +P.yaw.toFixed(3), pitch: +P.pitch.toFixed(3), h: +P.eye.toFixed(2), w: MP.weapon })); }
+  let nb = 0;   // the living bodies, for the napalm's fire to catch (nades.js burnBodies)
   for (const r of remotes.values()) {
     const g = r.group;
     if (r.fallT) {   // the killed fall by physics (ragdoll.js) and lie for three seconds
@@ -1251,7 +1273,9 @@ function mpTick(dt) {
     g.userData.head.rotation.x = p.pitch; g.userData.arm.rotation.x = p.pitch * 0.6;
     if (!r.av && r.figHead) r.figHead.rotation.x = p.pitch - 0.35 * fk;   // the simple figure's head snaps back too
     if (MP.dead && MP.specMode === 0 && r.id === MP.spec) g.visible = false;   // the first-person spectate: the watched body must not cover the eye
+    else { const b = BODIES[nb] || (BODIES[nb] = { id: 0, x: 0, y: 0, z: 0, h: 1.7 }); b.id = r.id; b.x = p.x; b.y = p.y - p.h; b.z = p.z; b.h = p.h; nb++; }
   }
+  BODIES.length = nb; burnBodies(BODIES, dt, sparedBy);
   tickFx(dt);
   MP.kick = Math.max(0, MP.kick - dt * 9); gun.position.z = -0.45 + MP.kick * 0.05; gun.rotation.x = MP.kick * 0.06; gun.rotation.z = punch.r * 1.6;   // the gun tilts with the flinch of the view
   if (MP.reloadAt) gun.rotation.x = -0.5 * Math.sin(Math.min(1, (now - MP.reloadAt) / WEAPONS[MP.reloadW].reloadMs) * Math.PI);
@@ -1374,6 +1398,12 @@ STATE.mapOverlay = (ctx, cx, cz, ppm, w, h) => {
   for (const z of liveZones()) {   // the smoke screens (grey, as wide as they stand now) and the burning patches; the cargo's beacon has its own mark
     if (z.kind === 'beacon' || !(z.r > 0.3)) continue;
     const x = w / 2 + (z.x - cx) * ppm, y = h / 2 + (z.z - cz) * ppm, r = Math.max(3, z.r * ppm); if (x < -r || y < -r || x > w + r || y > h + r) continue;
+    if (z.cells && z.r * ppm > 6) {   // the napalm's patch as it burns now: its lit cells (round a wall it lies on one side)
+      if (!z.cells.length) continue;
+      const cr = Math.max(1.5, NAPALM_CELL * ppm); ctx.beginPath();
+      for (const c of z.cells) { const u = w / 2 + (c.x - cx) * ppm, v = h / 2 + (c.z - cz) * ppm; ctx.moveTo(u + cr, v); ctx.arc(u, v, cr, 0, 6.283); }
+      ctx.fillStyle = 'rgba(255, 110, 30, .55)'; ctx.fill(); continue;
+    }
     ctx.beginPath(); ctx.arc(x, y, r, 0, 6.283); ctx.fillStyle = z.kind === 'smoke' ? 'rgba(225, 230, 235, .62)' : 'rgba(255, 110, 30, .5)'; ctx.fill();
     ctx.lineWidth = 1.2; ctx.strokeStyle = z.kind === 'smoke' ? 'rgba(120, 130, 140, .8)' : 'rgba(200, 60, 10, .8)'; ctx.stroke();
   }

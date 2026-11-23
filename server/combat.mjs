@@ -52,13 +52,71 @@ export const NADE = { count: 2, speed: 15, minSpeed: 6, maxSpeed: 24, loft: 0.17
 // (speed, loft, g, cooldown of NADE above), but go off into a zone instead of a blast. The smoke (M18) lays a screen
 // that hides the street for `durMs` — no damage, but the bots cannot see through it; the napalm (AN-M14) bursts into a
 // burning patch that costs `dps` health a second to whoever stands in it (the thrower included, teammates spared),
-// judged every `tickMs`. `count` is what the ready belt holds at spawn, one of each kind; the belt cap is INV.nadeMax.
+// judged every `tickMs` (napalmCells below: the patch is not a disc). `count` is what the ready belt holds at spawn, one of each kind; the belt cap is INV.nadeMax.
 // The screen is not a ball that is there at once: it swells out of the canister over `growMs`, holds, and over the last
 // `fadeMs` thins from the edge in (smokeCore below); `height` is how high its dense core stands over the surface, and a
 // sight line that crosses `hide` metres of that core or more is blind (smokeDepth) — the bots, the name tags and the
 // screen the page draws all go by this one shape.
 export const SMOKE = { count: 1, fuseMs: 2000, radius: 6, height: 3.6, durMs: 15000, growMs: 2500, fadeMs: 3500, hide: 1.2 };
-export const NAPALM = { count: 1, fuseMs: 2000, radius: 4, durMs: 8000, dps: 30, tickMs: 250 };
+// The napalm's patch is a set of burning cells laid once where it went off (napalmCells): the filler runs out over the
+// surface from the burst as far as `radius`, on a lattice `step` apart, its rim ragged — walls stop it (it flows round a
+// corner and through an arch, not through the house), a step higher than `climb` stops it, and a burst on a roof stays on
+// that roof. It spreads out from the burst over `spreadMs` (the farther along the way, the later a cell lights) and
+// burns out over the last `dieMs` of `durMs`, the rim first and the heart last. A cell burns whoever stands within `cellR`
+// of it (feet from `under` below its surface to `over` above) while its heat (fireHeat: up over `inMs`, down over
+// `outMs`) is `hot` or more. A smoke screen puts the fire out: every cell its dense core covers goes out in `outMs` and
+// does not light again (game.mjs stepZones) — a smoke thrown into the fire, or a napalm thrown into a smoke, fizzles.
+export const NAPALM = { count: 1, fuseMs: 2000, radius: 4, durMs: 8000, dps: 30, tickMs: 250, step: 1.25, climb: 0.9, cellR: 0.85, under: 1, over: 2.2, spreadMs: 800, dieMs: 2400, inMs: 250, outMs: 600, hot: 0.35, douseMs: 350 };
+const HEX = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]];
+// the cells of a napalm burst at (x, y, z), y the surface it went off on: [{ x, y, z, on, off }] — on and off in ms
+// after the burst. world: { ground(x, z), buildingAt(x, z, y), freePath(o, d, len) } (server/world.mjs, physics.mjs).
+// A flood over a hex lattice from the burst: a neighbour joins if it lies within the ragged rim, its surface (the
+// ground, or the roof of the house it stands on — the same rule as the zone's own surface, game.mjs surfaceAt) is
+// within `climb` of the cell it is reached from, and nothing solid stands on the line between them just over the
+// higher of the two. rnd: the lattice jitter, the rim's lobes and the times (Math.random; the tests pass their own).
+export function napalmCells(world, x, y, z, rnd = Math.random) {
+  const N = NAPALM, R = N.radius, s = N.step, h = s * Math.sqrt(3) / 2;
+  const l1 = rnd() * 6.283, l2 = rnd() * 6.283, reach = a => R * (0.84 + 0.09 * Math.sin(3 * a + l1) + 0.07 * Math.sin(5 * a + l2));
+  const surf = (cx, cz, y0) => {
+    const g = world.ground(cx, cz), b = world.buildingAt(cx, cz, y0 + 0.3);
+    const sy = !b ? g : y0 + 0.3 > g + (b.top || 12) - 0.6 ? g + (b.top || 12) : null;   // in the wall of a house: no fire there
+    return sy != null && Math.abs(sy - y0) <= N.climb ? sy : null;
+  };
+  const cells = [{ i: 0, j: 0, x, y, z, d: 0 }], seen = new Set([0]);
+  for (let q = 0; q < cells.length; q++) {
+    const c = cells[q];
+    for (const [di, dj] of HEX) {
+      const i = c.i + di, j = c.j + dj, k = i * 64 + j; if (seen.has(k)) continue;
+      const px = x + (i + j * 0.5) * s + (rnd() - 0.5) * 0.36, pz = z + j * h + (rnd() - 0.5) * 0.36, r = Math.hypot(px - x, pz - z);
+      if (r > reach(Math.atan2(pz - z, px - x))) { seen.add(k); continue; }
+      const sy = surf(px, pz, c.y); if (sy == null) continue;   // not seen yet: another neighbour, at another height, may reach it
+      const dx = px - c.x, dz = pz - c.z, l = Math.hypot(dx, dz);
+      if (l > 1e-6 && world.freePath([c.x, Math.max(sy, c.y) + 0.4, c.z], [dx / l, 0, dz / l], l) < l - 0.02) continue;   // a wall between
+      seen.add(k); cells.push({ i, j, x: px, y: sy, z: pz, d: c.d + l });
+    }
+  }
+  return cells.map(c => {
+    const f = Math.min(1, c.d / R);
+    const on = c.d ? Math.round(N.spreadMs * f * (0.85 + 0.3 * rnd())) : 0;
+    const off = Math.round(N.durMs - N.dieMs * f * (0.65 + 0.35 * rnd()) - (c.d ? rnd() * 250 : 0));
+    return { x: +c.x.toFixed(2), y: +c.y.toFixed(2), z: +c.z.toFixed(2), on, off: Math.max(on + N.inMs + N.outMs, off) };
+  });
+}
+// how hot a cell burns ageMs after the burst, 0 to 1: it catches over inMs, burns, and dies down over the last outMs
+export function fireHeat(c, ageMs) {
+  if (ageMs < c.on || ageMs >= c.off) return 0;
+  return Math.min(1, (ageMs - c.on) / NAPALM.inMs, (c.off - ageMs) / NAPALM.outMs);
+}
+// the heat of the fire under feet standing at (x, fy, z) — the hottest cell within reach, 0 out of the fire
+export function fireUnder(cells, ageMs, x, fy, z, reach = NAPALM.cellR) {
+  let best = 0;
+  for (const c of cells) {
+    if (fy < c.y - NAPALM.under || fy > c.y + NAPALM.over) continue;
+    const dx = x - c.x, dz = z - c.z; if (dx * dx + dz * dz >= reach * reach) continue;
+    const k = fireHeat(c, ageMs); if (k > best) best = k;
+  }
+  return best;
+}
 // the dense core of a smoke screen of radius r, ageMs after it was laid, of durMs in all: half an ellipsoid standing
 // on the surface, rc across and hc up, or null when it is out. It swells out of the canister — a puff of a quarter of the
 // width at once, the full width by growMs — holds, and over the last fadeMs shrinks to nothing as the screen thins
