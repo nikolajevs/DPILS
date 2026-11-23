@@ -47,7 +47,7 @@ const DOME_FS = [
   'float hexDist(vec2 p){ p = abs(p); return max(dot(p, vec2(0.5, 0.8660254)), p.x); }',
   'vec4 hexCell(vec2 uv){ vec2 r = vec2(1.0, 1.7320508); vec2 h = r * 0.5; vec2 a = mod(uv, r) - h; vec2 b = mod(uv - h, r) - h; vec2 gv = dot(a, a) < dot(b, b) ? a : b; return vec4(gv, uv - gv); }',
   'float hash21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }',
-  'float lineOf(vec4 c){ float d = hexDist(c.xy); float w = fwidth(d) * 1.4 + 0.012; return smoothstep(0.455 - w, 0.455 + w, d); }',
+  'float lineOf(vec4 c){ float d = hexDist(c.xy); float w = fwidth(d) * 1.4 + 0.012; return smoothstep(0.44 - w, 0.44 + w, d); }',
   'float glowOf(vec4 c){ return smoothstep(0.26, 0.5, hexDist(c.xy)); }',
   'void main(){',
   // triplanar hex grid over the direction: three projections blended by the normal, so the plates stay uniform
@@ -82,7 +82,7 @@ const DOME_FS = [
   '  float alive = smoothstep(th - 0.05, th + 0.05, local);',   // the fall: plates fail from the crown down, each at its own hour
   '  float failEdge = smoothstep(0.10, 0.0, abs(local - th)) * step(0.001, uFall);',
   '  vec3 col = mix(uColor * 0.45, uColor, clamp(vDir.y * 0.7 + f1 * 0.5, 0.0, 1.0));',
-  '  float energy = line * (0.55 + 0.45 * pulse) + glow * 0.3 + f1 * 0.42 + f2 * 0.85 + 0.03;',
+  '  float energy = line * (0.85 + 0.5 * pulse) + glow * (0.22 + 0.2 * h) + f1 * 0.42 + f2 * 0.85 + 0.02;',
   '  energy *= 0.82 + 0.22 * band + 0.06 * scan;',
   '  energy += spark * 0.5 + hitGlow + riseEdge * 1.1;',
   '  float strobe = mix(1.0, 0.65 + 0.35 * sin(uTime * 55.0), uFlicker);',
@@ -103,9 +103,9 @@ const GLASS_FS = [
   '  float vis = 1.0 - smoothstep(uRise * 1.18 - 0.10, uRise * 1.18, vDir.y);',
   '  float local = (1.0 - vDir.y) * 0.9; float th = uFall * 1.6 - 0.2;',
   '  float alive = smoothstep(th - 0.05, th + 0.05, local);',
-  '  float a = (f * 0.20 + 0.045) * vis * alive * uOpacity;',
+  '  float a = (f * 0.34 + 0.16) * vis * alive * uOpacity;',
   '  if (a < 0.004) discard;',
-  '  gl_FragColor = vec4(uColor * 0.5 + vec3(0.02, 0.05, 0.09), a);',
+  '  gl_FragColor = vec4(uColor * 0.25 + vec3(0.0, 0.015, 0.05), a);',
   '}',
 ].join('\n');
 const DOME_RING_FS = [
@@ -183,6 +183,11 @@ const WAVE_FS = [
   '}',
 ].join('\n');
 let domeVis = null, domeFall = 0;   // domeFall: the collapse animation after the dome is down (0 — none)
+// the flash of the collapse: the light lives in the scene from the start (intensity 0, parked under the ground) —
+// adding or removing a light mid-fight changes the light count and recompiles every shader of the city, a stall of
+// many seconds; the game's other flashes (mp.js flashLight, the fire light of nades.js) live the same way
+const domeLight = new THREE.PointLight(0xcfeaff, 0, 1300, 1.3);
+domeLight.position.set(0, -500, 0); scene.add(domeLight);
 const panOf = (x, z) => { const dx = x - P.x, dz = z - P.z, d = Math.hypot(dx, dz); return d > 0.01 ? Math.max(-1, Math.min(1, (Math.cos(P.yaw) * dx - Math.sin(P.yaw) * dz) / d)) : 0; };
 function buildDome(d) {
   clearDome();
@@ -218,7 +223,8 @@ function buildDome(d) {
   mg.setAttribute('aMax', new THREE.BufferAttribute(mm, 1));
   const motes = new THREE.Points(mg, new THREE.ShaderMaterial({ uniforms: { uTime: u.uTime, uOpacity: u.uOpacity, uFall: u.uFall }, vertexShader: MOTE_VS, fragmentShader: MOTE_FS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
   motes.position.set(d.cx, gy - 3, d.cz); motes.renderOrder = 15; motes.frustumCulled = false; motes.userData.noProbe = true; scene.add(motes);
-  domeVis = { d: { ...d }, gy, geo, glass, shell, ring, motes, u, hits, hitIdx: 0, rise: 0, shards: null, wave: null, light: null };
+  domeLight.position.set(d.cx, gy + 70, d.cz); domeLight.distance = d.r * 2.6;
+  domeVis = { d: { ...d }, gy, geo, glass, shell, ring, motes, u, hits, hitIdx: 0, rise: 0, shards: null, wave: null };
 }
 // the burst: seven hundred hex plates torn off the shell, each with its own hour, toss and spin (GPU-ballistic)
 function burstShards(dv) {
@@ -254,8 +260,6 @@ function startFall() {
   domeFall = performance.now();
   const dv = domeVis, { d, gy } = dv;
   burstShards(dv); buildWave(dv);
-  dv.light = new THREE.PointLight(0xcfeaff, 0, d.r * 2.6, 1.3);
-  dv.light.position.set(d.cx, gy + 70, d.cz); scene.add(dv.light);
   const dd = Math.hypot(d.cx - P.x, d.cz - P.z);
   if (siegeAudio.down) siegeAudio.down(1.15, dd, panOf(d.cx, d.cz));
   quake(d.cx, gy + 40, d.cz, Math.pow(Math.max(0, 1 - dd / (d.r * 1.7)), 1.4) * 0.85);
@@ -268,7 +272,7 @@ function clearDome() {
   dv.geo.dispose(); dv.ring.geometry.dispose(); dv.motes.geometry.dispose();
   if (dv.shards) { scene.remove(dv.shards.points); dv.shards.geo.dispose(); dv.shards.mat.dispose(); }
   if (dv.wave) { scene.remove(dv.wave.mesh); dv.wave.geo.dispose(); dv.wave.mat.dispose(); }
-  if (dv.light) scene.remove(dv.light);
+  domeLight.intensity = 0;
   domeVis = null; domeFall = 0;
 }
 // a hit on the field (a bullet crossing it, a body thrown against it): a ripple spreads from the point, and a short
@@ -444,7 +448,7 @@ export function siegeTick(dt) {
       u.uOpacity.value = 0.9;
       if (dv.shards) dv.shards.mat.uniforms.uT.value = (now - dv.shards.t0) / 1000;
       if (dv.wave) dv.wave.mat.uniforms.uW.value = Math.min(1, Math.max(0, (age - 0.45) / 0.85));
-      if (dv.light) dv.light.intensity = age > 0.4 && age < 1.6 ? 5200 * Math.exp(-(age - 0.4) * 5.5) : 0;
+      domeLight.intensity = age > 0.4 && age < 1.6 ? 5200 * Math.exp(-(age - 0.4) * 5.5) : 0;
       if (age > 2.5) clearDome();
     } else {
       dv.rise = Math.min(1, dv.rise + dt * 0.75);
