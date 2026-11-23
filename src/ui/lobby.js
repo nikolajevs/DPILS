@@ -289,7 +289,7 @@ function tick(t) {
 
 /* ---------- the list of servers and their matches: the live status on the online card ----------
    The lobby polls /health (server/index.mjs) from the first frame: the list of servers of one process — the same
-   city, matches of two hours (server/storm.mjs) started 15 minutes apart — each with its phase (the fight, the storm
+   city, matches of two hours (server/storm.mjs) started 30 minutes apart — each with its phase (the fight, the storm
    of its last twenty minutes, the victory table), the door of its first half hour and the time to its next match.
    The online card lists them, a row per server picked with a click (src/game/server.js setServerPick); the status
    line under the list is the full picture of the picked one. Until the player picks, the lobby picks for him: the

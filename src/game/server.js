@@ -1,7 +1,7 @@
 /* ---------- the game server and its list of servers ----------
    There is a single address: the one this page is served from — in production (STATIC=dist) one process gives out the
    page, /auth, /leaderboard and the game WebSocket, so the address of the page is the address of the server. That
-   process holds the list of servers (server/index.mjs SERVERS): the same city, its matches started 15 minutes apart,
+   process holds the list of servers (server/index.mjs SERVERS): the same city, its matches started 30 minutes apart,
    each on its own WebSocket path /play/<n>. The lobby (src/ui/lobby.js) reads them from /health and picks one —
    setServerPick — and mp.js joins gameUrl(); the accounts, the leaderboard and the teams stay on the bare address. On localhost the page may instead come from the vite dev server, which has no game behind it:
    a /health probe beside the page tells the two apart, and the dev page falls back to the local server on 8787.

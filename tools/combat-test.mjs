@@ -1352,11 +1352,12 @@ console.log('the match and the storm (createGame match, controlled clock):');
 {
   const s = matchAt(5 * MATCHC.lenMs + 1000);
   ok(s.start === 5 * MATCHC.lenMs && s.end - s.start === 7200000 && s.joinUntil - s.start === 1800000 && s.end - s.stormAt === 1200000, 'the match: two hours from a whole multiple, the door 30 min, the storm the last 20 min');
-  // the list of servers (index.mjs SERVERS): the next server shifts its whole schedule by 15 minutes
-  const Q = 900000, sh = matchAt(5 * MATCHC.lenMs + 1000, MATCHC.lenMs, Q), sh2 = matchAt(5 * MATCHC.lenMs + Q, MATCHC.lenMs, Q);
-  ok(sh.start === 4 * MATCHC.lenMs + Q && sh.end === 5 * MATCHC.lenMs + Q && sh.n === s.n - 1, 'a shifted server: at the first one\'s start its own match still runs for 15 minutes');
-  ok(sh2.start === 5 * MATCHC.lenMs + Q && sh2.n === s.n && sh2.joinUntil - sh2.start === 1800000 && sh2.end - sh2.stormAt === 1200000, 'a shifted server: its next match starts 15 minutes later, with the same door and storm');
-  ok(dayPhase(5 * MATCHC.lenMs + Q, MATCHC.lenMs, Q) === 0 && Math.abs(dayPhase(5 * MATCHC.lenMs, MATCHC.lenMs, Q) - 0.875) < 1e-9, 'its day starts with its match: midnight 15 minutes later');
+  // the list of servers (index.mjs SERVERS): the next server shifts its whole schedule by 30 minutes (two hours over four)
+  const Q = 1800000, sh = matchAt(5 * MATCHC.lenMs + 1000, MATCHC.lenMs, Q), sh2 = matchAt(5 * MATCHC.lenMs + Q, MATCHC.lenMs, Q);
+  ok(sh.start === 4 * MATCHC.lenMs + Q && sh.end === 5 * MATCHC.lenMs + Q && sh.n === s.n - 1, 'a shifted server: at the first one\'s start its own match still runs for 30 minutes');
+  ok(sh2.start === 5 * MATCHC.lenMs + Q && sh2.n === s.n && sh2.joinUntil - sh2.start === 1800000 && sh2.end - sh2.stormAt === 1200000, 'a shifted server: its next match starts 30 minutes later, with the same door and storm');
+  ok(matchAt(5 * MATCHC.lenMs + Q, MATCHC.lenMs, 0).joinUntil === sh2.start, 'with the step of the door the next door opens as the one before closes');
+  ok(dayPhase(5 * MATCHC.lenMs + Q, MATCHC.lenMs, Q) === 0 && Math.abs(dayPhase(5 * MATCHC.lenMs, MATCHC.lenMs, Q) - 0.75) < 1e-9, 'its day starts with its match: midnight 30 minutes later');
   const f = stormField(null, 5200, 4200);
   ok(f.r0 > Math.hypot(5200, 4200) && f.c.x === 0 && f.c.z === 0, 'the first circle holds every corner of the field', String(f.r0));
   const fa = stormField({ cx: 10, cz: 20, r: 300 });
