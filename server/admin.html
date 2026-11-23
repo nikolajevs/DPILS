@@ -919,9 +919,9 @@ document.addEventListener('click', e => {
     if (!ok) return;
     await api('events/reset', { method: 'POST', body: { kind } }); toast('Настройки по умолчанию: ' + EV_NAME[kind]); loadEvents();
   });
-  if (act === 'ev-start') return run(async () => { await api('events/' + kind + '/start', { method: 'POST', body: {} }); toast(kind === 'siege' ? '🏰 Регистрация на штурм Динабурга открыта' : '🔔 Царь горы начался — все на Церковную горку'); loadEvents(); });
+  if (act === 'ev-start') return run(async () => { await api('events/' + kind + '/start', { method: 'POST', body: {} }); toast(kind === 'siege' ? '🏰 Регистрация на штурм Динабурга открыта' : '🔔 Царь горы начался — алтари на Церковной горке горят, игроки добираются туда сами'); loadEvents(); });
   if (act === 'ev-stop') return run(async () => {
-    const ok = await ask({ title: 'Завершить ивент', text: '«' + EV_NAME[kind] + '» завершится сейчас: игроки вернутся на свои места.', okText: 'Завершить', danger: true });
+    const ok = await ask({ title: 'Завершить ивент', text: '«' + EV_NAME[kind] + '» завершится сейчас' + (kind === 'siege' ? ': участники вернутся на свои места.' : ': игроки останутся там, где были.'), okText: 'Завершить', danger: true });
     if (!ok) return;
     await api('events/' + kind + '/stop', { method: 'POST', body: {} }); toast(EV_NAME[kind] + ' завершён'); loadEvents();
   });
