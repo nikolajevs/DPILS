@@ -353,24 +353,24 @@ function paintList(list) {
 function paintMatch() {
   const badge = $('chOnlineBadge'), box = $('matchStatus'), txt = $('matchStatusText'), go = $('goPlay');
   const list = matchLast;
-  if (!list) { badge.hidden = true; box.dataset.phase = ''; $('srvList').hidden = true; txt.textContent = 'Статус катки недоступен — сервер не ответил'; go.textContent = 'Играть'; return; }
+  if (!list) { badge.hidden = true; box.dataset.phase = ''; $('srvList').hidden = true; txt.textContent = 'Статус раунда недоступен — сервер не ответил'; go.textContent = 'Играть'; return; }
   paintList(list);
   const j = list.find(v => v.id === serverPick()) || list[0];
   const m = j.match, next = clock(left(m.left));
   const open = isOpen(j), people = j.players + (j.bots ? ' + ботов ' + j.bots : '');
-  const label = m.phase === 'storm' ? 'Шторм! ' + (j.storm ? j.storm.alive + ' в живых · ' : '') + 'вход закрыт · следующая катка через ' + next
-    : m.phase === 'over' ? 'Катка завершена · следующая через ' + next
+  const label = m.phase === 'storm' ? 'Шторм! ' + (j.storm ? j.storm.alive + ' в живых · ' : '') + 'вход закрыт · следующий раунд через ' + next
+    : m.phase === 'over' ? 'Раунд завершён · следующий через ' + next
     : open ? 'Идёт бой · вход открыт ещё ' + clock(left(m.joinLeft)) + ' · шторм через ' + clock(left(m.stormIn))
-    : 'Идёт бой · вход закрыт · шторм через ' + clock(left(m.stormIn)) + ' · следующая катка через ' + next;
+    : 'Идёт бой · вход закрыт · шторм через ' + clock(left(m.stormIn)) + ' · следующий раунд через ' + next;
   const other = !open && list.length > 1 && openFirst(list);   // the door of this one is shut, another one is open
-  txt.textContent = (list.length > 1 ? j.name + ': ' : '') + label + ' · игроков: ' + people + (open || m.phase === 'over' ? '' : '. Если вы уже в этой катке — можно вернуться.') + (other ? ' Вход открыт на сервере «' + other.name + '».' : '');
+  txt.textContent = (list.length > 1 ? j.name + ': ' : '') + label + ' · игроков: ' + people + (open || m.phase === 'over' ? '' : '. Если вы уже в этом раунде — можно вернуться.') + (other ? ' Вход открыт на сервере «' + other.name + '».' : '');
   box.dataset.phase = open ? 'open' : m.phase;
   // the home door: the best of the list — an open door first, then a storm to watch, then the next match
   const best = openFirst(list), storm = list.find(v => v.match.phase === 'storm'), soon = nextFirst(list);
   badge.hidden = false;
   badge.textContent = best ? 'вход ' + clock(left(best.match.joinLeft)) : storm ? 'шторм' : 'новая через ' + clock(left(soon.match.left));
   badge.dataset.phase = best ? 'open' : storm ? 'play' : 'wait';
-  go.textContent = open ? 'Играть' + (list.length > 1 ? ' на «' + j.name + '»' : '') : 'Вернуться в катку';
+  go.textContent = open ? 'Играть' + (list.length > 1 ? ' на «' + j.name + '»' : '') : 'Вернуться в раунд';
 }
 window.addEventListener('dpils-ready', () => { if (matchLast) paintMatch(); });
 window.addEventListener('dpils-server', e => { if (!STATE.mp) pickServer(+e.detail); });   // «К нему»: the teammate's server
