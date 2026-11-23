@@ -15,7 +15,7 @@
      EVENTS (file of the event settings — the «Ивенты» tab of the admin panel tunes the «Царь горы» race, the cargo drop and
        the storm live, events.mjs; default server/data/events.json; off = no file, the changes stay in memory),
      ADMIN_PASS (the password of the admin panel /admin — admin.mjs, admin.html; without it the panel is off: players, accounts,
-       the leaderboard, the teams, the bots, the cargo and the events from one page) */
+       the leaderboard, the teams, the bots, the cargo, the events and the restart of the process from one page) */
 import http from 'node:http';
 import fs from 'node:fs';
 import { WebSocketServer } from 'ws';

@@ -4,7 +4,8 @@
    2. The doors (admin.mjs on a live server/index.mjs): the page /admin and its headers, the login (a wrong password,
       the rate limit), the session token, the overview, the players, the bots, the kick over a real WebSocket, the
       server line in the chat, the cargo on demand, the accounts and the leaderboard and the teams through the api,
-      the logout; without ADMIN_PASS the panel is off. */
+      the restart (the process exits cleanly, the test respawns it as pm2/systemd would: the books survive, the
+      sessions and the login tries die with the old process), the logout; without ADMIN_PASS the panel is off. */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -84,9 +85,13 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dpils-admin-live-'));
 const freePort = () => new Promise((res, rej) => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); }); s.on('error', rej); });
 const PORT = await freePort();
 const BASE = 'http://127.0.0.1:' + PORT;
-const child = spawn(process.execPath, ['server/index.mjs'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT), ADMIN_PASS: 'test-admin-pass', BOTS: '2', SERVER_NAME: 'Тест', ACCOUNTS: path.join(dir, 'accounts.json'), LEADERBOARD: path.join(dir, 'leaderboard.json'), TEAMS: path.join(dir, 'teams.json'), EVENTS: path.join(dir, 'events.json') }, stdio: ['ignore', 'pipe', 'pipe'] });
-let serverLog = '';
-child.stdout.on('data', d => { serverLog += d; }); child.stderr.on('data', d => { serverLog += d; });
+let child = null, serverLog = '';
+function startServer() {
+  child = spawn(process.execPath, ['server/index.mjs'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT), ADMIN_PASS: 'test-admin-pass', BOTS: '2', SERVER_NAME: 'Тест', ACCOUNTS: path.join(dir, 'accounts.json'), LEADERBOARD: path.join(dir, 'leaderboard.json'), TEAMS: path.join(dir, 'teams.json'), EVENTS: path.join(dir, 'events.json') }, stdio: ['ignore', 'pipe', 'pipe'] });
+  child.stdout.on('data', d => { serverLog += d; }); child.stderr.on('data', d => { serverLog += d; });
+  return child;
+}
+startServer();
 const req = async (p, { method = 'GET', body, token, q = '' } = {}) => {
   const h = {}; if (token) h['x-admin-token'] = token; if (body !== undefined) h['content-type'] = 'application/json';
   const r = await fetch(BASE + p + q, { method, headers: h, body: body !== undefined ? JSON.stringify(body) : undefined });
@@ -118,10 +123,11 @@ try {
   ok(page.headers.get('x-frame-options') === 'DENY' && (page.headers.get('content-security-policy') || '').includes("frame-ancestors 'none'"), 'the page cannot be framed');
   ok((await req('/admin/api/overview')).status === 401, 'the api without a token is refused');
   ok((await req('/admin/api/overview', { token: 'deadbeef' })).status === 401, 'a wrong token is refused');
+  ok((await req('/admin/api/restart', { method: 'POST', body: {} })).status === 401, 'the restart without a token is refused');
   ok((await req('/admin/login', { method: 'POST', body: { pass: 'wrong' } })).status === 401, 'a wrong password is refused');
   const login = await req('/admin/login', { method: 'POST', body: { pass: 'test-admin-pass' } });
   ok(login.status === 200 && login.j.ok && /^[0-9a-f]{48}$/.test(login.j.token), 'the right password opens a session');
-  const tok = login.j.token;
+  let tok = login.j.token;
   const api = (p, o = {}) => req('/admin/api/' + p, { ...o, token: tok });
 
   const ov = await api('overview');
@@ -268,11 +274,33 @@ try {
   ok((await api('logs/clear', { method: 'POST', body: {} })).j.ok, 'the journal cleared');
   ok((await api('logs')).j.held === 1, 'after the clear only the audit of the clear itself');
 
+  // the restart: the panel stops the process; the supervisor (pm2/systemd) brings it back. Here the test plays
+  // the supervisor: it respawns the server and checks that the books survived while the sessions and the login
+  // tries (both live in the process memory) are gone
+  const bootBefore = (await api('overview')).j.boot;
+  const exited = new Promise(res => child.once('exit', (code, sig) => res({ code, sig })));
+  ok((await api('restart', { method: 'POST', body: {} })).j.ok, 'the restart accepted');
+  ok((await api('restart', { method: 'POST', body: {} })).status === 409, 'a second restart while one is pending refused');
+  const ex = await Promise.race([exited, sleep(6000).then(() => null)]);
+  ok(ex && ex.code === 0, 'the process exited cleanly for the supervisor', JSON.stringify(ex));
+  if (!ex) child.kill();
+  startServer();
+  let back = false;
+  for (let k = 0; k < 60 && !back; k++) { try { back = (await req('/health')).j.ok === true; } catch (e) { await sleep(250); } }
+  ok(back, 'the server is back up', serverLog.slice(-400));
+  ok((await api('overview')).status === 401, 'the old session died with the process');
+  const login2 = await req('/admin/login', { method: 'POST', body: { pass: 'test-admin-pass' } });
+  ok(login2.status === 200 && login2.j.ok, 'the login tries cleared: a fresh login opens');
+  tok = login2.j.token;
+  const ov2 = await api('overview');
+  ok(ov2.j.boot > bootBefore && ov2.j.server.bots === 2 && ov2.j.counts.accounts === 1, 'a new process: fresh boot, the env bots back, the accounts kept');
+  ok(!(await api('board')).j.rows.some(r => r.name === 'Аня'), 'the leaderboard kept: the removed account stays removed');
+
   // the logout closes the session
   ok((await req('/admin/logout', { method: 'POST', token: tok })).j.ok, 'the logout');
   ok((await api('overview')).status === 401, 'the token is dead after the logout');
 
-  // the rate limit: ten tries in ten minutes (two were spent above: the wrong password and the right one)
+  // the rate limit: ten tries in ten minutes (the fresh process counts from the re-login above)
   let limited = false;
   for (let k = 0; k < 12 && !limited; k++) limited = (await req('/admin/login', { method: 'POST', body: { pass: 'wrong' } })).status === 429;
   ok(limited, 'the login is rate-limited');

@@ -19,7 +19,11 @@
    Events side (the «Ивенты» tab): /admin/api/events reads the settings and the live state of the three events — the
    «Царь горы» race, the cargo drop and the storm; /events/<kind> tunes the rules and the auto-run flag (events.mjs
    keeps them in server/data/events.json), /events/holy/start|stop|next and /events/cargo/drop|remove|next drive the
-   events by hand, /events/reset restores the defaults. The storm settings apply to the next match. */
+   events by hand, /events/reset restores the defaults. The storm settings apply to the next match.
+   Restart: POST /admin/api/restart saves the books, warns the fight in the chat and lets the process exit (code 0)
+   after a short grace — the supervisor brings it back (pm2 autorestart, systemd Restart=always); a bare `node
+   server/index.mjs` without a supervisor just stops. The sessions and the login tries live in the process memory,
+   so the panel asks to log in again once the new process is up. A second restart while one is pending is refused. */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -40,6 +44,7 @@ export function createAdmin({ pass, game, accounts = null, board = null, teams =
   const sessions = new Map();   // token → { at, ip }
   const hits = new Map();       // ip → { n, t } — the login tries
   const bootAt = Date.now();
+  let restarting = false;       // a restart is pending: the process exits in a moment, the second ask is refused
 
   /* ---- the journal: the server's console, the process warnings, the audit of the panel ---- */
   const logs = []; let logSeq = 1;
@@ -147,6 +152,15 @@ export function createAdmin({ pass, game, accounts = null, board = null, teams =
       return { bots };
     },
     'POST /cargo': () => game.cargo ? { code: 409, error: 'active' } : (game.cargoDrop(), { ok: true }),
+    // the restart: the books are saved, the fight hears the warning, the process goes — pm2/systemd raises it again
+    'POST /restart': () => {
+      if (restarting) return { code: 409, error: 'busy' };
+      restarting = true;
+      saveAll();
+      game.say('🛡 Админ: сервер перезагружается — зайдите снова через несколько секунд');
+      setTimeout(() => process.exit(0), 1500);   // the answer and the chat line reach the clients first
+      return { ok: true, inMs: 1500 };
+    },
     // the events: the settings and the auto-run flag (events.mjs), the live state from the game
     'GET /events': () => {
       if (!events) return { code: 501, error: 'off' };

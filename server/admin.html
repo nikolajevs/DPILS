@@ -330,6 +330,11 @@ pre.dump { background: #070b11; border: 1px solid var(--seam); border-radius: 8p
             <input type="text" id="sayText" maxlength="120" placeholder="Сообщение в чат всем игрокам…">
             <button class="btn btn-brick btn-sm" data-act="say">Отправить</button>
           </div>
+          <div class="controls" style="margin-top:12px">
+            <span class="hint">Сервер:</span>
+            <button class="btn btn-brick btn-sm" data-act="restart" id="restartBtn">⟳ Перезагрузить</button>
+            <span class="hint" id="restartHint">бой прервётся · данные сохранятся</span>
+          </div>
         </div>
       </div>
       <div class="grid2">
@@ -546,9 +551,9 @@ pre.dump { background: #070b11; border: 1px solid var(--seam); border-radius: 8p
 'use strict';
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const ERR = { 'bad-pass': 'Неверный пароль', rate: 'Слишком много попыток — подождите 10 минут', 'no-session': 'Сессия истекла — войдите снова', off: 'Отключено на этом сервере', 'no-user': 'Аккаунт не найден', 'no-player': 'Игрок уже вышел', 'no-team': 'Команда не найдена', 'not-member': 'Игрок не в команде', active: 'Уже идёт — остановите или дождитесь конца', idle: 'Сейчас не идёт', storm: 'Идёт шторм — ивент недоступен', round: 'Раунд завершён — дождитесь нового', 'no-players': 'В бою никого нет', 'bad-cfg': 'Неверное значение настройки', empty: 'Пустое сообщение', 'bad-request': 'Сервер не понял запрос', internal: 'Ошибка на сервере', 'bad-name': 'Ник: 2–16 символов — буквы, цифры, пробел, _ . -', 'bad-pass-account': 'Пароль: 6–128 символов' };
+const ERR = { 'bad-pass': 'Неверный пароль', rate: 'Слишком много попыток — подождите 10 минут', 'no-session': 'Сессия истекла — войдите снова', off: 'Отключено на этом сервере', 'no-user': 'Аккаунт не найден', 'no-player': 'Игрок уже вышел', 'no-team': 'Команда не найдена', 'not-member': 'Игрок не в команде', active: 'Уже идёт — остановите или дождитесь конца', idle: 'Сейчас не идёт', storm: 'Идёт шторм — ивент недоступен', round: 'Раунд завершён — дождитесь нового', 'no-players': 'В бою никого нет', 'bad-cfg': 'Неверное значение настройки', empty: 'Пустое сообщение', 'bad-request': 'Сервер не понял запрос', internal: 'Ошибка на сервере', busy: 'Сервер уже перезагружается', 'bad-name': 'Ник: 2–16 символов — буквы, цифры, пробел, _ . -', 'bad-pass-account': 'Пароль: 6–128 символов' };
 const WHERE = { lobby: 'лобби', train: 'тренировка', game: 'бой', storm: 'шторм' };
-const state = { tab: 'overview', period: 'all', sort: 'kills', overview: null, debug: null, events: null, logLevel: '', logPaused: false, logCursor: 0, logLines: [], logSeenErr: 0, logErrTotal: 0, openDumps: new Set() };
+const state = { tab: 'overview', period: 'all', sort: 'kills', overview: null, debug: null, events: null, logLevel: '', logPaused: false, logCursor: 0, logLines: [], logSeenErr: 0, logErrTotal: 0, openDumps: new Set(), restarting: false };
 let token = sessionStorage.getItem('dpils.admin.token') || '';
 
 /* ---- the doors ---- */
@@ -611,7 +616,7 @@ function showLogin() { token = ''; sessionStorage.removeItem('dpils.admin.token'
 function showApp() { $('#login').hidden = true; $('#app').hidden = false; setTab(state.tab); }
 $('#loginForm').addEventListener('submit', async e => {
   e.preventDefault();
-  const err = $('#loginErr'); err.textContent = '';
+  const err = $('#loginErr'); err.textContent = ''; err.style.color = '';
   try {
     const r = await fetch('/admin/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pass: $('#pass').value }) });
     const j = await r.json().catch(() => null);
@@ -621,6 +626,30 @@ $('#loginForm').addEventListener('submit', async e => {
   } catch (e2) { err.textContent = 'Сервер недоступен'; }
 });
 $('#logout').onclick = () => run(async () => { await fetch('/admin/logout', { method: 'POST', headers: { 'x-admin-token': token } }).catch(() => {}); showLogin(); });
+
+/* ---- the restart: the process goes down, the supervisor (pm2/systemd) raises it again; the session dies with it ---- */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function waitRestart() {
+  state.restarting = true;
+  const btn = $('#restartBtn'), hint = $('#restartHint');
+  btn.disabled = true; btn.textContent = '⟳ Перезагрузка…';
+  hint.textContent = 'ждём остановки процесса…';
+  toast('Сервер перезагружается — бой прервётся');
+  await sleep(2500);   // the old process exits ~1.5 s after its answer
+  hint.textContent = 'ждём запуска нового процесса…';
+  let up = false;
+  for (let k = 0; k < 60 && !up; k++) {
+    try { up = (await fetch('/health', { cache: 'no-store' })).ok; } catch (e) { /* still down */ }
+    if (!up) await sleep(1000);
+  }
+  state.restarting = false;
+  btn.disabled = false; btn.textContent = '⟳ Перезагрузить';
+  hint.textContent = 'бой прервётся · данные сохранятся';
+  showLogin();
+  const err = $('#loginErr');
+  err.textContent = up ? 'Сервер перезагружен — войдите снова' : 'Сервер не вернулся за минуту — проверьте pm2/systemd';
+  err.style.color = up ? 'var(--pulse)' : '';
+}
 
 /* ---- tabs ---- */
 function setTab(t) {
@@ -632,6 +661,7 @@ function setTab(t) {
 }
 $('#tabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) setTab(b.dataset.tab); });
 function refresh() {
+  if (state.restarting) return;   // the server is down on purpose: no polling, no error toasts
   if (state.tab === 'overview') run(loadOverview);
   else if (state.tab === 'players') run(loadPlayers);
   else if (state.tab === 'accounts') run(loadAccounts);
@@ -641,8 +671,8 @@ function refresh() {
   else if (state.tab === 'debug') run(loadDebug);
   else if (state.tab === 'logs') run(() => loadLogs(true));
 }
-setInterval(() => { if (!document.hidden && token && !$('#app').hidden && (state.tab === 'overview' || state.tab === 'players' || state.tab === 'events' || state.tab === 'debug')) refresh(); }, 3000);
-setInterval(() => { if (!document.hidden && token && !$('#app').hidden && state.tab === 'logs' && !state.logPaused) run(loadLogs); }, 2000);
+setInterval(() => { if (!document.hidden && token && !$('#app').hidden && !state.restarting && (state.tab === 'overview' || state.tab === 'players' || state.tab === 'events' || state.tab === 'debug')) refresh(); }, 3000);
+setInterval(() => { if (!document.hidden && token && !$('#app').hidden && !state.restarting && state.tab === 'logs' && !state.logPaused) run(loadLogs); }, 2000);
 
 /* ---- overview ---- */
 async function loadOverview() {
@@ -845,6 +875,14 @@ document.addEventListener('click', e => {
   if (act === 'logdownload') { download('dpils-server-log.txt', state.logLines.map(e => new Date(e.t).toISOString() + ' [' + e.level + '] ' + e.text).join('\n'), 'text/plain'); toast('Журнал скачан'); return; }
   if (act === 'bots') return run(async () => { const j = await api('bots', { method: 'POST', body: { n: +$('#botN').value } }); toast('Ботов в бою: ' + j.bots); loadOverview(); });
   if (act === 'cargo') return run(async () => { await api('cargo', { method: 'POST', body: {} }); toast('📦 Груз сброшен — ищите дым-маяк'); });
+  if (act === 'restart') return run(async () => {
+    const n = state.overview ? state.overview.server.players : 0;
+    const word = n % 10 === 1 && n % 100 !== 11 ? 'игрок' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'игрока' : 'игроков';
+    const ok = await ask({ title: 'Перезагрузка сервера', text: 'Процесс сервера будет остановлен и поднят заново (pm2/systemd). Бой прервётся' + (n ? ': ' + n + ' ' + word + ' в бою получат «соединение закрыто» и смогут зайти снова' : '') + '. Аккаунты, таблица лидеров и команды сохранятся. Сессия панели сбросится — после запуска нужно войти заново.', okText: 'Перезагрузить', danger: true });
+    if (!ok) return;
+    await api('restart', { method: 'POST', body: {} });
+    await waitRestart();
+  });
   if (act === 'ev-apply') return run(async () => {
     const card = document.getElementById('ev-' + kind), cfg = {};
     for (const inp of card.querySelectorAll('input[data-key]')) {
