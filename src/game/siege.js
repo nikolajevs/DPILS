@@ -121,7 +121,7 @@ export function setSiege(m, mySide) {
   if (!wantDome && domeVis && !domeFall && prevPhase === 'prep') domeFall = performance.now();   // the assault: the dome collapses
   if (!wantDome && !domeVis) clearDome();
   if (m.phase === 'prep' || m.phase === 'assault') buildAltar();
-  $('siegeHud').hidden = false; document.body.classList.add('siege');
+  document.body.classList.add('siege');
   paintHud(first || prevPhase !== m.phase);
   return { first, prevPhase };
 }
@@ -129,6 +129,9 @@ export function siegeYou(m) { S.mySide = m.side || null; paintHud(false); }
 export function siegeMySide() { return S.mySide; }
 function paintHud(phaseChanged) {
   const reg = S.phase === 'reg', prep = S.phase === 'prep', assault = S.phase === 'assault';
+  // the registration window stays with the fighters only: once the registration is over, whoever did not sign up
+  // (or has left the siege) no longer sees the panel — the dome and the altar on the minimap remain for everyone
+  $('siegeHud').hidden = !(reg || S.mySide);
   const sub = reg ? 'регистрация сторон · 1812' : prep ? 'подготовка · купол поднят' : 'штурм крепости · алтарь в саду';
   const subEl = $('siegeSub'); if (subEl.textContent !== sub) subEl.textContent = sub;
   const ba = $('siegeJoinA'), bd = $('siegeJoinD');
