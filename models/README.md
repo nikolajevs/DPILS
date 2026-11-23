@@ -56,7 +56,7 @@ This work is based on the models above, each by its author, licensed under [CC-B
 - AR-15 в произвольных единицах (6,79 по стволу → 0,90 м, масштаб 0,133), дуло на −z (поворот 180°); из сцены удалены отдельные патроны (`bullets`) и GPS-приёмник (`gps`), прицел ACOG оставлен как часть ствола;
 - текстуры 4096 px сжаты в WebP 1024 (карты metal/rough и emissive — 512), геометрия упакована `EXT_meshopt_compression`.
 
-Итог: M4A1 2,04 МБ / 58,6 тыс. треугольников, SCAR-L 0,86 МБ / 21,4 тыс., AR-15 1,07 МБ / 28,5 тыс. Хват обеих рук и площадка коллиматора для каждого — в таблицах `HOLD` и `SIGHT_MOUNT` ([src/game/viewmodel.js](../src/game/viewmodel.js)); статы — в `WEAPONS` ([server/combat.mjs](../server/combat.mjs) и [src/game/mp.js](../src/game/mp.js)). Все три лежат в рюкзаке с начала боя (`PACK`) и меняются с экипированным стволом клавишами 6–8 или из инвентаря. Для скачивания с Sketchfab нужен аккаунт и его API-токен.
+Итог: M4A1 2,04 МБ / 58,6 тыс. треугольников, SCAR-L 0,86 МБ / 21,4 тыс., AR-15 1,07 МБ / 28,5 тыс. Хват обеих рук, площадка коллиматора и место оптики 8x для каждого — в таблицах `HOLD`, `SIGHT_MOUNT` и `OPTIC_MOUNT` ([src/game/viewmodel.js](../src/game/viewmodel.js)); статы — в `WEAPONS` ([server/combat.mjs](../server/combat.mjs) и [src/game/mp.js](../src/game/mp.js)). Все три лежат в рюкзаке с начала боя (`PACK`) и меняются с экипированным стволом клавишами 6–8 или из инвентаря. Для скачивания с Sketchfab нужен аккаунт и его API-токен.
 
 ## Персонажи
 
