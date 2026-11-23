@@ -240,9 +240,9 @@ function groundBolt(B, x, z, top) {
   const R = B.R; R.n = 0;
   const gy = terrainH(x, z), H = top - gy, lean = H * 0.32;
   const p = zig(x + (Math.random() - 0.5) * lean, top, z + (Math.random() - 0.5) * lean, x, gy - 0.5, z, 7, 0.24);
-  chain(R, p, 2.2, 1, 1, 0, 1, 0);
+  chain(R, p, 1.5, 1, 1, 0, 1, 0);   // the half-width with its glow: close by a wider ribbon blooms into a pillar
   const n = p.length / 3, nf = 3 + Math.floor(Math.random() * 5);
-  for (let f = 0; f < nf; f++) { const at = Math.floor(n * (0.05 + Math.random() * 0.6)); fork(R, p, at, H, H * (0.12 + Math.random() * 0.28), 1.1, 0.4 + Math.random() * 0.3, at / (n - 1), gy + 6, 1); }
+  for (let f = 0; f < nf; f++) { const at = Math.floor(n * (0.05 + Math.random() * 0.6)); fork(R, p, at, H, H * (0.12 + Math.random() * 0.28), 0.75, 0.4 + Math.random() * 0.3, at / (n - 1), gy + 6, 1); }
   commit(R);
   B.glow.position.set(x, gy + 3, z); B.ground = true; B.hy = gy + H * 0.55; B.reach = 150;
 }
@@ -251,9 +251,9 @@ function cloudBolt(B, x, z, tx, tz, y) {
   const R = B.R; R.n = 0;
   const len = 170 + Math.random() * 330, rise = (Math.random() - 0.5) * 70;
   const p = zig(x - tx * len / 2, y - rise / 2, z - tz * len / 2, x + tx * len / 2, y + rise / 2, z + tz * len / 2, 6, 0.22);
-  chain(R, p, 1.6, 0.85, 0.85, 0, 1, 0);
+  chain(R, p, 1.2, 0.85, 0.85, 0, 1, 0);
   const n = p.length / 3, nf = 4 + Math.floor(Math.random() * 5), floor = terrainH(x, z) + 60;
-  for (let f = 0; f < nf; f++) { const at = Math.floor(n * (0.05 + Math.random() * 0.85)); fork(R, p, at, len, len * (0.12 + Math.random() * 0.25), 0.9, 0.35 + Math.random() * 0.3, at / (n - 1), floor, 1); }
+  for (let f = 0; f < nf; f++) { const at = Math.floor(n * (0.05 + Math.random() * 0.85)); fork(R, p, at, len, len * (0.12 + Math.random() * 0.25), 0.7, 0.35 + Math.random() * 0.3, at / (n - 1), floor, 1); }
   commit(R);
   B.ground = false; B.hy = y; B.reach = len * 0.5;
 }
@@ -286,7 +286,7 @@ function boltTick(B, dt) {
     u.uGrow.value = 1; B.br = Math.exp(-(t - B.grow) * 15);
   }
   u.uFlash.value = B.I; u.uBranch.value = B.br;
-  if (B.ground) { const s = 26 + 30 * B.I; B.glow.scale.set(s, s, 1); B.glow.material.color.setRGB(1.2 * B.I, 1.7 * B.I, 2.6 * B.I); }
+  if (B.ground) { const s = 18 + 24 * B.I; B.glow.scale.set(s, s, 1); B.glow.material.color.setRGB(1.2 * B.I, 1.7 * B.I, 2.6 * B.I); }
 }
 
 /* ---------- the arcs ---------- */
