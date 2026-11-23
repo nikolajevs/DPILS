@@ -31,7 +31,7 @@ import { playerKey, boardOn, setBoardOn, account } from './identity.js';
 import { initLeaders } from './leaders.js';
 import { rest } from '../core/pause.js';
 import { $, reduceMotion } from '../core/env.js';
-import { bellSound, boomSound, burnSound, crackSound, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeHiss, stepSound, stormZap, thunderSound } from './sfx.js';
+import { arcCrackle, bellSound, boomSound, burnSound, crackSound, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeHiss, stepSound, stormBed, stormZap, thunderSound } from './sfx.js';
 import { clearStorm, setStorm, stormAudio, stormMapOverlay, stormState, stormTick } from './storm.js';
 import { carAt, carPath } from '../world/car-hit.js';
 import { setWhere } from './social.js';
@@ -379,6 +379,8 @@ function ac() {   // the audio context of the game sounds, with one volume knob 
 onChange(() => { if (actx) actx.master.gain.value = SET.vol; if (voice) voice.setVolume(SET.voiceVol); });
 stormAudio.thunder = (vol, d, pan) => thunderSound(ac(), actx.master, vol, d, pan);   // the storm speaks through the game's own audio: one context, one volume knob
 stormAudio.zap = vol => stormZap(ac(), actx.master, vol);
+stormAudio.arc = (vol, pan) => arcCrackle(ac(), actx.master, vol, pan);
+stormAudio.bed = () => stormBed(ac(), actx.master);
 holyAudio.bell = (f0, vol, d, pan, delay) => bellSound(ac(), actx.master, f0, vol, d, pan, delay);   // the church bells of the race ring through the same audio
 siegeNet.join = side => { if (MP.ws) MP.ws.send(JSON.stringify({ t: 'siegeJoin', side })); };   // the siege registration buttons send through the socket
 // a blast close by (k: 1 at the heart, 0 at the edge): after its bang the world goes dull and the ears ring, the closer the longer

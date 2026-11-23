@@ -183,23 +183,67 @@ function fireSound(ctx, out, vol = 1, d = 0, pan = 0) {
 function burnSound(ctx, out, vol = 1) {
   try { for (let i = 0, n = 3 + (Math.random() * 3 | 0); i < n; i++) noisePlay(ctx, out, { type: 'bandpass', freq: 1800 + Math.random() * 2600, q: 1.2, vol: vol * 0.3 * (0.4 + Math.random() * 0.6), dur: 0.04 + Math.random() * 0.05, attack: 0.003, delay: Math.random() * 0.3 }); } catch (e) {}
 }
-// the voice of the storm (the «Шторм» event, src/game/storm.js): the thunder rolling over the city — a long low
-// rumble with a crack at its head and a second roll behind, later and duller with distance; and the electric zap of
-// the burn outside the safe circle. No recording of them exists in the sets, so these are always synthesised.
+// the voice of the storm (src/game/storm.js, storm-fx.js): the thunder, the burn outside the safe circle, the arcs
+// over the ground and the hum of the wall. No recording of them exists in the sets, so these are always synthesised.
+// the thunder of a bolt d metres away (src/game/storm-fx.js): it comes at the speed of sound (capped, so a far one
+// still answers its flash), and the air takes the highs off with the distance. Close by the channel cracks — a hard
+// broadband snap and the tearing of its forks — then the boom; from afar only the roll, the farther parts of the
+// channel arriving later and duller, each lump of it from a slightly other side.
 function thunderSound(ctx, out, vol = 1, d = 0, pan = 0) {
   try {
-    const dl = d / 340;
-    noisePlay(ctx, out, { type: 'bandpass', freq: 1500, q: 0.7, vol: vol * 0.35, dur: 0.22, attack: 0.005, delay: dl, pan });
-    noisePlay(ctx, out, { type: 'lowpass', freq: 240, vol: vol * 0.9, dur: 2.6, attack: 0.06, delay: dl + 0.02, pan });
-    noisePlay(ctx, out, { type: 'lowpass', freq: 520, vol: vol * 0.45, dur: 1.5, attack: 0.04, delay: dl + 0.09, pan });
-    noisePlay(ctx, out, { type: 'lowpass', freq: 150, vol: vol * 0.55, dur: 2.4, attack: 0.3, delay: dl + 0.5, pan: pan * 0.6 });
+    const dl = Math.min(3.5, d / 340), near = Math.max(0, 1 - d / 650), air = 1 / (1 + d / 900);
+    if (near > 0) {
+      noisePlay(ctx, out, { type: 'highpass', freq: 900, q: 0.5, vol: vol * near * 0.95, dur: 0.16, attack: 0.002, delay: dl, pan });
+      for (let i = 0; i < 6; i++) noisePlay(ctx, out, { type: 'bandpass', freq: 700 + Math.random() * 2600, q: 0.9, vol: vol * near * (0.5 - i * 0.06), dur: 0.06 + Math.random() * 0.08, attack: 0.003, delay: dl + 0.03 + i * (0.03 + Math.random() * 0.05), pan: Math.max(-1, Math.min(1, pan * (0.7 + Math.random() * 0.6))) });
+    }
+    noisePlay(ctx, out, { type: 'lowpass', freq: 110 + 90 * air, vol: vol * (0.5 + 0.45 * near), dur: 1.2, attack: 0.012 + 0.06 * (1 - near), delay: dl + 0.02, pan });
+    for (let i = 0; i < 4; i++) noisePlay(ctx, out, { type: 'lowpass', freq: (90 + Math.random() * 240) * (0.45 + 0.55 * air), q: 0.6, vol: vol * (0.5 - i * 0.08), dur: 1.5 + Math.random() * 1.8, attack: 0.15 + Math.random() * 0.4, delay: dl + 0.2 + i * (0.35 + Math.random() * 0.5), pan: pan * (1 - i * 0.2) });
   } catch (e) {}
 }
+// the burn of the storm outside the circle (mp.js, on the server's 'hit' from the storm)
 function stormZap(ctx, out, vol = 1) {
   try {
     noisePlay(ctx, out, { type: 'bandpass', freq: 2600, q: 1.4, vol: vol * 0.35, dur: 0.09, attack: 0.004 });
     noisePlay(ctx, out, { type: 'highpass', freq: 4200, vol: vol * 0.2, dur: 0.05, attack: 0.002, delay: 0.02 });
   } catch (e) {}
+}
+// an arc crawling over the ground (storm-fx.js): a handful of dry clicks in a tenth of a second, the hiss under them
+function arcCrackle(ctx, out, vol = 1, pan = 0) {
+  try {
+    const n = 3 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < n; i++) noisePlay(ctx, out, { type: 'bandpass', freq: 2200 + Math.random() * 4500, q: 2.2, vol: vol * (0.25 + Math.random() * 0.3), dur: 0.012 + Math.random() * 0.02, attack: 0.001, delay: Math.random() * 0.12, pan });
+    noisePlay(ctx, out, { type: 'highpass', freq: 5200, vol: vol * 0.12, dur: 0.14, attack: 0.01, pan });
+  } catch (e) {}
+}
+// the hum of the storm's wall (storm-fx.js), on while you are near it or in it: a low drone of mains hum with a slow
+// beat, a rumble of wind and an electric hiss that wanders in pitch. The caller sets it every frame: the loudness, the
+// side and how bright it is (bright 0: only the drone and the rumble get through, far from the wall; 1: right at it)
+function stormBed(ctx, out) {
+  const t = ctx.currentTime, src = [];
+  const pos = ctx.createGain(), pan = ctx.createStereoPanner(), tone = ctx.createBiquadFilter();
+  pos.gain.value = 0; tone.type = 'lowpass'; tone.frequency.value = 600; tone.Q.value = 0.5;
+  tone.connect(pos); pos.connect(pan); pan.connect(out);
+  const band = (type, freq, q, gain) => {
+    const s = ctx.createBufferSource(); s.buffer = noise(ctx); s.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+    const g = ctx.createGain(); g.gain.value = gain; s.connect(f); f.connect(g); g.connect(tone); s.start(t, Math.random() * 1.5); src.push(s);
+    return f;
+  };
+  band('lowpass', 260, 0.7, 0.55);   // the wind of the storm
+  const hiss = band('bandpass', 1900, 0.7, 0.16);   // the electric hiss
+  const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 0.35; lg.gain.value = 700; lfo.connect(lg); lg.connect(hiss.frequency); lfo.start(t); src.push(lfo);
+  const hum = ctx.createGain(); hum.gain.value = 0.07; hum.connect(tone);
+  for (const f of [50, 50.6, 100.3]) { const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.connect(hum); o.start(t); src.push(o); }
+  const trem = ctx.createOscillator(), tg = ctx.createGain(); trem.frequency.value = 6.5; tg.gain.value = 0.035; trem.connect(tg); tg.connect(hum.gain); trem.start(t); src.push(trem);
+  return {
+    set(vol, side, bright) {
+      const n = ctx.currentTime;
+      pos.gain.setTargetAtTime(Math.max(0, vol), n, 0.25);
+      pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, side)), n, 0.2);
+      tone.frequency.setTargetAtTime(500 + 7000 * bright * bright, n, 0.3);
+    },
+    stop() { try { const n = ctx.currentTime; pos.gain.cancelScheduledValues(n); pos.gain.setTargetAtTime(0, n, 0.3); for (const s of src) s.stop(n + 1.5); } catch (e) {} },
+  };
 }
 // the church bell of the «Царь горы» (src/game/holy.js): a bronze bell is not a harmonic tone — its partials are
 // inharmonic (hum, prime, a minor tierce, quint, nominal and the higher ranks), each dying at its own rate, and the
@@ -228,4 +272,4 @@ function bellSound(ctx, out, f0 = 220, vol = 1, d = 0, pan = 0, delay = 0) {
     n.connect(nf); nf.connect(ng); ng.connect(head); n.start(t); n.stop(t + 0.08);
   } catch (e) {}
 }
-export { bellSound, boomSound, burnSound, crackSound, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeHiss, stepSound, stormZap, thunderSound };
+export { arcCrackle, bellSound, boomSound, burnSound, crackSound, fireSound, hitSound, loadSounds, nadeBounce, shellTink, shotSound, smokeHiss, stepSound, stormBed, stormZap, thunderSound };
