@@ -4,8 +4,10 @@
    first half hour and the «Шторм» in the last twenty minutes to find the winner (server/storm.mjs). This file is the
    network: WebSockets for the players and /health for the page (the lobby reads the matches from it).
    One process holds the list of servers: SERVERS games (default 4) on one port, one accounts book, one leaderboard and
-   one set of teams for all of them. Each next server starts its matches SERVER_STEP_MIN minutes (default 15) after the
-   one before, so when the door of one match closes another one is open; its day (the sun) starts with its match. The
+   one set of teams for all of them. Each next server starts its matches SERVER_STEP_MIN minutes after the one before
+   (by default the match shared evenly: two hours over four servers is 30 minutes — the length of the door, so the
+   door of the next match opens as the one before closes and some match is always open to join, the storms never
+   overlap, and the four skies stand a quarter of the day apart); its day (the sun) starts with its match. The
    page joins a server by the WebSocket path /play/<n> (n from 1; / is the first one) and reads all of them from
    /health (the field servers).
      PORT, SERVER_NAME (the name of the list: with several servers they are «<name> 1», «<name> 2»…), SERVERS (1–8), SERVER_STEP_MIN, WIN_SCORE (only with MATCH=off: a match has no kill target), ARENA, BOTS, BOT_LEVEL, LEADERBOARD (file of the leaderboard, default server/data/leaderboard.json; off = none),
@@ -54,7 +56,7 @@ const clans = TM ? name => { const t = TM.of(name); return t && { id: t.id, tag:
 const DAY_LEN = (+process.env.DAY_MIN || 120) * 60000;   // one match is one day of the game: midnight to midnight
 // the list of servers: the n-th starts its matches (and its day) (n−1)·STEP later than the first; the bots fill each one
 const N_SERVERS = Math.max(1, Math.min(8, Math.round(+(process.env.SERVERS ?? 4)) || 1));
-const STEP_MS = Math.max(0, +(process.env.SERVER_STEP_MIN ?? 15) || 0) * 60000;
+const STEP_MS = (process.env.SERVER_STEP_MIN ?? '') !== '' ? Math.max(0, +process.env.SERVER_STEP_MIN || 0) * 60000 : Math.round(DAY_LEN / N_SERVERS);   // default: evenly over the match
 const BASE_NAME = String(process.env.SERVER_NAME || 'Даугавпилс').slice(0, 36);
 const games = Array.from({ length: N_SERVERS }, (_, i) => {
   const off = (i * STEP_MS) % DAY_LEN;
@@ -72,7 +74,7 @@ const health = () => ({ ...game.health(), servers: games.map(g => { const h = g.
 const social = TM ? createSocial({ accounts: ACC, teams: TM, onTeams: () => { for (const g of games) g.refreshClans(); } }) : null;
 // the admin panel (admin.mjs): the page /admin and its api; off until ADMIN_PASS is set. clients() reads the WebSocket
 // crowd lazily — wss below is ready by the time the first request comes
-const ADMIN = createAdmin({ pass: process.env.ADMIN_PASS || '', games, accounts: ACC, board: LB, teams: TM, social, events: EVENTS, clients: () => wss.clients.size,
+const ADMIN = createAdmin({ pass: process.env.ADMIN_PASS || '', games, stepMin: STEP_MS / 60000, accounts: ACC, board: LB, teams: TM, social, events: EVENTS, clients: () => wss.clients.size,
   sockets: () => [...wss.clients].map(c => ({ ip: (c._socket && c._socket.remoteAddress) || '?', path: c.where || '/', joined: !!(c.h && c.h.joined), age: Math.round((Date.now() - c.since) / 1000), buffered: c.bufferedAmount, alive: !!c.live })),
   files: [{ name: 'accounts.json', path: ACC_FILE }, { name: 'leaderboard.json', path: LB_FILE }, { name: 'teams.json', path: TM_FILE }, { name: 'events.json', path: EV_FILE }] });
 

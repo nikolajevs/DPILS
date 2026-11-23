@@ -10,7 +10,7 @@ import { openLobby, closeLobby } from './lobby.js';
    that choice, with a way back; and within them, a setting shows only when it means something: the place to appear
    only in the open city (in an arena you appear on its base points). There are no sides to choose: everybody fights
    for himself, the only allies are the own team of the players (src/ui/team.js). There is one address — the page's own (src/game/server.js) —
-   and on it the list of servers: the same city, matches started 15 minutes apart; the online card lists them and picks one (src/ui/lobby.js).
+   and on it the list of servers: the same city, matches started 30 minutes apart; the online card lists them and picks one (src/ui/lobby.js).
    The keys live in the fight («Клавиши», F1), not on the start card; the card's footer link opens the credits
    modal with the data sources and licences. The time of day is a setting of the training (авто, день, вечер, ночь),
    kept in localStorage; online the server's day runs (server/daycycle.mjs) and there is nothing to choose. The storm is
