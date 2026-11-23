@@ -32,35 +32,33 @@ const fmt = ms => { const s = Math.max(0, Math.ceil(ms / 1000)); return Math.flo
    picture. */
 const DOME_VS = [
   'uniform float uSquash;',
-  'varying vec3 vDir; varying vec3 vW; varying vec3 vN; varying vec3 vV;',
+  'varying vec2 vUv; varying vec3 vDir; varying vec3 vW; varying vec3 vN; varying vec3 vV;',
   'void main(){',
-  '  vDir = normalize(position);',
+  '  vUv = uv; vDir = normalize(position);',
   '  vec4 wp = modelMatrix * vec4(position, 1.0); vW = wp.xyz;',
   '  vN = normalize(vec3(normal.x, normal.y / uSquash, normal.z));',   // the world normal of the squashed sphere
   '  vV = normalize(cameraPosition - wp.xyz);',
   '  gl_Position = projectionMatrix * viewMatrix * wp;',
   '}',
 ].join('\n');
+// one hex grid on the sphere UV, no derivatives: a triplanar grid with fwidth made the ANGLE/D3D11 shader compiler
+// chew for tens of seconds, and every GL call behind it froze the page (the heartbeat then dropped the player).
+// This is the original dome's cheap topology with the whole living-shader layering on top.
 const DOME_FS = [
   'uniform vec3 uColor; uniform float uTime; uniform float uOpacity; uniform float uRise; uniform float uFall; uniform float uHot; uniform float uFlicker; uniform vec4 uHits[6];',
-  'varying vec3 vDir; varying vec3 vW; varying vec3 vN; varying vec3 vV;',
+  'varying vec2 vUv; varying vec3 vDir; varying vec3 vW; varying vec3 vN; varying vec3 vV;',
   'float hexDist(vec2 p){ p = abs(p); return max(dot(p, vec2(0.5, 0.8660254)), p.x); }',
   'vec4 hexCell(vec2 uv){ vec2 r = vec2(1.0, 1.7320508); vec2 h = r * 0.5; vec2 a = mod(uv, r) - h; vec2 b = mod(uv - h, r) - h; vec2 gv = dot(a, a) < dot(b, b) ? a : b; return vec4(gv, uv - gv); }',
   'float hash21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }',
-  'float lineOf(vec4 c){ float d = hexDist(c.xy); float w = fwidth(d) * 1.4 + 0.012; return smoothstep(0.44 - w, 0.44 + w, d); }',
-  'float glowOf(vec4 c){ return smoothstep(0.26, 0.5, hexDist(c.xy)); }',
   'void main(){',
-  // triplanar hex grid over the direction: three projections blended by the normal, so the plates stay uniform
-  '  vec3 ad = abs(vDir); vec3 w = ad * ad * ad * ad; w /= (w.x + w.y + w.z);',
-  '  float k = 110.0;',
-  '  vec4 cx = hexCell(vDir.yz * k); vec4 cy = hexCell(vDir.xz * k); vec4 cz = hexCell(vDir.xy * k);',
-  '  float line = lineOf(cx) * w.x + lineOf(cy) * w.y + lineOf(cz) * w.z;',
-  '  float glow = glowOf(cx) * w.x + glowOf(cy) * w.y + glowOf(cz) * w.z;',
-  '  float h = hash21(cx.zw) * w.x + hash21(cy.zw) * w.y + hash21(cz.zw) * w.z;',
+  '  vec4 cell = hexCell(vUv * vec2(220.0, 70.0));',
+  '  float hd = hexDist(cell.xy);',
+  '  float line = smoothstep(0.075, 0.0, 0.5 - hd);',
+  '  float glow = smoothstep(0.26, 0.5, hd);',
+  '  float h = hash21(cell.zw);',
   '  float pulse = 0.6 + 0.4 * sin(uTime * (0.5 + h * 0.9) + h * 40.0);',   // each cell breathes at its own rate
   '  float q = floor(uTime * 1.7); float ft = fract(uTime * 1.7);',
-  '  float h2 = hash21(cx.zw + q * 7.31) * w.x + hash21(cy.zw + q * 7.31) * w.y + hash21(cz.zw + q * 7.31) * w.z;',
-  '  float spark = smoothstep(0.975, 0.995, h2) * (1.0 - ft) * (1.0 - ft);',   // a few cells flash as they charge
+  '  float spark = smoothstep(0.975, 0.995, hash21(cell.zw + q * 7.31)) * (1.0 - ft) * (1.0 - ft);',   // a few cells flash as they charge
   '  float ndv = abs(dot(normalize(vN), normalize(vV)));',
   '  float f1 = pow(1.0 - ndv, 2.0); float f2 = pow(1.0 - ndv, 5.0);',
   '  float bp = fract(vDir.y * 1.4 - uTime * 0.1);',
@@ -262,13 +260,6 @@ function buildDome(d) {
   const motes = new THREE.Points(mg, moteMat);
   motes.position.set(d.cx, gy - 3, d.cz); motes.renderOrder = 15; motes.frustumCulled = false; motes.userData.noProbe = true; scene.add(motes);
   domeLight.position.set(d.cx, gy + 70, d.cz); domeLight.distance = d.r * 2.6;
-  // the loading-time warmup may have compiled under another tone mapping (lighting.js sets it later): compile the
-  // dome's programs again, in parallel, off the main thread — a synchronous first compile here would freeze the
-  // page for tens of seconds and the server's heartbeat would drop the player. The meshes stay hidden until the
-  // programs are ready, so the first drawn frame never falls back to a synchronous compile.
-  for (const m of [glass, shell, ring, motes]) m.visible = false;
-  const show = () => { for (const m of [glass, shell, ring, motes]) m.visible = true; };
-  renderer.compileAsync(scene, camera).then(show, show);
   domeVis = { d: { ...d }, gy, geo, glass, shell, ring, motes, u: domeU, hits: domeU.uHits.value, hitIdx: 0, rise: 0, shards: null, wave: null };
 }
 // the burst: seven hundred hex plates torn off the shell, each with its own hour, toss and spin (GPU-ballistic)
