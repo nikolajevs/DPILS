@@ -40,7 +40,7 @@ const TTL = 12 * 3600 * 1000, MAX_SESSIONS = 64, LOG_CAP = 1000;
 const ENV_KEYS = ['PORT', 'SERVER_NAME', 'SERVERS', 'SERVER_STEP_MIN', 'ARENA', 'BOTS', 'BOT_LEVEL', 'WIN_SCORE', 'MATCH', 'DAY_MIN', 'LEADERBOARD', 'ACCOUNTS', 'TEAMS', 'EVENTS', 'STATIC', 'NODE_ENV'];
 const mb = b => Math.round(b / 1048576 * 10) / 10;
 
-export function createAdmin({ pass, game: one = null, games = one ? [one] : [], accounts = null, board = null, teams = null, social = null, events = null, clients = () => 0, sockets = () => [], files = [] }) {
+export function createAdmin({ pass, game: one = null, games = one ? [one] : [], stepMin = 0, accounts = null, board = null, teams = null, social = null, events = null, clients = () => 0, sockets = () => [], files = [] }) {
   if (!pass) return { route: () => false, note: () => {} };   // no password — no panel: the paths fall through to the usual 404
   const page = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'admin.html'), 'utf8');
   const want = crypto.createHash('sha256').update(String(pass)).digest();
@@ -135,7 +135,7 @@ export function createAdmin({ pass, game: one = null, games = one ? [one] : [], 
         http: { total: http.total, perMin: perMin(), s4: http.s4, s5: http.s5 },
         counts: { accounts: accounts ? accounts.count() : null, board: board ? board.count() : null, teams: teams ? teams.count() : null, online: social ? social.online() : null },
         files: files.map(f => { try { const st = fs.statSync(f.path); return { name: f.name, size: st.size, mtime: st.mtimeMs }; } catch (e) { return { name: f.name, size: 0, mtime: 0 }; } }),
-        env: { name: process.env.SERVER_NAME || 'Даугавпилс', arena: process.env.ARENA || '', bots: process.env.BOTS || '0', level: process.env.BOT_LEVEL || 'normal', match: process.env.MATCH === 'off' ? 'off' : 'on', day: process.env.DAY_MIN || '120', servers: games.length, step: process.env.SERVER_STEP_MIN || '15' },
+        env: { name: process.env.SERVER_NAME || 'Даугавпилс', arena: process.env.ARENA || '', bots: process.env.BOTS || '0', level: process.env.BOT_LEVEL || 'normal', match: process.env.MATCH === 'off' ? 'off' : 'on', day: process.env.DAY_MIN || '120', servers: games.length, step: String(stepMin) },
       };
     },
     'GET /players': () => ({

@@ -172,13 +172,14 @@ try {
   ok(!(await api('players')).j.rows.some(r => !r.bot), 'the kicked human is out');
   ok((await api('kick', { method: 'POST', body: { id: 99999 } })).status === 404, 'kicking nobody is a 404');
 
-  // the list of servers: four games in one process, their matches 15 minutes apart, each on its own door /play/<n>
+  // the list of servers: four games in one process, their matches 30 minutes apart (the two hours shared evenly), each on its own door /play/<n>
   const hl = (await req('/health')).j;
   ok(hl.servers && hl.servers.length === 4 && hl.servers.map(v => v.name).join() === 'Тест 1,Тест 2,Тест 3,Тест 4' && hl.name === 'Тест 1' && hl.servers.every((v, i) => v.id === i + 1 && v.bots === (i ? 2 : 1) && v.match), 'the health lists four servers with their matches and bots (the first one set to 1 above), the first one on top');
   const L = hl.servers.map(v => v.match.left), mlen = hl.servers[0].match.len;
-  ok(L.every((x, i) => !i || Math.abs((((x - L[i - 1]) % mlen) + mlen) % mlen - 900000) < 3000), 'each next server ends its match 15 minutes after the one before', L.join());
-  ok(hl.servers.every((v, i) => !i || Math.abs((((hl.servers[i - 1].day.f - v.day.f) % 1) + 1) % 1 - 0.125) < 0.001), 'and its day runs 15 minutes behind: the midnight comes with its match');
-  ok((await api('overview')).j.servers.length === 4, 'the admin overview lists the servers');
+  ok(L.every((x, i) => !i || Math.abs((((x - L[i - 1]) % mlen) + mlen) % mlen - 1800000) < 3000), 'each next server ends its match 30 minutes after the one before: the match shared evenly', L.join());
+  ok(hl.servers.every((v, i) => !i || Math.abs((((hl.servers[i - 1].day.f - v.day.f) % 1) + 1) % 1 - 0.25) < 0.001), 'and its day runs 30 minutes behind: the midnight comes with its match');
+  const ov4 = (await api('overview')).j;
+  ok(ov4.servers.length === 4 && ov4.env.servers === 4 && ov4.env.step === '30', 'the admin overview lists the servers and their step');
   const ws3 = new WebSocket('ws://127.0.0.1:' + PORT + '/play/3');
   await new Promise((res, rej) => { ws3.once('open', res); ws3.once('error', rej); });
   const hello3 = waitFor(ws3, m => m.t === 'hello');
