@@ -19,11 +19,40 @@ import { prop, onProps, splitNade } from './props.js';
    never goes into a wall you stand at, and the near plane of the city (0.09–0.3 m, src/game/loop.js) does not cut the hands. */
 const FILE = 'models/fp_ak47.glb';
 const EYE = new THREE.Vector3(0, 1.598, 0.022);
-// where a picked-up sight sits on each weapon, in the frame of its file (metres, lens +z, mount bottom y=0):
+// where the picked-up red dot sits on each weapon (the optic: OPTIC_MOUNT below), in the frame of its file (metres, lens +z, mount bottom y=0):
 // the AK in the coordinates of its own file (the arms' bone carries it), the others from their grip (HOLD).
 // The top of the receiver was measured off the models (tools/sights.mjs builds the sights to the same convention).
 // The pistol's is on the top of its slide once avatar.js has levelled it.
 const SIGHT_MOUNT = [[-0.13, 1.5, 0.24], [0, 0.088, 0.1], [0, 0.045, 0.05], [0.01, 0.063, -0.055], [0, 0.112, 0], [0, 0.104, 0.04], [0, 0.084, 0.15], [0, 0.069, 0.28]];
+/* The 8× optic (item_optic.glb) is 36 cm long: its rings stand 7.5 cm apart (their feet 5.5 cm behind and 2 cm ahead of
+   the origin of the file, at y=0), and its tube is not in the middle of the box — the side turret pushes the box out, so
+   the tube's axis is 7.6 mm to the right of the origin (x −0.0076) and 3.65 cm above the feet. Where the red dot's spot
+   is would leave it hanging: the rings off the back of the receiver and the eyepiece over the stock (the AK), the
+   rings in the air (the shotgun, the Minimi), the tube through the gun's own sight (the M4's EOTech, the AR-15's ACOG,
+   the SCAR's rear aperture). So it has its own spots, measured off the models (the top of each gun cast down along the
+   bore, the underside of the optic cast up): both rings' feet on the rail or the receiver top, the tube over the bore,
+   the eyepiece about at the back of the receiver as on a real rifle, and nothing of the gun inside it — the AK's rear
+   sight leaf passes 3 mm under the tube, the SCAR's tube sits between its rear aperture and its front sight post, the
+   Minimi's over the aperture of its rear sight. */
+const OPTIC_X = 0.0076;   // from the origin of the optic's file to the axis of its tube
+const OPTIC_MOUNT = [
+  [-0.122 + OPTIC_X, 1.503, 0.395],   // AK: the rings on the receiver cover, the eyepiece at its back end, over the rear sight to the handguard
+  [OPTIC_X, 0.080, 0.18],   // Remington 870: on the top of the receiver
+  [0.0038 + OPTIC_X, 0.041, -0.015],   // SVD: on the receiver, the objective short of the handguard
+  [0.0092 + OPTIC_X, 0.064, 0],   // Makarov: on the slide (it is longer than the pistol both ways)
+  [OPTIC_X, 0.116, 0.06],   // Minimi: on the rail of the top cover, over the rear sight
+  [0.0006 + OPTIC_X, 0.104, 0.085],   // M4A1: on the flat top, over the folded rear sight; its EOTech goes (OWN_SIGHT)
+  [OPTIC_X, 0.084, 0.21],   // SCAR-L: on the rail between the rear aperture and the front sight post
+  [0.001 + OPTIC_X, 0.074, 0.13],   // AR-15: on the flat top in place of its ACOG (OWN_SIGHT)
+];
+// where a sight of this kind sits on weapon i (the frame of its file, as SIGHT_MOUNT)
+const mountOf = (kind, i) => (kind === 'optic' ? OPTIC_MOUNT : SIGHT_MOUNT)[i];
+// the sight a gun file comes with, taken off while a picked-up one is mounted in its place: the M4's EOTech is where any
+// sight goes; the AR-15's ACOG only gives way to the optic (the red dot stands ahead of it, looked over it)
+const OWN_SIGHT = { 5: { re: /^Spart_/, kinds: ['sight', 'optic'] }, 7: { re: /^acog/, kinds: ['optic'] } };
+// the meshes of a gun's own sight (a clone keeps the names of its file), and showing them for the mounted kind
+const ownSight = (i, model) => { const o = OWN_SIGHT[i], list = []; if (o) model.traverse(m => { if (m.isMesh && o.re.test(m.name)) list.push(m); }); return list; };
+const showOwn = (i, list, kind) => { const off = !!kind && !!OWN_SIGHT[i] && OWN_SIGHT[i].kinds.includes(kind); for (const m of list) m.visible = !off; };
 let loading = null, ak = null, settled = false;
 function loadAK() {
   if (!loading) loading = new Promise(res => import('three/addons/libs/meshopt_decoder.module.js').then(({ MeshoptDecoder }) => {   // the decoder of the packed geometry comes only with the game
@@ -131,7 +160,8 @@ function makeViewmodel(parent) {
     restInv.clone().multiply(new THREE.Matrix4().makeTranslation(ak.palm.R.clone().add(shift))).decompose(box.position, box.quaternion, box.scale);
     inner.position.copy(V3(sp.grip)).negate(); inner.add(model); box.add(inner); mz.position.copy(muzzleOf(src)).sub(V3(sp.grip)); box.add(mz); ak.root.add(box);
     FL.set(mz, { q: new THREE.Quaternion(), s: 1 });
-    guns[i] = { box, muzzle: mz, shift, dL: ak.palm.R.clone().add(shift).add(V3(sp.fore)).sub(V3(sp.grip)).sub(ak.palm.L) };
+    guns[i] = { box, muzzle: mz, shift, own: ownSight(i, model), dL: ak.palm.R.clone().add(shift).add(V3(sp.fore)).sub(V3(sp.grip)).sub(ak.palm.L) };
+    if (attachK[i]) placeScope(i);   // a sight mounted before the model came
     setWeapon(cur); return true;
   }
   function setWeapon(i) {
@@ -141,19 +171,22 @@ function makeViewmodel(parent) {
     mz.add(flash.group); flash.group.position.set(0, 0, 0); flash.group.quaternion.copy(p.q); flash.group.scale.setScalar(p.s);
     scopes.forEach((n, k) => { if (n) n.visible = k === i; });
   }
-  // the picked-up sights (props.js): one per weapon, on the receiver. The AK's rides the rifle's bone like the flash;
-  // the others ride their holder, from the grip of the file. attach(i, kind|null) swaps it; the models may come later.
-  const scopes = [null, null, null, null, null], attachK = [null, null, null, null, null];
+  // the picked-up sights (props.js): one per weapon, on the receiver (SIGHT_MOUNT, OPTIC_MOUNT). The AK's rides the
+  // rifle's bone like the flash; the others ride their holder, from the grip of the file, and take the gun's own sight
+  // off where it stands in the way (OWN_SIGHT). attach(i, kind|null) swaps it; the models may come later.
+  const scopes = HOLD.map(() => null), attachK = HOLD.map(() => null);
   function placeScope(i) {
     if (scopes[i]) { scopes[i].removeFromParent(); scopes[i].traverse(o => { if (o.isMesh) o.material.dispose(); }); scopes[i] = null; }
-    const kind = attachK[i]; if (!kind) return;
+    const kind = attachK[i];
+    if (guns[i]) showOwn(i, guns[i].own, kind);
+    if (!kind) return;
     const src = prop(kind); if (!src) return;
     const n = src.clone(true); n.userData.sight = kind;
     n.traverse(o => { if (o.isMesh) { o.frustumCulled = false; o.castShadow = false; o.receiveShadow = true; o.material = drawOver(worldSpace(o.material.clone())); } });
     if (i === 0) {
       if (!ak.root) return;
       rig.updateMatrixWorld(true);
-      n.position.copy(ak.root.worldToLocal(rig.localToWorld(V3(SIGHT_MOUNT[0]))));
+      n.position.copy(ak.root.worldToLocal(rig.localToWorld(V3(mountOf(kind, 0)))));
       // the bone's own axes are turned against the rig: carry the rig's orientation into it, like the muzzle flash does
       const qb = new THREE.Quaternion(), qr = new THREE.Quaternion();
       ak.root.getWorldQuaternion(qb); rig.getWorldQuaternion(qr);
@@ -162,13 +195,14 @@ function makeViewmodel(parent) {
       ak.root.add(n);
     } else {
       const g = guns[i]; if (!g) return;
-      n.position.copy(V3(SIGHT_MOUNT[i])).sub(V3(HOLD[i].grip));
+      n.position.copy(V3(mountOf(kind, i))).sub(V3(HOLD[i].grip));
       g.box.add(n);
     }
-    scopes[i] = n; n.visible = cur === i;
+    scopes[i] = n; n.visible = cur === i && !nadeOn;
   }
-  function attach(i, kind) { i = Math.max(0, Math.min(4, i | 0)); attachK[i] = kind || null; placeScope(i); }
-  onProps(() => { for (let i = 0; i < 5; i++) if (attachK[i]) placeScope(i); });
+  // every weapon of the game (WEAPONS, mp.js) has its own: the M4, the SCAR and the AR-15 were once folded onto the Minimi
+  function attach(i, kind) { i = Math.max(0, Math.min(HOLD.length - 1, i | 0)); kind = kind || null; if (attachK[i] === kind && (!kind || scopes[i])) return; attachK[i] = kind; placeScope(i); }
+  onProps(() => { for (let i = 0; i < HOLD.length; i++) if (attachK[i]) placeScope(i); });
   // after the clip: the right wrist out with the pistol, the left onto the handguard of the weapon in hand while the
   // clip has it on the rifle's (not while it fetches a magazine); each hand keeps the turn the clip gave it
   const G = new THREE.Matrix4(), G3 = new THREE.Matrix3(), T = new THREE.Vector3(), D = new THREE.Vector3(), P1 = new THREE.Vector3(), P2 = new THREE.Vector3(), Qh = new THREE.Quaternion(), Qa = new THREE.Quaternion();
@@ -351,4 +385,4 @@ function makeViewmodel(parent) {
   };
 }
 
-export { HOLD, SIGHT_MOUNT, akReady, akSettled, drawOver, loadAK, makeViewmodel, muzzleOf };
+export { HOLD, OPTIC_MOUNT, SIGHT_MOUNT, akReady, akSettled, drawOver, loadAK, makeViewmodel, mountOf, muzzleOf, ownSight, showOwn };

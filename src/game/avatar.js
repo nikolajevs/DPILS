@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { worldSpace } from '../render/world-space.js';
-import { HOLD, SIGHT_MOUNT, akReady, loadAK, muzzleOf } from './viewmodel.js';
+import { HOLD, akReady, loadAK, mountOf, muzzleOf, ownSight, showOwn } from './viewmodel.js';
 import { prop, onProps } from './props.js';
 import { alignHand, at, moveBy, reach, relMatrix, setFrame, turnBy, turnOf } from './ik.js';
 import { FLASH_SIZE, makeFlash } from './muzzle.js';
@@ -145,7 +145,7 @@ function heldGun(i) {
   shift.add(g); holder.add(shift);
   const dR = i ? V3(sp.shift) : new THREE.Vector3(), dL = i ? k.palm.R.clone().add(V3(sp.shift)).add(V3(sp.fore)).sub(V3(sp.grip)).sub(k.palm.L) : new THREE.Vector3();
   const rel = (h, d) => h && Object.fromEntries(Object.entries(h).map(([n, v]) => [n, v.clone().sub(k.shoulder).add(d)]));
-  holder.userData = { both: true, hands: { R: rel(k.hands.R, dR), L: rel(k.hands.L, dL) }, flashAt: (i ? muzzleAt(src) : k.muzzle).clone().add(shift.position), scopeAt: (i ? V3(SIGHT_MOUNT[i]).add(shift.position) : V3(SIGHT_MOUNT[0]).sub(k.shoulder)) };
+  holder.userData = { both: true, hands: { R: rel(k.hands.R, dR), L: rel(k.hands.L, dL) }, flashAt: (i ? muzzleAt(src) : k.muzzle).clone().add(shift.position), scopeAt: kind => (i ? V3(mountOf(kind, i)).add(shift.position) : V3(mountOf(kind, 0)).sub(k.shoulder)), own: i ? ownSight(i, g) : [] };
   return holder;
 }
 const POLE = { R: new THREE.Vector3(-0.7, -1, -0.3).normalize(), L: new THREE.Vector3(0.5, -1, -0.2).normalize() };   // where the elbows point
@@ -188,29 +188,29 @@ function placeFlash(gun, flash, mount) {
 // a new shot (its time changed): the flash of the weapon in hand; true on the frame of a new shot
 function shotFlash(flash, s, st) { let fired = false; if (s.shotAt && s.shotAt !== st.at) { st.at = s.shotAt; if (!s.dead) { flash.fire(1, FLASH_SIZE[st.w] || 1); fired = true; } } flash.tick(st.dt); return fired; }
 const makeGun = i => { const a = ready(); return heldGun(i) || (a && a.guns && a.guns[i] ? readyGun(a.guns[i], MODEL.gunLen[i], MODEL.gunYaw[i], MODEL.gunM[i]) : boxRifle()); };
-// the picked-up sights on a player seen from the side: one node per gun, on the receiver where heldGun put scopeAt.
+// the picked-up sights on a player seen from the side: one node per gun, on the receiver where heldGun puts scopeAt(kind)
+// (the red dot and the optic have their spots, viewmodel.js), the gun's own sight taken off where it is in the way.
 // The item models come with the city (props.js); until then the guns stay bare and refresh() puts the sights on later.
 function scopeKit(guns, getGun) {
   const nodes = guns.map(() => null), kinds = guns.map(() => null);
+  const drop = i => { if (nodes[i]) { nodes[i].removeFromParent(); nodes[i].traverse(o => { if (o.isMesh) o.material.dispose(); }); nodes[i] = null; } };
   function refresh() {
     guns.forEach((g, i) => {
       const kind = kinds[i];
+      if (nodes[i] && nodes[i].userData.sight !== kind) drop(i);   // taken off, or swapped for the other kind
       if (kind && !nodes[i] && g.userData.scopeAt) {
         const src = prop(kind);
         if (src) {
           const n = src.clone(true); n.userData.sight = kind;
           n.traverse(o => { if (o.isMesh) { o.frustumCulled = false; o.material = worldSpace(o.material.clone()); } });
-          n.position.copy(g.userData.scopeAt); g.add(n); nodes[i] = n;
+          n.position.copy(g.userData.scopeAt(kind)); g.add(n); nodes[i] = n;
         }
       }
+      if (g.userData.own) showOwn(i, g.userData.own, kind);
       if (nodes[i]) nodes[i].visible = !!kind && getGun() === g;
     });
   }
-  function setAttach(i, kind) {
-    i = Math.max(0, Math.min(guns.length - 1, i | 0)); kinds[i] = kind || null;
-    if (!kinds[i] && nodes[i]) { nodes[i].removeFromParent(); nodes[i].traverse(o => { if (o.isMesh) o.material.dispose(); }); nodes[i] = null; }
-    refresh();
-  }
+  function setAttach(i, kind) { i = Math.max(0, Math.min(guns.length - 1, i | 0)); kinds[i] = kind || null; refresh(); }
   onProps(refresh);
   return { setAttach, refresh };
 }
