@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Claude | claude/add-3-servers-list-c3eefe | Список серверов: 4 катки в одном процессе со сдвигом 15 мин | server/index.mjs, server/storm.mjs, server/daycycle.mjs, server/game.mjs, server/admin.*, src/ui/lobby.js, src/game/server.js, index.html |
 
 ## Автономный цикл улучшений
 
