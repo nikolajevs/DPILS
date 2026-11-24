@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Chatbox | chatbox/prison-white-swan | Тюрьма «Белый лебедь» (Daugavgrīvas cietums): стены, вышки, корпус с флюгером | src/landmarks/prison.js, src/landmarks/tiles.js, src/landmarks/index.js |
 
 ## Автономный цикл улучшений
 
