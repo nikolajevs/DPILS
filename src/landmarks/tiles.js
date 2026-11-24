@@ -319,15 +319,14 @@ function lmTiles() {
   // Barred windows in weathered white frames, a steel vehicle gate and door, the glazed watchtower cabin, a name plaque.
   const PRF = '#e7e3d8', PRB = '#4a4f52';
   const bars = (w, h) => { for (const x of [0.2, 0.38, 0.62, 0.8]) R(x * w / 1.1, 0.06, 0.035, h - 0.12, PRB, 1); for (const y of [0.5, 1.0, 1.5]) R(0.06, y * h / 1.9, w - 0.12, 0.03, PRB, 1); };
-  T('prWin', 1.1, 1.9, () => { R(0, 0, 1.1, 1.9, PRF, 1); glass(0.09, 0.09, 0.92, 1.72, 0, '#ffd9a0'); R(0.52, 0.09, 0.06, 1.72, PRF, 1); bars(1.1, 1.9); });
-  T('prWinB', 1.1, 1.9, () => { R(0, 0, 1.1, 1.9, PRF, 1); glass(0.09, 0.09, 0.92, 0.9, 0, '#ffd9a0'); R(0.09, 1.02, 0.92, 0.79, '#cfc9bb', 0, '#3a3020'); bars(1.1, 1.9); });
-  T('prTowerWin', 1.0, 1.2, () => { R(0, 0, 1.0, 1.2, PRF, 1); glass(0.08, 0.08, 0.84, 1.04, 1, '#fff0d5'); R(0.47, 0.08, 0.06, 1.04, PRF, 1); R(0.08, 0.6, 0.84, 0.04, PRB, 1); });
-  T('prGate', 4.0, 3.6, () => { R(0, 0, 4.0, 3.6, '#5a6063', 1); R(0.1, 0.1, 3.8, 3.4, '#3c4144', 1);
-    for (let x = 0.25; x < 3.9; x += 0.3) R(x, 0.2, 0.06, 3.2, '#6a7073', 1);
-    R(0.1, 0.5, 3.8, 0.08, '#6a7073', 1); R(0.1, 3.0, 3.8, 0.08, '#6a7073', 1); R(1.95, 0.1, 0.1, 3.4, '#5a6063', 1); });
-  T('prDoor', 1.4, 2.6, () => { R(0, 0, 1.4, 2.6, '#6a7073', 1); R(0.08, 0.08, 1.24, 2.44, '#565c5f', 1);
-    R(0.28, 0.38, 0.84, 0.74, '#4a4f52', 1); glass(0.32, 0.42, 0.76, 0.66, 0, '#ffd9a0'); R(1.05, 1.3, 0.1, 0.3, '#8a9093', 1); });
-  T('prPlate', 2.6, 0.5, () => { R(0, 0, 2.6, 0.5, '#2c3e50', 0); R(0.04, 0.04, 2.52, 0.42, '#34495e', 0); txt('DAUGAVGRĪVAS CIETUMS', 1.3, 0.25, 0.15, '#f4f2ec', '700'); });
+  T('prWin', 1.1, 1.7, () => { R(0, 0, 1.1, 1.7, PRF, 1); glass(0.09, 0.09, 0.92, 1.52, 0, '#ffd9a0'); R(0.52, 0.09, 0.06, 1.52, PRF, 1); bars(1.1, 1.7); });
+  T('prWinB', 1.1, 1.7, () => { R(0, 0, 1.1, 1.7, PRF, 1); glass(0.09, 0.09, 0.92, 0.8, 0, '#ffd9a0'); R(0.09, 0.92, 0.92, 0.69, '#cfc9bb', 0, '#3a3020'); bars(1.1, 1.7); });
+  T('prTowerWin', 1.0, 1.1, () => { R(0, 0, 1.0, 1.1, PRF, 1); glass(0.08, 0.08, 0.84, 0.94, 1, '#fff0d5'); R(0.47, 0.08, 0.06, 0.94, PRF, 1); R(0.08, 0.55, 0.84, 0.04, PRB, 1); });
+  T('prGate', 3.6, 2.8, () => { R(0, 0, 3.6, 2.8, '#5a6063', 1); R(0.1, 0.1, 3.4, 2.6, '#3c4144', 1);
+    for (let x = 0.25; x < 3.5; x += 0.3) R(x, 0.2, 0.06, 2.4, '#6a7073', 1);
+    R(0.1, 0.5, 3.4, 0.08, '#6a7073', 1); R(0.1, 2.2, 3.4, 0.08, '#6a7073', 1); R(1.75, 0.1, 0.1, 2.6, '#5a6063', 1); });
+  T('prDoor', 1.3, 2.2, () => { R(0, 0, 1.3, 2.2, '#6a7073', 1); R(0.08, 0.08, 1.14, 2.04, '#565c5f', 1);
+    R(0.26, 0.36, 0.78, 0.7, '#4a4f52', 1); glass(0.3, 0.4, 0.7, 0.62, 0, '#ffd9a0'); R(0.98, 1.1, 0.1, 0.3, '#8a9093', 1); });
   // shelf packing, tallest first
   defs.sort((a, b) => b.h - a.h);
   // shelves as tall as their first tile; a later tile goes into the first shelf with room, stacked under a narrower
@@ -407,6 +406,12 @@ function lmSigns() {
     g.fillStyle = '#e8ece9'; g.fillRect(x0, y0, w, h); g.strokeStyle = '#71838a'; g.lineWidth = 2; g.strokeRect(x0 + 1, y0 + 1, w - 2, h - 2); g.fillStyle = '#4d8a99'; g.fillRect(x0 + 10, y0 + 10, 6, h - 20);
     g.font = font(23, '700', '"Golos Text", "Trebuchet MS", sans-serif'); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#34474d'; g.fillText('STARU TERAPIJA', x0 + w / 2 + 10, y0 + h / 2);
     e.font = g.font; e.textAlign = 'center'; e.textBaseline = 'middle'; e.fillStyle = '#fff3d2'; e.fillText('STARU TERAPIJA', x0 + w / 2 + 10, y0 + h / 2);
+  });
+  // the White Swan prison: a blue enamel name plate by the street gate
+  add('prison', 420, 64, (x0, y0, w, h) => {
+    g.fillStyle = '#2c3e50'; g.fillRect(x0, y0, w, h); g.strokeStyle = '#1a252f'; g.lineWidth = 3; g.strokeRect(x0 + 1, y0 + 1, w - 2, h - 2);
+    g.font = font(26, '700', '"Golos Text", "Trebuchet MS", sans-serif'); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#f4f2ec'; g.fillText('DAUGAVGRĪVAS CIETUMS', x0 + w / 2, y0 + h / 2);
+    e.font = g.font; e.textAlign = 'center'; e.textBaseline = 'middle'; e.fillStyle = '#dfe8f2'; e.fillText('DAUGAVGRĪVAS CIETUMS', x0 + w / 2, y0 + h / 2);
   });
   // the railway station: DAUGAVPILS in widely spaced bronze capitals on the platform side, the year in the lunette
   add('vkName', 1600, 120, (x0, y0, w, h) => {
