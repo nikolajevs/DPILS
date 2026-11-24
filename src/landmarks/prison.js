@@ -97,7 +97,10 @@ function mainBlock(K) {
   lmBlock(K, MF, { poly: [[44, -1.4], [49, -1.4], [49, 0], [44, 0]], y0: MB - 0.3, top: MB + 13.8, st: { tex: 1, col: WHITE2 }, roof: ROOF, roofY: MB + 13.8 }, []);
   eastTower(K);
   const wops = [];
-  for (const [y0, y1] of [[1.3, 3.1], [4.6, 6.4]]) lmRow(wops, 0, 23, 9, 23, 3, 1.0, MB + y0, MB + y1, 'prWin', { d: 0.2, sill, lit: lmLit(0.25) });
+  for (const [y0, y1] of [[1.3, 3.1], [4.6, 6.4]]) {
+    lmRow(wops, 0, 23, 9, 23, 3, 1.0, MB + y0, MB + y1, 'prWin', { d: 0.2, sill, lit: lmLit(0.25) });
+    lmRow(wops, 0, 14, 0, 22, 2, 1.0, MB + y0, MB + y1, 'prWin', { d: 0.2, sill, lit: lmLit(0.25) });
+  }
   lmBlock(K, MF, { poly: [[0, 13], [10, 13], [10, 23], [0, 23]], y0: MB - 0.3, top: MB + 7.3, st: { tex: 1, col: WHITE, plinth: MB + 0.7, pcol: PLINTH }, cornice: [[MB + 7.0, MB + 7.3, 0.22, WHITE2]] }, wops);
   gable(K, 0, 10, 13, 23, MB + 7.3, MB + 8.8, ROOF);
 }
@@ -176,8 +179,10 @@ function yard(K) {
   for (let i = 0; i < tris.length; i += 3) K.plain.triUp(v0 + tris[i], v0 + tris[i + 1], v0 + tris[i + 2]);
   const tree = (x, z, h) => {
     const g = TH(x, z);
-    lmLathe(K.plain, x, z, g + 0.06, [[0.14, 0], [0.1, h * 0.5]], 7, hb('#6e5a44'));
-    for (let i = 0; i < 3; i++) { const y = g + h * (0.4 + i * 0.2), r = h * (0.26 - i * 0.05); lmLathe(K.plain, x, z, y, [[r, 0], [r * 0.6, h * 0.22], [0.02, h * 0.34]], 8, hb(i % 2 ? '#5c7444' : '#67804c')); }
+    lmLathe(K.plain, x, z, g + 0.06, [[0.14, 0], [0.1, h * 0.55]], 7, hb('#6e5a44'));
+    const y = g + h * 0.5, r = h * 0.3;   // a rounded deciduous crown, as on the street photographs
+    lmLathe(K.plain, x, z, y, [[0.02, 0], [r * 0.7, h * 0.06], [r, h * 0.17], [r * 0.72, h * 0.3], [0.02, h * 0.38]], 9, hb('#5f7a45'));
+    lmLathe(K.plain, x + r * 0.4, z - r * 0.3, y + h * 0.1, [[0.02, 0], [r * 0.55, h * 0.05], [r * 0.62, h * 0.14], [0.02, h * 0.24]], 8, hb('#6b854e'));
   };
   for (const [x, z, h] of [[-380, 1600, 7], [-372, 1630, 8], [-300, 1560, 7.5], [-272, 1580, 7], [-270, 1610, 8], [-330, 1655, 7], [-350, 1640, 6.5]]) tree(x, z, h);
   for (const [x, z] of [[-390, 1583], [-320, 1551]]) { const g = TH(x, z); lmLathe(K.plain, x, z, g + 0.06, [[0.07, 0], [0.06, 3.6]], 8, STEEL); lmLathe(K.globe, x, z, g + 3.6, [[0.16, 0], [0.16, 0.2]], 8, hb('#fff2cf')); }
