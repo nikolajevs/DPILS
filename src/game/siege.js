@@ -272,6 +272,7 @@ function buildWave(dv) {
 }
 function startFall() {
   domeFall = performance.now();
+  if (CINE.mode) CINE.collapseAt = domeFall;   // the cinematic holds through the real fall, not the predicted one
   const dv = domeVis, { d, gy } = dv;
   burstShards(dv); buildWave(dv);
   const dd = Math.hypot(d.cx - P.x, d.cz - P.z);
@@ -319,6 +320,69 @@ export function domeCross(ax, ay, az, bx, by, bz) {
     return [ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t];
   }
   return null;
+}
+
+/* ---------- the collapse cinematic ----------
+   One second before the dome falls the camera leaves the body — which stays where it stood, still and vulnerable —
+   and glides to a high vantage outside the shell: the whole dome, the crown-down fracture, the rain of shards and
+   the ground shockwave in one frame. It holds through the fall with a slow push-in, then glides back and hands the
+   player his body. STATE.cine marks the show: input.js stops the mouse look, loop.js stops the walk, mp.js sends the
+   body's coordinates to the server and hides the gun and the crosshair. reduceMotion skips it entirely. */
+const CINE = { mode: 0, id: 0, t0: 0, dur: 1, from: null, body: null, vx: 0, vy: 0, vz: 0, vyaw: 0, vpitch: 0, cx: 0, cz: 0, gy: 0, r: 0, ang: 0, dist: 0, collapseAt: 0 };
+export const siegeCine = { calm: null };   // mp.js wires it: still the firing hand and the scope when the camera leaves
+export function siegeCineBody() { return CINE.body; }
+export function siegeCineAbort() { cineEnd(); }
+const ease = k => k * k * (3 - 2 * k);
+const lerp = (a, b, k) => a + (b - a) * k;
+const lerpAng = (a, b, k) => { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return a + d * k; };
+function cineEnd() {
+  if (!CINE.mode) return;
+  Object.assign(P, CINE.body); P.fly = false; P.landH = 0;
+  CINE.mode = 0; CINE.body = null; STATE.cine = false;
+  document.body.classList.remove('cine');
+  const c = $('cine'); if (c) c.hidden = true;
+}
+function cineStart(now, left) {
+  const d = S.dome; if (!d) return;
+  CINE.body = { x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch, eye: P.eye, up: P.up, vy: P.vy, vx: P.vx, vz: P.vz, kx: P.kx, kz: P.kz, crouch: P.crouch, fallTop: P.fallTop, land: P.land, walked: P.walked };
+  CINE.id = S.id; CINE.collapseAt = 0;
+  const gy = terrainH(d.cx, d.cz);
+  let dx = P.x - d.cx, dz = P.z - d.cz, L = Math.hypot(dx, dz);
+  if (L < 80) { dx = 0; dz = 1; L = 1; }   // a body at the centre: look from the staging side
+  dx /= L; dz /= L;
+  CINE.cx = d.cx; CINE.cz = d.cz; CINE.gy = gy; CINE.r = d.r;
+  CINE.dist = d.r * 1.95; CINE.ang = Math.atan2(dz, dx);
+  CINE.vx = d.cx + dx * CINE.dist; CINE.vz = d.cz + dz * CINE.dist; CINE.vy = gy + d.r * 0.92;
+  const ty = gy + d.r * 0.30;
+  CINE.vyaw = Math.atan2(-(d.cx - CINE.vx), -(d.cz - CINE.vz));
+  CINE.vpitch = Math.atan2(ty - CINE.vy, Math.hypot(d.cx - CINE.vx, d.cz - CINE.vz));
+  CINE.from = { x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch };
+  CINE.mode = 1; CINE.t0 = now; CINE.dur = Math.max(350, Math.min(1000, left));
+  STATE.cine = true; P.fly = true;
+  document.body.classList.add('cine');
+  const c = $('cine'); if (c) { c.hidden = false; $('cineCap').textContent = 'КУПОЛ ПАЛ — ШТУРМ ДИНАБУРГА'; }
+  if (siegeCine.calm) siegeCine.calm();
+}
+function cineTick(dt, now) {
+  if (!CINE.mode) return;
+  if (CINE.mode === 1) {   // glide out to the vantage, arriving as the overload begins
+    const k = ease(Math.min(1, (now - CINE.t0) / CINE.dur));
+    P.x = lerp(CINE.from.x, CINE.vx, k); P.y = lerp(CINE.from.y, CINE.vy, k); P.z = lerp(CINE.from.z, CINE.vz, k);
+    P.yaw = lerpAng(CINE.from.yaw, CINE.vyaw, k); P.pitch = lerp(CINE.from.pitch, CINE.vpitch, k);
+    if (k >= 1) { CINE.mode = 2; CINE.t0 = now; }
+  } else if (CINE.mode === 2) {   // hold: a slow push-in and a whisper of orbit, so the frame is alive
+    CINE.ang += dt * 0.02; CINE.dist = Math.max(CINE.r * 1.55, CINE.dist - dt * CINE.r * 0.05);
+    P.x = CINE.cx + Math.cos(CINE.ang) * CINE.dist; P.z = CINE.cz + Math.sin(CINE.ang) * CINE.dist; P.y = CINE.vy;
+    const ty = CINE.gy + CINE.r * 0.30;
+    P.yaw = Math.atan2(-(CINE.cx - P.x), -(CINE.cz - P.z)); P.pitch = Math.atan2(ty - P.y, Math.hypot(CINE.cx - P.x, CINE.cz - P.z));
+    const since = CINE.collapseAt ? now - CINE.collapseAt : now - CINE.t0;
+    if (since >= (CINE.collapseAt ? 2400 : 3600)) { CINE.mode = 3; CINE.t0 = now; CINE.dur = 900; CINE.from = { x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch }; }
+  } else {   // glide home and hand the body back
+    const k = ease(Math.min(1, (now - CINE.t0) / CINE.dur)), b = CINE.body;
+    P.x = lerp(CINE.from.x, b.x, k); P.y = lerp(CINE.from.y, b.y, k); P.z = lerp(CINE.from.z, b.z, k);
+    P.yaw = lerpAng(CINE.from.yaw, b.yaw, k); P.pitch = lerp(CINE.from.pitch, b.pitch, k);
+    if (k >= 1) cineEnd();
+  }
 }
 
 /* ---------- the altar: the cannon fountain in the garden ---------- */
@@ -431,7 +495,7 @@ export function siegeWin(m) {
   }
 }
 export function clearSiege() {
-  clearDome(); clearAltar();
+  siegeCineAbort(); clearDome(); clearAltar();
   S.on = false; S.mySide = null; S.prog = 0; S.contest = null; S.dome = null; S.lastDome = null;
   $('siegeHud').hidden = true; $('siegeFlash').hidden = true;
   document.body.classList.remove('siege');
@@ -470,6 +534,12 @@ export function siegeTick(dt) {
       u.uOpacity.value = 0.9 * Math.min(1, dv.rise * 3);
     }
   }
+  // the collapse cinematic: leave the body a second before the fall, hold through it, glide home
+  if (!CINE.mode && S.phase === 'prep' && S.dome && !reduceMotion && STATE.mp && !STATE.mpDead) {
+    const left = S.left - (now - S.recvAt);
+    if (left <= 1000 && left > -400 && CINE.id !== S.id) cineStart(now, left);
+  }
+  cineTick(dt, now);
   // the altar marker
   if (altarVis) {
     const target = S.phase === 'assault' ? sideColor(S.contest) : NEUTRAL;

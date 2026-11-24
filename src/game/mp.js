@@ -18,7 +18,7 @@ import { addNade, addZone, endZone, douseFire, burnBodies, fireNow, blastGlow, b
 import { KINDS, SLOT_SVG, bindInv, setItems, itemBack, itemTook, tickItems, renderInv, invTick, closeInv, toggleInv } from './inventory.js';
 import { cargoDrop, cargoLand, cargoTook, cargoEnd, cargoSelf, cargoTick, cargoMap, cargoClock, clearCargo } from './cargo.js';
 import { setHoly, clearHoly, holyBell, holyWin, holyTick, holyMap, holyMe, holySpeedMul, holyState, holyAudio, holyEnlist, holyEnlisted } from './holy.js';
-import { setSiege, siegeYou, siegeOut, siegeWin, clearSiege, siegeTick, siegeMap, siegeNet, siegeAudio, domeHit } from './siege.js';
+import { setSiege, siegeYou, siegeOut, siegeWin, clearSiege, siegeTick, siegeMap, siegeNet, siegeAudio, domeHit, siegeCine, siegeCineBody, siegeCineAbort } from './siege.js';
 import { terrainH } from '../world/terrain.js';
 import { camera, canvas, renderer, scene } from '../render/renderer.js';
 import { setCycle, setTime } from '../render/lighting.js';
@@ -391,6 +391,7 @@ siegeAudio.up = (vol, d, pan) => domeUpSound(ac(), actx.master, vol, d, pan);   
 siegeAudio.down = (vol, d, pan) => domeDownSound(ac(), actx.master, vol, d, pan);
 siegeAudio.hit = (vol, pan) => domeHitSound(ac(), actx.master, vol, pan);
 siegeNet.join = side => { if (MP.ws) MP.ws.send(JSON.stringify({ t: 'siegeJoin', side })); };   // the siege registration buttons send through the socket
+siegeCine.calm = () => { MP.firing = false; MP.scope = false; nadeCancel(); closeInv(); };   // the collapse cinematic stills the hand while the camera is away
 // a blast close by (k: 1 at the heart, 0 at the edge): after its bang the world goes dull and the ears ring, the closer the longer
 function deafen(k, delay) {
   try {
@@ -674,6 +675,7 @@ function feed(text, cls) {
   const f = el('mpFeed'), d = document.createElement('div'); d.textContent = text; if (cls) d.className = cls; f.prepend(d); while (f.children.length > 6) f.lastChild.remove(); setTimeout(() => d.remove(), 7000);
 }
 function die(byName, byId) {
+  siegeCineAbort();   // a death mid-cinematic hands the body back at once, then the spectate takes over
   STATE.mpDead = true; document.body.classList.add('dead'); MP.spec = remotes.has(byId) ? byId : 0;   // watch the one who killed you first
   MP.dead = true; MP.deadAt = performance.now(); MP.firing = false; MP.scope = false; gun.visible = false; closeInv(); nadeCancel(); punchReset();
   if (document.pointerLockElement) document.exitPointerLock();
@@ -874,6 +876,7 @@ function onMsg(m) {
       for (const [id, a] of Object.entries(m.attach || {})) { const r = remotes.get(+id); if (r && Array.isArray(a)) { r.attach = a; if (r.av) a.forEach((k, w) => r.av.setAttach(w, k)); } } clearHoly(); hillChoice(false); holyMe(holyUnit()); if (m.holy) setHoly(m.holy); P.speedMul = holySpeedMul(); clearSiege(); if (m.siege) setSiege(m.siege, m.mySide); if (MP.arena) { arenaChoices(); feed('Арена: ' + MP.arena.name, 'sys'); }
       if (MP.local) feed('Тренировка с ботами: ' + MP.board.filter(e => e.bot).length + ', уровень «' + ({ easy: 'лёгкий', normal: 'средний', hard: 'трудный' }[MP.local.level] || '') + '»', 'sys'); break;
     case 'spawn': {
+      siegeCineAbort();   // a server teleport (siege, storm, respawn) ends the cinematic and places the player
       nadeCancel(); punchReset();
       const [x, z] = freeSpot(m.x, m.z); P.x = x; P.z = z; P.eye = 1.7; P.up = 0; P.vy = 0; P.vx = P.vz = 0; P.kx = P.kz = 0; P.fallTop = 0; P.landH = 0; P.land = 0; P.crouch = false; P.fly = false; P.y = 1.7 + terrainH(x, z); P.yaw = m.yaw; P.pitch = 0; STATE.mapTimer = 0; STATE.lodTimer = 0;
       if (!MP.started) { MP.started = true; showGame(); }
@@ -886,7 +889,7 @@ function onMsg(m) {
       const s = MP.rtts; s.push(performance.now() - m.c); if (s.length > 5) s.shift();
       MP.rtt = Math.round(Math.min(...s)); el('mpPing').textContent = 'пинг ' + MP.rtt + ' мс'; updatePanel(); if (!el('mpBoard').hidden) drawBoard(); break;
     }
-    case 'correct': P.x = m.x; P.z = m.z; if (m.out) edgeNotice(); else if (m.dome) { domeNotice(); domeHit(m.x, (m.y ?? P.y) + 1.0, m.z, 1); } break;   // thrown against the field: a ripple spreads from the body
+    case 'correct': { const b = STATE.cine ? siegeCineBody() : P; if (b) { b.x = m.x; b.z = m.z; } if (m.out) edgeNotice(); else if (m.dome) { domeNotice(); domeHit(m.x, (m.y ?? P.y) + 1.0, m.z, 1); } break; }   // thrown against the field: a ripple spreads from the body (the cinematic body, if the camera is away)
     case 'snap': {
       cargoClock(m.now);
       const t = performance.now(), seen = new Set();
@@ -939,9 +942,10 @@ function onMsg(m) {
     }
     case 'push': {   // the blast throws: the server sends the velocity, the jump carries it up and the slide aside (player.js)
       if (MP.dead) break;
-      P.kx += m.vx; P.kz += m.vz;
-      const kl = Math.hypot(P.kx, P.kz); if (kl > 16) { P.kx *= 16 / kl; P.kz *= 16 / kl; }
-      P.vy = Math.min(P.vy + m.vy, 16);
+      const t = STATE.cine && siegeCineBody() ? siegeCineBody() : P;   // while the camera is away the body still takes the throw
+      t.kx += m.vx; t.kz += m.vz;
+      const kl = Math.hypot(t.kx, t.kz); if (kl > 16) { t.kx *= 16 / kl; t.kz *= 16 / kl; }
+      t.vy = Math.min(t.vy + m.vy, 16);
       break;
     }
     case 'kill': { feed(m.w === 12 ? labelOf(m.victim, m.vn) + '  ⚡ поглощён штормом' : labelOf(m.killer, m.kn) + '  ➜  ' + labelOf(m.victim, m.vn) + (m.w === 9 ? '  (граната)' : m.w === 11 ? '  (напалм)' : m.w === 10 ? '  (падение)' : m.head ? '  (в голову)' : ''), m.killer === MP.id ? 'mine' : m.victim === MP.id ? 'dead' : ''); if (m.killer === MP.id) { MP.kills++; if (m.victim !== MP.id) statEvent('kill', m, !!MP.local); } if (m.victim === MP.id) { MP.deaths++; statEvent('death', {}, !!MP.local); if (!MP.dead) die(m.w === 10 ? '' : m.kn, m.killer); } else { const rv = remotes.get(m.victim); if (rv && rv.buf.length) { rv.fallT = performance.now(); rv.corpse = corpseOf(rv, m); } } updatePanel(); break; }
@@ -1071,7 +1075,7 @@ function initUi() {   // the fields of the player and of the training: once, whe
 
 /* ---------- input ---------- */
 canvas.addEventListener('wheel', e => {
-  if (!MP.on || MP.dead) return;
+  if (!MP.on || MP.dead || STATE.cine) return;
   if (MP.scope && MP.attach[MP.weapon] === 'optic' && !MP.reloadAt) {   // scoped through the 8×: the wheel changes the magnification (4×–8×), not the weapon
     e.preventDefault();
     MP.opticMag = Math.max(OPTIC_MIN, Math.min(OPTIC_MAX, MP.opticMag + (e.deltaY < 0 ? 1 : -1)));
@@ -1081,6 +1085,7 @@ canvas.addEventListener('wheel', e => {
 }, { passive: false });
 canvas.addEventListener('contextmenu', e => { if (MP.on) e.preventDefault(); });
 canvas.addEventListener('mousedown', e => {
+  if (STATE.cine) return;   // the cinematic owns the camera: no firing, no scope
   if (MP.on && e.button === 2) { if (NAIM.on) { nadeCancel(); return; } if ((W().scope || MP.attach[MP.weapon]) && !MP.dead && !MP.reloadAt) MP.scope = true; }   // right button: the sniper's own scope, or the sight mounted on any weapon
   if (!MP.on || e.button !== 0) return;
   if (MP.dead) {   // the follow views: the click takes the next player; the free camera: it takes the mouse back
@@ -1100,6 +1105,7 @@ window.addEventListener('keydown', e => {
   if (!MP.on || e.repeat) return;
   if (e.code === SET.keys.voice && voice) { if (!voice.hasMic) { voice.enableMic().then(ok => { el('mpVoice').dataset.mic = ok ? 'on' : 'denied'; }); } else voice.talk(true); }
   else if (!MP.dead && (e.code === SET.keys.chat || e.code === SET.keys.teamChat || e.code === 'Enter')) { e.preventDefault(); nadeCancel(); openChat(e.code === SET.keys.teamChat && !!MP.clan); }
+  else if (STATE.cine) return;   // the cinematic: the game keys wait until the body is handed back
   else if (MP.dead && MP.specMode !== 2 && (e.code === 'ArrowRight' || e.code === 'KeyE')) specNext(1);   // in the free camera E / Q are up / down
   else if (MP.dead && MP.specMode !== 2 && (e.code === 'ArrowLeft' || e.code === 'KeyQ')) specNext(-1);
   else if (MP.dead && e.code === 'KeyF') specCam();
@@ -1134,7 +1140,7 @@ const scopeMag = $('mpScopeMag'), dotHint = $('mpDotHint');   // the optic's mag
 let crossGap = 6, crossKey = '';
 function crossTick(dt, now) {
   const cfg = CROSS[MP.weapon], w = W();
-  const show = !MP.dead && MP.zoom <= 0.6;
+  const show = !MP.dead && !STATE.cine && MP.zoom <= 0.6;
   const vis = show ? '' : 'hidden'; if (crossEl.style.visibility !== vis) crossEl.style.visibility = vis;
   if (show && crossEl.hidden) crossEl.hidden = false;   // whatever hid it (a lock release), the fight crosshair comes back
   if (!show) return;
@@ -1252,7 +1258,7 @@ function mpTick(dt) {
     if (el('mpScope').hidden === (scoped && !dot)) el('mpScope').hidden = !(scoped && !dot);
     if (scoped && !dot) { scopeBdc(fov); if (at === 'optic') { scopeMag.hidden = false; const lbl = MP.opticMag + '×'; if (scopeMag.textContent !== lbl) scopeMag.textContent = lbl; } else scopeMag.hidden = true; }
     if (dot) { dotHint.hidden = !!MP.dotBoostAt; dotHint.classList.toggle('cd', !MP.dotBoostAt && now < MP.dotBoostCd); }   // the hint dims while the peek recharges
-    gun.visible = !MP.dead && !nv && (mode === 'sight' || MP.zoom < 0.5); }   // the grenade in hand (and the throw) replaces the gun; the long zoom hides the arms, the red dot keeps them
+    gun.visible = !MP.dead && !STATE.cine && !nv && (mode === 'sight' || MP.zoom < 0.5); }   // the grenade in hand (and the throw) replaces the gun; the long zoom hides the arms, the red dot keeps them
   ownSteps(dt); tickNades(dt); zoneSoundTick(); nadeWarnTick(); tickItems(dt, now); cargoTick(dt); holyTick(dt); siegeTick(dt); spectate(dt, now); nadeAimTick(now); nadeHandTick(nv);
   if (marks.size) MARK_MAT.opacity = 0.26 + 0.1 * Math.sin(now * 0.006);   // the mark's pillar breathes
   if (P.landH > 0) { const h = P.landH; P.landH = 0; if (h > FALL.safe && !MP.dead && MP.ws.readyState === 1) MP.ws.send(JSON.stringify({ t: 'fall', h: +h.toFixed(2) })); }   // a hard landing: the height goes to the server, which owns the damage
@@ -1263,9 +1269,9 @@ function mpTick(dt) {
   MP.burst = Math.max(0, MP.burst - dt * 0.03); crossTick(dt, now);
   { const pk = Math.exp(-dt * 8); punch.p *= pk; punch.y *= pk; punch.r *= pk; if (punch.p < 1e-4) punch.p = 0; if (Math.abs(punch.y) < 1e-4) punch.y = 0; if (Math.abs(punch.r) < 1e-4) punch.r = 0; }   // the aim punch springs back
   if ((MP.pingT -= dt) <= 0 && MP.ws.readyState === 1) { MP.pingT = MP.rtts.length < 5 ? 0.5 : 2; MP.ws.send(JSON.stringify({ t: 'ping', c: performance.now(), rtt: MP.rtt })); }   // the first five come fast, to fill the window
-  if (MP.firing && W().auto) fire(now);
+  if (MP.firing && W().auto && !STATE.cine) fire(now);
   if (MP.dead) { const left = Math.max(0, 3 - (now - MP.deadAt) / 1000); el('mpRespawn').disabled = left > 0; el('mpRespawn').textContent = left > 0 ? 'Возрождение через ' + Math.ceil(left) : MP.specMode === 2 ? 'Возродиться (Enter)' : 'Возродиться (пробел)'; }
-  else if ((MP.sendT -= dt) <= 0 && MP.ws.readyState === 1) { MP.sendT = 0.05; MP.ws.send(JSON.stringify({ t: 'state', x: +P.x.toFixed(2), y: +P.y.toFixed(2), z: +P.z.toFixed(2), yaw: +P.yaw.toFixed(3), pitch: +P.pitch.toFixed(3), h: +P.eye.toFixed(2), w: MP.weapon })); }
+  else if ((MP.sendT -= dt) <= 0 && MP.ws.readyState === 1) { MP.sendT = 0.05; const b = STATE.cine && siegeCineBody() ? siegeCineBody() : P; MP.ws.send(JSON.stringify({ t: 'state', x: +b.x.toFixed(2), y: +b.y.toFixed(2), z: +b.z.toFixed(2), yaw: +b.yaw.toFixed(3), pitch: +b.pitch.toFixed(3), h: +(b.eye ?? P.eye).toFixed(2), w: MP.weapon })); }   // while the camera is away the server keeps hearing the body, not the lens
   let nb = 0;   // the living bodies, for the napalm's fire to catch (nades.js burnBodies)
   for (const r of remotes.values()) {
     const g = r.group;
