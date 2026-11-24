@@ -1,13 +1,16 @@
 import * as THREE from 'three';
 import { STATE } from '../core/state.js';
-import { LMB, LM_KEYS, LMWHITE, lmW } from './core.js';
-import { lmBar, lmBoxW, lmLathe, lmWF, lmWall } from './helpers.js';
+import { LMB, LM_KEYS, LMWHITE, bedDist, lmL, lmW } from './core.js';
+import { band as wband, flatPlain, vband } from '../buildings/walls.js';
+import { lmBar, lmBoxL, lmBoxW, lmLathe, lmWF, lmWall } from './helpers.js';
 import { LMM, lmStd } from './index.js';
 import { lmHip } from './tv-tower.js';
-import { LMWS } from './tiles.js';
+import { lmBench } from './heat-plant.js';
+import { LM_FLOWERS, LMWS, bedSpecies, lmFlowerAtlas, lr } from './tiles.js';
 import { GB, polyA } from '../core/geometry.js';
-import { area2, hb, sh } from '../core/util.js';
-import { matGold } from '../world/data.js';
+import { area2, hb, reversed, sh } from '../core/util.js';
+import { COL, matGold } from '../world/data.js';
+import { walkSlab } from '../world/walkgrid.js';
 import { TERR, terrainH } from '../world/terrain.js';
 import { mkCanvas, toTex } from '../render/textures.js';
 import { scene } from '../render/renderer.js';
@@ -35,9 +38,9 @@ import { scene } from '../render/renderer.js';
      hoods and pointed gables, the bell tower behind the west porch with a small gilded onion on a red drum, a large
      gilded onion on a red drum over the nave and a small blue one over the altar.
    And, away from the hill, the Catholic Church of the Divine Mercy in Ķīmiķu ciemats (2019), drawn with the same
-   means (churchKm). */
-const F = { bg: [-139.48, 1291.67, 0.7689, 0.6394], lu: [52.07, 1292.68, 0.7125, 0.7017], ca: [176.09, 1275.05, 0.7237, 0.6901], ob: [-21.39, 1039.03, 0.7248, 0.6889], km: [1153.2, -1430.6, -0.2201, -0.9755] };
-LM_KEYS.push(lmW(F.bg, 30, 11), lmW(F.lu, 15, 12), lmW(F.ca, 20, 14), lmW(F.ob, 17, 10), lmW(F.km, 20, -9));   // the cadastre buildings these replace
+   means (churchKm), and the chapel of St Alexander Nevsky on Saules iela (churchNv). */
+const F = { bg: [-139.48, 1291.67, 0.7689, 0.6394], lu: [52.07, 1292.68, 0.7125, 0.7017], ca: [176.09, 1275.05, 0.7237, 0.6901], ob: [-21.39, 1039.03, 0.7248, 0.6889], km: [1153.2, -1430.6, -0.2201, -0.9755], nv: [-1422.39, 1373.99, 0.5194, 0.8545] };
+LM_KEYS.push(lmW(F.bg, 30, 11), lmW(F.lu, 15, 12), lmW(F.ca, 20, 14), lmW(F.ob, 17, 10), lmW(F.km, 20, -9), lmW(F.nv, 8, 0));   // the cadastre buildings these replace
 
 let seed = 1905; const rr = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 const W3 = (f, u, v, y) => { const w = lmW(f, u, v); return [w[0], y, w[1]]; };
@@ -83,6 +86,8 @@ function chAtlas() {
     ['door', 2.0, 3.6, () => { R(0, 0, 2, 3.6, '#5b3a26'); glass(0.1, 0.1, 1.8, 0.8); for (const x of [0.1, 1.04]) { R(x, 1.0, 0.86, 2.5, '#6c4630'); for (let k = 0; k < 3; k++) R(x + 0.13, 1.15 + k * 0.8, 0.6, 0.62, '#5a3a26'); } }],
     // a belfry opening: dark, with a bell
     ['bell', 1.4, 3.0, () => { R(0, 0, 1.4, 3, '#1c1d20'); R(0.2, 0.9, 1.0, 0.06, '#5a4a3a'); g.fillStyle = '#8a6a3a'; g.beginPath(); g.moveTo(X + 0.5 * PX, Y + 0.96 * PX); g.lineTo(X + 0.9 * PX, Y + 0.96 * PX); g.lineTo(X + 1.08 * PX, Y + 1.7 * PX); g.lineTo(X + 0.32 * PX, Y + 1.7 * PX); g.fill(); }],
+    // the shadowed inside of the Nevsky belfry arch (a real bronze bell hangs in front of it)
+    ['arch', 2.4, 2.8, () => { const gr = g.createLinearGradient(0, Y, 0, Y + 2.8 * PX); gr.addColorStop(0, '#26282c'); gr.addColorStop(1, '#141518'); g.fillStyle = gr; g.fillRect(X, Y, 2.4 * PX, 2.8 * PX); o.fillStyle = ORM.matte; o.fillRect(X, Y, 2.4 * PX, 2.8 * PX); }],
     // the statue of the Virgin in a niche: white robe, blue mantle, a golden halo
     ['statue', 1.3, 2.9, () => { R(0, 0, 1.3, 2.9, '#3f4a57'); R(0.25, 2.65, 0.8, 0.25, '#d8d8d8'); const P = (pts, col) => { g.fillStyle = col; g.beginPath(); pts.forEach(([x, y], k) => (k ? g.lineTo : g.moveTo).call(g, X + x * PX, Y + y * PX)); g.fill(); };
       P([[0.65, 0.55], [0.95, 2.65], [0.35, 2.65]], '#eef0f2'); P([[0.65, 0.6], [1.02, 2.65], [0.86, 2.65], [0.65, 1.1], [0.44, 2.65], [0.28, 2.65]], '#4f86c6');
@@ -536,11 +541,172 @@ function churchKm(K) {
   latheF(G, tx, tz, HT, [[3.96 + 0.3, 0], [0.06, 2.8]], 4, ROOF, a + Math.PI / 4);
   crossOn(tx, tz, HT + 2.7, 2.2, a, true);
 }
+/* ---- Chapel of St Alexander Nevsky (Saules iela 20, in the A. Pumpurs garden) ----
+   A small Russian-Revival chapel modelled from the Google Street View panoramas of April 2024 and the Wikimedia
+   Commons photographs (category "Daugavpils St Alexander Nevsky Orthodox Chapel"): white walls, sky-blue metal domes
+   and trim. Frame nv: u from the west front toward the east apse, v across it (bell tower 4.1 m wide, main cube
+   7.4 m, apse a half-round of 3 m). The bell tower (u 0..3.4) carries a tall open arch with a bronze bell, a keel
+   gable with a gilded cross and a small blue onion on a blue tent; the low narthex (3.4..6) joins it to the main
+   cube (6..13.8), whose four faces each bear a tall arched window under a tricolour (blue/gold/red) kokoshnik gable,
+   with a ribbed blue onion on a white drum ringed with little kokoshniks; the apse has a blue half-dome and a small
+   onion. The chapel stands on a stone podium with granite steps, in a fenced garden of columnar thujas, flower beds
+   and a memorial boulder. */
+function churchNv(K) {
+  const f = F.nv, G = K.plain, GS = K.stone, a = ang(f), WH = [247, 248, 247], BL = hb('#2f86c9'), BLD = hb('#2a74b4'),
+    GOLD = hb('#d9b04a'), RED = hb('#9a3a30'), ROOF = hb('#d3d7d9'), STONE = hb('#8d887e'), PAVE = hb('#a9a59d'),
+    IRON = hb('#23262a'), ST = { tex: 1, col: WH }, POD = 0.7;
+  STATE.GBC = standOn(f, [[0, -2.05], [6, -2.05], [6, -3.7], [13.8, -3.7], [16.8, 0], [13.8, 3.7], [6, 3.7], [6, 2.05], [0, 2.05]]);
+  const win = (s, y, w, h, o) => Object.assign({ s, w, y, h, head: 'round', tile: CT.orth, trim: BL, tw: 0.18 }, o);
+  const keelLine = (Fw, s, y, w, h, d, col, bw) => { const P = KEEL.map(([x, t]) => Fw.at(s + x * w, y + t * h, d)); for (let k = 0; k < P.length - 1; k++) lmBar(G, P[k], P[k + 1], bw, col); };
+  const zak = (Fw, s, y, w, h, d, back) => {   // a tricolour kokoshnik gable
+    const P = KEEL.map(([x, t]) => Fw.at(s + x * w, y + t * h, d)), c = Fw.at(s, y + h * 0.3, d);
+    for (let k = 0; k < P.length - 1; k++) { polyA(G, [c, P[k], P[k + 1]], WH, Fw.nx, 0, Fw.nz); lmBar(G, P[k], P[k + 1], 0.26, BL);
+      if (back) polyA(G, [P[k], P[k + 1], out(Fw, P[k + 1], -back), out(Fw, P[k], -back)], ROOF, 0, 1, 0); }
+    polyA(G, [Fw.at(s - w, y, d), Fw.at(s + w, y, d), c], WH, Fw.nx, 0, Fw.nz);
+    keelLine(Fw, s, y, w * 0.86, h * 0.86, d - 0.06, GOLD, 0.1); keelLine(Fw, s, y, w * 0.74, h * 0.74, d - 0.06, RED, 0.08);
+  };
+  const pediment = (Fw, s, y, w) => { polyA(G, [Fw.at(s - w, y, -0.12), Fw.at(s + w, y, -0.12), Fw.at(s, y + w * 0.7, -0.12)], WH, Fw.nx, 0, Fw.nz);
+    lmBar(G, Fw.at(s - w, y, -0.14), Fw.at(s, y + w * 0.7, -0.14), 0.1, BL); lmBar(G, Fw.at(s, y + w * 0.7, -0.14), Fw.at(s + w, y, -0.14), 0.1, BL); };
+  const rect = (u0, u1, v0, v1) => Float32Array.from([lmW(f, u0, v0), lmW(f, u1, v0), lmW(f, u1, v1), lmW(f, u0, v1)].flat());
+
+  // the stone podium with a paved top, granite steps, cheek walls and iron railings
+  const podPoly = [[-1.2, -3.25], [6, -3.25], [6, -4.8]];
+  for (let k = 0; k <= 8; k++) { const t = -Math.PI / 2 + Math.PI * k / 8; podPoly.push([13.8 + Math.cos(t) * 4.8, Math.sin(t) * 4.8]); }   // the apse bulge, k=0 joins (6,-4.8)→(13.8,-4.8)
+  podPoly.push([6, 4.8], [6, 3.25], [-1.2, 3.25]);
+  { const pts = podPoly.map(([u, v]) => lmW(f, u, v)), ring = Float32Array.from(pts.flat());
+    for (let i = 0; i < pts.length; i++) { const j = (i + 1) % pts.length, Fw = lmWF(pts[i], pts[j]); if (Fw.L < 0.01) continue; lmBoxW(GS, Fw, 0, Fw.L, 0, POD, 0, 0, STONE); }
+    lid(GS, f, podPoly, POD, PAVE); walkSlab(ring, POD); }
+  for (let k = 0; k < 5; k++) { const u0 = -1.2 - 0.32 * (k + 1), u1 = -1.2 - 0.32 * k, y = POD - 0.14 * (k + 1);
+    lmBoxL(GS, f, u0, u1, -1.5, 1.5, y, y + 0.14, sh(STONE, 0.96 + (k % 2) * 0.05), false); walkSlab(rect(u0, u1, -1.5, 1.5), y + 0.14); }
+  for (const sv of [-1, 1]) { lmBoxL(GS, f, -2.9, -1.2, sv * 1.5, sv * 1.8, 0, 0.85, STONE);
+    const A = lmW(f, -1.2, sv * 1.65), B = lmW(f, -2.85, sv * 1.65); lmBar(G, [A[0], 1.55, A[1]], [B[0], 0.95, B[1]], 0.06, IRON);
+    for (let k = 0; k <= 4; k++) { const [x, z] = lmW(f, -1.2 - k * 0.4, sv * 1.65), y0 = 0.85 - k * 0.13; lmBar(G, [x, y0, z], [x, y0 + 0.7, z], 0.04, IRON); } }
+
+  // the bell tower: open arch with a bronze bell, keel gable with a cross, a small blue onion on a blue tent
+  const bt = walls(K, f, [[0, -2.05], [3.4, -2.05], [3.4, 2.05], [0, 2.05]], POD, 6.5, ST, e => e.nu < -0.9
+    ? [win(e.L / 2, POD + 0.05, 1.6, 1.7, { tile: CT.door, lit: false, trim: WH, tw: 0.22 }), { s: e.L / 2, w: 2.4, y: 3.7, h: 1.6, head: 'round', tile: CT.arch, lit: false }]
+    : Math.abs(e.nv) > 0.9 ? [win(e.L / 2, 3.9, 0.55, 1.1, { tw: 0.12 })] : []);
+  band(K, bt, 6.0, 6.1, 0.1, BL); band(K, bt, 6.1, 6.5, 0.28, WH);
+  for (const e of bt) { for (const s of [0.3, e.L - 0.3]) pier(K, e, s, 0.5, POD, 6.0, 0.1, WH); if (Math.abs(e.nv) > 0.9) pediment(e.Fw, e.L / 2, 5.15, 0.45); }
+  { const Fw = bt.find(e => e.nu < -0.9).Fw, s = Fw.L / 2;
+    keel(K, Fw, s, 6.5, 2.05, 2.4, -0.15, WH, BL, 1.2);
+    const [cx, , cz] = Fw.at(s, 7.55, -0.3); crossOn(cx, cz, 7.35, 0.85, a);
+    for (let k = 0; k < 8; k++) { const t0 = Math.PI * k / 8, t1 = Math.PI * (k + 1) / 8;   // the wrought-iron canopy over the door
+      lmBar(G, Fw.at(s - Math.cos(t0) * 1.1, 3.35 + Math.sin(t0) * 0.5, -0.25), Fw.at(s - Math.cos(t1) * 1.1, 3.35 + Math.sin(t1) * 0.5, -0.25), 0.05, IRON); }
+    for (const d of [-1.0, 1.0]) { const [lx, , lz] = Fw.at(s + d, 2.9, -0.2); lmLathe(G, lx, lz, 2.9, [[0.1, 0], [0.12, 0.1]], 8, hb('#e8e6e0')); }
+    lmBar(G, Fw.at(s - 1.1, 5.95, 0), Fw.at(s + 1.1, 5.95, 0), 0.1, IRON);   // the bell beam
+    const [bx, bz] = lmW(f, 0, 0); lmLathe(G, bx, bz, 5.0, [[0.42, 0], [0.4, 0.08], [0.3, 0.3], [0.2, 0.6], [0.16, 0.75], [0.05, 0.82]], 12, hb('#6a5a3a'));
+    lmBar(G, [bx, 5.0, bz], [bx, 4.85, bz], 0.05, hb('#4a3f2a')); }
+  { const [x, z] = lmW(f, 1.7, 0); latheF(G, x, z, 6.5, [[2.9, 0], [0.3, 2.0]], 4, BLD, a + Math.PI / 4);
+    const y = drum(K, x, z, 8.5, 0.5, 0.8, WH, BL); crossOn(x, z, onion(K, x, z, y, 0.72, BL), 1.0, a); }
+
+  // the low narthex joining the tower to the main cube
+  const nar = walls(K, f, [[3.4, -2.05], [6, -2.05], [6, 2.05], [3.4, 2.05]], POD, 4.3, ST, e => e.nu < -0.9 ? [win(e.L / 2, 2.2, 0.6, 1.2, { tw: 0.12 })] : Math.abs(e.nv) > 0.9 ? [win(e.L / 2, 2.4, 0.5, 1.0, { tw: 0.12 })] : []);
+  band(K, nar, 3.9, 4.3, 0.2, WH);
+  for (const e of nar) if (Math.abs(e.nv) > 0.9 || e.nu < -0.9) pediment(e.Fw, e.L / 2, 3.65, 0.4);
+  gable(K, f, 3.4, 6, -2.05, 2.05, 4.3, 1.1, ROOF, ST, 'v', 0.3);
+
+  // the main cube: tall arched windows under tricolour kokoshniks, a ribbed blue onion on a white drum
+  const main = walls(K, f, [[6, -3.7], [13.8, -3.7], [13.8, 3.7], [6, 3.7]], POD, 7.0, ST, e => Math.abs(e.nv) > 0.9 ? [win(e.L / 2, 2.3, 1.4, 3.0)]
+    : e.nu > 0.9 ? [win(e.L / 2, 3.0, 1.0, 2.0, { tw: 0.14 })] : [win(e.L / 2, 4.7, 1.2, 2.0, { tw: 0.14 })]);
+  band(K, main, 6.5, 6.6, 0.1, BL); band(K, main, 6.6, 7.0, 0.3, WH);
+  for (const e of main) { for (const s of [0.35, e.L - 0.35]) pier(K, e, s, 0.6, POD, 6.5, 0.12, WH); zak(e.Fw, e.L / 2, 7.0, 3.3, 2.0, -0.15, 1.4); }
+  { const [x, z] = lmW(f, 9.9, 0); latheF(G, x, z, 7.0, [[5.2, 0], [1.6, 2.0]], 4, ROOF, a + Math.PI / 4);
+    for (const [u, v] of [[6, -3.7], [6, 3.7], [13.8, -3.7], [13.8, 3.7]]) { const [cx, cz] = lmW(f, u, v); crossOn(cx, cz, 7.3, 0.7, a); }
+    const y = drum(K, x, z, 9.0, 1.5, 2.2, WH, BL);
+    drumOpenings(K, x, z, 1.5, 8, a + Math.PI / 8, { w: 0.5, y: 9.5, h: 1.3, head: 'round', tile: CT.orth, trim: BL, tw: 0.1 });
+    for (let k = 0; k < 12; k++) { const t = a + k * Math.PI / 6, cx = x + Math.cos(t) * 1.52, cz = z + Math.sin(t) * 1.52;
+      keelLine(lmWF([cx + Math.sin(t) * 0.3, cz - Math.cos(t) * 0.3], [cx - Math.sin(t) * 0.3, cz + Math.cos(t) * 0.3]), 0.3, 10.8, 0.28, 0.35, -0.05, BL, 0.08); }
+    const R = 1.95, prof = [[0.02, 0], [R * 0.82, 0], [R, R * 0.3], [R * 1.08, R * 0.62], [R * 0.98, R * 0.98], [R * 0.7, R * 1.32], [R * 0.36, R * 1.62], [R * 0.13, R * 1.86], [0.03, R * 2.05]];
+    latheF(G, x, z, y, prof, 16, BL, a);
+    for (let k = 0; k < 16; k++) { const t = a + k * Math.PI / 8; for (let q = 0; q < prof.length - 1; q++)
+      lmBar(G, [x + Math.cos(t) * prof[q][0], y + prof[q][1], z + Math.sin(t) * prof[q][0]], [x + Math.cos(t) * prof[q + 1][0], y + prof[q + 1][1], z + Math.sin(t) * prof[q + 1][0]], 0.05, sh(BL, 0.8)); }
+    crossOn(x, z, y + R * 2.05, 1.8, a); }
+
+  // the apse: a half-round under a blue half-dome with a small onion
+  const AP = []; for (let k = 0; k <= 8; k++) { const t = -Math.PI / 2 + Math.PI * k / 8; AP.push([13.8 + Math.cos(t) * 3.0, 0.1 + Math.sin(t) * 3.0]); }
+  const ap = walls(K, f, AP, POD, 4.8, ST, e => e.L > 1.5 ? [win(e.L / 2, 2.2, 0.6, 1.4, { tw: 0.12 })] : [], true);
+  band(K, ap, 4.4, 4.8, 0.22, WH);
+  for (const e of ap) if (e.L > 1.5) pediment(e.Fw, e.L / 2, 3.9, 0.45);
+  { const R2 = 3.3, P = (t, b) => W3(f, 13.8 + Math.cos(t) * R2 * Math.cos(b), 0.1 + Math.sin(t) * R2 * Math.cos(b), 4.8 + R2 * 0.85 * Math.sin(b));
+    for (let k = 0; k < 8; k++) for (let q = 0; q < 5; q++) { const t0 = -Math.PI / 2 + Math.PI * k / 8, t1 = t0 + Math.PI / 8, b0 = q / 5 * Math.PI / 2, b1 = (q + 1) / 5 * Math.PI / 2;
+      polyA(G, q === 4 ? [P(t0, b0), P(t1, b0), P(t1, b1)] : [P(t0, b0), P(t1, b0), P(t1, b1), P(t0, b1)], BLD, 0, 1, 0); }
+    const [x, z] = lmW(f, 13.8, 0.1), y = drum(K, x, z, 7.4, 0.45, 0.7, WH, BL); crossOn(x, z, onion(K, x, z, y, 0.6, BL), 0.9, a); }
+
+  // the fenced garden: iron railing on a stone curb, with a gate on the street side
+  const FU0 = -9, FU1 = 23, FV = 11, GH = 1.3;
+  const fenceEdge = (Pw, Qw, gate) => {
+    const Fw = lmWF(Pw, Qw), L = Fw.L, at = (s, y) => Fw.at(s, y, 0);
+    lmBoxW(GS, Fw, 0, L, 0, 0.28, 0, 0.12, STONE); lmBoxW(G, Fw, -0.02, L + 0.02, 0.28, 0.34, -0.02, 0.14, hb('#cfccc4'));
+    const np = Math.max(1, Math.round(L / 2.5));
+    for (let k = 0; k <= np; k++) { const s = k * L / np; if (gate && Math.abs(s - L / 2) < 1.6) continue;
+      lmBar(G, at(s, 0.3), at(s, GH + 0.25), 0.1, IRON); const [x, , z] = at(s, GH + 0.25); lmLathe(G, x, z, GH + 0.25, [[0.07, 0], [0.02, 0.18]], 6, IRON); }
+    const nb = Math.round(L / 0.22);
+    for (let k = 0; k <= nb; k++) { const s = k * L / nb; if (gate && Math.abs(s - L / 2) < 1.6) continue; lmBar(G, at(s, 0.34), at(s, GH), 0.03, IRON); }
+    lmBar(G, at(0, 0.45), at(L, 0.45), 0.05, IRON); lmBar(G, at(0, GH), at(L, GH), 0.06, IRON);
+    if (gate) { COL.add(...Pw, ...lmW(f, FU0, -1.6), 0, 0); COL.add(...lmW(f, FU0, 1.6), ...Qw, 0, 0);
+      for (const sv of [-1, 1]) { const H = lmW(f, FU0, sv * 1.6), T = lmW(f, FU0 - 1.4, sv * 2.6);   // the open gate leaves
+        lmBar(G, [H[0], 0.4, H[1]], [T[0], 0.4, T[1]], 0.05, IRON); lmBar(G, [H[0], GH, H[1]], [T[0], GH, T[1]], 0.05, IRON);
+        for (let k = 0; k <= 5; k++) { const t = k / 5, x = H[0] + (T[0] - H[0]) * t, z = H[1] + (T[1] - H[1]) * t; lmBar(G, [x, 0.4, z], [x, GH, z], 0.03, IRON); } } }
+    else COL.add(...Pw, ...Qw, 0, 0);
+  };
+  fenceEdge(lmW(f, FU0, -FV), lmW(f, FU1, -FV), false); fenceEdge(lmW(f, FU1, -FV), lmW(f, FU1, FV), false);
+  fenceEdge(lmW(f, FU1, FV), lmW(f, FU0, FV), false); fenceEdge(lmW(f, FU0, FV), lmW(f, FU0, -FV), true);
+  // columnar thujas along the fence
+  const thuja = (u, v, s) => { const [x, z] = lmW(f, u, v), c = sh(hb('#36572f'), 0.85 + lr() * 0.3);
+    lmLathe(G, x, z, 0, [[0.06, 0], [0.4 * s, 0.25], [0.52 * s, 1.0 * s], [0.46 * s, 2.0 * s], [0.3 * s, 2.9 * s], [0.12 * s, 3.5 * s], [0, 3.85 * s]], 8, c); };
+  for (let u = -7; u <= 21; u += 4) for (const sv of [-1, 1]) { thuja(u + lr(), sv * (FV - 1.1), 0.9 + lr() * 0.35); if (lr() < 0.6) thuja(u + 1.2, sv * (FV - 1.6), 0.7 + lr() * 0.3); }
+  for (const [u, v] of [[-7.5, -8], [-7.5, 8], [21, -8], [21, 8]]) thuja(u, v, 1.0 + lr() * 0.3);
+  // flower beds (curb, painted soil, instanced plants)
+  const matFlower = lmStd({ map: lmFlowerAtlas(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.85, metalness: 0 }, 'lm-nv-flower');
+  const inst = LM_FLOWERS.map(() => []);
+  const bed = (cu, cv, hu, hv) => {
+    const b = { cu, cv, hu, hv, r: Math.min(hu, hv) * 0.4, kind: 1, lamps: [] };
+    const ring = grow => { const pts = [], H = hu + grow, V = hv + grow, r = Math.min(H, V) * 0.4;
+      for (const [sx, sy, a0] of [[1, 1, 0], [-1, 1, 0.5], [-1, -1, 1], [1, -1, 1.5]]) for (let k = 0; k <= 5; k++) { const aa = (a0 + k / 10) * Math.PI; pts.push(lmW(f, cu + sx * (H - r) + Math.cos(aa) * r, cv + sy * (V - r) + Math.sin(aa) * r)); }
+      let flat = []; for (const p of pts) flat.push(p[0], p[1]); if (area2(flat) < 0) flat = Array.from(reversed(flat)); return flat; };
+    const inner = ring(0), outer = ring(0.15);
+    vband(G, outer, 0, 0.16, hb('#9a958e')); wband(G, inner, outer, 0.16, sh(hb('#9a958e'), 1.05), false);
+    const PXM = 24, W = Math.round(2 * hu * PXM), H = Math.round(2 * hv * PXM), cv2 = mkCanvas(W, H), g2 = cv2.getContext('2d'), id = g2.createImageData(W, H), d = id.data;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const du = (x + 0.5) / PXM - hu, dv = (y + 0.5) / PXM - hv, dd = bedDist(b, cu + du, cv + dv), sp = bedSpecies(b, du, dv, dd), nn = 0.42 + lr() * 0.3;
+      const c = sp < 0 ? [92, 74, 58] : (lr() < 0.45 ? [58, 88, 40] : hb(LM_FLOWERS[sp].col)), k = 4 * (y * W + x); d[k] = c[0] * nn; d[k + 1] = c[1] * nn; d[k + 2] = c[2] * nn; d[k + 3] = 255; }
+    g2.putImageData(id, 0, 0);
+    const sp2 = [], uv = [], ix = [], [cx, cz] = lmW(f, cu, cv); sp2.push(cx, 0.12, cz); uv.push(0.5, 0.5);
+    for (let i = 0; i < inner.length / 2; i++) { const [lu, lv] = lmL(f, inner[2 * i], inner[2 * i + 1]); sp2.push(inner[2 * i], 0.12, inner[2 * i + 1]); uv.push((lu - cu + hu) / (2 * hu), 1 - (lv - cv + hv) / (2 * hv)); }
+    const n = inner.length / 2; for (let i = 0; i < n; i++) ix.push(0, 1 + (i + 1) % n, 1 + i);
+    const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(sp2, 3)); sg.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    sg.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(sp2.length).fill(0).map((_, k) => k % 3 === 1 ? 1 : 0), 3)); sg.setIndex(ix);
+    const sm = new THREE.Mesh(sg, lmStd({ map: toTex(cv2, true, false), roughness: 0.95, metalness: 0, side: THREE.DoubleSide }, 'lm-nv-bed')); sm.receiveShadow = true; scene.add(sm);
+    for (let aa = -hu; aa < hu; aa += 0.26) for (let c = -hv; c < hv; c += 0.26) { const du = aa + (lr() - 0.5) * 0.18, dv = c + (lr() - 0.5) * 0.18, dd = bedDist(b, cu + du, cv + dv); if (dd > -0.1) continue;
+      const s = bedSpecies(b, du, dv, dd); if (s < 0) continue; const [x, z] = lmW(f, cu + du, cv + dv); inst[s].push(x, 0.12, z, lr() * 6.283, 0.8 + lr() * 0.35); }
+  };
+  bed(-4.5, 5.0, 2.6, 2.0); bed(-4.5, -5.0, 2.6, 2.0); bed(8, 9.6, 7.5, 1.1); bed(18, 9.6, 3.0, 1.1); bed(8, -9.6, 7.5, 1.1); bed(18, -9.6, 3.0, 1.1);
+  { const M4 = new THREE.Matrix4(), Q4 = new THREE.Quaternion(), V3 = new THREE.Vector3(), S3 = new THREE.Vector3(), UPY = new THREE.Vector3(0, 1, 0), C3 = new THREE.Color();
+    LM_FLOWERS.forEach((fl, s) => { const list = inst[s], n = list.length / 5; if (!n) return;
+      const w = 0.36, h = fl.h, yt = h * 0.78, u0 = s / 8, u1 = (s + 1) / 8;
+      const pos = [-w / 2, 0, 0, w / 2, 0, 0, w / 2, h, 0, -w / 2, h, 0, 0, 0, -w / 2, 0, 0, w / 2, 0, h, w / 2, 0, h, -w / 2, -w / 2, yt, -w / 2, w / 2, yt, -w / 2, w / 2, yt, w / 2, -w / 2, yt, w / 2];
+      const uvs = [u0, 0.5, u1, 0.5, u1, 1, u0, 1, u0, 0.5, u1, 0.5, u1, 1, u0, 1, u0, 0, u1, 0, u1, 0.5, u0, 0.5];
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      geo.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(36).fill(0).map((_, k) => k % 3 === 1 ? 1 : 0), 3)); geo.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7, 8, 9, 10, 8, 10, 11]);
+      const im = new THREE.InstancedMesh(geo, matFlower, n);
+      for (let i = 0; i < n; i++) { const sc = list[5 * i + 4]; Q4.setFromAxisAngle(UPY, list[5 * i + 3]); M4.compose(V3.set(list[5 * i], list[5 * i + 1], list[5 * i + 2]), Q4, S3.set(sc, sc * (0.9 + lr() * 0.2), sc)); im.setMatrixAt(i, M4); const t = 0.85 + lr() * 0.25; im.setColorAt(i, C3.setRGB(t, t, t)); }
+      im.instanceMatrix.needsUpdate = true; im.instanceColor.needsUpdate = true; im.frustumCulled = false; im.receiveShadow = true; scene.add(im); }); }
+  // the memorial boulder with its plaque, benches, ground spotlights, a paved apron and the street guardrail
+  { const [x, z] = lmW(f, -4.5, 5.0); latheF(G, x, z, 0.12, [[0.7, 0], [0.85, 0.5], [0.7, 1.2], [0.5, 1.7], [0.2, 2.0]], 7, hb('#7a766e'), a);
+    lmBoxL(G, f, -4.8, -4.2, 4.5, 4.55, 0.7, 1.2, hb('#3a3835')); }
+  { const r = rect(-3, 19, -6, 6); flatPlain(G, [r], 0.02, PAVE, false); walkSlab(r, 0.02); }
+  lmBench(G, f, -6.5, -3.5, 1); lmBench(G, f, -6.5, 3.5, 1);
+  for (const [u, v] of [[2, -5.2], [8, -5.2], [14, -5.2], [2, 5.2], [8, 5.2], [14, 5.2]]) { lmBoxL(G, f, u - 0.12, u + 0.12, v - 0.1, v + 0.1, 0.02, 0.18, IRON, false);
+    const [x, z] = lmW(f, u, v); lmLathe(K.globe, x, z, 0.18, [[0.08, 0], [0.06, 0.05]], 8, hb('#f4e9c8')); }
+  { const u = FU0 - 1.6, A = lmW(f, u, -FV), B = lmW(f, u, FV); lmBar(G, [A[0], 0.9, A[1]], [B[0], 0.9, B[1]], 0.06, hb('#8a8d90')); lmBar(G, [A[0], 0.5, A[1]], [B[0], 0.5, B[1]], 0.05, hb('#8a8d90'));
+    for (let v = -FV; v <= FV; v += 2.5) { const [x, z] = lmW(f, u, v); lmBar(G, [x, 0, z], [x, 0.9, z], 0.06, hb('#8a8d90')); } }
+}
+
 function lmChurchHill(K, litPatch) {
   const [dc, dorm, dglow] = chAtlas();
   LMM.chDet = lmStd({ vertexColors: true, map: dc, roughnessMap: dorm, metalnessMap: dorm, roughness: 1, metalness: 1, emissive: new THREE.Color(1, 1, 1), emissiveMap: dglow, emissiveIntensity: 0 }, 'lm-ch-det', litPatch);
   KC.det = new LMB(); KC.gold = new GB(false);
-  cathedralBG(K); cathedralLu(K); churchCa(K); churchOb(K); churchKm(K);
+  cathedralBG(K); cathedralLu(K); churchCa(K); churchOb(K); churchKm(K); churchNv(K);
   STATE.GBC = null;
   KC.det.mesh(LMM.chDet);
   const gm = KC.gold.mesh(matGold); if (gm) { gm.castShadow = true; gm.receiveShadow = true; scene.add(gm); }
