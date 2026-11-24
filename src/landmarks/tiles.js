@@ -315,6 +315,16 @@ function lmTiles() {
     for (const x of [0.55, 1.05]) R(x, 0.2, 0.03, 3.65, SCF, 1); for (let y = 0.9; y < 3.8; y += 0.48) R(0.17, y, 1.26, 0.03, SCF, 1);
     const [a, b, c, d] = pr(0.17, 0.25, 1.26, 3.6); e.fillStyle = '#e8b878'; e.globalAlpha = 0.85; e.fillRect(a, b, c, d); e.globalAlpha = 1; });
   T('scPV', 6.0, 1.7, () => { R(0, 0, 6.0, 1.7, '#9aa0a4', 1); for (let k = 0; k < 6; k++) { R(0.04 + k * 0.995, 0.04, 0.96, 1.62, '#1d2a44', 3); for (let j = 1; j < 6; j++) R(0.04 + k * 0.995, 0.04 + j * 0.27, 0.96, 0.012, '#3a4a68', 3); } });
+  // ---- Daugavgrīvas cietums («Белый лебедь», Baltais gulbis), 18. novembra iela 66A: the whitewashed 1863 prison.
+  // Barred windows in weathered white frames, a steel vehicle gate and door, the glazed watchtower cabin, a name plaque.
+  const PRF = '#e7e3d8', PRB = '#4a4f52';
+  const bars = (w, h) => { for (const x of [0.2, 0.38, 0.62, 0.8]) R(x * w / 1.1, 0.06, 0.035, h - 0.12, PRB, 1); for (const y of [0.5, 1.0, 1.5]) R(0.06, y * h / 1.9, w - 0.12, 0.03, PRB, 1); };
+  T('prWin', 1.0, 1.6, () => { R(0, 0, 1.0, 1.6, PRF, 1); glass(0.08, 0.08, 0.84, 1.44, 0, '#ffd9a0'); R(0.47, 0.08, 0.06, 1.44, PRF, 1); bars(1.0, 1.6); });
+  T('prGate', 2.4, 2.6, () => { R(0, 0, 2.4, 2.6, '#5a6063', 1); R(0.08, 0.08, 2.24, 2.44, '#3c4144', 1);
+    for (let x = 0.18; x < 2.3; x += 0.24) R(x, 0.16, 0.05, 2.28, '#6a7073', 1);
+    R(0.08, 0.5, 2.24, 0.07, '#6a7073', 1); R(0.08, 2.0, 2.24, 0.07, '#6a7073', 1); R(1.16, 0.08, 0.08, 2.44, '#5a6063', 1); });
+  T('prDoor', 1.1, 2.0, () => { R(0, 0, 1.1, 2.0, '#6a7073', 1); R(0.07, 0.07, 0.96, 1.86, '#565c5f', 1);
+    R(0.22, 0.32, 0.66, 0.62, '#4a4f52', 1); glass(0.26, 0.36, 0.58, 0.54, 0, '#ffd9a0'); R(0.84, 1.0, 0.09, 0.26, '#8a9093', 1); });
   // shelf packing, tallest first
   defs.sort((a, b) => b.h - a.h);
   // shelves as tall as their first tile; a later tile goes into the first shelf with room, stacked under a narrower
@@ -394,6 +404,12 @@ function lmSigns() {
     g.fillStyle = '#e8ece9'; g.fillRect(x0, y0, w, h); g.strokeStyle = '#71838a'; g.lineWidth = 2; g.strokeRect(x0 + 1, y0 + 1, w - 2, h - 2); g.fillStyle = '#4d8a99'; g.fillRect(x0 + 10, y0 + 10, 6, h - 20);
     g.font = font(23, '700', '"Golos Text", "Trebuchet MS", sans-serif'); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#34474d'; g.fillText('STARU TERAPIJA', x0 + w / 2 + 10, y0 + h / 2);
     e.font = g.font; e.textAlign = 'center'; e.textBaseline = 'middle'; e.fillStyle = '#fff3d2'; e.fillText('STARU TERAPIJA', x0 + w / 2 + 10, y0 + h / 2);
+  });
+  // the White Swan prison: a blue enamel name plate by the street gate
+  add('prison', 420, 64, (x0, y0, w, h) => {
+    g.fillStyle = '#2c3e50'; g.fillRect(x0, y0, w, h); g.strokeStyle = '#1a252f'; g.lineWidth = 3; g.strokeRect(x0 + 1, y0 + 1, w - 2, h - 2);
+    g.font = font(26, '700', '"Golos Text", "Trebuchet MS", sans-serif'); g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#f4f2ec'; g.fillText('DAUGAVGRĪVAS CIETUMS', x0 + w / 2, y0 + h / 2);
+    e.font = g.font; e.textAlign = 'center'; e.textBaseline = 'middle'; e.fillStyle = '#dfe8f2'; e.fillText('DAUGAVGRĪVAS CIETUMS', x0 + w / 2, y0 + h / 2);
   });
   // the railway station: DAUGAVPILS in widely spaced bronze capitals on the platform side, the year in the lunette
   add('vkName', 1600, 120, (x0, y0, w, h) => {

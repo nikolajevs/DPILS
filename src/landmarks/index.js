@@ -9,6 +9,7 @@ import { lmYards } from './yards.js';
 import { gubTick, lmGubisce } from './gubisce.js';
 import { lmSubstation, SS_POOLS } from './substation.js';
 import { lmHospital } from './hospital.js';
+import { lmPrison } from './prison.js';
 import { lmParks, parksNight } from './parks.js';
 import { TX, rigaNow } from '../transit/transit.js';
 import { lmGrounds, lmSquare } from './unity-square.js';
@@ -101,7 +102,7 @@ async function buildLandmarks() {
   for (const f of [lmUnityHouse, lmLatgola, lmSquare, lmGrounds, lmVienibasRigas, lmDUMain, lmDUParades, lmDULab, lmRenesanse, lmRigas, lmVesma, lmTVTower, lmStation, lmStationYard, lmAutoosta, lmSpeedway, lmKP, lmSC]) { await rest(); f(K); }
   for (const f of [lmFuel, lmOverpass, lmTramWires, lmAirBridge, lmRailBridge, lmJunction, lmSchools, lmChurchHill, lmShops]) { await rest(); f(K, litPatch); }
   await rest(); STATE.GBC = TERR.on ? vbComp : null; lmVienibas(K); STATE.GBC = null;
-  for (const f of [lmParking, lmYards, lmGubisce, lmSubstation, lmHospital, lmParks, lmUnderpass]) { await rest(); await f(K); }
+  for (const f of [lmParking, lmYards, lmGubisce, lmSubstation, lmHospital, lmPrison, lmParks, lmUnderpass]) { await rest(); await f(K); }
   await rest();
   [LMM.ash, LMM.ren, LMM.duw, LMM.brick, LMM.tile, LMM.panel, LMM.buff, LMM.sil].forEach((m, k) => K.walls[k].mesh(m)); K.det.mesh(LMM.det); K.txt.mesh(LMM.txt, false); K.clk.mesh(LMM.clk, false);
   for (const [b, m] of [[K.plain, LMM.plain], [K.stone, LMM.stone]]) { const pm = b.mesh(m); if (pm) { pm.castShadow = pm.receiveShadow = true; scene.add(pm); } }
