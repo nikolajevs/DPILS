@@ -315,6 +315,19 @@ function lmTiles() {
     for (const x of [0.55, 1.05]) R(x, 0.2, 0.03, 3.65, SCF, 1); for (let y = 0.9; y < 3.8; y += 0.48) R(0.17, y, 1.26, 0.03, SCF, 1);
     const [a, b, c, d] = pr(0.17, 0.25, 1.26, 3.6); e.fillStyle = '#e8b878'; e.globalAlpha = 0.85; e.fillRect(a, b, c, d); e.globalAlpha = 1; });
   T('scPV', 6.0, 1.7, () => { R(0, 0, 6.0, 1.7, '#9aa0a4', 1); for (let k = 0; k < 6; k++) { R(0.04 + k * 0.995, 0.04, 0.96, 1.62, '#1d2a44', 3); for (let j = 1; j < 6; j++) R(0.04 + k * 0.995, 0.04 + j * 0.27, 0.96, 0.012, '#3a4a68', 3); } });
+  // ---- Daugavgrīvas cietums («Белый лебедь», Baltais gulbis), 18. novembra iela 66A: the whitewashed 1863 prison.
+  // Barred windows in weathered white frames, a steel vehicle gate and door, the glazed watchtower cabin, a name plaque.
+  const PRF = '#e7e3d8', PRB = '#4a4f52';
+  const bars = (w, h) => { for (const x of [0.2, 0.38, 0.62, 0.8]) R(x * w / 1.1, 0.06, 0.035, h - 0.12, PRB, 1); for (const y of [0.5, 1.0, 1.5]) R(0.06, y * h / 1.9, w - 0.12, 0.03, PRB, 1); };
+  T('prWin', 1.1, 1.9, () => { R(0, 0, 1.1, 1.9, PRF, 1); glass(0.09, 0.09, 0.92, 1.72, 0, '#ffd9a0'); R(0.52, 0.09, 0.06, 1.72, PRF, 1); bars(1.1, 1.9); });
+  T('prWinB', 1.1, 1.9, () => { R(0, 0, 1.1, 1.9, PRF, 1); glass(0.09, 0.09, 0.92, 0.9, 0, '#ffd9a0'); R(0.09, 1.02, 0.92, 0.79, '#cfc9bb', 0, '#3a3020'); bars(1.1, 1.9); });
+  T('prTowerWin', 1.0, 1.2, () => { R(0, 0, 1.0, 1.2, PRF, 1); glass(0.08, 0.08, 0.84, 1.04, 1, '#fff0d5'); R(0.47, 0.08, 0.06, 1.04, PRF, 1); R(0.08, 0.6, 0.84, 0.04, PRB, 1); });
+  T('prGate', 4.0, 3.6, () => { R(0, 0, 4.0, 3.6, '#5a6063', 1); R(0.1, 0.1, 3.8, 3.4, '#3c4144', 1);
+    for (let x = 0.25; x < 3.9; x += 0.3) R(x, 0.2, 0.06, 3.2, '#6a7073', 1);
+    R(0.1, 0.5, 3.8, 0.08, '#6a7073', 1); R(0.1, 3.0, 3.8, 0.08, '#6a7073', 1); R(1.95, 0.1, 0.1, 3.4, '#5a6063', 1); });
+  T('prDoor', 1.4, 2.6, () => { R(0, 0, 1.4, 2.6, '#6a7073', 1); R(0.08, 0.08, 1.24, 2.44, '#565c5f', 1);
+    R(0.28, 0.38, 0.84, 0.74, '#4a4f52', 1); glass(0.32, 0.42, 0.76, 0.66, 0, '#ffd9a0'); R(1.05, 1.3, 0.1, 0.3, '#8a9093', 1); });
+  T('prPlate', 2.6, 0.5, () => { R(0, 0, 2.6, 0.5, '#2c3e50', 0); R(0.04, 0.04, 2.52, 0.42, '#34495e', 0); txt('DAUGAVGRĪVAS CIETUMS', 1.3, 0.25, 0.15, '#f4f2ec', '700'); });
   // shelf packing, tallest first
   defs.sort((a, b) => b.h - a.h);
   // shelves as tall as their first tile; a later tile goes into the first shelf with room, stacked under a narrower
