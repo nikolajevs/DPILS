@@ -898,6 +898,7 @@ function onMsg(m) {
       break;
     }
     case 'shot': { const rs = remotes.get(m.id); if (rs) rs.shotAt = performance.now(); if (m.id === MP.id) { if (ownTracers) { m.rays.forEach((r, i) => bindTracer(r[4], ownTracers[i])); ownTracers = null; } } else otherShot(m, rs); break; }
+    case 'domeHit': hitTracer(m.bid, m.d, 'dome'); break;   // the server stopped the round at the shield and gives every page the exact point
     case 'nbounce': syncNade(m.id, m.p, m.v); break;   // the server bounced the grenade off a body: the copy follows its flight
     case 'nshot': {   // a bullet shot the grenade down: cut the tracer, sparks there; the blast ('boom') follows at once
       hitTracer(m.bid, m.d, 'nade');

@@ -1783,5 +1783,37 @@ console.log('siege of Dinaburg event (createGame, controlled clock):');
   g.stop();
 }
 
+/* ---------- 2q. the siege dome stops bullets from either side and releases them when it falls ---------- */
+console.log('siege dome ballistics (createGame, controlled clock):');
+{
+  let clock = 3e6;
+  const g = createGame({ world: flatWorld(), now: () => clock, name: 'dome', itemCount: 4 });
+  const tick = ms => { const n = Math.max(1, Math.ceil(ms / 200)); for (let k = 0; k < n; k++) { clock += ms / n; g.stepSiege(); } };
+  const outside = seat(g, conn()), highOutside = seat(g, conn()), inside = seat(g, conn());
+  const zOut = SIEGE.cz + 510, zIn = SIEGE.cz + 400;
+  msg(outside, { t: 'join', name: 'Снаружи', x: SIEGE.cx, z: zOut, yaw: Math.PI });
+  msg(highOutside, { t: 'join', name: 'Высота', x: SIEGE.cx + 35, z: zOut, yaw: Math.PI });
+  msg(inside, { t: 'join', name: 'Внутри', x: SIEGE.cx, z: zIn, yaw: 0 });
+  g.siegeStart(); clock += SIEGE.regMs - 20; g.stepSiege();
+  ok(g.siege && g.siege.phase === 'reg', 'the registration stays open up to its deadline');
+  msg(outside, { t: 'shoot', w: 0, rays: [[0, 0, -1]] });
+  msg(highOutside, { t: 'shoot', w: 0, rays: [[0, 0.25, -0.96825]] }); clock += 40; g.stepSiege();
+  clock += 500; g.stepBullets();
+  ok(g.siege && g.siege.phase === 'prep', 'the dome is active before the assault');
+  ok(Math.abs(g.siegeState().dome.rise - 0.375) < 0.001, 'the dome snapshot carries the live rise for a late joiner');
+  ok(inside.handle.player.hp === 100 && outside.all('domeHit').length === 1 && inside.all('domeHit').length === 1, 'a low round in flight is stopped as the rising field reaches it, while the high round passes through the still-open crown');
+  msg(outside, { t: 'shoot', w: 0, rays: [[0, 0, -1]] }); clock += 500; g.stepBullets();
+  ok(inside.handle.player.hp === 100 && outside.all('domeHit').length === 2 && inside.all('domeHit').length === 2, 'an outside shot ends in a shield ripple, not on the defender');
+  msg(inside, { t: 'shoot', w: 0, rays: [[0, 0, 1]] }); clock += 500; g.stepBullets();
+  ok(outside.handle.player.hp === 100 && outside.all('domeHit').length === 3 && inside.all('domeHit').length === 3, 'the same shield stops a shot from the inside');
+  msg(highOutside, { t: 'shoot', w: 0, rays: [[0, 0.25, -0.96825]] }); clock += 500; g.stepBullets();
+  ok(outside.all('domeHit').length === 4 && inside.all('domeHit').length === 4, 'the fully raised shell now stops fire aimed over the ramparts');
+  tick(SIEGE.prepMs + 100);
+  ok(g.siege && g.siege.phase === 'assault', 'the shield drops at the start of the assault');
+  msg(outside, { t: 'shoot', w: 0, rays: [[0, 0, -1]] }); clock += 500; g.stepBullets();
+  ok(inside.handle.player.hp < 100, 'the same line of fire reaches the defender after the dome falls');
+  g.stop();
+}
+
 console.log(fail ? `\n${fail} FAILED, ${pass} passed` : `\nall ${pass} tests passed`);
 process.exit(fail ? 1 : 0);
