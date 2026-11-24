@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/free-camera | Кинокамера распада купола: авто-ракурс и возврат | src/game/siege.js, mp.js, input.js, loop.js, index.html, style.css |
 
 ## Автономный цикл улучшений
 
