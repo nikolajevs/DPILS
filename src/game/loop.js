@@ -36,7 +36,7 @@ function frame(now) {
   requestAnimationFrame(frame);
   const t0 = performance.now();   // CPU frame time: everything below, up to perfSample
   const dt = Math.min(0.05, (now - last) / 1000); perfTick(Math.min(5, (now - last) / 1000)); last = now; clock += dt;
-  if (STATE.started) { if ($('start').hidden && big.hidden && !(MP.on && MP.dead)) step(dt); }
+  if (STATE.started) { if ($('start').hidden && big.hidden && !(MP.on && MP.dead) && !STATE.cine) step(dt); }   // the collapse cinematic flies the camera itself
   else { STATE.introT += reduceMotion ? 0 : dt; P.yaw = 0.6 + STATE.introT * 0.05; P.x = -1350 + Math.sin(P.yaw) * 420; P.z = 1250 + Math.cos(P.yaw) * 420; P.y = 150 + terrainH(P.x, P.z); P.pitch = -0.33; }
   mpTick(dt); updateTransit(dt); lmTick(); dayTick();   // dayTick: the sun and the light of the running day (lighting.js)
   stormLight();   // the storm's flashes and its dark over the day's own light (storm-fx.js): after dayTick, which rewrites it

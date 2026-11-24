@@ -1295,3 +1295,12 @@ body.storm .mp-top { display: none; }
 .bd-row.ally { box-shadow: inset 3px 0 0 #5fcf6a; background: rgba(95, 207, 106, .1); }
 .bd-row.ally .bd-tag { background: #3f9b58; }
 .mp-chat .line.clan { color: #c9f7cf; } .mp-chat .line b.clan { color: #7fd98f; }
+
+/* ---------- the collapse cinematic (siege.js): letterbox bars and a caption; the fight HUD steps aside ---------- */
+#cine { position: fixed; inset: 0; pointer-events: none; z-index: 70; }
+#cine .cine-t, #cine .cine-b { position: absolute; left: 0; right: 0; height: 0; background: #000; transition: height .55s cubic-bezier(.4, 0, .2, 1); }
+#cine .cine-t { top: 0; } #cine .cine-b { bottom: 0; }
+body.cine #cine .cine-t, body.cine #cine .cine-b { height: 9vh; }
+#cineCap { position: absolute; left: 0; right: 0; bottom: calc(9vh + 12px); text-align: center; font: 700 12px/1 var(--f-body); letter-spacing: .32em; color: rgba(255, 255, 255, .88); text-shadow: 0 1px 10px rgba(0, 0, 0, .7); opacity: 0; transition: opacity .7s; }
+body.cine #cineCap { opacity: 1; }
+body.cine #mpHud, body.cine #mini, body.cine #status, body.cine #siegeHud, body.cine #cross, body.cine #mpTags, body.cine #mpFloaters, body.cine #mpBanner { visibility: hidden; }

@@ -9,7 +9,7 @@ import { $ } from '../core/env.js';
 /* ---------- input ---------- */
 function tryLock() { try { const p = canvas.requestPointerLock && canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
 document.addEventListener('pointerlockchange', () => { STATE.locked = document.pointerLockElement === canvas; canvas.classList.toggle('locked', STATE.locked); });   // the fight crosshair belongs to crossTick: settings and chat release the lock, but the fight goes on
-const look = (dx, dy, k) => { P.yaw -= dx * k; P.pitch = Math.max(-1.5, Math.min(1.5, P.pitch - dy * k * (SET.invertY ? -1 : 1))); };
+const look = (dx, dy, k) => { if (STATE.cine) return; P.yaw -= dx * k; P.pitch = Math.max(-1.5, Math.min(1.5, P.pitch - dy * k * (SET.invertY ? -1 : 1))); };   // the collapse cinematic owns the lens
 let drag = false, joyId = null, lookId = null, jx = 0, jy = 0, lx = 0, ly = 0;
 canvas.addEventListener('pointerdown', e => {
   if (!STATE.started) return; canvas.focus();
