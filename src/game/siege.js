@@ -89,7 +89,8 @@ const DOME_FS = [
   '  energy *= 1.0 + uHot * 2.6 * strobe;',   // the overload: the whole field strobes white-hot before it fails
   '  col = mix(col, vec3(1.0, 0.98, 0.92), clamp(uHot * 0.75 * strobe + failEdge * 0.6 + f2 * 0.35, 0.0, 1.0));',
   '  col += vec3(1.0, 0.62, 0.25) * failEdge * 1.6 + vec3(0.7, 0.95, 1.0) * hitGlow * 0.5;',
-  '  float alpha = min(energy, 0.95) * vis * alive * uOpacity;',
+  '  float side = gl_FrontFacing ? 1.0 : 0.32;',   // from inside, keep the city and the attackers readable through the field
+  '  float alpha = min(energy, 0.95) * vis * alive * uOpacity * side;',
   '  if (alpha < 0.008) discard;',
   '  gl_FragColor = vec4(col, alpha);',
   '}',
@@ -103,7 +104,8 @@ const GLASS_FS = [
   '  float vis = 1.0 - smoothstep(uRise * 1.18 - 0.10, uRise * 1.18, vDir.y);',
   '  float local = (1.0 - vDir.y) * 0.9; float th = uFall * 1.6 - 0.2;',
   '  float alive = smoothstep(th - 0.05, th + 0.05, local);',
-  '  float a = (f * 0.34 + 0.16) * vis * alive * uOpacity;',
+  '  float side = gl_FrontFacing ? 1.0 : 0.16;',   // the inner glass is a faint veil, not a wall over the whole view
+  '  float a = (f * 0.34 + 0.16) * vis * alive * uOpacity * side;',
   '  if (a < 0.004) discard;',
   '  gl_FragColor = vec4(uColor * 0.25 + vec3(0.0, 0.015, 0.05), a);',
   '}',
@@ -209,7 +211,8 @@ const waveMat = new THREE.ShaderMaterial({ uniforms: { uW: { value: 0 }, uColor:
 function buildDome(d) {
   clearDome();
   const gy = terrainH(d.cx, d.cz);
-  domeU.uRise.value = 0; domeU.uFall.value = 0; domeU.uHot.value = 0; domeU.uOpacity.value = 0;
+  const rise = Math.max(0, Math.min(1, d.rise || 0));
+  domeU.uRise.value = rise; domeU.uFall.value = 0; domeU.uHot.value = 0; domeU.uOpacity.value = 0.9 * Math.min(1, rise * 3);
   for (const h of domeU.uHits.value) h.set(0, 0, 0, -10);
   shardMat.uniforms.uT.value = -1; waveMat.uniforms.uW.value = 0;
   const geo = new THREE.SphereGeometry(d.r, 96, 48, 0, Math.PI * 2, 0, Math.PI / 2);
@@ -238,7 +241,7 @@ function buildDome(d) {
   const motes = new THREE.Points(mg, moteMat);
   motes.position.set(d.cx, gy - 3, d.cz); motes.renderOrder = 15; motes.frustumCulled = false; motes.userData.noProbe = true; scene.add(motes);
   domeLight.position.set(d.cx, gy + 70, d.cz); domeLight.distance = d.r * 2.6;
-  domeVis = { d: { ...d }, gy, geo, glass, shell, ring, motes, u: domeU, hits: domeU.uHits.value, hitIdx: 0, rise: 0, shards: null, wave: null };
+  domeVis = { d: { ...d }, gy, geo, glass, shell, ring, motes, u: domeU, hits: domeU.uHits.value, hitIdx: 0, rise, shards: null, wave: null };
 }
 // the burst: seven hundred hex plates torn off the shell, each with its own hour, toss and spin (GPU-ballistic)
 function burstShards(dv) {
@@ -316,7 +319,8 @@ export function domeCross(ax, ay, az, bx, by, bz) {
   const sq = Math.sqrt(disc);
   for (const t of [(-B - sq) / (2 * A), (-B + sq) / (2 * A)]) {
     if (t < 0 || t > 1) continue;
-    if (py + dy * t < 0) continue;
+    const y = py + dy * t;
+    if (y < 0 || y > domeVis.rise * 1.18) continue;
     return [ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t];
   }
   return null;

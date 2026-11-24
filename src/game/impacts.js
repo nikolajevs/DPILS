@@ -185,12 +185,15 @@ function hitTracer(bid, dist, body) {
   const tr = byBid.get(bid); byBid.delete(bid);
   if (!tr) return;
   tr.len = Math.min(tr.len, dist);
-  if (body === 'nade') tr.kind = 'nade'; else if (body) tr.kind = 'body';
-  const impact = () => { if (tr.kind === 'surface') surfaceImpact(tr.o, tr.d, tr.len, tr.w); else if (tr.kind === 'body') bodyImpact(tr.o, tr.d, tr.len, tr.w); else if (tr.kind === 'nade') nadeImpact(tr.o, tr.d, tr.len, tr.w); };
+  if (body === 'dome') {
+    tr.kind = 'dome';
+    if (!tr.domed) { const at = bulletAt(tr.o, tr.d, dist, tr.speed, tr.k); domeHit(at[0], at[1], at[2], 0.8); tr.domed = true; }
+  } else if (body === 'nade') tr.kind = 'nade'; else if (body) tr.kind = 'body';
+  const impact = () => { if (tr.kind === 'surface' && !tr.domed) surfaceImpact(tr.o, tr.d, tr.len, tr.w); else if (tr.kind === 'body') bodyImpact(tr.o, tr.d, tr.len, tr.w); else if (tr.kind === 'nade') nadeImpact(tr.o, tr.d, tr.len, tr.w); };
   if (tr.done || tr.start + dragDist(tr.t, tr.speed, tr.k) >= tr.len) {   // already there or past: the impact now, not on a later frame
-    if (!tr.done) { tr.done = true; impact(); if (tr.onArrive) tr.onArrive(); }
+    if (!tr.done) { tr.done = true; impact(); if (tr.onArrive && !tr.domed) tr.onArrive(); }
     else if (body === 'nade') nadeImpact(tr.o, tr.d, tr.len, tr.w);
-    else if (body) bodyImpact(tr.o, tr.d, tr.len, tr.w);
+    else if (body && body !== 'dome') bodyImpact(tr.o, tr.d, tr.len, tr.w);
   }
 }
 
@@ -286,20 +289,26 @@ function muzzleSmoke(x, y, z, d) { puff(x, y, z, d[0] * 0.7 + rnd(-0.1, 0.1), 0.
 function tickFx(dt) {
   for (let i = tracers.length - 1; i >= 0; i--) {
     const tr = tracers[i]; tr.t += dt;
-    const head = Math.min(tr.len, tr.start + dragDist(tr.t, tr.speed, tr.k)), tail = Math.max(Math.min(tr.start, head), head - tr.trail);   // the drag brakes the streak as it brakes the bullet
+    let head = Math.min(tr.len, tr.start + dragDist(tr.t, tr.speed, tr.k)), tail = Math.max(Math.min(tr.start, head), head - tr.trail);   // the drag brakes the streak as it brakes the bullet
     // the siege shield: a bystander's bullet crosses the field — a ripple and an electric slap exactly where it passes
     if (!tr.domed && head > (tr.lastHead ?? tr.start)) {
       const p0 = bulletAt(tr.o, tr.d, tr.lastHead ?? tr.start, tr.speed, tr.k), p1 = bulletAt(tr.o, tr.d, head, tr.speed, tr.k);
       const dh = domeCross(p0[0], p0[1], p0[2], p1[0], p1[1], p1[2]);
-      if (dh) { tr.domed = true; domeHit(dh[0], dh[1], dh[2], 0.8); }
+      if (dh) {
+        const vx = p1[0] - p0[0], vy = p1[1] - p0[1], vz = p1[2] - p0[2], den = vx * vx + vy * vy + vz * vz;
+        const k = den > 1e-9 ? Math.max(0, Math.min(1, ((dh[0] - p0[0]) * vx + (dh[1] - p0[1]) * vy + (dh[2] - p0[2]) * vz) / den)) : 1;
+        tr.len = Math.min(tr.len, (tr.lastHead ?? tr.start) + (head - (tr.lastHead ?? tr.start)) * k);
+        head = Math.min(head, tr.len); tail = Math.max(Math.min(tr.start, head), head - tr.trail);
+        tr.domed = true; domeHit(dh[0], dh[1], dh[2], 0.8);
+      }
     }
     tr.lastHead = head;
     if (!tr.done && head >= tr.len) {
       tr.done = true;
-      if (tr.kind === 'surface') surfaceImpact(tr.o, tr.d, tr.len, tr.w);
+      if (tr.kind === 'surface' && !tr.domed) surfaceImpact(tr.o, tr.d, tr.len, tr.w);
       else if (tr.kind === 'body') bodyImpact(tr.o, tr.d, tr.len, tr.w);
       else if (tr.kind === 'nade') nadeImpact(tr.o, tr.d, tr.len, tr.w);
-      if (tr.onArrive) tr.onArrive();
+      if (tr.onArrive && !tr.domed) tr.onArrive();
     }
     if (tr.done) { tr.fade += dt; tr.l.material.opacity = Math.max(0, 0.85 - tr.fade * 14); if (tr.fade > 0.07) { dropTracer(tr); tracers.splice(i, 1); } continue; }
     const p = tr.l.geometry.attributes.position, tp = bulletAt(tr.o, tr.d, tail, tr.speed, tr.k), hp = bulletAt(tr.o, tr.d, head, tr.speed, tr.k);

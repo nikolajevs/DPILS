@@ -330,6 +330,25 @@ export function createGame(opts) {
   // arc's tangent at its start (over one 60 Hz substep the arc bends less than 2 mm — well inside HIT.grace). A wall or the
   // ground (freePath along the same arc at the muzzle) ends the flight. Pellets of one shot that hit the same body are
   // summed and reported once (the shotgun reads as one blow).
+  // The siege shield uses the same squashed hemisphere and rising front as the page. Test each short flight segment so
+  // in-flight rounds stop only where the visible shell has formed, then report that impact to every client.
+  function siegeDomeHit(a, b, time0, time1) {
+    if (!siege || siege.phase !== 'prep') return null;
+    const r = SIEGE.domeR, ry = r * 0.38, y0 = world.ground(SIEGE.cx, SIEGE.cz) - 3;
+    const px = (a[0] - SIEGE.cx) / r, py = (a[1] - y0) / ry, pz = (a[2] - SIEGE.cz) / r;
+    const dx = (b[0] - a[0]) / r, dy = (b[1] - a[1]) / ry, dz = (b[2] - a[2]) / r;
+    const A = dx * dx + dy * dy + dz * dz; if (A < 1e-12) return null;
+    const B = 2 * (px * dx + py * dy + pz * dz), C = px * px + py * py + pz * pz - 1;
+    const disc = B * B - 4 * A * C; if (disc < 0) return null;
+    const sq = Math.sqrt(disc);
+    for (const t of [(-B - sq) / (2 * A), (-B + sq) / (2 * A)]) {
+      if (t < 0 || t > 1 || py + dy * t < 0) continue;
+      const rise = Math.min(1, Math.max(0, (time0 + (time1 - time0) * t - siege.t0) / 1000 * 0.75));
+      if (py + dy * t > rise * 1.18) continue;   // bullets meet only the part of the field the rising light has reached
+      return { t, at: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t] };
+    }
+    return null;
+  }
   function advanceBullets(to) {
     if (!bullets.size) return;
     const touched = new Set();
@@ -339,22 +358,28 @@ export function createGame(opts) {
       const W = WEAPONS[b.w];
       let t = b.last, dist = b.dist, gone = false;
       while (t < to - 1e-4 && !gone) {   // the 1e-4 ms slack eats the float residual of the last substep, so it is not mistaken for the wall
-        const nt = Math.min(to, t + 1000 / 60), seg = flightSeg(b, dist, (nt - t) / 1000), reach = Math.min(seg, b.max - dist);
-        if (reach <= 1e-6) { gone = true; break; }
+        const nt = Math.min(to, t + 1000 / 60), seg = flightSeg(b, dist, (nt - t) / 1000), rawReach = Math.min(seg, b.max - dist);
+        if (rawReach <= 1e-6) { gone = true; break; }
         const o = bulletAt(b.o, b.d, dist, b.speed, b.k), dir = bulletDir(b.d, dist, b.speed, b.k);   // where the arc is now, and the way it goes
+        const shieldStart = siege && siege.phase === 'prep' && t < siege.t0 ? flightSeg(b, dist, Math.max(0, (Math.min(nt, siege.t0) - t) / 1000)) : 0;
+        const shield = shieldStart < rawReach ? siegeDomeHit(
+          bulletAt(b.o, b.d, dist + shieldStart, b.speed, b.k), bulletAt(b.o, b.d, dist + rawReach, b.speed, b.k),
+          t + (nt - t) * shieldStart / seg, t + (nt - t) * rawReach / seg,
+        ) : null;
+        const reach = shield ? shieldStart + (rawReach - shieldStart) * shield.t : rawReach, grace = shield ? 0 : HIT.grace;
         let best = null;
         if (!roundOver) {
           for (const { v, pose } of b.shot.poses) {   // the poses the shooter saw at the click, frozen
             if (!v.alive || nt <= v.protectUntil) continue;
-            const h = rayHit(o, dir, reach + HIT.grace, pose);
-            if (h && h.t <= reach + HIT.grace && (!best || h.t < best.t)) best = { t: Math.min(h.t, reach), zone: h.zone, v };
+            const h = rayHit(o, dir, reach + grace, pose);
+            if (h && h.t <= reach + grace && (!best || h.t < best.t)) best = { t: Math.min(h.t, reach), zone: h.zone, v };
           }
           for (const n of nades.values()) {   // a grenade in the air can be shot down: the bullet detonates it where they meet
             const ta = (t - b.nadeLag - n.simT) / 1000, tb = (nt - b.nadeLag - n.simT) / 1000;   // rewound by the shooter's lag and swept over the substep
             const a = [n.p[0] + n.v[0] * ta, n.p[1] + n.v[1] * ta, n.p[2] + n.v[2] * ta];
             const c = [n.p[0] + n.v[0] * tb, n.p[1] + n.v[1] * tb, n.p[2] + n.v[2] * tb];
-            const h = rayToSegment(o, dir, reach + HIT.grace, a, c);
-            if (h.dist <= NADE.hitR && h.t <= reach + HIT.grace && (!best || h.t < best.t)) best = { t: Math.min(h.t, reach), nade: n };
+            const h = rayToSegment(o, dir, reach + grace, a, c);
+            if (h.dist <= NADE.hitR && h.t <= reach + grace && (!best || h.t < best.t)) best = { t: Math.min(h.t, reach), nade: n };
           }
         }
         if (best && best.nade) {
@@ -375,6 +400,10 @@ export function createGame(opts) {
           const h = s.hits.get(best.v.id) || { v: best.v, dmg: 0, head: false, zone: 0, top: 0, bd: null, vf: 1 };
           h.dmg += dmg; h.head = h.head || best.zone === 1; if (dmg > h.top) { h.top = dmg; h.zone = best.zone; h.bd = bd; h.vf = vf; } s.hits.set(best.v.id, h);
           all({ t: 'bhit', bid: b.bid, by: b.by, d: +total.toFixed(2), v: best.v.id, zone: best.zone, at, bd: [+bd[0].toFixed(3), +bd[1].toFixed(3), +bd[2].toFixed(3)], vf: +vf.toFixed(3) });   // the page cuts the tracer here, shows the blood and flinches the body along bd
+          gone = true;
+        } else if (shield) {
+          const total = dist + reach, at = bulletAt(b.o, b.d, total, b.speed, b.k);
+          all({ t: 'domeHit', bid: b.bid, by: b.by, d: +total.toFixed(2), at: at.map(x => +x.toFixed(3)) });
           gone = true;
         } else { dist += seg; if (dist >= b.max) gone = true; }
         t = nt;
@@ -1002,7 +1031,7 @@ export function createGame(opts) {
       id: siege.id, phase: siege.phase, left: Math.max(0, siege.until - t), end: siege.end, t0: siege.t0,
       counts: siegeCounts(), prog: +siege.prog.toFixed(3), contest: siege.contest, holdMs: SIEGE.holdMs, capR: SIEGE.capR, balance: SIEGE.balance,
       names: { ...SIEGE.names }, altar: { x: SIEGE.altar.x, z: SIEGE.altar.z, gy: world.ground(SIEGE.altar.x, SIEGE.altar.z) },
-      area: { cx: SIEGE.cx, cz: SIEGE.cz, r: SIEGE.r }, dome: siege.phase === 'prep' ? { cx: SIEGE.cx, cz: SIEGE.cz, r: SIEGE.domeR } : null,
+      area: { cx: SIEGE.cx, cz: SIEGE.cz, r: SIEGE.r }, dome: siege.phase === 'prep' ? { cx: SIEGE.cx, cz: SIEGE.cz, r: SIEGE.domeR, rise: Math.min(1, Math.max(0, (t - siege.t0) / 1000 * 0.75)) } : null,
     };
   };
   // where a participant appears: the garrison by the altar and round the fortress inside the dome, the attackers on the
