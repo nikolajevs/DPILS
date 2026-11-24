@@ -158,9 +158,9 @@ export function createGame(opts) {
       if (v.conn) send(v, { t: 'stormDead', place: [...players.values()].filter(q => q.alive).length + 1, total: players.size, by: p === v ? (w === W_STORM ? 'storm' : '') : p.name, w });
     }
     if (v.markUntil) { v.markUntil = 0; all({ t: 'unmark', id: v.id }); }   // the cargo mark dies with its carrier
-    if (siegeFight() && v.siege) siegeDrop(v);   // the fallen leaves the siege at once: the teleport back to the city
     if (p !== v) { p.kills++; if (head) p.st.heads++; if (p.prof) { p.prof.add('kills'); if (head) p.prof.add('heads'); p.streak = (p.streak || 0) + 1; p.prof.max('best', p.streak); } }
     all({ t: 'kill', killer: p.id, victim: v.id, kn: p.name, vn: v.name, head, w, zone: bd ? zone : undefined, bd: r3(bd), vf: vf == null ? undefined : +vf.toFixed(3), dx: +(from[0] - v.x).toFixed(2), dz: +(from[2] - v.z).toFixed(2) }); sendBoard();   // dx/dz: where the blow came from; bd: the bullet's own way at the hit — the body falls along it (ragdoll.js)
+    if (siegeFight() && v.siege) siegeDrop(v);   // send the kill before the spawn: the client must not mark a freshly spawned player dead again
     if (p !== v && p.kills >= WIN) endRound(p);
   }
   // a fall from above the safe height hurts (FALL): the client reports the height it landed from — it knows the true
