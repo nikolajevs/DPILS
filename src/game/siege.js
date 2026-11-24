@@ -351,9 +351,9 @@ function cineStart(now, left) {
   if (L < 80) { dx = 0; dz = 1; L = 1; }   // a body at the centre: look from the staging side
   dx /= L; dz /= L;
   CINE.cx = d.cx; CINE.cz = d.cz; CINE.gy = gy; CINE.r = d.r;
-  CINE.dist = d.r * 1.95; CINE.ang = Math.atan2(dz, dx);
-  CINE.vx = d.cx + dx * CINE.dist; CINE.vz = d.cz + dz * CINE.dist; CINE.vy = gy + d.r * 0.92;
-  const ty = gy + d.r * 0.30;
+  CINE.dist = d.r * 1.5; CINE.ang = Math.atan2(dz, dx);
+  CINE.vx = d.cx + dx * CINE.dist; CINE.vz = d.cz + dz * CINE.dist; CINE.vy = gy + d.r * 0.42;   // low three-quarter aerial: the shell reads as a dome, not a flat ellipse
+  const ty = gy + d.r * 0.20;
   CINE.vyaw = Math.atan2(-(d.cx - CINE.vx), -(d.cz - CINE.vz));
   CINE.vpitch = Math.atan2(ty - CINE.vy, Math.hypot(d.cx - CINE.vx, d.cz - CINE.vz));
   CINE.from = { x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch };
@@ -371,9 +371,9 @@ function cineTick(dt, now) {
     P.yaw = lerpAng(CINE.from.yaw, CINE.vyaw, k); P.pitch = lerp(CINE.from.pitch, CINE.vpitch, k);
     if (k >= 1) { CINE.mode = 2; CINE.t0 = now; }
   } else if (CINE.mode === 2) {   // hold: a slow push-in and a whisper of orbit, so the frame is alive
-    CINE.ang += dt * 0.02; CINE.dist = Math.max(CINE.r * 1.55, CINE.dist - dt * CINE.r * 0.05);
+    CINE.ang += dt * 0.02; CINE.dist = Math.max(CINE.r * 1.22, CINE.dist - dt * CINE.r * 0.05);
     P.x = CINE.cx + Math.cos(CINE.ang) * CINE.dist; P.z = CINE.cz + Math.sin(CINE.ang) * CINE.dist; P.y = CINE.vy;
-    const ty = CINE.gy + CINE.r * 0.30;
+    const ty = CINE.gy + CINE.r * 0.20;
     P.yaw = Math.atan2(-(CINE.cx - P.x), -(CINE.cz - P.z)); P.pitch = Math.atan2(ty - P.y, Math.hypot(CINE.cx - P.x, CINE.cz - P.z));
     const since = CINE.collapseAt ? now - CINE.collapseAt : now - CINE.t0;
     if (since >= (CINE.collapseAt ? 2400 : 3600)) { CINE.mode = 3; CINE.t0 = now; CINE.dur = 900; CINE.from = { x: P.x, y: P.y, z: P.z, yaw: P.yaw, pitch: P.pitch }; }
