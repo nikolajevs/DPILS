@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Codex | codex/dinaburg-assault | «Штурм Динабурга»: купол, попадания и обратная связь | src/game/siege.js, src/game/impacts.js, src/game/mp.js, server/game.mjs, tools/combat-test.mjs |
 
 ## Автономный цикл улучшений
 
