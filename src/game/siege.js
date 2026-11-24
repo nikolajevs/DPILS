@@ -360,7 +360,7 @@ function cineStart(now, left) {
   CINE.mode = 1; CINE.t0 = now; CINE.dur = Math.max(350, Math.min(1000, left));
   STATE.cine = true; P.fly = true;
   document.body.classList.add('cine');
-  const c = $('cine'); if (c) { c.hidden = false; $('cineCap').textContent = 'КУПОЛ ПАЛ — ШТУРМ ДИНАБУРГА'; }
+  const c = $('cine'); if (c) { c.hidden = false; $('cineCap').textContent = 'ШТУРМ ДИНАБУРГА · ПАДЕНИЕ КУПОЛА'; }
   if (siegeCine.calm) siegeCine.calm();
 }
 function cineTick(dt, now) {
@@ -537,7 +537,7 @@ export function siegeTick(dt) {
   // the collapse cinematic: leave the body a second before the fall, hold through it, glide home
   if (!CINE.mode && S.phase === 'prep' && S.dome && !reduceMotion && STATE.mp && !STATE.mpDead) {
     const left = S.left - (now - S.recvAt);
-    if (left <= 1000 && left > -400 && CINE.id !== S.id) cineStart(now, left);
+    if (left <= 1000 && left > -400 && CINE.id !== S.id && Math.hypot(S.dome.cx - P.x, S.dome.cz - P.z) < S.dome.r * 1.6) cineStart(now, left);   // only the fighters and the near bystanders: a far watcher keeps his own view
   }
   cineTick(dt, now);
   // the altar marker
