@@ -63,7 +63,7 @@ function tower(K, cx, cz, shaftW, cabW, shaftH, cabH, topH) {
   const ops = [];
   for (const [a, b] of [[[-cw, -cw], [cw, -cw]], [[cw, -cw], [cw, cw]], [[cw, cw], [-cw, cw]], [[-cw, cw], [-cw, -cw]]]) {
     const n = Math.max(2, Math.round(cabW / 1.3));
-    lmRow(ops, a[0], a[1], b[0], b[1], n, 0.95, B + shaftH + 0.35, B + shaftH + 1.6, 'prTowerWin', { d: 0.18, lit: lmLit(0.5) });
+    lmRow(ops, a[0], a[1], b[0], b[1], n, 0.95, B + shaftH + 0.35, B + shaftH + 1.6, 'prWin', { d: 0.18, lit: lmLit(0.5) });
   }
   lmBlock(K, f, { poly: sq(cw), y0: B + shaftH, top: B + cabH, st: { tex: 1, col: WHITE }, cornice: [[B + cabH - 0.18, B + cabH, 0.12, WHITE2]] }, ops);
   const e = cw + 0.18, yE = B + cabH, yT = B + topH;
@@ -85,7 +85,7 @@ function gable(K, u0, u1, v0, v1, yE, yR, col, ov = 0.3) {
 function mainBlock(K) {
   const ops = [], sill = hb('#c9c4b8');
   for (const [y0, y1] of [[1.5, 3.5], [5.5, 7.5], [9.5, 11.5]]) {
-    const tile = k => (k % 4 === 1 ? 'prWinB' : 'prWin');
+    const tile = k => 'prWin';
     const win = { d: 0.24, sill, lit: lmLit(0.28), rcol: WHITE2 };
     lmRow(ops, 2, 0, 56, 0, 18, 1.1, MB + y0, MB + y1, tile, win);
     lmRow(ops, 2, 13, 56, 13, 18, 1.1, MB + y0, MB + y1, tile, win);
