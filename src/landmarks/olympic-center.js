@@ -1,6 +1,7 @@
 import { LMF, LMWHITE, lmW } from './core.js';
-import { lmBlock, lmBoxL, lmWF } from './helpers.js';
+import { lmBar, lmBlock, lmBoxL, lmLit, lmWF } from './helpers.js';
 import { hb, sh } from '../core/util.js';
+import { polyA } from '../core/geometry.js';
 import { addLight } from '../world/lamp-light.js';
 
 /* ---- Daugavpils Olimpiskais centrs, Stadiona iela 1 ----
@@ -274,6 +275,190 @@ function lmOlympic(K, litPatch) {
       [0, 0, 1, 0, 1, 1, 0, 1],
       [255, 230, 180], 1
     );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  GROUNDS: parking, sidewalks, paths, lamps, planters, greenery
+  // ═══════════════════════════════════════════════════════════════
+  const ASPH = hb('#5a5b5d');
+  const ASPH_WORN = hb('#4e5052');
+  const CONCRETE = hb('#b8b4ac');
+  const CONCRETE_SLAB = hb('#c4c0b8');
+  const KERB = hb('#8a8680');
+  const LINE_WHITE = [230, 228, 222];
+  const LAMP_POST = hb('#3a3e42');
+  const LAMP_HEAD = hb('#2a2d30');
+  const GRASS = hb('#5a6e3f');
+  const BUSH = hb('#3d5a2a');
+
+  // --- Asphalt walkway apron around the building (2.5 m wide strip) ---
+  // Offset from the building wall outward by ~3 m, at y=0.02
+  for (let i = 0; i < body.length; i++) {
+    const a = body[i], b = body[(i + 1) % body.length];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (len < 0.1) continue;
+    // Outward strip from wall face (d=0 to d=2.8)
+    lmBoxL(G, f, a[0], b[0], a[1], b[1], 0.01, 0.03, ASPH);
+    // Extended apron
+    const [Ax, Az] = at(a[0], a[1], 0.02);
+    const [Bx, Bz] = at(b[0], b[1], 0.02);
+    const F = lmWF([Ax, Az], [Bx, Bz]);
+    polyA(G, [
+      F.at(0, 0.03, 0), F.at(F.L, 0.03, 0),
+      F.at(F.L, 0.03, 2.8), F.at(0, 0.03, 2.8)
+    ], ASPH, 0, 1, 0);
+    // Kerb at outer edge
+    polyA(G, [
+      F.at(0, 0.03, 2.8), F.at(F.L, 0.03, 2.8),
+      F.at(F.L, 0.12, 2.9), F.at(0, 0.12, 2.9)
+    ], KERB, 0, 0, 1);
+  }
+
+  // --- Main entrance plaza (concrete pavers in front of the entrance) ---
+  {
+    const pU0 = 42, pU1 = 47, pV0 = -13, pV1 = 14;
+    // Concrete paver surface
+    polyA(G, [
+      at(pU0, pV0, 0.025), at(pU0, pV1, 0.025),
+      at(pU1, pV1, 0.025), at(pU1, pV0, 0.025)
+    ], CONCRETE_SLAB, 0, 1, 0);
+    // Expansion joints (grid lines every 3 m)
+    for (let v = pV0; v <= pV1; v += 3) {
+      const A = at(pU0, v, 0.026), B = at(pU1, v, 0.026);
+      lmBar(G, [A[0], 0.026, A[2]], [B[0], 0.026, B[2]], 0.015, KERB);
+    }
+  }
+
+  // --- Concrete planters/flower beds near the entrance ---
+  for (const [pu, pv, pw, pd] of [[44, -9, 1.5, 1.5], [44, 10, 1.5, 1.5]]) {
+    const y0 = 0.03, y1 = 0.55;
+    lmBoxL(G, f, pu - pw / 2, pu + pw / 2, pv - pd / 2, pv + pd / 2, y0, y1, CONCRETE);
+    // Soil/plants on top
+    polyA(G, [
+      at(pu - pw / 2 + 0.1, pv - pd / 2 + 0.1, y1),
+      at(pu - pw / 2 + 0.1, pv + pd / 2 - 0.1, y1),
+      at(pu + pw / 2 - 0.1, pv + pd / 2 - 0.1, y1),
+      at(pu + pw / 2 - 0.1, pv - pd / 2 + 0.1, y1)
+    ], hb('#4a3520'), 0, 1, 0);
+    // Low shrubs
+    for (let bx = -1; bx <= 1; bx += 2) {
+      for (let bz = -1; bz <= 1; bz += 2) {
+        const [sx, sz] = at(pu + bx * 0.25, pv + bz * 0.25, y1);
+        lmBar(G, [sx, y1, sz], [sx, y1 + 0.35, sz], 0.15, BUSH);
+      }
+    }
+  }
+
+  // --- PARKING LOT (north-east side, u≈-65..-30, v≈-10..+50) ---
+  {
+    const pkU0 = -65, pkU1 = -28, pkV0 = -15, pkV1 = 48;
+    // Main asphalt surface
+    polyA(G, [
+      at(pkU0, pkV0, 0.02), at(pkU0, pkV1, 0.02),
+      at(pkU1, pkV1, 0.02), at(pkU1, pkV0, 0.02)
+    ], ASPH_WORN, 0, 1, 0);
+
+    // Parking stall markings (white lines, 2.5 m wide stalls, 5 m deep)
+    const STALL_W = 2.5, STALL_D = 5.0, AISLE = 6.5;
+    // Rows of stalls facing the building (u negative = into parking from aisle)
+    // Row 1: along aisle at u≈-38 (stalls from u=-38 to u=-43, v spaced)
+    for (let v = pkV0 + 1; v + STALL_W <= pkV1 - 1; v += STALL_W + 0.1) {
+      // Stall outline (white T-mark)
+      const vEnd = Math.min(v + STALL_W, pkV1 - 1);
+      // Back line
+      const bk0 = at(-43, v, 0.021), bk1 = at(-43, vEnd, 0.021);
+      lmBar(G, [bk0[0], 0.021, bk0[2]], [bk1[0], 0.021, bk1[2]], 0.04, LINE_WHITE);
+      // Side lines
+      const sl0 = at(-38.5, v, 0.021), sl1 = at(-43, v, 0.021);
+      const sr0 = at(-38.5, vEnd, 0.021), sr1 = at(-43, vEnd, 0.021);
+      lmBar(G, [sl0[0], 0.021, sl0[2]], [sl1[0], 0.021, sl1[2]], 0.04, LINE_WHITE);
+      lmBar(G, [sr0[0], 0.021, sr0[2]], [sr1[0], 0.021, sr1[2]], 0.04, LINE_WHITE);
+    }
+    // Row 2: stalls on the outer side (u=-50 to -55)
+    for (let v = pkV0 + 1; v + STALL_W <= pkV1 - 1; v += STALL_W + 0.1) {
+      const vEnd = Math.min(v + STALL_W, pkV1 - 1);
+      const bk0 = at(-55, v, 0.021), bk1 = at(-55, vEnd, 0.021);
+      lmBar(G, [bk0[0], 0.021, bk0[2]], [bk1[0], 0.021, bk1[2]], 0.04, LINE_WHITE);
+      const sl0 = at(-50.5, v, 0.021), sl1 = at(-55, v, 0.021);
+      const sr0 = at(-50.5, vEnd, 0.021), sr1 = at(-55, vEnd, 0.021);
+      lmBar(G, [sl0[0], 0.021, sl0[2]], [sl1[0], 0.021, sl1[2]], 0.04, LINE_WHITE);
+      lmBar(G, [sr0[0], 0.021, sr0[2]], [sr1[0], 0.021, sr1[2]], 0.04, LINE_WHITE);
+    }
+
+    // Kerb around the parking lot
+    for (const [e0, e1] of [
+      [[pkU0, pkV0], [pkU0, pkV1]], [[pkU0, pkV0], [pkU1, pkV0]],
+      [[pkU1, pkV0], [pkU1, pkV1]], [[pkU0, pkV1], [pkU1, pkV1]]
+    ]) {
+      const A = at(e0[0], e0[1], 0.02), B = at(e1[0], e1[1], 0.02);
+      lmBar(G, [A[0], 0.02, A[2]], [B[0], 0.12, B[2]], 0.08, KERB);
+    }
+
+    // --- Parking lot lamp posts (tall poles, 8 m high) ---
+    for (const [lv] of [[-10], [5], [20], [35]]) {
+      // Two poles per row: one on each side of the aisle
+      for (const lu of [-40.5, -52.5]) {
+        const [lx, lz] = at(lu, lv, 0.03);
+        // Pole
+        K.plain.q(
+          [lx - 0.06, 0.03, lz - 0.06], [lx + 0.06, 0.03, lz - 0.06],
+          [lx + 0.06, 8.0, lz + 0.06], [lx - 0.06, 8.0, lz + 0.06],
+          [0, 0, 1], [0, 0, 0, 0, 0, 0, 0, 0], LAMP_POST, 0
+        );
+        // Luminaire head (horizontal arm + lamp)
+        const armDir = lu < -45 ? -1 : 1;  // arm extends toward aisle
+        const [ax, az] = at(lu + armDir * 2.5, lv, 7.8);
+        lmBar(G, [lx, 7.9, lz], [ax, 7.8, az], 0.04, LAMP_HEAD);
+        // Lamp housing (emissive)
+        K.det.q(
+          [ax - 0.3, 7.7, az - 0.15], [ax + 0.3, 7.7, az - 0.15],
+          [ax + 0.3, 7.85, az + 0.15], [ax - 0.3, 7.85, az + 0.15],
+          [0, -1, 0], [0, 0, 1, 0, 1, 1, 0, 1],
+          [240, 230, 200], 1
+        );
+        addLight(ax, 7.7, az, 12, 0, 3.5);
+      }
+    }
+
+    // --- Footpath from parking to the main entrance ---
+    // Diagonal path from parking aisle (u≈-38, v≈0) to entrance plaza (u≈42, v≈0)
+    const pathV0 = -2.5, pathV1 = 2.5;
+    polyA(G, [
+      at(-36, pathV0, 0.025), at(-36, pathV1, 0.025),
+      at(42, pathV1, 0.025), at(42, pathV0, 0.025)
+    ], CONCRETE_SLAB, 0, 1, 0);
+    // Path edge kerbs
+    for (const v of [pathV0, pathV1]) {
+      const A = at(-36, v, 0.025), B = at(42, v, 0.025);
+      lmBar(G, [A[0], 0.025, A[2]], [B[0], 0.10, B[2]], 0.06, KERB);
+    }
+  }
+
+  // --- Green island strips between the parking and the building ---
+  // Grass strip between the apron (d≈2.8 from wall) and the parking lot
+  for (const [gU0, gU1, gV0, gV1] of [
+    [-30, -15, -13, 47],   // main green buffer
+    [-62, -58, -13, 47],    // outer green strip
+  ]) {
+    polyA(G, [
+      at(gU0, gV0, 0.015), at(gU0, gV1, 0.015),
+      at(gU1, gV1, 0.015), at(gU1, gV0, 0.015)
+    ], GRASS, 0, 1, 0);
+  }
+
+  // --- Low ornamental bushes along the building on the NE side ---
+  for (let v = -38; v <= 42; v += 3.5) {
+    const [bx, bz] = at(-20, v, 0.03);
+    // Small bush cluster
+    for (let k = 0; k < 3; k++) {
+      const ox = (Math.random() - 0.5) * 0.6;
+      const oz = (Math.random() - 0.5) * 0.6;
+      K.plain.q(
+        [bx + ox - 0.25, 0.03, bz + oz - 0.25], [bx + ox + 0.25, 0.03, bz + oz - 0.25],
+        [bx + ox + 0.25, 0.7, bz + oz + 0.25], [bx + ox - 0.25, 0.7, bz + oz + 0.25],
+        [0, 0, 1], [0, 0, 0, 0, 0, 0, 0, 0], BUSH, 0
+      );
+    }
   }
 
   // --- Roof-top technical elements ---
