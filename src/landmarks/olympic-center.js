@@ -415,7 +415,7 @@ function lmOlympic(K, litPatch) {
           [0, -1, 0], [0, 0, 1, 0, 1, 1, 0, 1],
           [240, 230, 200], 1
         );
-        addLight(ax, 7.7, az, 12, 0, 3.5);
+        addLight(ax, 7.7, az, 0, 0, 7.7);
       }
     }
 
