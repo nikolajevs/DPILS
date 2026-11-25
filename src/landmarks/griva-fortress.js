@@ -122,12 +122,17 @@ function lmGriva(K) {
   for (let i = 0; i < WALL_S.length - 2; i += 2) {
     const x1 = WALL_S[i], z1 = WALL_S[i + 1], x2 = WALL_S[i + 2], z2 = WALL_S[i + 3];
     const L = Math.hypot(x2 - x1, z2 - z1), tx = (x2 - x1) / L, tz = (z2 - z1) / L, nx = -tz, nz = tx;
-    const y1 = terrainH(x1, z1), y2 = terrainH(x2, z2), h = 2.7;
-    wallQuadY(G, x1 + nx * 0.12, z1 + nz * 0.12, x2 + nx * 0.12, z2 + nz * 0.12, y1, y1 + h, sh(conc, 1 + 0.05 * rnd(i, 1)), nx, nz);
-    wallQuadY(G, x1 - nx * 0.12, z1 - nz * 0.12, x2 - nx * 0.12, z2 - nz * 0.12, y2, y2 + h, sh(concD, 1 + 0.05 * rnd(i, 2)), -nx, -nz);
-    polyA(G, [[x1 + nx * 0.12, y1 + h, z1 + nz * 0.12], [x2 + nx * 0.12, y2 + h, z2 + nz * 0.12], [x2 - nx * 0.12, y2 + h, z2 - nz * 0.12], [x1 - nx * 0.12, y1 + h, z1 - nz * 0.12]], sh(conc, 1.1), 0, 1, 0);
+    const h = 2.7, np = Math.max(1, Math.round(L / 3));
+    // panels in 3 m pieces, each on its own ground level: the bank falls along the wall
+    for (let k = 0; k < np; k++) {
+      const ta = k / np, tb = (k + 1) / np;
+      const ax = x1 + (x2 - x1) * ta, az = z1 + (z2 - z1) * ta, bx = x1 + (x2 - x1) * tb, bz = z1 + (z2 - z1) * tb;
+      const ya = terrainH(ax, az), yb = terrainH(bx, bz);
+      wallQuadY(G, ax + nx * 0.12, az + nz * 0.12, bx + nx * 0.12, bz + nz * 0.12, ya - 0.15, ya + h, sh(conc, 1 + 0.05 * rnd(i + k, 1)), nx, nz);
+      wallQuadY(G, ax - nx * 0.12, az - nz * 0.12, bx - nx * 0.12, bz - nz * 0.12, yb - 0.15, yb + h, sh(concD, 1 + 0.05 * rnd(i + k, 2)), -nx, -nz);
+      polyA(G, [[ax + nx * 0.12, ya + h, az + nz * 0.12], [bx + nx * 0.12, yb + h, bz + nz * 0.12], [bx - nx * 0.12, yb + h, bz - nz * 0.12], [ax - nx * 0.12, ya + h, az - nz * 0.12]], sh(conc, 1.1), 0, 1, 0);
+    }
     // panel joints and posts
-    const np = Math.max(1, Math.round(L / 3));
     for (let k = 0; k <= np; k++) {
       const t = k / np, x = x1 + (x2 - x1) * t, z = z1 + (z2 - z1) * t, y = terrainH(x, z);
       box(G, x, z, tx, tz, 0.06, 0.2, y, y + h + 0.12, concD);
