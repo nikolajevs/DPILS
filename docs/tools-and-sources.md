@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/olympic-center | Здание Олимпийского центра (Stadiona iela 1) — 3D-модель с фото-текстурами | src/landmarks/olympic-center.js |
 
 ## Автономный цикл улучшений
 
