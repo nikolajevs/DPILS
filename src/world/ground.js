@@ -26,6 +26,60 @@ const DEEP = 0.5, DEEP_MARGIN = 0.1;
 const TOP_CLEAR = 0.2;
 let DIP = null;   // per node of the height grid: how much deeper the deep grid goes (noteDips)
 let BASESUB = null;   // the subdivided base ground (flat/tris), reused to hug the top depth grid to the visible grass
+let LANDSUB = null;   // the land-use colour layer (flat/tris), the other half of the visible ground
+/* The visible ground as a height field: the base ground and the land-use colour over it, each within its subTris tol of
+   the bilinear heights but sagging under them on a crest by up to that tol. A paving ribbon laid on the bilinear heights
+   (the sidewalks, the footways) then hangs in the air over the drawn ground wherever no carriageway covers it — the
+   floating kerbs of Lielā iela in Grīva. groundSurf interpolates the drawn triangles (the higher of the two layers wins
+   the depth test, so it is the one seen) and the paving is laid on it instead. An index of 32 m cells keeps the lookup
+   to the few triangles around the point; released once the streets are laid (releaseGroundSurf). */
+let GS = null;
+function buildGroundSurf() {
+  if (!TERR.on || !BASESUB) return;
+  const F = [], H = [], T = [];
+  const add = S => { if (!S) return; const v0 = F.length / 2;
+    for (let i = 0; i < S.flat.length; i += 2) { F.push(S.flat[i], S.flat[i + 1]); H.push(terrainH(S.flat[i], S.flat[i + 1])); }
+    for (let t = 0; t < S.tris.length; t += 3) T.push(S.tris[t] + v0, S.tris[t + 1] + v0, S.tris[t + 2] + v0); };
+  add(BASESUB); add(LANDSUB);
+  const n = T.length / 3, S = 32, NX = Math.ceil(2 * HX / S) + 1, NZ = Math.ceil(2 * HY / S) + 1;
+  const D = new Float32Array(n * 10), cnt = new Int32Array(NX * NZ + 1);
+  for (let t = 0; t < n; t++) {
+    const a = T[3 * t], b = T[3 * t + 1], c = T[3 * t + 2], k = t * 10;
+    const ax = F[2 * a], az = F[2 * a + 1], bx = F[2 * b], bz = F[2 * b + 1], cx = F[2 * c], cz = F[2 * c + 1];
+    D[k] = ax; D[k + 1] = az; D[k + 2] = bx; D[k + 3] = bz; D[k + 4] = cx; D[k + 5] = cz;
+    D[k + 6] = Math.min(ax, bx, cx); D[k + 7] = Math.min(az, bz, cz); D[k + 8] = Math.max(ax, bx, cx); D[k + 9] = Math.max(az, bz, cz);
+    for (let j = Math.max(0, Math.floor((D[k + 7] + HY) / S)); j <= Math.min(NZ - 1, Math.floor((D[k + 9] + HY) / S)); j++)
+      for (let i = Math.max(0, Math.floor((D[k + 6] + HX) / S)); i <= Math.min(NX - 1, Math.floor((D[k + 8] + HX) / S)); i++) cnt[j * NX + i + 1]++;
+  }
+  for (let c = 0; c < NX * NZ; c++) cnt[c + 1] += cnt[c];
+  const idx = new Int32Array(cnt[NX * NZ]), cur = cnt.slice(0, NX * NZ);
+  for (let t = 0; t < n; t++) {
+    const k = t * 10;
+    for (let j = Math.max(0, Math.floor((D[k + 7] + HY) / S)); j <= Math.min(NZ - 1, Math.floor((D[k + 9] + HY) / S)); j++)
+      for (let i = Math.max(0, Math.floor((D[k + 6] + HX) / S)); i <= Math.min(NX - 1, Math.floor((D[k + 8] + HX) / S)); i++) idx[cur[j * NX + i]++] = t;
+  }
+  GS = { D, H, idx, cnt, NX, NZ, S };
+}
+function groundSurf(x, z) {
+  const h0 = terrainH(x, z);
+  if (!GS) return h0;
+  const { D, H, idx, cnt, NX, NZ, S } = GS;
+  const i = Math.floor((x + HX) / S), j = Math.floor((z + HY) / S);
+  if (i < 0 || j < 0 || i >= NX || j >= NZ) return h0;
+  const cell = j * NX + i; let best = -1e9;
+  for (let q = cnt[cell]; q < cnt[cell + 1]; q++) {
+    const t = idx[q], k = t * 10;
+    if (x < D[k + 6] || z < D[k + 7] || x > D[k + 8] || z > D[k + 9]) continue;
+    const ax = D[k], az = D[k + 1], bx = D[k + 2], bz = D[k + 3], cx = D[k + 4], cz = D[k + 5];
+    const det = (bx - ax) * (cz - az) - (cx - ax) * (bz - az); if (Math.abs(det) < 1e-9) continue;
+    const u = ((x - ax) * (cz - az) - (cx - ax) * (z - az)) / det, v = ((bx - ax) * (z - az) - (x - ax) * (bz - az)) / det;
+    if (u < -1e-4 || v < -1e-4 || u + v > 1.0001) continue;
+    const a = t * 3, h = H[a] + u * (H[a + 1] - H[a]) + v * (H[a + 2] - H[a]);
+    if (h > best) best = h;
+  }
+  return best > -1e8 ? best : h0;
+}
+function releaseGroundSurf() { GS = null; LANDSUB = null; }
 /* The ground layers lie within their tol of the ground (subTris: 0.35 m), so above a grid DEEP under it. A triangle
    that got as small as subTris cuts (12 m) can dip deeper under a sharp edge: the grid is lowered under it, on the nodes
    of the cells it touches, by what it dips deeper (dip: per node of the height grid, in metres). */
@@ -188,12 +242,16 @@ async function buildGround() {
       continue;
     }
     if (TERR.on) await noteDips(flat, tris, DIP);
+    if (TERR.on) { const w0 = LANDSUB ? LANDSUB.flat.length / 2 : 0; if (!LANDSUB) LANDSUB = { flat: [], tris: [] };
+      for (let i = 0; i < flat.length; i += 2) LANDSUB.flat.push(flat[i], flat[i + 1]);
+      for (let i = 0; i < tris.length; i += 3) LANDSUB.tris.push(tris[i] + w0, tris[i + 1] + w0, tris[i + 2] + w0); }
     const v0 = land.v, col = sh(colors[a.cls], 0.94 + rnd(n, 3) * 0.12);
     land.ensure(flat.length / 2);
     for (let i = 0; i < flat.length; i += 2) land.vert(flat[i], 0, flat[i + 1], 0, 1, 0, col);
     for (let i = 0; i < tris.length; i += 3) land.triUp(v0 + tris[i], v0 + tris[i + 1], v0 + tris[i + 2]);
   }
   await rest(); const lm = land.mesh(M_LAND); if (lm) { lm.renderOrder = -40; lm.frustumCulled = false; lm.receiveShadow = true; scene.add(lm); }
+  buildGroundSurf();   // the drawn ground as a height field, for the paving laid on it (src/world/streets.js)
   // before the ground colour layers: the bank writes depth, so the grass drawn over it hides the bank behind a hummock
   const bm = bank.mesh(matBank); if (bm) { bm.renderOrder = -55; bm.frustumCulled = false; scene.add(bm); }
   wet.forEach(([wp, wi], k) => {
@@ -236,4 +294,4 @@ async function groundDepth() {
   await rest(); await terrainDepth(DIP);
 }
 
-export { buildGround, groundDepth };
+export { buildGround, groundDepth, groundSurf, releaseGroundSurf };
