@@ -91,6 +91,58 @@ const CH = 0.15;
    floating kerbs and sidewalks of Lielā iela in Grīva. Only downwards: where the ground stands above the heights the
    foot stays at 0 and buries itself in it. Bridges, the overpass and the cutting keep their own decks (GBC). */
 const groundFoot = (x, z) => { if (!TERR.on || STATE.GBC) return 0; const f = groundSurf(x, z) - terrainH(x, z); return f < 0 ? f : 0; };
+/* The carriageway as a height field, like groundSurf for the grass. The asphalt is densified to 0.15 m of the heights
+   while the ground layers sag under them on a crest by up to 0.35 m, and the asphalt writes no depth: a skirt footed on
+   the drawn ground beside a carriageway stands a third of a metre below the road it meets, and its whole face paints
+   over the asphalt as a concrete wall — the kerb blocks and half-metre kerbs of Lielā iela in Grīva. Where a skirt edge
+   meets a carriageway its foot follows the road surface instead, a hand below it; over grass it keeps the drawn ground.
+   The index is built once every carriageway is laid and released with the ground one. */
+let RS = null;
+function buildRoadSurf(b) {
+  if (!TERR.on || !b.ni) return;
+  const n = b.ni / 3, P = b.pos, S = 32, NX = Math.ceil(2 * HX / S) + 1, NZ = Math.ceil(2 * HY / S) + 1;
+  const H = new Float32Array(b.v); for (let i = 0; i < b.v; i++) H[i] = P[3 * i + 1] + terrainH(P[3 * i], P[3 * i + 2]);
+  const D = new Float32Array(n * 10), cnt = new Int32Array(NX * NZ + 1);
+  for (let t = 0; t < n; t++) {
+    const a = b.idx[3 * t], c = b.idx[3 * t + 1], d = b.idx[3 * t + 2], k = t * 10;
+    const ax = P[3 * a], az = P[3 * a + 2], bx = P[3 * c], bz = P[3 * c + 2], cx = P[3 * d], cz = P[3 * d + 2];
+    D[k] = ax; D[k + 1] = az; D[k + 2] = bx; D[k + 3] = bz; D[k + 4] = cx; D[k + 5] = cz;
+    D[k + 6] = Math.min(ax, bx, cx); D[k + 7] = Math.min(az, bz, cz); D[k + 8] = Math.max(ax, bx, cx); D[k + 9] = Math.max(az, bz, cz);
+    for (let j = Math.max(0, Math.floor((D[k + 7] + HY) / S)); j <= Math.min(NZ - 1, Math.floor((D[k + 9] + HY) / S)); j++)
+      for (let i = Math.max(0, Math.floor((D[k + 6] + HX) / S)); i <= Math.min(NX - 1, Math.floor((D[k + 8] + HX) / S)); i++) cnt[j * NX + i + 1]++;
+  }
+  for (let c = 0; c < NX * NZ; c++) cnt[c + 1] += cnt[c];
+  const idx = new Int32Array(cnt[NX * NZ]), cur = cnt.slice(0, NX * NZ);
+  for (let t = 0; t < n; t++) {
+    const k = t * 10;
+    for (let j = Math.max(0, Math.floor((D[k + 7] + HY) / S)); j <= Math.min(NZ - 1, Math.floor((D[k + 9] + HY) / S)); j++)
+      for (let i = Math.max(0, Math.floor((D[k + 6] + HX) / S)); i <= Math.min(NX - 1, Math.floor((D[k + 8] + HX) / S)); i++) idx[cur[j * NX + i]++] = t;
+  }
+  RS = { D, H, idx, cnt, NX, NZ, S };
+}
+// the road surface under the point, relative to the heights there; a skirt edge stands a hand off the asphalt edge,
+// so the taps reach 0.6 m across it. null where no carriageway is near
+function roadRel(x, z) {
+  if (!RS) return null;
+  const { D, H, idx, cnt, NX, NZ, S } = RS;
+  for (let tap = 0; tap < 5; tap++) {
+    const px = x + (tap === 1 ? 0.6 : tap === 2 ? -0.6 : 0), pz = z + (tap === 3 ? 0.6 : tap === 4 ? -0.6 : 0);
+    const i = Math.floor((px + HX) / S), j = Math.floor((pz + HY) / S);
+    if (i < 0 || j < 0 || i >= NX || j >= NZ) continue;
+    const cell = j * NX + i;
+    for (let q = cnt[cell]; q < cnt[cell + 1]; q++) {
+      const t = idx[q], k = t * 10;
+      if (px < D[k + 6] || pz < D[k + 7] || px > D[k + 8] || pz > D[k + 9]) continue;
+      const ax = D[k], az = D[k + 1], bx = D[k + 2], bz = D[k + 3], cx = D[k + 4], cz = D[k + 5];
+      const det = (bx - ax) * (cz - az) - (cx - ax) * (bz - az); if (Math.abs(det) < 1e-9) continue;
+      const u = ((px - ax) * (cz - az) - (cx - ax) * (pz - az)) / det, v = ((bx - ax) * (pz - az) - (px - ax) * (bz - az)) / det;
+      if (u < -1e-4 || v < -1e-4 || u + v > 1.0001) continue;
+      const a = t * 3; return H[a] + u * (H[a + 1] - H[a]) + v * (H[a + 2] - H[a]) - terrainH(x, z);
+    }
+  }
+  return null;
+}
+const footAt = (x, z) => { if (!TERR.on || STATE.GBC) return 0; const r = roadRel(x, z); if (r !== null) return r - 0.05; return groundFoot(x, z); };
 // a vertical skirt along the edge q (flat x,z pairs) from the ground up to y (a number or one per point); the normal
 // is across each segment, to the left of it for flip (the left edge of the slab), to the right otherwise
 function skirt(sk, q, y, col, flip, F = null) {
@@ -115,11 +167,11 @@ function slabRun(b, sk, p, off, hw, col, E = null) {
   }
   for (let i = 0; i < n - 1; i++) { const k = v0 + 2 * i; b.triUp(k, k + 1, k + 3); b.triUp(k, k + 3, k + 2); }
   const SC = sh(col, 0.72);
-  const f0 = [], f1 = []; for (let i = 0; i < n; i++) { f0.push(groundFoot(q0[2 * i], q0[2 * i + 1])); f1.push(groundFoot(q1[2 * i], q1[2 * i + 1])); }
+  const f0 = [], f1 = []; for (let i = 0; i < n; i++) { f0.push(footAt(q0[2 * i], q0[2 * i + 1])); f1.push(footAt(q1[2 * i], q1[2 * i + 1])); }
   skirt(sk, q0, y0, SC, true, f0); skirt(sk, q1, y1, SC, false, f1);
   const cap = (i, sgn) => { const [tx, tz, m] = frame(p, i, n, E), nx = -tz, nz = tx;
     const xa = p[2 * i] + nx * e0 * m, za = p[2 * i + 1] + nz * e0 * m, xb = p[2 * i] + nx * e1 * m, zb = p[2 * i + 1] + nz * e1 * m;
-    polyA(sk, [[xa, groundFoot(xa, za), za], [xa, y0, za], [xb, y1, zb], [xb, groundFoot(xb, zb), zb]], SC, tx * sgn, 0, tz * sgn); };
+    polyA(sk, [[xa, footAt(xa, za), za], [xa, y0, za], [xb, y1, zb], [xb, footAt(xb, zb), zb]], SC, tx * sgn, 0, tz * sgn); };
   cap(0, -1); cap(n - 1, 1);
   walkStrip(p, off, hw);
 }
@@ -136,11 +188,11 @@ function slabRunV(b, sk, p, A, B, col, E = null) {
   }
   for (let i = 0; i < n - 1; i++) { const k = v0 + 2 * i; b.triUp(k, k + 1, k + 3); b.triUp(k, k + 3, k + 2); }
   const SC = sh(col, 0.72);
-  const f0 = [], f1 = []; for (let i = 0; i < n; i++) { f0.push(groundFoot(q0[2 * i], q0[2 * i + 1])); f1.push(groundFoot(q1[2 * i], q1[2 * i + 1])); }
+  const f0 = [], f1 = []; for (let i = 0; i < n; i++) { f0.push(footAt(q0[2 * i], q0[2 * i + 1])); f1.push(footAt(q1[2 * i], q1[2 * i + 1])); }
   skirt(sk, q0, yA, SC, true, f0); skirt(sk, q1, yB, SC, false, f1);
   const cap = (i, sgn) => { const [tx, tz, m] = frame(p, i, n, E), nx = -tz, nz = tx;
     const xa = p[2 * i] + nx * A[i] * m, za = p[2 * i + 1] + nz * A[i] * m, xb = p[2 * i] + nx * B[i] * m, zb = p[2 * i + 1] + nz * B[i] * m;
-    polyA(sk, [[xa, groundFoot(xa, za), za], [xa, yA[i], za], [xb, yB[i], zb], [xb, groundFoot(xb, zb), zb]], SC, tx * sgn, 0, tz * sgn); };
+    polyA(sk, [[xa, footAt(xa, za), za], [xa, yA[i], za], [xb, yB[i], zb], [xb, footAt(xb, zb), zb]], SC, tx * sgn, 0, tz * sgn); };
   cap(0, -1); cap(n - 1, 1);
   walkStripV(p, A, B);
 }
@@ -656,6 +708,7 @@ async function buildLines() {
       for (const [a, b] of [[-2, -0.25], [-2, 0.25], [2, -0.25], [2, 0.25]]) marks.vert(Z.x + Z.tx * a + nx * (c + b), 0, Z.z + Z.tz * a + nz * (c + b), 0, 1, 0, WHITE);
       marks.triUp(v, v + 1, v + 3); marks.triUp(v, v + 3, v + 2); }
   }
+  buildRoadSurf(groups[4]);   // the carriageways the skirt feet must meet (src/world/streets.js, footAt)
   zSeen = new Int32Array(ZR.s.length / 6);
   for (const S of SLABS) {   // the sidewalk slabs, cut at the junctions now that every carriageway is in ZR
     if (due()) await pause();
@@ -678,12 +731,12 @@ async function buildLines() {
         const v0 = walk.v; walk.ensure(flat.length / 2);
         for (let j = 0; j < flat.length; j += 2) walk.vert(flat[j], yOf.get(flat[j] + ',' + flat[j + 1]) ?? WH, flat[j + 1], 0, 1, 0, S.col);
         for (let j = 0; j < tris.length; j += 3) walk.triUp(v0 + tris[j], v0 + tris[j + 1], v0 + tris[j + 2]);
-        skirt(extra, A.flatMap(q => [q.x, q.z]), A.map(q => q.y), SC, true, A.map(q => groundFoot(q.x, q.z)));
-        skirt(extra, B.flatMap(q => [q.x, q.z]), B.map(q => q.y), SC, false, B.map(q => groundFoot(q.x, q.z)));
+        skirt(extra, A.flatMap(q => [q.x, q.z]), A.map(q => q.y), SC, true, A.map(q => footAt(q.x, q.z)));
+        skirt(extra, B.flatMap(q => [q.x, q.z]), B.map(q => q.y), SC, false, B.map(q => footAt(q.x, q.z)));
         const cap = (u, v, sgn) => {
           if (Math.hypot(u.x - v.x, u.z - v.z) < 1e-6) return;
           const [tx, tz] = frame(p, u.i, n, S.E);
-          polyA(extra, [[u.x, groundFoot(u.x, u.z), u.z], [u.x, u.y, u.z], [v.x, v.y, v.z], [v.x, groundFoot(v.x, v.z), v.z]], SC, tx * sgn, 0, tz * sgn);
+          polyA(extra, [[u.x, footAt(u.x, u.z), u.z], [u.x, u.y, u.z], [v.x, v.y, v.z], [v.x, footAt(v.x, v.z), v.z]], SC, tx * sgn, 0, tz * sgn);
         };
         cap(A[0], B[0], -1); cap(A[A.length - 1], B[B.length - 1], 1);
         walkRing(ring, WH);
@@ -710,7 +763,7 @@ async function buildLines() {
   const em = extra.mesh(matPlain); if (em) { em.castShadow = em.receiveShadow = true; scene.add(em); }
   const wm = wear.mesh(wearMat()); if (wm) { wm.renderOrder = -33.6; wm.frustumCulled = false; wm.receiveShadow = true; scene.add(wm); }
   await buildStreetWear(sorted);   // covers, patches, stains and the weeds of the kerbs (src/world/streetwear.js)
-  releaseGroundSurf();   // the drawn-ground index was only needed to foot the skirts on it
+  releaseGroundSurf(); RS = null;   // the drawn-ground and road indexes were only needed to foot the skirts on them
 }
 function bridge(b, p, hw) {
   const n = p.length >> 1, CON = hb('#9d9a92'), RAILC = hb('#5f6266');

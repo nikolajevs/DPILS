@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Chatbox | chatbox/kerb-hill | Бордюры-«блоки» на гребне холма в Гриве: высота юбок/торцов относительно дороги | src/world/streets.js |
 
 ## Автономный цикл улучшений
 
