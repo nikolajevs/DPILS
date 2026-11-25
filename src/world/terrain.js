@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { STATE } from '../core/state.js';
 import { due, pause, rest } from '../core/pause.js';
 import { fortGround } from '../fortress/ground-height.js';
+import { gfCarve } from '../landmarks/griva-fortress.js';
 import { FORT, fss } from '../fortress/index.js';
 import { spwCap, spwGround } from '../landmarks/speedway.js';
 import { VB, vbGround, vbLocal, vbP } from './bridge-vienibas.js';
@@ -199,12 +200,14 @@ async function terrainInit() {
     let s = 0, m = 0; for (let k = 0; k < n; k++) if (at(k) < 50) { s += q[k]; m++; }
     if (m) { const c = s / m; for (let k = 0; k < n; k++) { const d = at(k); if (d < 140) q[k] = Math.round(c + (q[k] - c) * fss((d - 90) / 50)); } } }
   await rest(); cutCarve(T, q);   // Latgales iela in its cutting, deeper than the model shows it (src/world/cutting.js)
+  gfCarve(T, q);   // the Grīva bridgehead fort: rampart band raised, moats dug (src/landmarks/griva-fortress.js)
   TERR.on = true; TERR.ref = 0; TERR.ref = terrainH(-1487, 1263);
   const data = new Uint8Array(n * 4); for (let k = 0; k < n; k++) { const v = Math.max(0, q[k]); data[4 * k] = v >> 8; data[4 * k + 1] = v & 255; data[4 * k + 3] = 255; }
   const tex = new THREE.DataTexture(data, T.nx, T.nz, THREE.RGBAFormat, THREE.UnsignedByteType); tex.minFilter = tex.magFilter = THREE.NearestFilter; tex.generateMipmaps = false; tex.needsUpdate = true;
   U.tTerr.value = tex; U.uTerrA.value.set(T.x0, T.z0, 1 / T.step, 1); U.uTerrB.value.set(T.nx, T.nz, TERR.ref, 0);
   await rest(); const p = upPatch(); if (p) setPatch(p);   // Daugavas iela under the end of Vienības tilts (src/world/underpass.js)
   for (const q of rbPatches()) setPatch(q);   // the railway bridge: Lielā iela under its south-west end, the embankment at its north-east end (src/world/underpass-rail.js)
+
 }
 // a shift applied to the y of every vertex written into a GB while it is set (buildings standing level, bridge decks)
 STATE.GBC = null;

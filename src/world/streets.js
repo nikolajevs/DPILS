@@ -2,6 +2,7 @@
 import { due, pause } from '../core/pause.js';
 import { CARROAD, TRAMGRID } from '../transit/transit.js';
 import { fortBridgeLine, fortSkipLine } from '../fortress/index.js';
+import { gfSkipLine } from '../landmarks/griva-fortress.js';
 import { airOnLine } from '../landmarks/air-bridge.js';
 import { gubOnLine } from '../landmarks/gubisce.js';
 import { jnFix } from '../landmarks/junction.js';
@@ -487,7 +488,7 @@ async function buildLines() {
     if (due()) await pause();
     const l = sorted[li], { cls, pts } = l; const n = pts.length >> 1;
     if (cls === 12 || cls === 13 || cls === 14) {
-      if (fortSkipLine(cls, pts)) continue;   // the fortress draws its own walls and earthworks
+      if (fortSkipLine(cls, pts) || gfSkipLine(cls, pts)) continue;   // the fortress draws its own walls and earthworks
       /* an embankment is in the terrain model already (bare earth by lidar). The ridge, 3 m high and 10 m wide, came from
          before the terrain: it stood a second time on the top edge where OSM draws the line, so on the dam of Daugavas iela
          two of them walled in the street and covered its carriageway */
