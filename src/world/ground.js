@@ -194,7 +194,8 @@ async function buildGround() {
     for (let i = 0; i < tris.length; i += 3) land.triUp(v0 + tris[i], v0 + tris[i + 1], v0 + tris[i + 2]);
   }
   await rest(); const lm = land.mesh(M_LAND); if (lm) { lm.renderOrder = -40; lm.frustumCulled = false; lm.receiveShadow = true; scene.add(lm); }
-  const bm = bank.mesh(matBank); if (bm) { bm.renderOrder = -39; bm.frustumCulled = false; scene.add(bm); }
+  // before the ground colour layers: the bank writes depth, so the grass drawn over it hides the bank behind a hummock
+  const bm = bank.mesh(matBank); if (bm) { bm.renderOrder = -55; bm.frustumCulled = false; scene.add(bm); }
   wet.forEach(([wp, wi], k) => {
     if (!wp.length) return;
     const water = new THREE.BufferGeometry(), uv = [], nrm = [];

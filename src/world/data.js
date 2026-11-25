@@ -86,7 +86,10 @@ async function makeMaterials() {
   matFac = facadeMaterial(); matRoof = roofMaterial(); [STATE.serTex, STATE.serMask, STATE.serPbr, STATE.serNrm] = seriesAtlas(); await rest(); STATE.matSer = seriesMaterial();
   matPlain = std({ vertexColors: true, roughness: 0.85, metalness: 0 }, 'plain');
   matGold = hook(new THREE.MeshStandardMaterial({ color: lin('#e0b048'), metalness: 1, roughness: 0.25 }));
-  matBank = std({ vertexColors: true, roughness: 1, metalness: 0, side: THREE.DoubleSide }, 'bank');
+  // the bank writes depth and is drawn before the ground layers (src/world/ground.js): a hill drawn over it then hides
+  // the bank behind it, instead of the bank showing through the slope (it used to be a decal tested only against the
+  // deep grid, which lies ~0.9 m under the ground). The offset lets the grass win the coincident top edge.
+  matBank = std({ vertexColors: true, roughness: 1, metalness: 0, side: THREE.DoubleSide, depthWrite: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }, 'bank');
   M_LAND = groundMaterial(dGrass, 1 / 7, 0.55, 'land'); M_PAVE = groundMaterial(dPave, 1 / 4, 0.5, 'pave'); M_DIRT = groundMaterial(dGrass, 1 / 3, 0.7, 'dirt');
   M_BALLAST = groundMaterial(dGravel, 1 / 2, 0.6, 'ballast'); M_ASPH = groundMaterial(dAsph, 1 / 5, 0.45, 'asph');
   M_MARK = std({ vertexColors: true, roughness: 0.8, metalness: 0, depthWrite: false }, 'mark');
