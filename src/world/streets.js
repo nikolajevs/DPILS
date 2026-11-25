@@ -280,6 +280,52 @@ async function buildLines() {
       MITER.add(li + ':' + lj); MITER.add(lj + ':' + li);
     }
   });
+  /* Roundabouts that OSM splits into arcs at every approach: the closed-line test in signals.js never sees them (the
+     fortress ring is four unnamed primary arcs). Chain class 0-3 lines end to end into a closed loop and keep the loop
+     if it is round (12+ points, every one within 10% of the mean radius 8-40 m). Members draw as one ring: a narrow
+     carriageway without a centre line, a grass island kerbed inside, sidewalk outside only; signals.js gives the
+     approaches their give-way lines. */
+  const RING_HW = 3.5;
+  {
+    const ends = new Map();
+    sorted.forEach((l, li) => { if (l.cls > 3) return; const p = l.pts, n = p.length;
+      for (const e of [0, 1]) { const k = jKey(e ? p[n - 2] : p[0], e ? p[n - 1] : p[1]); let a = ends.get(k); if (!a) ends.set(k, a = []); a.push([li, e]); } });
+    const inRing = new Set();
+    sorted.forEach((l, li) => {
+      if (inRing.has(li) || l.cls > 3) return;
+      const p0 = l.pts, n0 = p0.length, startK = jKey(p0[0], p0[1]);
+      const chain = [li], pts = Array.from(p0);
+      let cur = li, curEnd = 1, nodeK = jKey(p0[n0 - 2], p0[n0 - 1]), ok = false;
+      for (let guard = 0; guard < 10 && nodeK !== startK; guard++) {
+        const at = ends.get(nodeK); if (!at) { ok = false; break; }
+        // the ring continues tangentially (an approach leaves radially, a turn of ~90°): pick the same-class end that turns least
+        const ix = pts[pts.length - 2] - pts[pts.length - 4], iz = pts[pts.length - 1] - pts[pts.length - 3], il = Math.hypot(ix, iz) || 1;
+        let best = null;
+        for (const [lj, ej] of at) {
+          if (lj === cur || lj === li || chain.includes(lj) || sorted[lj].cls !== l.cls) continue;
+          const q = sorted[lj].pts, nq = q.length;
+          const ax = ej ? q[nq - 2] : q[0], az = ej ? q[nq - 1] : q[1], bx = ej ? q[nq - 4] : q[2], bz = ej ? q[nq - 3] : q[3];
+          const ux = bx - ax, uz = bz - az, ul = Math.hypot(ux, uz) || 1, d = (ix * ux + iz * uz) / (il * ul);
+          if (d > 0.5 && (!best || d > best.d)) best = { lj, ej, d };
+        }
+        if (!best) { ok = false; break; }
+        ok = true; chain.push(best.lj);
+        const q = sorted[best.lj].pts, nq = q.length;
+        if (best.ej === 0) for (let i = 2; i < nq; i += 2) pts.push(q[i], q[i + 1]); else for (let i = nq - 4; i >= 0; i -= 2) pts.push(q[i], q[i + 1]);
+        cur = best.lj; curEnd = 1 - best.ej; nodeK = jKey(pts[pts.length - 2], pts[pts.length - 1]);
+      }
+      if (!ok || nodeK !== startK || chain.length < 2 || chain.length > 8) return;
+      const n = pts.length >> 1; if (n < 12) return;
+      let cx = 0, cz = 0; for (let i = 0; i < n; i++) { cx += pts[2 * i]; cz += pts[2 * i + 1]; } cx /= n; cz /= n;
+      let R = 0; for (let i = 0; i < n; i++) R += Math.hypot(pts[2 * i] - cx, pts[2 * i + 1] - cz); R /= n;
+      if (R < 8 || R > 40) return;
+      for (let i = 0; i < n; i++) if (Math.abs(Math.hypot(pts[2 * i] - cx, pts[2 * i + 1] - cz) - R) > 0.1 * R) return;
+      const dx = pts[2] - pts[0], dz = pts[3] - pts[1], dl = Math.hypot(dx, dz) || 1;
+      const inner = Math.sign((-dz / dl) * (cx - pts[0]) + (dx / dl) * (cz - pts[1])) || 1;   // which side of the line the island lies
+      const ring = { id: li, cx, cz, R, inner, hw: RING_HW };
+      chain.forEach(a => { inRing.add(a); sorted[a].ring = ring; });
+    });
+  }
   // for line li laid along dp: [first, last] the directions its ends are cut across (frame's E), null for a square end
   function jointEnds(li, dp) {
     const l = sorted[li]; if (l.cls === 9) return null;   // the tram tracks are laid in runs of their own
@@ -359,7 +405,7 @@ async function buildLines() {
        each carriageway is laid straight on, the way it comes from 30вЂ“55 m out: the two stay apart at the distance they
        settled at, and carry on the edges of the road they split from. */
     if (dp !== pts) for (const end of [0, 1]) {
-      const np = pts.length; if (splitAt(li, end ? pts[np - 2] : pts[0], end ? pts[np - 1] : pts[1]) < 2) continue;
+      const np = pts.length; if (splitAt(li, end ? pts[np - 2] : pts[0], end ? pts[np - 1] : pts[1]) < 1) continue;   // one same-name way carrying on is enough: the pair splits off it (the fortress ring approaches)
       const idx = Array.from({ length: m }, (_, k) => end ? m - 1 - k : k), cum = [0]; let acc = 0;
       for (let k = 1; k < m; k++) { const i = idx[k], j = idx[k - 1]; acc += Math.hypot(dp[2 * i] - dp[2 * j], dp[2 * i + 1] - dp[2 * j + 1]); cum.push(acc); }
       if (acc < 45) continue;
@@ -582,7 +628,7 @@ async function buildLines() {
     }
     l.bb = bbox(pts); l.w = def[0]; LINES.push(l);
     if (spwTrackLine(cls, pts)) continue;   // the speedway track: lmSpeedway lays the whole track, the line stays on the map
-    const tag0 = cls <= 3 ? streetTags(pts) : null, hw = tag0 && tag0.hw && !tag0.oneway ? tag0.hw : def[0] / 2;   // a narrower country road where OSM says so (src/world/street-tags.js)
+    const tag0 = cls <= 3 ? streetTags(pts) : null, hw = l.ring ? RING_HW : tag0 && tag0.hw && !tag0.oneway ? tag0.hw : def[0] / 2;   // a narrower country road where OSM says so (src/world/street-tags.js); a roundabout arc is a lane and a half each way
     if (l.bridge && vbOnLine(pts)) {   // on VienД«bas tilts: lmVienibas draws the deck, the line still guides traffic and walking
       if (cls <= 4) for (let i = 0; i < n - 1; i++) CARROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw, cls);
       for (let i = 0; i < n - 1; i++) ROAD.add(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], hw + (cls <= 3 ? 2.6 : 0), cls <= 7 ? l.name : -1);
@@ -656,12 +702,17 @@ async function buildLines() {
       hwC = h1; l.h1 = h1;
       for (const sg of [1, -1]) mark(li, dp, sg * (h1 - 0.02), 0.09, GUT, 'g');   // the gutter shadow at each kerb
     } else {
-      if (rural) { ribbon(groups[2], dp, hw + 0.6, 0.6, GRAVEL, 0, je); ribbon(groups[2], dp, -hw - 0.6, 0.6, GRAVEL, 0, je); }   // a country road: gravel shoulders, no kerb or sidewalk
+      if (l.ring) {   // a roundabout arc: grass island kerbed inside, sidewalk and kerb outside only, no centre or edge lines
+        const si = l.ring.inner;
+        walkSlab(walk, extra, li, dp, -si * (hw + 1.4), 1.3, PAVE, je);
+        mark(li, dp, -si * (hw + 0.08), 0.12, CURB, 'k'); mark(li, dp, si * (hw + 0.08), 0.12, CURB, 'k');
+      }
+      else if (rural) { ribbon(groups[2], dp, hw + 0.6, 0.6, GRAVEL, 0, je); ribbon(groups[2], dp, -hw - 0.6, 0.6, GRAVEL, 0, je); }   // a country road: gravel shoulders, no kerb or sidewalk
       else if (cls <= 3) { walkSlab(walk, extra, li, dp, hw + 1.4, 1.3, PAVE, je); walkSlab(walk, extra, li, dp, -hw - 1.4, 1.3, PAVE, je); mark(li, dp, hw + 0.08, 0.12, CURB, 'k'); mark(li, dp, -hw - 0.08, 0.12, CURB, 'k'); }
       if (cls === 8) { const [A, B] = railBed(li, dp, hw); ribbonV(groups[def[2]], dp, A, B, lineCol[cls], je); }
       else if (cls !== 9) ribbon(groups[def[2]], dp, 0, hw, lineCol[cls], 0, je);
-      if (cls <= 2 && !(tags && tags.noCentre)) mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9]);   // no centre line where OSM says lane_markings=no
-      if (cls === 0) { mark(li, dp, hw - 0.45, 0.07, WHITE, 'e'); mark(li, dp, -hw + 0.45, 0.07, WHITE, 'e'); }
+      if (!l.ring && cls <= 2 && !(tags && tags.noCentre)) mark(li, dp, 0, 0.07, WHITE, 'c', [3, 9]);   // no centre line where OSM says lane_markings=no
+      if (!l.ring && cls === 0) { mark(li, dp, hw - 0.45, 0.07, WHITE, 'e'); mark(li, dp, -hw + 0.45, 0.07, WHITE, 'e'); }
       if (cls <= 3 && !rural) for (const sg of [1, -1]) mark(li, dp, sg * (hw - 0.02), 0.09, GUT, 'g');   // the gutter shadow where a kerb stands
     }
     if (cls <= 4) { l.zone = hwC; for (let i = 0; i < n - 1; i++) addZone(pts[2 * i], pts[2 * i + 1], pts[2 * i + 2], pts[2 * i + 3], li, hwC); }
@@ -672,7 +723,7 @@ async function buildLines() {
     if (l.bridge && cls !== 10 && cls !== 11 && !fortBridgeLine(pts) && !onOv && !jn && !(cls === 8 && rbOnLine(pts))) bridge(extra, dp, hw + (cls <= 3 ? 2.7 : 0.3));   // the railway bridge over the Daugava: lmRailBridge
     STATE.GBC = null;
     if (cls <= 3 && !rural) { // street lamps every ~32 m on one side (the outer side of a carriageway of a pair); none on a country road
-      const side = dual ? -dual.side : rnd(lampSeq++, 5) < 0.5 ? 1 : -1, hw = hwC; let acc = 14;
+      const side = dual ? -dual.side : l.ring ? -l.ring.inner : rnd(lampSeq++, 5) < 0.5 ? 1 : -1, hw = hwC; let acc = 14;
       for (let i = 0; i < n - 1; i++) {
         const x1 = pts[2 * i], z1 = pts[2 * i + 1], x2 = pts[2 * i + 2], z2 = pts[2 * i + 3], L = Math.hypot(x2 - x1, z2 - z1); if (L < 0.01) continue;
         const tx = (x2 - x1) / L, tz = (z2 - z1) / L;
