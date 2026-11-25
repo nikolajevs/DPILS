@@ -18,7 +18,8 @@ const LM_KEYS = [lmW(LMF.vn, 40, 15), lmW(LMF.lat, 10, 30), lmW(LMF.lat, 50, 30)
   lmW(LMF.du, 8, 38), lmW(LMF.p1, 20, 80), lmW(LMF.p1, 36.2, 3), lmW(LMF.p1, 70, -15), lmW(LMF.ren, 22, 30), lmW(LMF.ren, 5, 54), lmW(LMF.ren, 20, 12), lmW(LMF.ves, 7, 10), lmW(LMF.vk, 14, 42), lmW(LMF.vk, 14, 8), lmW(LMF.vk, 14, 76),
   lmW(LMF.kp, 50, 18), lmW(LMF.kp, 110, 52), lmW(LMF.kp, 53.8, 47), lmW(LMF.kp, -24.5, 94), lmW(LMF.sc, 20, 20),
   lmW(LMF.hosp, 0, 0), lmW(LMF.hosp, 31.5, 5.5), lmW(LMF.hosp, 31.5, 7.4), lmW(LMF.rt, 0, 0),
-  [3182.1, -1788.3]]; // old estimated tower position: leave its former cadastre footprint to the revised campus model
+  [3182.1, -1788.3], // old estimated tower position: leave its former cadastre footprint to the revised campus model
+  [-1522.5, 1015.9]]; // the garage row of Kandavas iela 4E: drawn by lmCourtyardNorth (courtyard-north.js)
 // outlines that are not real buildings: the canopy of the cinema Renesanse, mapped in OSM as its only building:part way
 const LM_DROP = [lmW(LMF.ren, -8.85, 40.6), lmW(LMF.vk, 1.55, 41.75), lmW(LMF.kp, 69.5, -2.4)];   // canopies that OSM maps as building parts
 // larger structures OSM maps as buildings and a landmark draws itself, whatever their size: the platform canopy of the bus station,
