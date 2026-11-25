@@ -169,11 +169,16 @@ function roundabouts(sorted, ZB, quad) {
     let cx = 0, cz = 0, R = 0; for (let i = 0; i < n - 1; i++) { cx += p[2 * i]; cz += p[2 * i + 1]; } cx /= n - 1; cz /= n - 1;
     for (let i = 0; i < n - 1; i++) R += Math.hypot(p[2 * i] - cx, p[2 * i + 1] - cz); R /= n - 1; if (R < 8 || R > 40) return;
     for (let i = 0; i < n - 1; i++) if (Math.abs(Math.hypot(p[2 * i] - cx, p[2 * i + 1] - cz) - R) > 0.1 * R) return;
-    rings.push({ li, cx, cz, R, hw: L.zone }); });
+    rings.push({ li, cx, cz, R, hw: L.zone, members: new Set([li]) }); });
+  // rings OSM splits into arcs: streets.js chains them and flags the members (the fortress ring)
+  sorted.forEach((L, li) => { if (!L.ring || rings.some(g => g.members.has(li))) return;
+    const g = { li: -1, cx: L.ring.cx, cz: L.ring.cz, R: L.ring.R, hw: L.ring.hw, members: new Set() };
+    sorted.forEach((M, mj) => { if (M.ring === L.ring) g.members.add(mj); });
+    rings.push(g); });
   for (const G of rings) {
     // the streets ending on the ring: the end (0 the first point, 1 the last), the points from it out, the way out
     const ends = [];
-    sorted.forEach((L, li) => { if (li === G.li || L.cls > 4 || !L.zone) return; const p = L.pts, n = p.length >> 1; if (n < 2) return;
+    sorted.forEach((L, li) => { if (G.members.has(li) || L.cls > 4 || !L.zone) return; const p = L.pts, n = p.length >> 1; if (n < 2) return;
       for (const e of [0, 1]) { const i0 = e ? n - 1 : 0; if (Math.abs(Math.hypot(p[2 * i0] - G.cx, p[2 * i0 + 1] - G.cz) - G.R) > G.hw + 1.5) continue;
         const q = []; for (let k = 0; k < n; k++) { const i = e ? n - 1 - k : k; q.push(p[2 * i], p[2 * i + 1]); }
         let ox = 0, oz = 0; for (let k = 2, acc = 0; k < q.length && acc < 12; k += 2) { acc += Math.hypot(q[k] - q[k - 2], q[k + 1] - q[k - 1]); ox = q[k] - q[0]; oz = q[k + 1] - q[1]; }
