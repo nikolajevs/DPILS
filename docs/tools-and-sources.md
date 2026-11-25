@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/startup-perf | Тормоза на старте: авто со «средней», быстрая адаптация FPS | src/game/perf.js, src/render/lighting.js, src/game/input.js |
 
 ## Автономный цикл улучшений
 
