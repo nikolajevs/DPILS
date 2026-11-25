@@ -22,16 +22,18 @@ import { gpuOk, gpuPoll } from '../render/gputime.js';
    more; when four checks in a row hold 55 frames a second or more at the full resolution, the level goes back up.
    This works in the fight and on the city walk alike (a weak machine used to stay at the top level in the city: the
    resolution alone cannot save a frame bound by vertices, and the walk ran at 15 fps). With the full map open the
-   city is not drawn (outside the fight), so those windows are left out. The first seconds after the start and after
-   each change are not counted: shaders compile then. A fixed level switches all of this off and keeps the resolution
-   whole. */
+   city is not drawn (outside the fight), so those windows are left out. A level under 20 frames a second goes down
+   after a single check — a slideshow is not worth a second look; 20 and over wait for two. The first seconds after
+   the start are counted soon (three): the shaders are compiled before the first frame (warmUp), so little compiles
+   after it; after each change of the level six seconds are left out — the shadows toggle then and the materials
+   compile anew. A fixed level switches all of this off and keeps the resolution whole. */
 // scale: the share of the resolution the scene is drawn at; dyn: whether it follows the frame rate (tools/shots.js
 // switches it off: its frames take minutes, and a check of the picture wants it whole)
 // calls: draw calls of the last frame (scene, shadows, post-processing — renderer.info is reset by renderFrame);
 // cpu/gpu: the average frame time of the last second, ms — CPU is the whole frame on the processor (simulation,
 // draw submission, HUD), GPU is the video card's work measured by gputime.js (0 and gpuOk false when it cannot)
 const PERF = { fps: 60, scale: 1, dyn: true, lowered: 0, notice: null, calls: 0, cpu: 0, gpu: 0, gpuOk, gpuSeen: false };
-let frames = 0, span = 0, slow = 0, fast = 0, quiet = 6, fpsFrames = 0, fpsSpan = 0;
+let frames = 0, span = 0, slow = 0, fast = 0, quiet = 3, fpsFrames = 0, fpsSpan = 0;   // the shaders are warm before the first frame: the checks start soon after the start
 let cpuSum = 0, cpuN = 0, gpuSum = 0, gpuN = 0;
 function perfTick(rdt) {   // rdt: the real time of the frame, seconds
   fpsFrames++; fpsSpan += rdt; if (fpsSpan >= 1) { PERF.fps = Math.round(fpsFrames / fpsSpan); fpsFrames = 0; fpsSpan = 0; PERF.cpu = cpuN ? cpuSum / cpuN : 0; PERF.gpu = gpuN ? gpuSum / gpuN : 0; PERF.gpuSeen = gpuN > 0; cpuSum = cpuN = gpuSum = gpuN = 0; }
@@ -44,7 +46,7 @@ function perfTick(rdt) {   // rdt: the real time of the frame, seconds
   const fps = frames / span; frames = span = 0;
   if (fps < 28 && !canLower()) {   // the resolution cannot help any more: lower the level
     fast = 0;
-    if (++slow >= 2) { slow = 0; if (qi < QUALITY.length - 1) { setQuality(qi + 1); PERF.lowered++; quiet = 6; note('Графика снижена до «' + QUALITY[qi].name + '»: ' + Math.round(fps) + ' кадров в секунду'); } }
+    if (++slow >= (fps < 20 ? 1 : 2)) { slow = 0; if (qi < QUALITY.length - 1) { setQuality(qi + 1); PERF.lowered++; quiet = 6; note('Графика снижена до «' + QUALITY[qi].name + '»: ' + Math.round(fps) + ' кадров в секунду'); } }   // under 20 fps one check is enough: the start of a fight must not stay a slideshow
     return;
   }
   slow = 0;
@@ -66,7 +68,7 @@ function note(text) {
 
 /* ---------- dynamic resolution ---------- */
 const SLOW = 1000 / 45, FAST = 1000 / 56, GOAL = 1000 / 55;   // frame times, ms
-let dWin = 0, dN = 0, dMax = 0, dQuiet = 5, dFast = 0, dTry = null, dLowBlock = 0, dLowWait = 30, dUpBlock = 0, dUpWait = 15, dPr = 0, dQi = -1;
+let dWin = 0, dN = 0, dMax = 0, dQuiet = 2, dFast = 0, dTry = null, dLowBlock = 0, dLowWait = 30, dUpBlock = 0, dUpWait = 15, dPr = 0, dQi = -1;   // the resolution too may react soon after the first frame; a change of the level or the pixel ratio waits five (the materials compile anew)
 const minScale = () => Math.min(1, Math.ceil(0.55 / renderer.getPixelRatio() * 20 - 1e-6) / 20);   // a whole number of 5 % steps
 const setScale = s => { PP.scale = Math.max(minScale(), Math.min(1, Math.round(s * 20) / 20)); };
 const canLower = () => POST && PERF.dyn && PP.scale > minScale() + 1e-3 && dLowBlock <= 0;   // can the resolution still help?
