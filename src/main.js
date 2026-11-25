@@ -68,6 +68,7 @@ import './world/overpass.js';
 import './world/bridge-vienibas.js';
 import { buildLines } from './world/streets.js';
 import { buildGround, groundDepth } from './world/ground.js';
+import { buildShore } from './world/shore.js';
 import { makeMaterials } from './world/data.js';
 import './world/palette.js';
 import './render/materials.js';
@@ -110,6 +111,7 @@ const step = (text, w, reported) => {
     await step('Собираю кварталы…', W.blocks); finishBuildings();
     await step('Строю Дом Единства, «Латголу», университет и школы…', W.landmarks); await buildLandmarks();
     await step('Насыпаю валы и копаю рвы крепости…', W.fortress); await buildFortress();
+    await buildShore();   // the Daugava shore: shoal, reeds, boulders and the fortress promenade (src/world/shore.js)
     await groundDepth();   // the depth grids under the ground layers, now that all of them are drawn (src/world/ground.js)
     await rest(); await buildLamps(); relight();
     await step('Сажаю деревья…', W.trees); await buildTrees();
