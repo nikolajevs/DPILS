@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Chatbox | chatbox/courtyard-north | Двор и дома у 55.8730N 26.5158E (район −1512,1054) | citydata.js, src/landmarks/courtyard-north.js |
 
 ## Автономный цикл улучшений
 

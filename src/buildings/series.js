@@ -12,6 +12,7 @@ import { area2, hb, obb, offsetRing, pick, reversed, rnd, sh } from '../core/uti
 import { ROAD } from '../world/data.js';
 import { KIM_HOUSES } from './kimija.js';
 import { mieraBuild, mieraOf } from './miera.js';
+import { kandBuild, kandOf } from './kandavas.js';
 
 /* ---------- typical Soviet apartment blocks of 5–9 storeys, as built (before thermal insulation) ----------
    About 570 houses in Daugavpils are standard projects; they are recognised by their outline and storeys and drawn from
@@ -193,6 +194,7 @@ function serQuad(b, x1, z1, x2, z2, y0, y1, nx, nz, tint, u0, u1, v0, v1, i0, i1
 function serBuild(rec, rings, outer, T, id, seed) {
   const K = kimOf(outer); if (K) return kimBuild(rec, outer, T, id, seed, K);   // a block of Ķīmija as photographed (kimija.js)
   if (mieraOf(outer)) return mieraBuild(T, id, seed);   // Miera iela 143: two passages through the block (miera.js)
+  const KD = kandOf(outer); if (KD) return kandBuild(rec, outer, T, id, seed, KD);   // the four-storey blocks of the Kandavas iela 4 yard (kandavas.js)
   const fl = rec[5], style = rec[0]; if (rings.length !== 1 || fl < 5 || fl > 10 || style >= 5 || rec[2] > 0) return false;
   const o = obb(outer); if (!o || o.fill < 0.93) return false;
   const type = serType(fl, 2 * o.a, 2 * o.b); if (!type) return false;
@@ -368,4 +370,4 @@ function serWings(outer, o) {
   return out;
 }
 
-export { SER, SER_DOORS, SER_STAT, serBuild, serFiller, serQuad, serWing, seriesAtlas, seriesMaterial, wallStrip };
+export { SER, SER_DOORS, SER_STAT, serBuild, serFiller, serQuad, serWing, serWings, seriesAtlas, seriesMaterial, wallStrip };
