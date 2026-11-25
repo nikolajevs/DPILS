@@ -32,6 +32,9 @@ class GB {
   tri(a, b, c) { if (this.ni + 3 > this.idx.length) { const n = new Uint32Array(this.idx.length * 2); n.set(this.idx); this.idx = n; } this.idx[this.ni++] = a; this.idx[this.ni++] = b; this.idx[this.ni++] = c; }
   triUp(a, b, c) { const p = this.pos; const ax = p[3 * a], az = p[3 * a + 2]; const s = (p[3 * b + 2] - az) * (p[3 * c] - ax) - (p[3 * b] - ax) * (p[3 * c + 2] - az); if (s >= 0) this.tri(a, b, c); else this.tri(a, c, b); }
   triDown(a, b, c) { const p = this.pos; const ax = p[3 * a], az = p[3 * a + 2]; const s = (p[3 * b + 2] - az) * (p[3 * c] - ax) - (p[3 * b] - ax) * (p[3 * c + 2] - az); if (s >= 0) this.tri(a, c, b); else this.tri(a, b, c); }
+  // a coloured quad with the LMB.q signature (A, B, C, D, normal, uv, colour, lit). On a plain builder the uv and
+  // lit are unused — it is just polyA — so landmark code can draw simple quads into a GB without switching buffers.
+  q(A, B, Cc, D, n, uv, c) { polyA(this, [A, B, Cc, D], c, n[0], n[1], n[2]); }
   mesh(mat) {
     if (!this.v || !this.ni) return null;
     const v = this.v, g = new THREE.BufferGeometry();

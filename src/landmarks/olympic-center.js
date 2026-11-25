@@ -52,8 +52,7 @@ function lmOlympic(K, litPatch) {
   lmBlock(K, f, {
     poly: body,
     top: H_MAIN,
-    st: { tex: 5, col: CREAM, plinth: 0.4, pcol: sh(CREAM, 0.7) },
-    wy0: []
+    st: { tex: 5, col: CREAM, plinth: 0.4, pcol: sh(CREAM, 0.7) }
   }, []);
 
   // --- Navy blue accent band (daytime) ---
@@ -101,7 +100,7 @@ function lmOlympic(K, litPatch) {
     );
     // Small point light on the facade
     const [lx, lz] = at(uWall + 0.1, v, H_BAND + BAND_H * 0.5);
-    addLight(lx, H_BAND + BAND_H * 0.5, lz, 2.5, 0, 0.6);
+    addLight(lx, H_BAND + BAND_H * 0.5, lz, 2, 0, 0.6);
   }
 
   // --- Dark grey roof parapet ---
@@ -171,7 +170,7 @@ function lmOlympic(K, litPatch) {
         [0, -1, 0], [0, 0, 1, 0, 1, 1, 0, 1],
         [240, 230, 200], 1
       );
-      addLight(lx, H_CANOPY - 0.15, lz, 3, 0, 1.5);
+      addLight(lx, H_CANOPY - 0.15, lz, 2, 0, 1.5);
     }
 
     // Thin steel columns
@@ -225,7 +224,7 @@ function lmOlympic(K, litPatch) {
       [lx + gs, gy + gs * 2, lz + gs], [lx - gs, gy + gs * 2, lz + gs],
       [0, 1, 0], [0, 0, 1, 0, 1, 1, 0, 1], [250, 240, 220], 0
     );
-    addLight(lx, gy + gs * 2, lz, 1.5, 0, 1.8);
+    addLight(lx, gy + gs * 2, lz, 1, 0, 1.8);
   }
 
   // --- Side entrance (north-east, v≈55) ---
@@ -416,7 +415,7 @@ function lmOlympic(K, litPatch) {
           [0, -1, 0], [0, 0, 1, 0, 1, 1, 0, 1],
           [240, 230, 200], 1
         );
-        addLight(ax, 7.7, az, 12, 0, 3.5);
+        addLight(ax, 7.7, az, 0, 0, 7.7);
       }
     }
 
