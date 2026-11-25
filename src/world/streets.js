@@ -15,7 +15,8 @@ import { cutComp, cutTouches } from './cutting.js';
 import { buildSignals } from './signals.js';
 import { COL, LINES, M_ASPH, M_BALLAST, M_DIRT, M_LAND, M_MARK, M_PAVE, ROAD, STREAM, TRAMLINES, inWater, matPlain } from './data.js';
 import { LINE } from './palette.js';
-import { TERR, bridgeDeck, bridgeOf, densify } from './terrain.js';
+import { TERR, bridgeDeck, bridgeOf, densify, terrainH } from './terrain.js';
+import { groundSurf, releaseGroundSurf } from './ground.js';
 import { WH, walkStrip, walkStripV, walkSlab as walkRing } from './walkgrid.js';
 import { buildStreetWear, wearMat } from './streetwear.js';
 import { scene } from '../render/renderer.js';
@@ -85,14 +86,19 @@ function railBar(b, p, off, hw = 0.036, h = 0.17) {
    back face hidden in the sidewalk slab. Where the runs stop at a junction the slab's own skirt shows as the corner
    kerb. CH stands a little above WH so the kerb reads against the paving. */
 const CH = 0.15;
+/* The foot of a skirt: the drawn ground under the point, not the bilinear heights. The ground layers sag under those on
+   a crest by up to their subTris tol (0.35 m), so a skirt standing at y = 0 ended in the air above the grass — the
+   floating kerbs and sidewalks of Lielā iela in Grīva. Only downwards: where the ground stands above the heights the
+   foot stays at 0 and buries itself in it. Bridges, the overpass and the cutting keep their own decks (GBC). */
+const groundFoot = (x, z) => { if (!TERR.on || STATE.GBC) return 0; const f = groundSurf(x, z) - terrainH(x, z); return f < 0 ? f : 0; };
 // a vertical skirt along the edge q (flat x,z pairs) from the ground up to y (a number or one per point); the normal
 // is across each segment, to the left of it for flip (the left edge of the slab), to the right otherwise
-function skirt(sk, q, y, col, flip) {
+function skirt(sk, q, y, col, flip, F = null) {
   const n = q.length >> 1; if (n < 2) return; const v0 = sk.v, s = flip ? -1 : 1; sk.ensure(n * 2);
   for (let i = 0; i < n; i++) {
-    const a = Math.max(0, i - 1), c = Math.min(n - 1, i + 1), h = typeof y === 'number' ? y : y[i];
+    const a = Math.max(0, i - 1), c = Math.min(n - 1, i + 1), h = typeof y === 'number' ? y : y[i], f = F ? F[i] : 0;
     let tx = q[2 * c] - q[2 * a], tz = q[2 * c + 1] - q[2 * a + 1]; const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
-    sk.vert(q[2 * i], 0, q[2 * i + 1], -tz * s, 0, tx * s, sh(col, 0.85)); sk.vert(q[2 * i], h, q[2 * i + 1], -tz * s, 0, tx * s, col);   // dirt at the foot
+    sk.vert(q[2 * i], f, q[2 * i + 1], -tz * s, 0, tx * s, sh(col, 0.85)); sk.vert(q[2 * i], h, q[2 * i + 1], -tz * s, 0, tx * s, col);   // dirt at the foot
   }
   for (let i = 0; i < n - 1; i++) { const k = v0 + 2 * i;
     if (flip) { sk.tri(k, k + 1, k + 3); sk.tri(k, k + 3, k + 2); } else { sk.tri(k, k + 2, k + 3); sk.tri(k, k + 3, k + 1); } }
@@ -109,9 +115,11 @@ function slabRun(b, sk, p, off, hw, col, E = null) {
   }
   for (let i = 0; i < n - 1; i++) { const k = v0 + 2 * i; b.triUp(k, k + 1, k + 3); b.triUp(k, k + 3, k + 2); }
   const SC = sh(col, 0.72);
-  skirt(sk, q0, y0, SC, true); skirt(sk, q1, y1, SC, false);
+  const f0 = [], f1 = []; for (let i = 0; i < n; i++) { f0.push(groundFoot(q0[2 * i], q0[2 * i + 1])); f1.push(groundFoot(q1[2 * i], q1[2 * i + 1])); }
+  skirt(sk, q0, y0, SC, true, f0); skirt(sk, q1, y1, SC, false, f1);
   const cap = (i, sgn) => { const [tx, tz, m] = frame(p, i, n, E), nx = -tz, nz = tx;
-    polyA(sk, [[p[2 * i] + nx * e0 * m, 0, p[2 * i + 1] + nz * e0 * m], [p[2 * i] + nx * e0 * m, y0, p[2 * i + 1] + nz * e0 * m], [p[2 * i] + nx * e1 * m, y1, p[2 * i + 1] + nz * e1 * m], [p[2 * i] + nx * e1 * m, 0, p[2 * i + 1] + nz * e1 * m]], SC, tx * sgn, 0, tz * sgn); };
+    const xa = p[2 * i] + nx * e0 * m, za = p[2 * i + 1] + nz * e0 * m, xb = p[2 * i] + nx * e1 * m, zb = p[2 * i + 1] + nz * e1 * m;
+    polyA(sk, [[xa, groundFoot(xa, za), za], [xa, y0, za], [xb, y1, zb], [xb, groundFoot(xb, zb), zb]], SC, tx * sgn, 0, tz * sgn); };
   cap(0, -1); cap(n - 1, 1);
   walkStrip(p, off, hw);
 }
@@ -128,9 +136,11 @@ function slabRunV(b, sk, p, A, B, col, E = null) {
   }
   for (let i = 0; i < n - 1; i++) { const k = v0 + 2 * i; b.triUp(k, k + 1, k + 3); b.triUp(k, k + 3, k + 2); }
   const SC = sh(col, 0.72);
-  skirt(sk, q0, yA, SC, true); skirt(sk, q1, yB, SC, false);
+  const f0 = [], f1 = []; for (let i = 0; i < n; i++) { f0.push(groundFoot(q0[2 * i], q0[2 * i + 1])); f1.push(groundFoot(q1[2 * i], q1[2 * i + 1])); }
+  skirt(sk, q0, yA, SC, true, f0); skirt(sk, q1, yB, SC, false, f1);
   const cap = (i, sgn) => { const [tx, tz, m] = frame(p, i, n, E), nx = -tz, nz = tx;
-    polyA(sk, [[p[2 * i] + nx * A[i] * m, 0, p[2 * i + 1] + nz * A[i] * m], [p[2 * i] + nx * A[i] * m, yA[i], p[2 * i + 1] + nz * A[i] * m], [p[2 * i] + nx * B[i] * m, yB[i], p[2 * i + 1] + nz * B[i] * m], [p[2 * i] + nx * B[i] * m, 0, p[2 * i + 1] + nz * B[i] * m]], SC, tx * sgn, 0, tz * sgn); };
+    const xa = p[2 * i] + nx * A[i] * m, za = p[2 * i + 1] + nz * A[i] * m, xb = p[2 * i] + nx * B[i] * m, zb = p[2 * i + 1] + nz * B[i] * m;
+    polyA(sk, [[xa, groundFoot(xa, za), za], [xa, yA[i], za], [xb, yB[i], zb], [xb, groundFoot(xb, zb), zb]], SC, tx * sgn, 0, tz * sgn); };
   cap(0, -1); cap(n - 1, 1);
   walkStripV(p, A, B);
 }
@@ -668,12 +678,12 @@ async function buildLines() {
         const v0 = walk.v; walk.ensure(flat.length / 2);
         for (let j = 0; j < flat.length; j += 2) walk.vert(flat[j], yOf.get(flat[j] + ',' + flat[j + 1]) ?? WH, flat[j + 1], 0, 1, 0, S.col);
         for (let j = 0; j < tris.length; j += 3) walk.triUp(v0 + tris[j], v0 + tris[j + 1], v0 + tris[j + 2]);
-        skirt(extra, A.flatMap(q => [q.x, q.z]), A.map(q => q.y), SC, true);
-        skirt(extra, B.flatMap(q => [q.x, q.z]), B.map(q => q.y), SC, false);
+        skirt(extra, A.flatMap(q => [q.x, q.z]), A.map(q => q.y), SC, true, A.map(q => groundFoot(q.x, q.z)));
+        skirt(extra, B.flatMap(q => [q.x, q.z]), B.map(q => q.y), SC, false, B.map(q => groundFoot(q.x, q.z)));
         const cap = (u, v, sgn) => {
           if (Math.hypot(u.x - v.x, u.z - v.z) < 1e-6) return;
           const [tx, tz] = frame(p, u.i, n, S.E);
-          polyA(extra, [[u.x, 0, u.z], [u.x, u.y, u.z], [v.x, v.y, v.z], [v.x, 0, v.z]], SC, tx * sgn, 0, tz * sgn);
+          polyA(extra, [[u.x, groundFoot(u.x, u.z), u.z], [u.x, u.y, u.z], [v.x, v.y, v.z], [v.x, groundFoot(v.x, v.z), v.z]], SC, tx * sgn, 0, tz * sgn);
         };
         cap(A[0], B[0], -1); cap(A[A.length - 1], B[B.length - 1], 1);
         walkRing(ring, WH);
@@ -700,6 +710,7 @@ async function buildLines() {
   const em = extra.mesh(matPlain); if (em) { em.castShadow = em.receiveShadow = true; scene.add(em); }
   const wm = wear.mesh(wearMat()); if (wm) { wm.renderOrder = -33.6; wm.frustumCulled = false; wm.receiveShadow = true; scene.add(wm); }
   await buildStreetWear(sorted);   // covers, patches, stains and the weeds of the kerbs (src/world/streetwear.js)
+  releaseGroundSurf();   // the drawn-ground index was only needed to foot the skirts on it
 }
 function bridge(b, p, hw) {
   const n = p.length >> 1, CON = hb('#9d9a92'), RAILC = hb('#5f6266');
