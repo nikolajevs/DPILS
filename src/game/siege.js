@@ -454,10 +454,12 @@ export function setSiege(m, mySide) {
   if (!wantDome && !domeVis) clearDome();
   if (m.phase === 'prep' || m.phase === 'assault') buildAltar();
   document.body.classList.add('siege');
+  if (m.phase === 'reg' && (first || prevPhase !== 'reg') && !S.mySide) regArm();   // the sides wake in turn, then the light ping-pongs for F
+  else if (m.phase !== 'reg') regStop();
   paintHud(first || prevPhase !== m.phase);
   return { first, prevPhase };
 }
-export function siegeYou(m) { S.mySide = m.side || null; paintHud(false); }
+export function siegeYou(m) { S.mySide = m.side || null; if (S.mySide) regStop(); paintHud(false); }
 export function siegeMySide() { return S.mySide; }
 function paintHud(phaseChanged) {
   const reg = S.phase === 'reg', prep = S.phase === 'prep', assault = S.phase === 'assault';
@@ -467,7 +469,7 @@ function paintHud(phaseChanged) {
   const sub = reg ? 'регистрация сторон · 1812' : prep ? 'подготовка · купол поднят' : 'штурм крепости · алтарь в саду';
   const subEl = $('siegeSub'); if (subEl.textContent !== sub) subEl.textContent = sub;
   const ba = $('siegeJoinA'), bd = $('siegeJoinD');
-  ba.disabled = !reg; bd.disabled = !reg;
+  ba.disabled = !reg || ba.classList.contains('wait'); bd.disabled = !reg || bd.classList.contains('wait');   // the entrance wakes them in turn
   ba.classList.toggle('mine', S.mySide === 'a'); bd.classList.toggle('mine', S.mySide === 'd');
   ba.title = reg ? (S.mySide === 'a' ? 'Вы записаны — нажмите, чтобы отказаться' : 'Записаться в штурмующие') : S.names.a;
   bd.title = reg ? (S.mySide === 'd' ? 'Вы записаны — нажмите, чтобы отказаться' : 'Записаться в гарнизон') : S.names.d;
@@ -475,7 +477,7 @@ function paintHud(phaseChanged) {
   $('siegeAltar').hidden = !assault;
   const note = $('siegeNote');
   let nt = '';
-  if (reg) nt = S.mySide ? 'Вы — ' + S.names[S.mySide].toLowerCase() + '. После регистрации — телепорт и купол на подготовке.' : 'Выберите сторону: штурмующие берут алтарь, гарнизон выставляет оборону.';
+  if (reg) nt = S.mySide ? 'Вы — ' + S.names[S.mySide].toLowerCase() + '. После регистрации — телепорт и купол на подготовке.' : 'Выберите сторону: штурмующие берут алтарь, гарнизон выставляет оборону. F — записаться в подсвеченную.';
   else if (prep) nt = S.mySide ? 'Вы — ' + S.names[S.mySide].toLowerCase() + '. Купол не пускает и не выпускает, оружие на замке.' : 'Купол вокруг крепости: регистрация закрыта, вы вне штурма.';
   else nt = S.mySide === 'a' ? 'Вы — штурмующие: удержите алтарь (пушку в саду) одну минуту.' : S.mySide === 'd' ? 'Вы — гарнизон: не дайте штурмующим удержать алтарь минуту.' : 'Идёт штурм: алтарь — пушка в саду крепости.';
   if (note.textContent !== nt) note.textContent = nt;
@@ -499,7 +501,7 @@ export function siegeWin(m) {
   }
 }
 export function clearSiege() {
-  siegeCineAbort(); clearDome(); clearAltar();
+  regStop(); siegeCineAbort(); clearDome(); clearAltar();
   S.on = false; S.mySide = null; S.prog = 0; S.contest = null; S.dome = null; S.lastDome = null;
   $('siegeHud').hidden = true; $('siegeFlash').hidden = true;
   document.body.classList.remove('siege');
@@ -598,6 +600,44 @@ export function siegeMap(ctx, cx, cz, ppm, w, h) {
   }
   ctx.restore();
 }
+/* ---------- the registration without the mouse ----------
+   The two sides wake in turn: a beat after the window opens the attackers light up, a beat later the garrison, and
+   then the light ping-pongs between them until a side is taken. F signs up for whichever side holds the light — the
+   chip on the button shows the key. The light dies the moment a side is chosen (or the window closes); the mouse
+   keeps its old click-to-toggle. F is free in the fight (it only turns the dead man's camera), so it never fights the
+   chat's Enter or the walk's keys, and it stands down while typing or in a panel. */
+const REG = { first: 450, step: 1050, dwell: 1500 };   // ms: the pause before the first side, the beat between the two, the ping-pong dwell
+let regTimers = [], regLoop = null, regLit = null;
+function regStop() {
+  regTimers.forEach(clearTimeout); regTimers = [];
+  if (regLoop) { clearInterval(regLoop); regLoop = null; }
+  regLit = null;
+  $('siegeJoinA').classList.remove('kbd', 'wait'); $('siegeJoinD').classList.remove('kbd', 'wait');
+}
+function regPaint() {
+  $('siegeJoinA').classList.toggle('kbd', regLit === 'a');
+  $('siegeJoinD').classList.toggle('kbd', regLit === 'd');
+}
+function regArm() {
+  regStop();
+  const ba = $('siegeJoinA'), bd = $('siegeJoinD');
+  ba.classList.add('wait'); bd.classList.add('wait');
+  regTimers.push(setTimeout(() => { ba.classList.remove('wait'); ba.disabled = S.phase !== 'reg'; regLit = 'a'; regPaint(); }, REG.first));
+  regTimers.push(setTimeout(() => {
+    bd.classList.remove('wait'); bd.disabled = S.phase !== 'reg'; regLit = 'd'; regPaint();
+    regLoop = setInterval(() => { if (S.mySide) { regStop(); return; } regLit = regLit === 'a' ? 'd' : 'a'; regPaint(); }, REG.dwell);
+  }, REG.first + REG.step));
+}
+window.addEventListener('keydown', e => {
+  if (e.code !== 'KeyF' || e.repeat || S.phase !== 'reg' || $('siegeHud').hidden || STATE.mpDead || STATE.mapOpen) return;
+  const ae = document.activeElement;
+  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
+  for (const id of ['mpInv', 'mpSet', 'mpHelp', 'mpLeaders', 'mpStats', 'teamPanel']) if (!$(id).hidden) return;
+  const lit = regLit === 'a' ? $('siegeJoinA') : regLit === 'd' ? $('siegeJoinD') : null;
+  if (!lit || lit.disabled) return;
+  e.preventDefault();
+  if (siegeNet.join) siegeNet.join(regLit);
+});
 // the registration buttons: a click on your own side withdraws the application
 $('siegeJoinA').addEventListener('click', () => { if (siegeNet.join) siegeNet.join(S.mySide === 'a' ? null : 'a'); });
 $('siegeJoinD').addEventListener('click', () => { if (siegeNet.join) siegeNet.join(S.mySide === 'd' ? null : 'd'); });
