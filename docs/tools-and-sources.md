@@ -9,6 +9,7 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
+| Chatbox | chatbox/kerb-wedges | Просветы и клины у бордюров на перекрёстках Гривы (вид сверху) | src/world/streets.js |
 
 ## Автономный цикл улучшений
 

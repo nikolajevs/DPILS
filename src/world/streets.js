@@ -101,10 +101,16 @@ let RS = null;
 function buildRoadSurf(b) {
   if (!TERR.on || !b.ni) return;
   const n = b.ni / 3, P = b.pos, S = 32, NX = Math.ceil(2 * HX / S) + 1, NZ = Math.ceil(2 * HY / S) + 1;
-  const H = new Float32Array(b.v); for (let i = 0; i < b.v; i++) H[i] = P[3 * i + 1] + terrainH(P[3 * i], P[3 * i + 2]);
+  /* heights per triangle corner, in triangle order: the builder is indexed, its triangle t owns vertices idx[3t..],
+     not 3t.. — reading H[3t] of a per-vertex array gave the feet of the skirts strangers' heights (wedges and gaps at
+     every junction) and, past the array's end, NaN: whole skirt triangles vanished from the kerb line */
+  const H = new Float32Array(n * 3);
   const D = new Float32Array(n * 10), cnt = new Int32Array(NX * NZ + 1);
   for (let t = 0; t < n; t++) {
     const a = b.idx[3 * t], c = b.idx[3 * t + 1], d = b.idx[3 * t + 2], k = t * 10;
+    H[3 * t] = P[3 * a + 1] + terrainH(P[3 * a], P[3 * a + 2]);
+    H[3 * t + 1] = P[3 * c + 1] + terrainH(P[3 * c], P[3 * c + 2]);
+    H[3 * t + 2] = P[3 * d + 1] + terrainH(P[3 * d], P[3 * d + 2]);
     const ax = P[3 * a], az = P[3 * a + 2], bx = P[3 * c], bz = P[3 * c + 2], cx = P[3 * d], cz = P[3 * d + 2];
     D[k] = ax; D[k + 1] = az; D[k + 2] = bx; D[k + 3] = bz; D[k + 4] = cx; D[k + 5] = cz;
     D[k + 6] = Math.min(ax, bx, cx); D[k + 7] = Math.min(az, bz, cz); D[k + 8] = Math.max(ax, bx, cx); D[k + 9] = Math.max(az, bz, cz);
@@ -142,7 +148,7 @@ function roadRel(x, z) {
   }
   return null;
 }
-const footAt = (x, z) => { if (!TERR.on || STATE.GBC) return 0; const r = roadRel(x, z); if (r !== null) return Math.min(r, 0) - 0.05; return groundFoot(x, z); };   // in a hollow the road chord stands above the heights: the foot stays under it
+const footAt = (x, z) => { if (!TERR.on || STATE.GBC) return 0; const r = roadRel(x, z); if (r !== null && Number.isFinite(r)) return Math.min(r, 0) - 0.05; return groundFoot(x, z); };   // in a hollow the road chord stands above the heights: the foot stays under it
 // a vertical skirt along the edge q (flat x,z pairs) from the ground up to y (a number or one per point); the normal
 // is across each segment, to the left of it for flip (the left edge of the slab), to the right otherwise
 function skirt(sk, q, y, col, flip, F = null) {
