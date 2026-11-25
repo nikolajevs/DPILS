@@ -9,7 +9,6 @@
 | Кто | Ветка | Задача | Файлы |
 |---|---|---|---|
 | Claude | claude/magical-hamilton-fh8tt9 | Фото-текстуры земли (трава, асфальт, брусчатка, гравий) | src/render/textures.js, textures/detail_*.webp |
-| Chatbox | chatbox/griva-fortress | Крепость Гривы (Daugavgrīvas cietums, 55.8798N 26.4913E): валы, рвы, тюремная стена, вышки, площадка | src/landmarks/griva-fortress.js, src/world/terrain.js, src/world/streets.js, src/landmarks/index.js |
 
 ## Автономный цикл улучшений
 

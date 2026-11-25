@@ -25,7 +25,7 @@ const PITCH = [-3055.5, 295.5, -3017.9, 326.2, -3004.2, 309.4, -3041.8, 278.7];
 const PITCH2 = [-3059.8, 292.4, -3048.1, 280.7, -3054.2, 274.7, -3065.8, 286.3];
 const TRACK = [-2993.4, 313.3, -2992.2, 306.7, -2994.6, 297, -2998.6, 292.2, -3058.1, 269.5, -3064.5, 270.6, -3070, 276.3, -3071.1, 281.7, -3069.3, 287.3, -3019.8, 331.4, -3013.5, 333.6, -3004.8, 331.4, -2998.2, 323.4];
 // the concrete prison wall along Lielā iela (Mapillary 2021-04-03): the south-west and south road lines
-// (citydata 13614 and 1216) shifted 4 m into the site; on the south it stands at the foot of the rampart
+// (citydata 13614 and 1216) shifted 9.5 m into the site; on the south it stands at the foot of the rampart
 const WALL_ROAD = [-3337.5, 388, -3224.9, 510.2, -3215.3, 519.9, -3206.8, 526.7, -3194.9, 534.1, -3181.9, 541.2, -3156, 548.7, -3125.7, 560.5, -3095.6, 571.6, -3074.9, 578, -3055.6, 580.4, -3035.2, 578, -3019.4, 572.8, -3003.9, 563.4, -2901.4, 482.6, -2867.5, 462.5];
 const WALL_S = (() => { const o = []; for (let i = 0; i < WALL_ROAD.length; i += 2) { const x = WALL_ROAD[i], z = WALL_ROAD[i + 1], dx = -3120 - x, dz = 330 - z, l = Math.hypot(dx, dz) || 1; o.push(x + dx / l * 9.5, z + dz / l * 9.5); } return o; })();
 // the crest path and the towers stand on the top of the rampart band, a few metres inside its outer edge
@@ -149,11 +149,11 @@ function lmGriva(K) {
   // watchtowers on the corners: concrete shaft, a wider glazed cabin with barred windows, a low hip roof
   for (const [x, z] of TOWERS) {
     const B = terrainH(x, z), f = [x, z, 1, 0], sq = w => [[-w, -w], [w, -w], [w, w], [-w, w]];
-    lmBlock(K, f, { poly: sq(1.3), y0: B - 0.3, top: B + 5.4, st: { tex: 7, col: concD, plinth: B + 0.6, pcol: sh(concD, 0.8) } }, []);
+    lmBlock(K, f, { poly: sq(1.3), y0: B - 0.3, top: B + 5.4, st: { tex: 1, col: concD, plinth: B + 0.6, pcol: sh(concD, 0.8) } }, []);
     const ops = [];
     for (const [a, b] of [[[-1.8, -1.8], [1.8, -1.8]], [[1.8, -1.8], [1.8, 1.8]], [[1.8, 1.8], [-1.8, 1.8]], [[-1.8, 1.8], [-1.8, -1.8]]])
       lmRow(ops, a[0], a[1], b[0], b[1], 3, 0.9, B + 5.75, B + 6.9, 'prWin', { d: 0.18, lit: lmLit(0.6) });
-    lmBlock(K, f, { poly: sq(1.8), y0: B + 5.4, top: B + 7.2, st: { tex: 7, col: conc }, cornice: [[B + 7.02, B + 7.2, 0.12, sh(conc, 1.1)]] }, ops);
+    lmBlock(K, f, { poly: sq(1.8), y0: B + 5.4, top: B + 7.2, st: { tex: 1, col: conc }, cornice: [[B + 7.02, B + 7.2, 0.12, sh(conc, 1.1)]] }, ops);
     const e = 1.98, yE = B + 7.2, yT = B + 8.5;
     for (const [a, b, c, d2, nx, nz] of [[-1, -1, 1, -1, 0, -1], [1, -1, 1, 1, 1, 0], [1, 1, -1, 1, 0, 1], [-1, 1, -1, -1, -1, 0]])
       polyA(G, [[x + a * e, yE, z + b * e], [x + c * e, yE, z + d2 * e], [x, yT, z]], hb('#6b6f72'), nx, 0.5, nz);
