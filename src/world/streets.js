@@ -142,7 +142,7 @@ function roadRel(x, z) {
   }
   return null;
 }
-const footAt = (x, z) => { if (!TERR.on || STATE.GBC) return 0; const r = roadRel(x, z); if (r !== null) return r - 0.05; return groundFoot(x, z); };
+const footAt = (x, z) => { if (!TERR.on || STATE.GBC) return 0; const r = roadRel(x, z); if (r !== null) return Math.min(r, 0) - 0.05; return groundFoot(x, z); };   // in a hollow the road chord stands above the heights: the foot stays under it
 // a vertical skirt along the edge q (flat x,z pairs) from the ground up to y (a number or one per point); the normal
 // is across each segment, to the left of it for flip (the left edge of the slab), to the right otherwise
 function skirt(sk, q, y, col, flip, F = null) {
