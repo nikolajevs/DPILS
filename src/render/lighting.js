@@ -205,7 +205,11 @@ try { qAuto = localStorage.getItem('dpils-quality-mode') !== 'fixed'; } catch (e
 const COARSE = matchMedia('(pointer: coarse)').matches;
 let qi = WEAK_GPU || COARSE ? 1 : 0;
 try { const s = localStorage.getItem('dpils-quality2'); if (s != null) qi = Math.max(0, Math.min(QUALITY.length - 1, +s)); } catch (e) {}
-if (qAuto && (WEAK_GPU || COARSE)) qi = Math.max(qi, 1);   // auto on a weak machine never starts at the top level, whatever was remembered
+// auto never starts at the top level, whatever was remembered: the first seconds of a fight are its heaviest (the
+// buffers of the spawn upload, the shadow refits, the mirror and the probes fade in), and the top level made them
+// the worst on every machine. «Средняя» is the same picture the tools draw their views at; perf.js raises the level
+// back to «высокая» once the frames hold 55 at the full resolution, and lowers it further when they do not.
+if (qAuto) qi = Math.max(qi, 1);
 const qWatch = [];
 const onQuality = f => { qWatch.push(f); };
 function qualityBtn() {
