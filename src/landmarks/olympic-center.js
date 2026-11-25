@@ -1,5 +1,6 @@
 import { LMF, LMWHITE, lmW } from './core.js';
 import { lmBlock, lmBoxL, lmWF } from './helpers.js';
+import { polyA } from '../core/geometry.js';
 import { hb, sh } from '../core/util.js';
 import { addLight } from '../world/lamp-light.js';
 
@@ -51,8 +52,7 @@ function lmOlympic(K, litPatch) {
   lmBlock(K, f, {
     poly: body,
     top: H_MAIN,
-    st: { tex: 5, col: CREAM, plinth: 0.4, pcol: sh(CREAM, 0.7) },
-    wy0: []
+    st: { tex: 5, col: CREAM, plinth: 0.4, pcol: sh(CREAM, 0.7) }
   }, []);
 
   // --- Navy blue accent band (daytime) ---
@@ -100,7 +100,7 @@ function lmOlympic(K, litPatch) {
     );
     // Small point light on the facade
     const [lx, lz] = at(uWall + 0.1, v, H_BAND + BAND_H * 0.5);
-    addLight(lx, H_BAND + BAND_H * 0.5, lz, 2.5, 0, 0.6);
+    addLight(lx, H_BAND + BAND_H * 0.5, lz, 2, 0, 0.6);
   }
 
   // --- Dark grey roof parapet ---
@@ -121,13 +121,10 @@ function lmOlympic(K, litPatch) {
       const Q0 = at(uEnt - 0.05, v, 0.5);
       const Q1 = at(uEnt - 0.05, vEnd, 0.5);
       const Fq = lmWF(Q0, Q1);
-      K.plain.q(
+      polyA(K.plain, [
         Fq.at(0, H_ENTRY, 0), Fq.at(Fq.L, H_ENTRY, 0),
-        Fq.at(Fq.L, 0.5, 0), Fq.at(0, 0.5, 0),
-        [-U[0], 0, -U[1]],
-        [0, 0, 1, 0, 1, 1, 0, 1],
-        GLASS_DARK, 1
-      );
+        Fq.at(Fq.L, 0.5, 0), Fq.at(0, 0.5, 0)
+      ], GLASS_DARK, -U[0], 0, -U[1]);
       // Warm interior glow behind the glass (emissive, dim)
       K.det.q(
         Fq.at(0, H_ENTRY - 0.2, 0.02), Fq.at(Fq.L, H_ENTRY - 0.2, 0.02),
@@ -170,7 +167,7 @@ function lmOlympic(K, litPatch) {
         [0, -1, 0], [0, 0, 1, 0, 1, 1, 0, 1],
         [240, 230, 200], 1
       );
-      addLight(lx, H_CANOPY - 0.15, lz, 3, 0, 1.5);
+      addLight(lx, H_CANOPY - 0.15, lz, 2, 0, 1.5);
     }
 
     // Thin steel columns
@@ -211,20 +208,18 @@ function lmOlympic(K, litPatch) {
   for (const [lu, lv] of [[42, -6], [42, 6], [42, -12], [42, 13]]) {
     const [lx, lz] = at(lu, lv, H_CANOPY + 0.3);
     // Post
-    K.plain.q(
+    polyA(K.plain, [
       [lx - 0.03, H_CANOPY + 0.3, lz - 0.03], [lx + 0.03, H_CANOPY + 0.3, lz - 0.03],
-      [lx + 0.03, H_CANOPY + 2.2, lz + 0.03], [lx - 0.03, H_CANOPY + 2.2, lz + 0.03],
-      [0, 0, 1], [0, 0, 0, 0, 0, 0, 0, 0], hb('#3a3e42'), 0
-    );
+      [lx + 0.03, H_CANOPY + 2.2, lz + 0.03], [lx - 0.03, H_CANOPY + 2.2, lz + 0.03]
+    ], hb('#3a3e42'), 0, 0, 1);
     // Globe
     const gy = H_CANOPY + 2.2;
     const gs = 0.18;
-    K.globe.q(
+    polyA(K.globe, [
       [lx - gs, gy, lz - gs], [lx + gs, gy, lz - gs],
-      [lx + gs, gy + gs * 2, lz + gs], [lx - gs, gy + gs * 2, lz + gs],
-      [0, 1, 0], [0, 0, 1, 0, 1, 1, 0, 1], [250, 240, 220], 0
-    );
-    addLight(lx, gy + gs * 2, lz, 1.5, 0, 1.8);
+      [lx + gs, gy + gs * 2, lz + gs], [lx - gs, gy + gs * 2, lz + gs]
+    ], [250, 240, 220], 0, 1, 0);
+    addLight(lx, gy + gs * 2, lz, 1, 0, 1.8);
   }
 
   // --- Side entrance (north-east, v≈55) ---
@@ -233,13 +228,10 @@ function lmOlympic(K, litPatch) {
     const Q0 = at(uSide - 0.05, vSide - 3, 0.3);
     const Q1 = at(uSide - 0.05, vSide + 1, 0.3);
     const Fq = lmWF(Q0, Q1);
-    K.plain.q(
+    polyA(K.plain, [
       Fq.at(0, 3.8, 0), Fq.at(Fq.L, 3.8, 0),
-      Fq.at(Fq.L, 0.3, 0), Fq.at(0, 0.3, 0),
-      [-U[0], 0, -U[1]],
-      [0, 0, 1, 0, 1, 1, 0, 1],
-      GLASS_DARK, 0
-    );
+      Fq.at(Fq.L, 0.3, 0), Fq.at(0, 0.3, 0)
+    ], GLASS_DARK, -U[0], 0, -U[1]);
     // Warm glow
     K.det.q(
       Fq.at(0, 3.5, 0.02), Fq.at(Fq.L, 3.5, 0.02),
@@ -259,13 +251,10 @@ function lmOlympic(K, litPatch) {
     const Q0 = at(uWin - 0.05, vWin, 2.5);
     const Q1 = at(uWin - 0.05, vWin + w, 2.5);
     const Fw = lmWF(Q0, Q1);
-    K.plain.q(
+    polyA(K.plain, [
       Fw.at(0, 2.5 + h, 0), Fw.at(Fw.L, 2.5 + h, 0),
-      Fw.at(Fw.L, 2.5, 0), Fw.at(0, 2.5, 0),
-      [-U[0], 0, -U[1]],
-      [0, 0, 1, 0, 1, 1, 0, 1],
-      GLASS_DARK, 0
-    );
+      Fw.at(Fw.L, 2.5, 0), Fw.at(0, 2.5, 0)
+    ], GLASS_DARK, -U[0], 0, -U[1]);
     // Dim interior glow
     K.det.q(
       Fw.at(0, 2.5 + h - 0.3, 0.02), Fw.at(Fw.L, 2.5 + h - 0.3, 0.02),
