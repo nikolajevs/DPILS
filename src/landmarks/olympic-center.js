@@ -18,10 +18,11 @@ function lmOlympic(K, litPatch) {
   const at = (u, v, y) => { const w = lmW(f, u, v); return [w[0], y, w[1]]; };
   const U = [f[2], f[3]];   // u-axis direction (into building, NW)
 
-  // Colours from the photographs
-  const CREAM = hb('#e8dcc8');
-  const BLUE = hb('#1a2f4a');
-  const BLUE_GLOW = hb('#2a5aaa');   // emissive blue for night glow
+  // Colours from the photographs (Mapillary 2014/2020): white panel walls and a white curved drum on top,
+  // reflective glazing at the entrance; the facade is floodlit from below at night.
+  const CREAM = hb('#e9e7e2');
+  const BLUE = hb('#dfe1e2');
+  const BLUE_GLOW = [205, 225, 255];   // cool white LED wash on the drum at night
   const CANOPY_DARK = hb('#3a3f43');
   const ROOF_DARK = hb('#4a4e52');
   const GLASS_DARK = hb('#2a3038');
@@ -44,8 +45,8 @@ function lmOlympic(K, litPatch) {
   const H_MAIN = 12.0;
   const H_ENTRY = 5.5;
   const H_CANOPY = 3.8;
-  const H_BAND = 9.5;
-  const H_BAND_TOP = 10.3;
+  const H_BAND = 10.0;
+  const H_BAND_TOP = 12.15;
   const H_PARAPET = H_MAIN + 0.15;
 
   // --- Main walls via lmBlock (uses the wall texture atlas, tex 5 = panels) ---
@@ -101,6 +102,28 @@ function lmOlympic(K, litPatch) {
     // Small point light on the facade
     const [lx, lz] = at(uWall + 0.1, v, H_BAND + BAND_H * 0.5);
     addLight(lx, H_BAND + BAND_H * 0.5, lz, 2, 0, 0.6);
+  }
+
+  // --- FACADE FLOODLIGHTING: ground-recessed uplights washing the walls and the white drum at night ---
+  // (the photographs show the building lit from below; kind-2 lamps reach 10 m up the facade)
+  {
+    const ctr = at(-4, 6, 0);
+    for (let i = 0; i < body.length; i++) {
+      const a = body[i], b = body[(i + 1) % body.length];
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (len < 3) continue;
+      const A = at(a[0], a[1], 0), B = at(b[0], b[1], 0);
+      const mx = (A[0] + B[0]) / 2, mz = (A[2] + B[2]) / 2;
+      let ox = mx - ctr[0], oz = mz - ctr[2];
+      const ol = Math.hypot(ox, oz) || 1; ox /= ol; oz /= ol;
+      const nUp = Math.max(1, Math.round(len / 7));
+      for (let k = 0; k < nUp; k++) {
+        const t = (k + 0.5) / nUp;
+        const px = A[0] + (B[0] - A[0]) * t + ox * 0.8;
+        const pz = A[2] + (B[2] - A[2]) * t + oz * 0.8;
+        addLight(px, 0.25, pz, 2, 0, 0.2);
+      }
+    }
   }
 
   // --- Dark grey roof parapet ---
