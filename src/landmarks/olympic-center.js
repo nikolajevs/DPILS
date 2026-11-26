@@ -50,10 +50,12 @@ function lmOlympic(K, litPatch) {
   const H_PARAPET = H_MAIN + 0.15;
 
   // --- Main walls via lmBlock (uses the wall texture atlas, tex 5 = panels) ---
+  // roof: a flat dark membrane just under the parapet (without it the ground showed through from above)
   lmBlock(K, f, {
     poly: body,
     top: H_MAIN,
-    st: { tex: 5, col: CREAM, plinth: 0.4, pcol: sh(CREAM, 0.7) }
+    st: { tex: 5, col: CREAM, plinth: 0.4, pcol: sh(CREAM, 0.7) },
+    roof: ROOF_DARK, roofY: H_MAIN
   }, []);
 
   // --- Navy blue accent band (daytime) ---
