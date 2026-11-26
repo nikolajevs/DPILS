@@ -494,4 +494,58 @@ function bedSpecies(b, du, dv, d) {
   if (rho < 0.16) return 5; if (rho < 0.3) return 4; if (rho < 0.52 + 0.16 * Math.cos(6 * th)) return 3; if (rho < 0.62 + 0.16 * Math.cos(6 * th)) return 2; return rho < 0.8 ? 0 : 6;
 }
 
-export { LMS, LMT, LMWS, LM_FLOWERS, bedSpecies, lmFlowerAtlas, lmSigns, lmTiles, lmWallTex, lr };
+/* ---- Olimpiskais centrs facade atlas (its OWN canvas: the shared detail and sign atlases are full) ----
+   From the reference photographs: a two-storey glass curtain wall with thin dark mullions (some bays warm-lit
+   from inside at night), the white metal wave band studded with a matrix of small LED dots, and the white
+   letter sign "DAUGAVPILS OLIMPISKAIS CENTRS" fixed straight to the glass over the entrance. OCF holds the UVs. */
+const OCF = {};
+function lmOCFacade() {
+  const W = 1024, H = 640, cv = mkCanvas(W, H), g = cv.getContext('2d'), gm = mkCanvas(W, H), e = gm.getContext('2d');
+  e.fillStyle = '#000'; e.fillRect(0, 0, W, H);
+  const uv = (name, x, y, w, h) => { OCF[name] = { u0: x / W, u1: (x + w) / W, v0: 1 - (y + h) / H, v1: 1 - y / H }; };
+  // a curtain-wall bay: dark frame, sky-reflecting glass, a transom at mid height
+  const bay = (x0, lit) => {
+    const w = 256, h = 512, fr = 10;
+    g.fillStyle = '#262b30'; g.fillRect(x0, 0, w, h);
+    if (!lit) {
+      const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#4d6274'); gr.addColorStop(0.55, '#33434f'); gr.addColorStop(1, '#242f38');
+      g.fillStyle = gr; g.fillRect(x0 + fr, fr, w - 2 * fr, h - 2 * fr);
+      g.fillStyle = 'rgba(190,215,230,0.16)';   // a slanted sky reflection
+      g.beginPath(); g.moveTo(x0 + fr, 60); g.lineTo(x0 + w - fr, 20); g.lineTo(x0 + w - fr, 150); g.lineTo(x0 + fr, 230); g.closePath(); g.fill();
+    } else {
+      const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#c9d2cd'); gr.addColorStop(0.3, '#aeb6a6'); gr.addColorStop(1, '#7f8570');
+      g.fillStyle = gr; g.fillRect(x0 + fr, fr, w - 2 * fr, h - 2 * fr);
+      g.fillStyle = 'rgba(52,50,38,0.55)';   // furniture / interior shadows behind the glass
+      for (let k = 0; k < 5; k++) { const bw = 30 + lr() * 60, bh = 40 + lr() * 90, bx = x0 + fr + lr() * (w - 2 * fr - bw), by = h * 0.45 + lr() * (h * 0.5 - bh); g.fillRect(bx, by, bw, bh); }
+      g.fillStyle = '#e8ecdf'; g.fillRect(x0 + fr, fr, w - 2 * fr, 40);   // the ceiling line
+      const eg = e.createLinearGradient(0, 0, 0, h); eg.addColorStop(0, '#fff0c8'); eg.addColorStop(0.3, '#ffd9a0'); eg.addColorStop(1, '#b07838');
+      e.fillStyle = eg; e.fillRect(x0 + fr, fr, w - 2 * fr, h - 2 * fr);
+      e.fillStyle = '#3a2c14';
+      for (let k = 0; k < 5; k++) { const bw = 30 + lr() * 60, bh = 40 + lr() * 90, bx = x0 + fr + lr() * (w - 2 * fr - bw), by = h * 0.45 + lr() * (h * 0.5 - bh); e.fillRect(bx, by, bw, bh); }
+    }
+    g.fillStyle = '#262b30'; g.fillRect(x0 + w / 2 - 3, fr, 6, h - 2 * fr); g.fillRect(x0 + fr, h * 0.45, w - 2 * fr, 7);   // mullion + transom
+    e.fillStyle = '#000'; e.fillRect(x0 + w / 2 - 3, fr, 6, h - 2 * fr); e.fillRect(x0 + fr, h * 0.45, w - 2 * fr, 7);
+  };
+  bay(0, false); bay(256, true);
+  uv('glass', 0, 0, 256, 512); uv('lit', 256, 0, 256, 512);
+  // one LED dot on the white panel of the wave (the panel seams show between the dots)
+  g.fillStyle = '#e3e5e7'; g.fillRect(512, 0, 128, 128);
+  g.strokeStyle = '#c9cbce'; g.lineWidth = 3; g.strokeRect(513.5, 1.5, 125, 125);
+  g.fillStyle = 'rgba(200,215,255,0.35)'; g.beginPath(); g.arc(576, 64, 17, 0, 7); g.fill();
+  g.fillStyle = '#f4f7ff'; g.beginPath(); g.arc(576, 64, 10, 0, 7); g.fill();
+  e.fillStyle = '#5a74c8'; e.beginPath(); e.arc(576, 64, 16, 0, 7); e.fill();
+  e.fillStyle = '#cfe0ff'; e.beginPath(); e.arc(576, 64, 10, 0, 7); e.fill();
+  uv('dot', 512, 0, 128, 128);
+  // the name in white 3D letters on transparent ground (alphaTest cuts the background)
+  const txt = 'DAUGAVPILS  OLIMPISKAIS CENTRS', font = '700 88px "Golos Text", "Trebuchet MS", sans-serif';
+  g.font = font; g.textBaseline = 'middle'; g.textAlign = 'center';
+  e.font = font; e.textBaseline = 'middle'; e.textAlign = 'center';
+  g.fillStyle = '#7d8288'; g.fillText(txt, 516, 581); g.fillStyle = '#f5f6f7'; g.fillText(txt, 512, 576);
+  e.fillStyle = '#dce8ff'; e.fillText(txt, 512, 576);
+  uv('sign', 0, 512, 1024, 128);
+  const t = toTex(cv, true, false), te = toTex(gm, true, false);
+  t.minFilter = te.minFilter = THREE.LinearMipmapLinearFilter;
+  return [t, te];
+}
+
+export { LMS, LMT, LMWS, LM_FLOWERS, OCF, bedSpecies, lmFlowerAtlas, lmOCFacade, lmSigns, lmTiles, lmWallTex, lr };

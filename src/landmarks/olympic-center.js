@@ -1,16 +1,18 @@
 import { LMF, LMWHITE, lmW } from './core.js';
 import { lmBar, lmBlock, lmBoxL, lmLit, lmWF } from './helpers.js';
+import { OCF } from './tiles.js';
 import { hb, sh } from '../core/util.js';
 import { polyA } from '../core/geometry.js';
 import { addLight } from '../world/lamp-light.js';
 
 /* ---- Daugavpils Olimpiskais centrs, Stadiona iela 1 ----
    A large sports complex (~103×110 m bounding box, 7000 m² footprint). Built 2009–2010, houses an ice arena,
-   swimming pools, gyms and a conference hall. Architecture (Mapillary photos, March 2020): light beige/cream
-   walls with dark navy blue accent bands near the top, a dark grey metal canopy over the main entrance on the
-   south-east (Stadiona iela) side, full-height glazing at the entrance, flat roofs with dark grey parapets.
-   At night: the blue accent band glows with LED backlight, the entrance sign is lit, warm light spills from
-   the glazed entrance, and LED spots wash the facade from under the canopy and along the roof parapet.
+   swimming pools, gyms and a conference hall. Architecture (reference photographs, day and night): a two-storey
+   glass curtain wall wraps the rounded public end, a white metal wave band sweeps over the top studded with a
+   matrix of small LED dots, a balcony railing ring runs between the storeys, and the white letters
+   "DAUGAVPILS OLIMPISKAIS CENTRS" are fixed straight to the glass over the entrance. The long pond-side walls
+   are white panel with ribbon windows. At night: the LED dots glow cool blue, warm interior light fills half the
+   glass bays, downlights under the wave wash the glass, and ground-recessed uplights floodlight the walls.
    Frame oc: u inward from the main entrance (SE→NW), v along the façade (SW→NE). Origin near centre of the
    OSM outline. OSM way 233137668. */
 function lmOlympic(K, litPatch) {
@@ -22,7 +24,6 @@ function lmOlympic(K, litPatch) {
   // reflective glazing at the entrance; the facade is floodlit from below at night.
   const CREAM = hb('#e9e7e2');
   const BLUE = hb('#dfe1e2');
-  const BLUE_GLOW = [205, 225, 255];   // cool white LED wash on the drum at night
   const CANOPY_DARK = hb('#3a3f43');
   const ROOF_DARK = hb('#4a4e52');
   const GLASS_DARK = hb('#2a3038');
@@ -65,44 +66,90 @@ function lmOlympic(K, litPatch) {
     ]
   }, []);
 
-  // --- Blue accent band EMISSIVE (night glow) ---
-  // A second, slightly narrower strip using K.det with lit=1 so it emits at night
-  const BAND_H = H_BAND_TOP - H_BAND;
-  for (let i = 0; i < body.length; i++) {
-    const a = body[i], b = body[(i + 1) % body.length];
-    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    if (len < 0.1) continue;
-    // Draw the band as a single quad on K.det (emissive material with litPatch)
-    const A = at(a[0], a[1], H_BAND), B = at(b[0], b[1], H_BAND);
-    const F = lmWF(A, B);
-    // Outward-facing emissive strip
-    K.det.q(
-      F.at(0, H_BAND_TOP, 0.21), F.at(F.L, H_BAND_TOP, 0.21),
-      F.at(F.L, H_BAND, 0.21), F.at(0, H_BAND, 0.21),
-      [-F.nx, 0, -F.nz],   // the body ring runs clockwise: lmWF's normal points in, the strip faces out
-      [0, 0, 1, 0, 1, 1, 0, 1],
-      BLUE_GLOW, 1   // lit=1 → glows at night
+  // The facade atlas (own canvas, the shared atlases are full): glass bays, LED dots, the name letters.
+  // The body ring runs clockwise, so lmWF's natural normal points IN: outward = +d offset, normal = -F.n.
+  const quv = t => [t.u0, t.v0, t.u1, t.v0, t.u1, t.v1, t.u0, t.v1];
+  const STEEL = hb('#8a9096');
+  // lmWF takes plan points [x, z] — passing the 3-D at() result would read y as z and draw everything at z=0
+  const P2 = Q => [Q[0], Q[2]];
+  const edgeF = i => { const a = body[i], b = body[(i + 1) % body.length]; return lmWF(P2(at(a[0], a[1], 0)), P2(at(b[0], b[1], 0))); };
+
+  // --- TWO-STOREY GLASS CURTAIN WALL on the rounded public end (edges 10..24, the photographs) ---
+  // Bays 1.5 m wide, floor slab fascia + a balcony railing ring between the storeys; some bays warm-lit at night.
+  for (let i = 10; i <= 24; i++) {
+    const F = edgeF(i);
+    const bays = Math.max(1, Math.round(F.L / 1.5));
+    for (let k = 0; k < bays; k++) {
+      const s0 = k * F.L / bays + 0.02, s1 = (k + 1) * F.L / bays - 0.02;
+      for (const [ya, yb] of [[0.4, 5.2], [5.6, 9.8]]) {
+        const t = lmLit(0.5) ? OCF.lit : OCF.glass;
+        K.ocF.q(
+          F.at(s0, ya, 0.08), F.at(s1, ya, 0.08), F.at(s1, yb, 0.08), F.at(s0, yb, 0.08),
+          [-F.nx, 0, -F.nz], quv(t), LMWHITE, t === OCF.lit ? 1 : 0
+        );
+      }
+    }
+    // floor slab fascia between the storeys
+    lmBar(G, F.at(0, 5.4, 0.12), F.at(F.L, 5.4, 0.12), 0.42, hb('#3c4147'));
+    // balcony / maintenance railing ring projecting half a metre (as in the photos)
+    lmBar(G, F.at(0, 5.98, 0.5), F.at(F.L, 5.98, 0.5), 0.05, STEEL);
+    lmBar(G, F.at(0, 5.72, 0.5), F.at(F.L, 5.72, 0.5), 0.04, STEEL);
+    for (let s = 0.75; s < F.L; s += 1.5) lmBar(G, F.at(s, 5.55, 0.48), F.at(s, 5.98, 0.48), 0.03, STEEL);
+    // warm downlights tucked under the wave overhang, washing the glass and the plaza
+    const nD = Math.max(1, Math.round(F.L / 4));
+    for (let k = 0; k < nD; k++) {
+      const s = (k + 0.5) * F.L / nD;
+      K.ocF.q(
+        F.at(s - 0.09, 9.9, 0.1), F.at(s + 0.09, 9.9, 0.1), F.at(s + 0.09, 9.9, 0.3), F.at(s - 0.09, 9.9, 0.3),
+        [0, -1, 0], quv(OCF.dot), LMWHITE, 1
+      );
+      if (k % 2 === 0) { const P = F.at(s, 9.75, 0.4); addLight(P[0], 9.75, P[2], 2, 0, 9.7); }
+    }
+  }
+
+  // --- the name in white letters fixed to the glass over the entrance (edge 22, reads left→right from outside) ---
+  {
+    const a = body[22], b = body[23];
+    const Fr = lmWF(P2(at(b[0], b[1], 0)), P2(at(a[0], a[1], 0)));   // reversed: its normal points OUT, s grows to the viewer's right
+    K.ocF.q(
+      Fr.at(0.6, 6.2, -0.14), Fr.at(Fr.L - 0.6, 6.2, -0.14), Fr.at(Fr.L - 0.6, 7.2, -0.14), Fr.at(0.6, 7.2, -0.14),
+      [Fr.nx, 0, Fr.nz], [OCF.sign.u1, OCF.sign.v0, OCF.sign.u0, OCF.sign.v0, OCF.sign.u0, OCF.sign.v1, OCF.sign.u1, OCF.sign.v1], LMWHITE, 1
     );
   }
 
-  // --- LED spot lights embedded in the blue band on the main façade ---
-  // Small bright emissive rectangles spaced along the front (u≈40, v≈-30..+40)
-  for (let v = -35; v <= 45; v += 6) {
-    // Only on the SE-facing walls (u ≈ 30–48)
-    const uWall = 39.5, v0 = v - 0.3, v1 = v + 0.3;
-    const A = at(uWall, v0, H_BAND + BAND_H * 0.5);
-    const B = at(uWall, v1, H_BAND + BAND_H * 0.5);
-    const F = lmWF(A, B);
-    K.det.q(
-      F.at(0, H_BAND + BAND_H * 0.65, 0.22), F.at(F.L, H_BAND + BAND_H * 0.65, 0.22),
-      F.at(F.L, H_BAND + BAND_H * 0.35, 0.22), F.at(0, H_BAND + BAND_H * 0.35, 0.22),
-      [-F.nx, 0, -F.nz],
-      [0, 0, 1, 0, 1, 1, 0, 1],
-      [180, 210, 255], 1
-    );
-    // Small point light on the facade
-    const [lx, lz] = at(uWall + 0.1, v, H_BAND + BAND_H * 0.5);
-    addLight(lx, H_BAND + BAND_H * 0.5, lz, 2, 0, 0.6);
+  // --- LED DOT MATRIX on the white wave (the signature night look: rows of small cool-blue dots) ---
+  for (let i = 0; i < body.length; i++) {
+    const F = edgeF(i);
+    if (F.L < 1) continue;
+    const n = Math.max(1, Math.round(F.L / 1.7));
+    for (let k = 0; k < n; k++) {
+      const s = (k + 0.5) * F.L / n;
+      for (const y of [10.55, 11.25, 11.95]) {
+        K.ocF.q(
+          F.at(s - 0.09, y - 0.09, 0.215), F.at(s + 0.09, y - 0.09, 0.215),
+          F.at(s + 0.09, y + 0.09, 0.215), F.at(s - 0.09, y + 0.09, 0.215),
+          [-F.nx, 0, -F.nz], quv(OCF.dot), LMWHITE, 1
+        );
+      }
+    }
+  }
+
+  // --- ribbon windows on the long pond-side walls (the concrete drum in the day photograph) ---
+  for (let i = 5; i <= 9; i++) {
+    const F = edgeF(i);
+    const bays = Math.max(1, Math.round(F.L / 1.6));
+    for (let k = 0; k < bays; k++) {
+      const s0 = k * F.L / bays + 0.03, s1 = (k + 1) * F.L / bays - 0.03;
+      const t = lmLit(0.25) ? OCF.lit : OCF.glass;
+      K.ocF.q(
+        F.at(s0, 8.3, 0.06), F.at(s1, 8.3, 0.06), F.at(s1, 9.8, 0.06), F.at(s0, 9.8, 0.06),
+        [-F.nx, 0, -F.nz], quv(t), LMWHITE, t === OCF.lit ? 1 : 0
+      );
+      if (i >= 6 && i <= 8) K.ocF.q(
+        F.at(s0, 1.0, 0.06), F.at(s1, 1.0, 0.06), F.at(s1, 2.4, 0.06), F.at(s0, 2.4, 0.06),
+        [-F.nx, 0, -F.nz], quv(OCF.glass), LMWHITE, 0
+      );
+    }
   }
 
   // --- FACADE FLOODLIGHTING: ground-recessed uplights washing the walls and the white drum at night ---
@@ -136,7 +183,7 @@ function lmOlympic(K, litPatch) {
       const vEnd = Math.min(v1, v + 3.0);
       const Q0 = at(uEnt - 0.05, v, 0.5);
       const Q1 = at(uEnt - 0.05, vEnd, 0.5);
-      const Fq = lmWF(Q0, Q1);
+      const Fq = lmWF(P2(Q0), P2(Q1));
       K.plain.q(
         Fq.at(0, H_ENTRY, 0), Fq.at(Fq.L, H_ENTRY, 0),
         Fq.at(Fq.L, 0.5, 0), Fq.at(0, 0.5, 0),
@@ -162,7 +209,7 @@ function lmOlympic(K, litPatch) {
     {
       const D0 = at(uEnt - 0.05, vDoor0, 0.3);
       const D1 = at(uEnt - 0.05, vDoor1, 0.3);
-      const Fd = lmWF(D0, D1);
+      const Fd = lmWF(P2(D0), P2(D1));
       K.det.q(
         Fd.at(0, 3.2, 0.01), Fd.at(Fd.L, 3.2, 0.01),
         Fd.at(Fd.L, 0.5, 0.01), Fd.at(0, 0.5, 0.01),
@@ -194,33 +241,7 @@ function lmOlympic(K, litPatch) {
       lmBoxL(G, f, cU - 0.3, cU - 0.1, v - 0.15, v + 0.15, 0.3, H_CANOPY, ENTRANCE_FRAME);
     }
 
-    // --- SIGN: blue board + white name, EMISSIVE at night ---
-    const signU = uEnt + 0.12, signV0 = v0 + 1, signV1 = v1 - 1;
-    // Blue board (emissive)
-    {
-      const S0 = at(signU, signV0, H_ENTRY + 0.1);
-      const S1 = at(signU, signV1, H_ENTRY + 0.1);
-      const Fs = lmWF(S0, S1);
-      K.det.q(
-        Fs.at(0, H_ENTRY + 1.2, 0.04), Fs.at(Fs.L, H_ENTRY + 1.2, 0.04),
-        Fs.at(Fs.L, H_ENTRY + 0.1, 0.04), Fs.at(0, H_ENTRY + 0.1, 0.04),
-        [-U[0], 0, -U[1]],
-        [0, 0, 1, 0, 1, 1, 0, 1],
-        BLUE_GLOW, 1
-      );
-      // White name strip (emissive)
-      const margin = 0.5;
-      K.det.q(
-        Fs.at(0, H_ENTRY + 0.9, 0.05), Fs.at(Fs.L, H_ENTRY + 0.9, 0.05),
-        Fs.at(Fs.L, H_ENTRY + 0.45, 0.05), Fs.at(0, H_ENTRY + 0.45, 0.05),
-        [-U[0], 0, -U[1]],
-        [0, 0, 1, 0, 1, 1, 0, 1],
-        [250, 245, 235], 1
-      );
-    }
-    // Daytime version (same but on plain material, no emissive)
-    lmBoxL(G, f, signU - 0.1, signU + 0.1, signV0, signV1, H_ENTRY + 0.1, H_ENTRY + 1.2, BLUE);
-    lmBoxL(G, f, signU - 0.1, signU + 0.1, signV0 + 0.5, signV1 - 0.5, H_ENTRY + 0.45, H_ENTRY + 0.9, WHITE_TRIM);
+    // (the name letters are on the glass drum above — there is no blue board in the photographs)
   }
 
   // --- Entrance lamps (globe lights on posts, already lit at night) ---
@@ -248,7 +269,7 @@ function lmOlympic(K, litPatch) {
     const uSide = 3, vSide = 55;
     const Q0 = at(uSide - 0.05, vSide - 3, 0.3);
     const Q1 = at(uSide - 0.05, vSide + 1, 0.3);
-    const Fq = lmWF(Q0, Q1);
+    const Fq = lmWF(P2(Q0), P2(Q1));
     K.plain.q(
       Fq.at(0, 3.8, 0), Fq.at(Fq.L, 3.8, 0),
       Fq.at(Fq.L, 0.3, 0), Fq.at(0, 0.3, 0),
@@ -274,7 +295,7 @@ function lmOlympic(K, litPatch) {
   ]) {
     const Q0 = at(uWin - 0.05, vWin, 2.5);
     const Q1 = at(uWin - 0.05, vWin + w, 2.5);
-    const Fw = lmWF(Q0, Q1);
+    const Fw = lmWF(P2(Q0), P2(Q1));
     K.plain.q(
       Fw.at(0, 2.5 + h, 0), Fw.at(Fw.L, 2.5 + h, 0),
       Fw.at(Fw.L, 2.5, 0), Fw.at(0, 2.5, 0),
