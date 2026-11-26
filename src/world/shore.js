@@ -185,26 +185,48 @@ function promenade(ring, N) {
   const n = ring.length >> 1, idx = [];
   for (let i = 0; i < n; i++) if (onProm(ring[2 * i], ring[2 * i + 1]) && !nearBridge(ring[2 * i], ring[2 * i + 1]) && Number.isFinite(N[i][0]) && (N[i][0] || N[i][1])) idx.push(i);
   if (idx.length < 4) return;
-  const pave = [], rail = [];
-  for (const i of idx) { const x = ring[2 * i], z = ring[2 * i + 1], [nx, nz] = N[i]; pave.push(x + nx * 6.5, z + nz * 6.5); rail.push(x + nx * 3.6, z + nz * 3.6); }
+  /* The ring leaves the promenade window at the bend and at the bridges, and the kept points on either side of such a
+     gap are not neighbours on the bank: a band drawn between them lay a straight paved way, railing and lamp posts
+     across the water of the bend — the sidewalk on the Daugava. Keep runs of neighbouring ring points only, and break
+     a run where the way itself would stand in water (an OSM bank chord cutting across a bulge of the river). */
+  const runs = []; let cur = [];
+  const cut = () => { if (cur.length > 1) runs.push(cur); cur = []; };
+  for (let k = 0; k < idx.length; k++) {
+    const i = idx[k];
+    if (cur.length) {
+      const p = cur[cur.length - 1];
+      const mx = (ring[2 * p] + N[p][0] * 6.5 + ring[2 * i] + N[i][0] * 6.5) / 2, mz = (ring[2 * p + 1] + N[p][1] * 6.5 + ring[2 * i + 1] + N[i][1] * 6.5) / 2;
+      const rx = (ring[2 * p] + N[p][0] * 3.6 + ring[2 * i] + N[i][0] * 3.6) / 2, rz = (ring[2 * p + 1] + N[p][1] * 3.6 + ring[2 * i + 1] + N[i][1] * 3.6) / 2;
+      if (i !== p + 1 || inWater(mx, mz) || inWater(rx, rz)) cut();
+    }
+    cur.push(i);
+  }
+  cut();
+  if (!runs.length) return;
   STATE.GBC = null;
   const surf = new GB(false);
-  bandAlong(surf, pave, false, 2.1, hb('#b3a795'), null);
-  groundMesh(surf, groundMaterial(detailTex(2), 1 / 3.5, 0.5, 'shore-pave'), -33);
-  railing(rail);
-  let acc = 12, bacc = 30;
-  for (let k = 0; k + 1 < idx.length; k++) {
-    const i = idx[k], ax = pave[2 * k], az = pave[2 * k + 1], bx = pave[2 * k + 2], bz = pave[2 * k + 3], L = Math.hypot(bx - ax, bz - az); if (L < 0.01) continue;
-    const tx = (bx - ax) / L, tz = (bz - az) / L, [nx, nz] = N[i];
-    for (; acc < L; acc += 30) { const x = ax + tx * acc + nx * 2.6, z = az + tz * acc + nz * 2.6; if (!onRoad(x, z, 1)) lampPost(x, z); }
-    for (; bacc < L; bacc += 70) { const x = ax + tx * bacc + nx * 2.4, z = az + tz * bacc + nz * 2.4; STATE.GBC = groundGBC(x, z); bench(PLAIN, x, z, Math.atan2(-nz, -nx));
-      lmLathe(PLAIN, x - tx * 1.4, z - tz * 1.4, 0, [[0.2, 0], [0.22, 0.7], [0.24, 0.74], [0.02, 0.74]], 10, hb('#3b3f3d')); STATE.GBC = null; }
-    acc -= L; bacc -= L;
+  let main = runs[0];
+  for (const run of runs) {
+    if (run.length > main.length) main = run;
+    const pave = [], rail = [];
+    for (const i of run) { const x = ring[2 * i], z = ring[2 * i + 1], [nx, nz] = N[i]; pave.push(x + nx * 6.5, z + nz * 6.5); rail.push(x + nx * 3.6, z + nz * 3.6); }
+    bandAlong(surf, pave, false, 2.1, hb('#b3a795'), null);
+    railing(rail);
+    let acc = 12, bacc = 30;
+    for (let k = 0; k + 1 < run.length; k++) {
+      const i = run[k], ax = pave[2 * k], az = pave[2 * k + 1], bx = pave[2 * k + 2], bz = pave[2 * k + 3], L = Math.hypot(bx - ax, bz - az); if (L < 0.01) continue;
+      const tx = (bx - ax) / L, tz = (bz - az) / L, [nx, nz] = N[i];
+      for (; acc < L; acc += 30) { const x = ax + tx * acc + nx * 2.6, z = az + tz * acc + nz * 2.6; if (!onRoad(x, z, 1)) lampPost(x, z); }
+      for (; bacc < L; bacc += 70) { const x = ax + tx * bacc + nx * 2.4, z = az + tz * bacc + nz * 2.4; STATE.GBC = groundGBC(x, z); bench(PLAIN, x, z, Math.atan2(-nz, -nx));
+        lmLathe(PLAIN, x - tx * 1.4, z - tz * 1.4, 0, [[0.2, 0], [0.22, 0.7], [0.24, 0.74], [0.02, 0.74]], 10, hb('#3b3f3d')); STATE.GBC = null; }
+      acc -= L; bacc -= L;
+    }
   }
-  const i0 = idx[0], im = idx[idx.length >> 1], i1 = idx[idx.length - 1];
+  groundMesh(surf, groundMaterial(detailTex(2), 1 / 3.5, 0.5, 'shore-pave'), -33);
+  const i0 = main[0], im = main[main.length >> 1], i1 = main[main.length - 1];
   harbour(ring[2 * i0] + N[i0][0] * 6, ring[2 * i0 + 1] + N[i0][1] * 6, N[i0][0], N[i0][1]);
   well(ring[2 * im] + N[im][0] * 14, ring[2 * im + 1] + N[im][1] * 14);
-  for (const q of [0.3, 0.7]) { const i = idx[Math.floor(idx.length * q)]; steps(ring[2 * i] + N[i][0] * 8, ring[2 * i + 1] + N[i][1] * 8, N[i][0], N[i][1]); }
+  for (const q of [0.3, 0.7]) { const i = main[Math.floor(main.length * q)]; steps(ring[2 * i] + N[i][0] * 8, ring[2 * i + 1] + N[i][1] * 8, N[i][0], N[i][1]); }
   bikeStand(ring[2 * i0] + N[i0][0] * 15, ring[2 * i0 + 1] + N[i0][1] * 15, 0.6);
   bikeStand(ring[2 * i1] + N[i1][0] * 15, ring[2 * i1 + 1] + N[i1][1] * 15, 2.2);
 }
@@ -296,18 +318,32 @@ function esplanade(ring, N) {
     pts.push(x + nx * f, z + nz * f); feet.push([x + nx * (f + 1.5), z + nz * (f + 1.5), i]);
   }
   if (pts.length < 6) return;
+  // runs of neighbouring ring points, broken where the path would cross water (the same chord bug as the promenade)
+  const runs = []; let cur = [];
+  const cut = () => { if (cur.length > 1) runs.push(cur); cur = []; };
+  for (let k = 0; k < feet.length; k++) {
+    if (cur.length) {
+      const p = cur[cur.length - 1];
+      if (feet[k][2] !== feet[p][2] + 1 || inWater((pts[2 * p] + pts[2 * k]) / 2, (pts[2 * p + 1] + pts[2 * k + 1]) / 2)) cut();
+    }
+    cur.push(k);
+  }
+  cut();
+  if (!runs.length) return;
   STATE.GBC = null;
   const surf = new GB(false);
-  bandAlong(surf, pts, false, 1.6, hb('#b8b2a6'), null);
+  for (const run of runs) { const rp = []; for (const k of run) rp.push(pts[2 * k], pts[2 * k + 1]); bandAlong(surf, rp, false, 1.6, hb('#b8b2a6'), null); }
   groundMesh(surf, groundMaterial(detailTex(2), 1 / 3.2, 0.45, 'shore-esplanade'), -33);
   // boulders at the foot of the slope, beside the path
   STATE.GBC = ABS;
-  for (let k = 0; k < feet.length; k += 2) { const [fx, fz, i] = feet[k]; if (hash(fx * 1.3 + fz * 2.7) < 0.55) { const r = 0.5 + hash(fx + fz) * 0.7; boulder2(fx, fz, terrainH(fx, fz) + r * 0.25, r, i, PINK_ROCK[Math.floor(hash(fx * 3 + fz) * PINK_ROCK.length) % PINK_ROCK.length]); } }
-  // steps up the dam about every 180 m (absolute heights, GBC stays ABS)
-  let acc = 90;
-  for (let k = 0; k + 1 < feet.length; k++) { const ax = pts[2 * k], az = pts[2 * k + 1], bx = pts[2 * k + 2], bz = pts[2 * k + 3], L = Math.hypot(bx - ax, bz - az); if (L < 0.01) continue;
-    for (; acc < L; acc += 180) { const i = feet[k][2], x = ring[2 * i], z = ring[2 * i + 1], [nx, nz] = N[i]; damSteps(x, z, nx, nz); }
-    acc -= L; }
+  for (const run of runs) {
+    for (let q = 0; q < run.length; q += 2) { const [fx, fz, i] = feet[run[q]]; if (hash(fx * 1.3 + fz * 2.7) < 0.55) { const r = 0.5 + hash(fx + fz) * 0.7; boulder2(fx, fz, terrainH(fx, fz) + r * 0.25, r, i, PINK_ROCK[Math.floor(hash(fx * 3 + fz) * PINK_ROCK.length) % PINK_ROCK.length]); } }
+    // steps up the dam about every 180 m (absolute heights, GBC stays ABS)
+    let acc = 90;
+    for (let q = 0; q + 1 < run.length; q++) { const k = run[q], ax = pts[2 * k], az = pts[2 * k + 1], bx = pts[2 * k + 2], bz = pts[2 * k + 3], L = Math.hypot(bx - ax, bz - az); if (L < 0.01) continue;
+      for (; acc < L; acc += 180) { const i = feet[k][2], x = ring[2 * i], z = ring[2 * i + 1], [nx, nz] = N[i]; damSteps(x, z, nx, nz); }
+      acc -= L; }
+  }
   STATE.GBC = null;
 }
 // a boulder in a given colour (the pink granite of the Esplanade slope)
