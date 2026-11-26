@@ -34,7 +34,7 @@ import { lmRenesanse } from './renesanse.js';
 import { lmDULab, lmDUMain, lmDUParades } from './university.js';
 import { lmLatgola } from './latgola.js';
 import { lmUnityHouse } from './unity-house.js';
-import { lmSigns, lmTiles, lmWallTex } from './tiles.js';
+import { lmOCFacade, lmSigns, lmTiles, lmWallTex } from './tiles.js';
 import { LMB } from './core.js';
 import { lmTramWires, lmVienibas } from '../world/tram-wires.js';
 import { lmUnderpass } from '../world/underpass.js';
@@ -51,7 +51,7 @@ import { GB } from '../core/geometry.js';
 const LMM = {}; let lmClk = null;
 function lmNight(n) {
   if (!LMM.det) return;
-  LMM.det.emissiveIntensity = n * 1.7; LMM.txt.emissiveIntensity = n * 1.5; LMM.ash.emissiveIntensity = n * 0.16; LMM.duw.emissiveIntensity = n * 0.06; LMM.stone.emissiveIntensity = n * 0.13; LMM.globe.emissiveIntensity = n * 3.2; LMM.clk.emissiveIntensity = 0.9 + n * 1.3;
+  LMM.det.emissiveIntensity = n * 1.7; LMM.txt.emissiveIntensity = n * 1.5; if (LMM.ocF) LMM.ocF.emissiveIntensity = n * 2.0; LMM.ash.emissiveIntensity = n * 0.16; LMM.duw.emissiveIntensity = n * 0.06; LMM.stone.emissiveIntensity = n * 0.13; LMM.globe.emissiveIntensity = n * 3.2; LMM.clk.emissiveIntensity = 0.9 + n * 1.3;
   if (LMM.spwLamp) LMM.spwLamp.emissiveIntensity = n * 3.4; if (LMM.spwSheet) LMM.spwSheet.emissiveIntensity = 0.32 * (1 - n); if (SPW.pools) SPW.pools.visible = n > 0.5;   // the speedway: lamps, roof sheets
   if (LMM.schDet) LMM.schDet.emissiveIntensity = n * 1.7;   // schools: the lit windows
   if (LMM.chDet) LMM.chDet.emissiveIntensity = n * 1.7;   // Church Hill: the lit windows
@@ -77,7 +77,7 @@ const LM_SAFE = s => { s.fragmentShader = s.fragmentShader.replace('#include <op
 const LM_GLASS = s => { Object.assign(s.uniforms, PU, MU); s.fragmentShader = GLASS_GLSL + s.fragmentShader.replace('#include <lights_fragment_maps>', glassLights('1.0 - smoothstep(0.16, 0.24, roughnessFactor)')); };
 const lmStd = (opts, key, patch) => std(opts, key, s => { LM_SAFE(s); if (opts.roughnessMap) LM_GLASS(s); if (patch) patch(s); });
 async function buildLandmarks() {
-  const [dc, dorm, dglow] = lmTiles(); await rest(); const [sc, sglow] = lmSigns(), WT = [];
+  const [dc, dorm, dglow] = lmTiles(); await rest(); const [sc, sglow] = lmSigns(), WT = []; const [ocf, ocg] = lmOCFacade();
   for (let k = 0; k < 8; k++) { await rest(); WT.push(lmWallTex(k)); }
   const ashT = WT[0], renT = WT[1];
   const litPatch = s => {
@@ -95,11 +95,13 @@ async function buildLandmarks() {
   LMM.det = lmStd({ vertexColors: true, map: dc, roughnessMap: dorm, metalnessMap: dorm, roughness: 1, metalness: 1, emissive: new THREE.Color(1, 1, 1), emissiveMap: dglow, emissiveIntensity: 0 }, 'lm-det', litPatch);
   LMM.txt = lmStd({ vertexColors: true, map: sc, alphaTest: 0.5, roughness: 0.35, metalness: 0.45, emissive: new THREE.Color(1, 1, 1), emissiveMap: sglow, emissiveIntensity: 0 }, 'lm-txt', litPatch);
   LMM.globe = lmStd({ vertexColors: true, roughness: 0.3, metalness: 0, emissive: new THREE.Color(1, 0.82, 0.58), emissiveIntensity: 0 }, 'lm-globe');
+  // the Olympic centre facade: its own atlas (glass bays, LED dots, the name letters), lit bays/dots/letters glow at night
+  LMM.ocF = lmStd({ vertexColors: true, map: ocf, alphaTest: 0.5, roughness: 0.25, metalness: 0.35, emissive: new THREE.Color(1, 1, 1), emissiveMap: ocg, emissiveIntensity: 0 }, 'lm-ocf', litPatch);
   LMM.plain = lmStd({ vertexColors: true, roughness: 0.85, metalness: 0 }, 'lm-plain');
   LMM.stone = lmStd({ vertexColors: true, roughness: 0.85, metalness: 0, emissive: new THREE.Color(1, 0.84, 0.64), emissiveIntensity: 0 }, 'lm-stone');
   const ccv = mkCanvas(256, 80); lmClk = { cv: ccv, g: ccv.getContext('2d'), m: -1, tex: toTex(ccv, true, false) };
   LMM.clk = hook(new THREE.MeshStandardMaterial({ map: lmClk.tex, emissive: new THREE.Color(1, 1, 1), emissiveMap: lmClk.tex, roughness: 0.5, metalness: 0 }), 'lm-clk', LM_SAFE); allMats.push(LMM.clk); lmTick();
-  const K = { ash: new LMB(), ren: new LMB(), det: new LMB(), txt: new LMB(), clk: new LMB(), plain: new GB(false), stone: new GB(false), globe: new GB(false) };
+  const K = { ash: new LMB(), ren: new LMB(), det: new LMB(), txt: new LMB(), ocF: new LMB(), clk: new LMB(), plain: new GB(false), stone: new GB(false), globe: new GB(false) };
   K.walls = [K.ash, K.ren, new LMB(), new LMB(), new LMB(), new LMB(), new LMB(), new LMB()];
   // one landmark at a time, with a pause between them when the slice is used up (src/core/pause.js)
   for (const f of [lmUnityHouse, lmLatgola, lmSquare, lmGrounds, lmVienibasRigas, lmDUMain, lmDUParades, lmDULab, lmRenesanse, lmRigas, lmVesma, lmTVTower, lmStation, lmStationYard, lmAutoosta, lmSpeedway, lmKP, lmSC]) { await rest(); f(K); }
@@ -107,7 +109,7 @@ async function buildLandmarks() {
   await rest(); STATE.GBC = TERR.on ? vbComp : null; lmVienibas(K); STATE.GBC = null;
   for (const f of [lmParking, lmYards, lmCourtyardNorth, lmGubisce, lmSubstation, lmHospital, lmPrison, lmGriva, lmParks, lmUnderpass]) { await rest(); await f(K); }
   await rest();
-  [LMM.ash, LMM.ren, LMM.duw, LMM.brick, LMM.tile, LMM.panel, LMM.buff, LMM.sil].forEach((m, k) => K.walls[k].mesh(m)); K.det.mesh(LMM.det); K.txt.mesh(LMM.txt, false); K.clk.mesh(LMM.clk, false);
+  [LMM.ash, LMM.ren, LMM.duw, LMM.brick, LMM.tile, LMM.panel, LMM.buff, LMM.sil].forEach((m, k) => K.walls[k].mesh(m)); K.det.mesh(LMM.det); K.txt.mesh(LMM.txt, false); K.ocF.mesh(LMM.ocF); K.clk.mesh(LMM.clk, false);
   for (const [b, m] of [[K.plain, LMM.plain], [K.stone, LMM.stone]]) { const pm = b.mesh(m); if (pm) { pm.castShadow = pm.receiveShadow = true; scene.add(pm); } }
   const gm = K.globe.mesh(LMM.globe); if (gm) { gm.receiveShadow = true; scene.add(gm); }
   lmNight(U.night.value);
