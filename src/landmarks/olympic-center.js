@@ -30,7 +30,7 @@ function lmOlympic(K, litPatch) {
   const WHITE_TRIM = [248, 246, 240];
   const WARM_GLOW = [255, 220, 160];  // warm interior light spill
 
-  // Building footprint in local (u, v) — the full 33-point OSM outline
+  // Building footprint in local (u, v) — the OSM outline (way 233137668)
   const body = [
     [3.9, -43.9], [2.8, -41.4], [-10.5, -47.5], [-19.8, -51.7], [-25.2, -50.6],
     [-28.0, -47.7], [-54.2, 9.7], [-54.1, 13.0], [-51.9, 16.5], [-24.6, 27.9],
@@ -38,8 +38,8 @@ function lmOlympic(K, litPatch) {
     [19.8, 56.7], [24.1, 54.1], [26.9, 49.9], [28.9, 44.4], [29.3, 40.5],
     [29.8, 36.0], [30.2, 31.8], [31.0, 23.6], [36.1, 7.5], [39.3, 0.3],
     [47.7, -14.9], [48.8, -21.5], [46.9, -28.7], [41.4, -34.2], [32.3, -37.8],
-    [8.9, -42.9], [4.9, -43.7], [3.9, -43.9]
-  ];
+    [8.9, -42.9], [4.9, -43.7]
+  ];   // the ring closes by modulo; the OSM duplicate of the first point is dropped (a zero-length edge notches the cornice mitre)
 
   // Heights (metres above ground)
   const H_MAIN = 12.0;
@@ -50,21 +50,20 @@ function lmOlympic(K, litPatch) {
   const H_PARAPET = H_MAIN + 0.15;
 
   // --- Main walls via lmBlock (uses the wall texture atlas, tex 5 = panels) ---
-  // roof: a flat dark membrane just under the parapet (without it the ground showed through from above)
+  // roof: a flat dark membrane just under the parapet (without it the ground showed through from above).
+  // The white drum band and the dark coping above it are cornices: mitred strips that follow the outline.
+  // (lmBoxL between the corners of a slanted edge builds an axis-aligned box whose corners stuck out past
+  // the wall as triangles all round the roof — the cornices replace those boxes.)
   lmBlock(K, f, {
     poly: body,
     top: H_MAIN,
     st: { tex: 5, col: CREAM, plinth: 0.4, pcol: sh(CREAM, 0.7) },
-    roof: ROOF_DARK, roofY: H_MAIN
+    roof: ROOF_DARK, roofY: H_MAIN,
+    cornice: [
+      [H_BAND, H_PARAPET, 0.2, BLUE],                  // the white drum, 20 cm proud of the wall
+      [H_PARAPET + 0.02, H_PARAPET + 0.2, 0.26, ROOF_DARK]   // dark coping on top, a 2 cm shadow gap under it
+    ]
   }, []);
-
-  // --- Navy blue accent band (daytime) ---
-  for (let i = 0; i < body.length; i++) {
-    const a = body[i], b = body[(i + 1) % body.length];
-    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    if (len < 0.1) continue;
-    lmBoxL(G, f, a[0], b[0], a[1], b[1], H_BAND, H_BAND_TOP, BLUE);
-  }
 
   // --- Blue accent band EMISSIVE (night glow) ---
   // A second, slightly narrower strip using K.det with lit=1 so it emits at night
@@ -78,9 +77,9 @@ function lmOlympic(K, litPatch) {
     const F = lmWF(A, B);
     // Outward-facing emissive strip
     K.det.q(
-      F.at(0, H_BAND_TOP, 0.05), F.at(F.L, H_BAND_TOP, 0.05),
-      F.at(F.L, H_BAND, 0.05), F.at(0, H_BAND, 0.05),
-      [F.nx, 0, F.nz],
+      F.at(0, H_BAND_TOP, 0.21), F.at(F.L, H_BAND_TOP, 0.21),
+      F.at(F.L, H_BAND, 0.21), F.at(0, H_BAND, 0.21),
+      [-F.nx, 0, -F.nz],   // the body ring runs clockwise: lmWF's normal points in, the strip faces out
       [0, 0, 1, 0, 1, 1, 0, 1],
       BLUE_GLOW, 1   // lit=1 → glows at night
     );
@@ -95,9 +94,9 @@ function lmOlympic(K, litPatch) {
     const B = at(uWall, v1, H_BAND + BAND_H * 0.5);
     const F = lmWF(A, B);
     K.det.q(
-      F.at(0, H_BAND + BAND_H * 0.65, 0.06), F.at(F.L, H_BAND + BAND_H * 0.65, 0.06),
-      F.at(F.L, H_BAND + BAND_H * 0.35, 0.06), F.at(0, H_BAND + BAND_H * 0.35, 0.06),
-      [F.nx, 0, F.nz],
+      F.at(0, H_BAND + BAND_H * 0.65, 0.22), F.at(F.L, H_BAND + BAND_H * 0.65, 0.22),
+      F.at(F.L, H_BAND + BAND_H * 0.35, 0.22), F.at(0, H_BAND + BAND_H * 0.35, 0.22),
+      [-F.nx, 0, -F.nz],
       [0, 0, 1, 0, 1, 1, 0, 1],
       [180, 210, 255], 1
     );
@@ -126,14 +125,6 @@ function lmOlympic(K, litPatch) {
         addLight(px, 0.25, pz, 2, 0, 0.2);
       }
     }
-  }
-
-  // --- Dark grey roof parapet ---
-  for (let i = 0; i < body.length; i++) {
-    const a = body[i], b = body[(i + 1) % body.length];
-    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    if (len < 0.1) continue;
-    lmBoxL(G, f, a[0], b[0], a[1], b[1], H_MAIN - 0.25, H_PARAPET, ROOF_DARK);
   }
 
   // --- Main entrance (south-east, u≈30..48, v≈-10..+10) ---
@@ -321,8 +312,8 @@ function lmOlympic(K, litPatch) {
     const a = body[i], b = body[(i + 1) % body.length];
     const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
     if (len < 0.1) continue;
-    // Outward strip from wall face (d=0 to d=2.8)
-    lmBoxL(G, f, a[0], b[0], a[1], b[1], 0.01, 0.03, ASPH);
+    // Outward strip from wall face (d=0 to d=2.8) — a wall-aligned quad; an lmBoxL here would build an
+    // axis-aligned box per slanted edge and its corners stuck out past the apron
     // Extended apron
     const [Ax, Az] = at(a[0], a[1], 0.02);
     const [Bx, Bz] = at(b[0], b[1], 0.02);
@@ -494,7 +485,7 @@ function lmOlympic(K, litPatch) {
     [-40, 5, 8, 5, 2.2]
   ]) {
     lmBoxL(G, f, ru - rw / 2, ru + rw / 2, rv - rd / 2, rv + rd / 2,
-      H_PARAPET, H_PARAPET + rh, ROOF_DARK);
+      H_MAIN, H_MAIN + rh, ROOF_DARK);
   }
 }
 
